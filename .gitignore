@@ -1,0 +1,14 @@
+# 大文件与运行时数据不入库，由 tools/ + manifest 复现
+bin/
+data/
+dist/
+tmp/
+downloads/
+.venv/
+node_modules/
+__pycache__/
+*.log
+*.pid
+*.exe
+*.zip
+*.msi
