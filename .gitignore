@@ -13,3 +13,9 @@ __pycache__/
 *.zip
 *.msi
 .playwright-mcp/
+forge/conf/goose/state/
+forge/conf/goose/data/
+forge/conf/ports.env.yaml
+forge/data/
+forge/apps/*.yaml
+!forge/conf/_app-template.yaml
