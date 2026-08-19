@@ -1,5 +1,5 @@
 version: "0.5"
-log_location: "C:/ZCodeWorks/PocketForge/forge/data/logs/pc.log"
+log_location: "${FORGE_ROOT}/data/logs/pc.log"
 log_configuration:
   rotation:
     max_size_mb: 10
@@ -8,26 +8,39 @@ log_configuration:
 
 processes:
   nats:
-    command: "C:/ZCodeWorks/PocketForge/forge/bin/nats-server/nats-server-v2.14.5-windows-amd64/nats-server.exe -c C:/ZCodeWorks/PocketForge/forge/conf/nats.conf"
+    command: "${FORGE_ROOT}/bin/nats-server/nats-server-v2.14.5-windows-amd64/nats-server.exe --addr 127.0.0.1 --port 4222 --http 127.0.0.1:8222 --store_dir ${FORGE_ROOT}/data/js"
     is_daemon: true
     availability:
-      restart: on_failure
+      restart: "on_failure"
     readiness_probe:
       exec:
-        command: "C:/ZCodeWorks/PocketForge/forge/bin/nats-cli/nats-0.4.0-windows-amd64/nats.exe -s 127.0.0.1:4222 server check jetstream"
-      period_seconds: 3
-      failure_threshold: 10
+        command: "${FORGE_ROOT}/bin/nats-cli/nats-0.4.0-windows-amd64/nats.exe -s 127.0.0.1:4222 server check jetstream"
+      period_seconds: 5
+      failure_threshold: 12
 
   faucet:
-    command: "C:/ZCodeWorks/PocketForge/forge/bin/faucet/faucet.exe serve --foreground --host 127.0.0.1 --port 8091 --data-dir C:/ZCodeWorks/PocketForge/forge/data/faucet"
+    command: "${FORGE_ROOT}/bin/faucet/faucet.exe serve --foreground --host 127.0.0.1 --port ${FAUCET_PORT} --data-dir ${FORGE_ROOT}/data/faucet"
     is_daemon: true
     availability:
-      restart: on_failure
+      restart: "on_failure"
     readiness_probe:
       http_get:
         host: 127.0.0.1
-        port: 8091
+        port: ${FAUCET_PORT}
         scheme: http
         path: /healthz
-      period_seconds: 3
-      failure_threshold: 10
+      period_seconds: 5
+      failure_threshold: 12
+
+  goose-scheduler:
+    command: "${FORGE_ROOT}/bin/goose/goose-package/goose.exe acp --enable-scheduler"
+    environment:
+      - "GOOSE_PATH_ROOT=${FORGE_ROOT}/conf/goose"
+      - "GOOSE_DISABLE_KEYRING=1"
+      - "GOOSE_TELEMETRY_ENABLED=false"
+    is_daemon: true
+    availability:
+      restart: "on_failure"
+    depends_on:
+      faucet:
+        condition: process_healthy
