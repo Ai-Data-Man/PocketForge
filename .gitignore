@@ -12,3 +12,4 @@ __pycache__/
 *.exe
 *.zip
 *.msi
+.playwright-mcp/

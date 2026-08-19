@@ -1,7 +1,7 @@
 # PocketForge 状态（永远反映"现在"；每次工作会话结束必须更新）
 
-- 更新：2026-08-19 会话 s01（P2 中）
-- 阶段：P0 ✅ → P1 ✅ → P2 🔄（核心四件全通，剩 pc 联动/browser-use）
+- 更新：2026-08-19 会话 s01（P2 ✅ 全部完成）
+- 阶段：P0 ✅ → P1 ✅ → P2 ✅ → P3 🔄
 
 ## 阶段总览
 | 阶段 | 内容 | 状态 |
@@ -15,17 +15,18 @@
 | P6 | 交付：便携打包 + 妻子手册 | ⬜ |
 
 ## 当前正在进行
-- P2 冒烟：pc+nats+faucet+goose 单件全通（见 docs/runbooks/p2-verification-log.md）。下一步：process-compose 托管全栈联动 + 热重载 + P2b 便携 Python/browser-use。
+- P3 设计：正式化 ADR-0002..0006（选型五件套）+ 架构总览 + Agent 手册（.goosehints/系统提示）+ 应用注册协议（pc 热重载 + faucet 重启语义）+ 交付树规范。
 
 ## 已确立决策
 - ADR-0001 仓库信息架构 = 记忆拓扑（Accepted）
-- P1 选型结论（待正式化为 ADR-0002..0005）：process-compose（spine）/ NATS+faucet（数据面）/ goose（agent 运行时）/ browser-use（浏览器栈）+ 便携 Python。
+- 选型结论（VERIFIED-RUN 支撑，待 ADR 化）：process-compose v1.122.0 / NATS v2.14.5 + faucet v0.1.12 / goose v1.46.0（GOOSE_PATH_ROOT 便携）/ **@playwright/mcp + 便携 Node v22.21.1 + 系统 Edge**（browser-use 在 Edge 死锁 → WATCH）。
+- P2 全部验证记录：docs/runbooks/p2-verification-log.md + research/05。
 
 ## 开放问题 / 风险（未验证关键事实）
 - ~~Faucet 项目身份~~ 已确认 faucetdb/faucet v0.1.12 MIT（VERIFIED-RUN）。
 - ~~goose 便携化~~ GOOSE_PATH_ROOT 收敛已验证（CLI）；**Desktop 未验证**。
-- process-compose 热重载 `POST /project`/`project update -f` 增进程立即启动与否：待联动测试。
-- browser-use 0.13.8 msedge channel + MCP：待 P2b。
+- ~~browser-use 0.13.8 msedge channel + MCP~~ 已验证失败（Edge 死锁）→ 改 playwright-mcp，已验证通过。
+- ~~process-compose 热重载~~ 已验证：`project update -f` 增进程立即启动执行。
 - 目标机 LLM 端点：交付时配置任意 OpenAI 兼容 key（开发机用 9router，模型名需 `provider/model` 形式，goose 限制）。
 - EDR 对未签名 exe 拦截风险（全部二进制未签名；只能在真实企业机验证）。
 - 建表通道：目标机 DDL 路径（sqlite3.exe 随包 vs faucet raw_sql_allowed）→ P3 决策。
