@@ -1,32 +1,25 @@
-# 浏览器自动化栈（browser-use 主选；@playwright/mcp 备选）
+# 浏览器自动化栈（@playwright/mcp 主选；browser-use 降级 WATCH）
 
-## browser-use（browser-use/browser-use，Python）
-- 结论：ADOPT（主选）
-- 许可证：MIT（LICENSE "Copyright (c) 2024 Gregor Zunic"，PyPI 分类器一致；云服务另 ToS 不影响 OSS 层）。2026-08-19 核对。
-- 版本：0.13.8（2026-08-16）；`requires_python >=3.11,<4`。
-- Windows/便携性：纯 pip 包；0.13.0 起弃用 Playwright 改原生 CDP（deps: cdp-use、browser-harness）；复用系统 Edge：`BrowserConfig(channel='msedge')` / `executable_path` / `cdp_url`；`headless` 默认 None=有显示器则有头；`Browser.from_system_chrome()` 自动探测。
-- MCP 模式：`browser-use --mcp`（stdio）；env：`BROWSER_USE_HEADLESS=false`（MCP 下默认 headless，要人可见需显式关）、`BROWSER_USE_DISABLE_SECURITY=true`。挂 goose：`extensions: { type: stdio, cmd: <portable>\Scripts\browser-use.exe, args: [--mcp] }`。
-- 验证状态：VERIFIED-DOC。待本机验证：0.13 Rust/CDP 重写（beta）对 msedge channel 的实际探测成功率；Windows 回归无公开报告 → 锁 0.13.8 + P2 冒烟。
+## 最终结论（2026-08-19 VERIFIED-RUN 推翻初版）
+- **主选：`@playwright/mcp`（Apache-2.0）**：`--browser msedge` 复用系统 Edge + `--user-data-dir` 便携 profile，MCP stdio navigate/snapshot 全通。
+- **browser-use 0.13.8（MIT）降级 WATCH**：SDK `BrowserSession.start()` 在 Edge 151 上死锁（三处独立缺陷，见下）；CDP 底层（cdp-use 直连）完全正常。观察上游修复后复测。
 
-## @playwright/mcp（microsoft/playwright-mcp）
-- 结论：BACKUP
-- 许可证：Apache-2.0。活跃（36k+ stars）。
-- 运行：`npx @playwright/mcp@latest`（stdio 默认，`--port` 走 HTTP）；需 Node ≥18（便携 Node 需随包）。
-- 系统 Edge：`--browser msedge`；默认 accessibility-snapshot 模式（不截图，对怪异 DOM 稳）；`--caps=vision` 开视觉坐标点击。
-- profile 落 `%LOCALAPPDATA%\ms-playwright\mcp-*` —— 便携化需 `--user-data-dir` 显式重定向（P2 如启用再测）。
+## VERIFIED-RUN 事实（2026-08-19，开发机 Edge 151）
+1. `chromium.launchPersistentContext(channel:'msedge')`（playwright-core）：导航/取文本/点击全通 → **系统 Edge 复用成立**。
+2. `npx @playwright/mcp@latest --browser msedge --user-data-dir <portable>`：MCP stdio `browser_navigate` + `browser_snapshot`（accessibility YAML 含 ref）全通。
+3. MCP 测试方法：stdin 必须**保持打开**（EOF 会让 server 退出）；用 `(sleep N; printf ...; sleep N)` 管道喂 JSONRPC。
+4. cdp-use 裸客户端连 Edge 40s 稳定，setDiscoverTargets(filter page+iframe) 与 setAutoAttach 均正常 → Edge CDP 本身无问题。
 
-## 已拒（许可证白名单）
-- nodriver：AGPL-3.0。拒。
-- camoufox：MPL-2.0 弱 copyleft。拒。
-- patchright（Apache-2.0）：反检测 fork，内部系统无需求。不采用。
-- Selenium 4.47（Apache-2.0）：Selenium Manager 自动下 driver 需外网，锁死机不利。次选。
+## browser-use 0.13.8 在 Edge 上的缺陷清单（P2b 排障记录）
+- launch 模式（executable_path 指 Edge）：Edge 内置扩展 background_page 触发 `Inspector.targetCrashed` 连发 → session 初始化挂起（watchdog 30s TIMEOUT）。
+- cdp_url 附加模式：`SecurityWatchdog` 默认拦截无 host URL（file:// 必拒；`urlparse` 无 host → False），并主动关 tab → focus 竞态 `ValueError: Target ... not found` → ws 反复重连，`start()` 不返回。
+- `--disable-extensions` 额外 args 反而让 launch 阶段卡死（原因未深挖，非必须）。
+- CLI（browser-harness 0.1.9）Windows 只探测 Chrome 不探测 Edge（chrome.py `find_chrome_executable` 仅 Chrome 路径）。
+- 附加发现：默认下载 uBlock 扩展（目标机无外网即失败）；须 `BROWSER_USE_DISABLE_EXTENSIONS=1`。
+- 便携 Python（embeddable 3.12.10）：`._pth` 加 `import site` + `Lib/site-packages` 后 pip/browser-use 安装成功，CLI 可跑（证明 Python 便携层本身没问题，可复用于其他用途）。
 
-## 便携 Python（embeddable）打包坑（VERIFIED-DOC，python.org 官方文档）
-1. zip 不含 pip/tkinter/Scripts：用 get-pip.py，入口脚本一律 `python -m pip`。
-2. `python3xx._pth` 必须解锁 `import site` 并加 `Lib/site-packages`，否则装的包不可见。
-3. embeddable zip 自带 vcruntime140(_1).dll；但 Win10/11 原生仅含 UCRT，**msvcp140.dll 不保证存在** → 随包携带 VC 运行库 DLL 或选不依赖的版本（P2 实测）。
-4. 离线交付：全部 wheel 预下载进包（`pip download`），目标机零外网。
-
-## 真实 PLM 的未知数（只能现场测）
-- PLM 是否需要 IE 模式/ActiveX：IE-mode 页面 CDP/Playwright 无法正常自动化 → 若命中需人工兜底方案（设计时预留"人工模式"占位）。
-- SSO：妻子用自己的企业账号在可见浏览器里登录一次，profile 持久化在便携目录。
+## 风险与后续
+- playwright-mcp 需 Node ≥18 → 交付包带便携 Node zip（node.exe 单目录，无污染；P4 打包时 pinned）。
+- `.playwright-mcp` 输出目录默认 cwd 相对 → 由启动器钉 cwd 到便携数据目录。
+- browser-use 复测触发条件：其 GitHub release 修复 Edge session 管理（关注 0.14+）。
+- 真实 PLM 的 IE-mode/ActiveX 仍是现场未知数（两方案同样受限，人工兜底预案不变）。

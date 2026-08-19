@@ -1,0 +1,33 @@
+version: "0.5"
+log_location: "C:/ZCodeWorks/PocketForge/forge/data/logs/pc.log"
+log_configuration:
+  rotation:
+    max_size_mb: 10
+    max_backups: 3
+    compress: true
+
+processes:
+  nats:
+    command: "C:/ZCodeWorks/PocketForge/forge/bin/nats-server/nats-server-v2.14.5-windows-amd64/nats-server.exe -c C:/ZCodeWorks/PocketForge/forge/conf/nats.conf"
+    is_daemon: true
+    availability:
+      restart: on_failure
+    readiness_probe:
+      exec:
+        command: "C:/ZCodeWorks/PocketForge/forge/bin/nats-cli/nats-0.4.0-windows-amd64/nats.exe -s 127.0.0.1:4222 server check jetstream"
+      period_seconds: 3
+      failure_threshold: 10
+
+  faucet:
+    command: "C:/ZCodeWorks/PocketForge/forge/bin/faucet/faucet.exe serve --foreground --host 127.0.0.1 --port 8091 --data-dir C:/ZCodeWorks/PocketForge/forge/data/faucet"
+    is_daemon: true
+    availability:
+      restart: on_failure
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        port: 8091
+        scheme: http
+        path: /healthz
+      period_seconds: 3
+      failure_threshold: 10

@@ -1,0 +1,6 @@
+processes:
+  hello-oneshot:
+    command: "cmd /c echo hello-from-hotreload-app"
+    is_daemon: false
+    availability:
+      restart: no
