@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head><meta charset="utf-8"><title>零件库 - 东风康明斯PLM(仿真)</title>
+<style>
+body{font-family:simsun;background:#e8eef7;margin:0} header{background:#1a3c6e;color:#fff;padding:8px 16px}
+table{border-collapse:collapse;margin:12px;background:#fff} td,th{border:1px solid #999;padding:4px 10px;font-size:14px}
+iframe#hiddenFrame{display:none}
+</style>
+<script>
+// 仿真老式内网系统的动态加载行为：数据由 JS 注入 DOM（无 API 可调，必须浏览器自动化）
+const PARTS = [
+ {code:'EC-1001', name:'缸体',         qty:12, updated:'2026-08-02'},
+ {code:'EC-1002', name:'曲轴',         qty:5,  updated:'2026-08-05'},
+ {code:'EC-1003', name:'连杆总成',     qty:30, updated:'2026-08-11'},
+ {code:'EC-2001', name:'喷油器',       qty:8,  updated:'2026-08-14'},
+ {code:'EC-2002', name:'涡轮增压器',   qty:3,  updated:'2026-08-17'},
+ {code:'EC-3001', name:'机油滤清器',   qty:56, updated:'2026-08-18'},
+];
+window.addEventListener('load', ()=>{
+  setTimeout(()=>{ // 模拟慢速内网
+    const tb=document.getElementById('partsBody');
+    PARTS.forEach(p=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML=`<td>${p.code}</td><td>${p.name}</td><td>${p.qty}</td><td>${p.updated}</td>`;
+      tb.appendChild(tr);
+    });
+    document.getElementById('status').textContent='加载完成';
+  }, 400);
+});
+</script>
+</head>
+<body>
+<header><h2>零件库存查询（仿真 PLM）</h2></header>
+<p id="status">加载中……</p>
+<table>
+ <thead><tr><th>图号</th><th>名称</th><th>库存</th><th>更新日期</th></tr></thead>
+ <tbody id="partsBody"></tbody>
+</table>
+</body></html>

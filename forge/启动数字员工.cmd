@@ -20,6 +20,11 @@ set "no_proxy=127.0.0.1,localhost"
 
 echo [PocketForge] starting... pc=%PC_PORT% faucet=%FAUCET_PORT%
 cd /d "%FORGE_ROOT%"
-"%FORGE_ROOT%\bin\pc\process-compose.exe" up -f "%FORGE_ROOT%\conf\process-compose.yaml" -f "%FORGE_ROOT%\conf\ports.env.yaml" -p %PC_PORT% -t=false
+
+rem ---- aggregate registered apps (apps\*.yaml) into conf\apps.env.yaml ----
+set "APP_ARGS="
+powershell -NoProfile -Command "$d='%FORGE_ROOT%\apps'; $out='%FORGE_ROOT%\conf\apps.env.yaml'; if((Test-Path $d) -and (Get-ChildItem $d -Filter *.yaml).Count -gt 0){ $c=Get-ChildItem $d -Filter *.yaml | Sort-Object Name | ForEach-Object { (Get-Content $_.FullName -Raw) -replace '(?m)^processes:\s*$','' }; [IO.File]::WriteAllText($out, ('processes:' + ($c -join [Environment]::NewLine))) } else { [IO.File]::WriteAllText($out, 'processes: {}') }" >nul 2>&1
+
+"%FORGE_ROOT%\bin\pc\process-compose.exe" up -f "%FORGE_ROOT%\conf\process-compose.yaml" -f "%FORGE_ROOT%\conf\ports.env.yaml" -f "%FORGE_ROOT%\conf\apps.env.yaml" -p %PC_PORT% -t=false
 echo [PocketForge] all stopped.
 pause
