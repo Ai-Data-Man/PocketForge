@@ -1,0 +1,10 @@
+85e336e5a7bf967644ef9def48874c4df88f4d64c99058abe972c32d213d68be *downloads/faucet.zip
+a903273d165c4b2ac3d30aa861f2e00753b07a5d24d24e37b65e36c86f937a76 *downloads/goose.zip
+72f87f901b6026f2b749dbf77b9b2d82590643e7c35f101809fcd5a01486c407 *downloads/nats-cli.zip
+f66f840a211ab665083b88e9b7edbcf6296cda143be47e53e6f6bb8520692bbb *downloads/nats-server.zip
+13fd7023199c7375c26477f11f213fde826e932d831f7dd51a5c229fbee3bf79 *downloads/pc.zip
+07145c856ab881608fb9675b3ba72e0f5fcdebbe14e1e114310b01cfe50dcf31 *forge/bin/goose/goose-package/goose.exe
+568d34e7073ec4eea39c06021fc5b92ba2cfe286602b692ee25a43dd3dc4004b *forge/bin/nats-cli/nats-0.4.0-windows-amd64/nats.exe
+6b999ff9b26ea392fb302626d33ec3f3906a8315978a67129e2a075985ff6602 *forge/bin/nats-server/nats-server-v2.14.5-windows-amd64/nats-server.exe
+6e810f25cc293e4c408b1577764b6ebc8310d38859c9e3bb9f2711b558e606aa *forge/bin/faucet/faucet.exe
+fc5a3b2a5e438889e0000d77f9c4debe55e8df75bf21bb3ec73fdcfc619d0ed0 *forge/bin/pc/process-compose.exe

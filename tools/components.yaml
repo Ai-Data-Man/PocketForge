@@ -1,0 +1,35 @@
+# PocketForge 组件清单（pinned；P2 验证基线）
+# 下载: tools/fetch.sh（开发机，走 127.0.0.1:7890 代理）
+# 校验: sha256 记录于 tools/checksums.txt（fetch 时生成）
+# 许可证全部 MIT/Apache-2.0，LICENSE 文本随包分发（fetch 时下载 LICENSE 落 vendor-licenses/）
+components:
+  - name: process-compose
+    version: v1.122.0
+    repo: F1bonacc1/process-compose
+    asset: process-compose_windows_amd64.zip
+    license: Apache-2.0
+    url: https://github.com/F1bonacc1/process-compose/releases/download/v1.122.0/process-compose_windows_amd64.zip
+  - name: nats-server
+    version: v2.14.5
+    repo: nats-io/nats-server
+    asset: nats-server-v2.14.5-windows-amd64.zip
+    license: Apache-2.0
+    url: https://github.com/nats-io/nats-server/releases/download/v2.14.5/nats-server-v2.14.5-windows-amd64.zip
+  - name: nats-cli
+    version: v0.4.0
+    repo: nats-io/natscli
+    asset: nats-0.4.0-windows-amd64.zip
+    license: Apache-2.0
+    url: https://github.com/nats-io/natscli/releases/download/v0.4.0/nats-0.4.0-windows-amd64.zip
+  - name: faucet
+    version: v0.1.12
+    repo: faucetdb/faucet
+    asset: faucet_0.1.12_windows_amd64.zip
+    license: MIT
+    url: https://github.com/faucetdb/faucet/releases/download/v0.1.12/faucet_0.1.12_windows_amd64.zip
+  - name: goose-cli
+    version: v1.46.0
+    repo: aaif-goose/goose
+    asset: goose-x86_64-pc-windows-msvc.zip
+    license: Apache-2.0
+    url: https://github.com/aaif-goose/goose/releases/download/v1.46.0/goose-x86_64-pc-windows-msvc.zip

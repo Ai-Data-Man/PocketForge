@@ -1,7 +1,7 @@
 # PocketForge 状态（永远反映"现在"；每次工作会话结束必须更新）
 
-- 更新：2026-08-19 会话 s01
-- 阶段：P0 ✅ → P1 🔄
+- 更新：2026-08-19 会话 s01（P2 中）
+- 阶段：P0 ✅ → P1 ✅ → P2 🔄（核心四件全通，剩 pc 联动/browser-use）
 
 ## 阶段总览
 | 阶段 | 内容 | 状态 |
@@ -15,18 +15,21 @@
 | P6 | 交付：便携打包 + 妻子手册 | ⬜ |
 
 ## 当前正在进行
-- s01：P1 四个后台调查 agent（R1 supervisor / R2 数据面 / R3 agent 运行时 / R4 浏览器栈）。
+- P2 冒烟：pc+nats+faucet+goose 单件全通（见 docs/runbooks/p2-verification-log.md）。下一步：process-compose 托管全栈联动 + 热重载 + P2b 便携 Python/browser-use。
 
 ## 已确立决策
 - ADR-0001 仓库信息架构 = 记忆拓扑（Accepted）
+- P1 选型结论（待正式化为 ADR-0002..0005）：process-compose（spine）/ NATS+faucet（数据面）/ goose（agent 运行时）/ browser-use（浏览器栈）+ 便携 Python。
 
 ## 开放问题 / 风险（未验证关键事实）
-- Faucet 项目确切身份（GitHub 重名多，待 R2 确认 repo 坐标、Windows 资产、许可证）。
-- goose（block/goose）Windows 桌面端成熟度；CLI 是否有便携 zip；GOOSE_HOME 可否重定向（便携硬要求）。
-- process-compose 是否支持运行期加载新增进程（注册协议设计依赖此事实）。
-- browser-use 能否复用系统 Edge/Chrome channel（企业机禁下载浏览器的对冲）。
-- 目标机 LLM 端点：交付时配置任意 OpenAI 兼容 key（开发机用 9router）。
-- EDR 对未签名 exe 的拦截风险（nats/faucet/goose 等均为未签名二进制）。
+- ~~Faucet 项目身份~~ 已确认 faucetdb/faucet v0.1.12 MIT（VERIFIED-RUN）。
+- ~~goose 便携化~~ GOOSE_PATH_ROOT 收敛已验证（CLI）；**Desktop 未验证**。
+- process-compose 热重载 `POST /project`/`project update -f` 增进程立即启动与否：待联动测试。
+- browser-use 0.13.8 msedge channel + MCP：待 P2b。
+- 目标机 LLM 端点：交付时配置任意 OpenAI 兼容 key（开发机用 9router，模型名需 `provider/model` 形式，goose 限制）。
+- EDR 对未签名 exe 拦截风险（全部二进制未签名；只能在真实企业机验证）。
+- 建表通道：目标机 DDL 路径（sqlite3.exe 随包 vs faucet raw_sql_allowed）→ P3 决策。
+- goose schedule/acp --enable-scheduler Windows 常驻方式未验证。
 
 ## 环境事实（开发机，VERIFIED-RUN 2026-08-15 起）
 - Windows Server 2022 (10.0.20348 x64)，Git Bash，git 2.53.0.windows.1。
