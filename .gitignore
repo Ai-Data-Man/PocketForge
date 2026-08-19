@@ -19,3 +19,5 @@ forge/conf/ports.env.yaml
 forge/data/
 forge/apps/*.yaml
 !forge/conf/_app-template.yaml
+forge/conf/apps.env.yaml
+conf/apps.env.yaml
