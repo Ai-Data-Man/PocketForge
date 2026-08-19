@@ -1,0 +1,20 @@
+# 由启动器生成（C:/ZCodeWorks/PocketForge/forge 占位）——goose 不会展开 ${VAR}，必须写入绝对路径
+GOOSE_PROVIDER: openai
+GOOSE_MODEL: myopencode/glm-5.2
+GOOSE_MODE: smart_approve
+
+extensions:
+  faucet-db:
+    type: stdio
+    name: faucet-db
+    enabled: true
+    cmd: 'C:/ZCodeWorks/PocketForge/forge/bin/faucet/faucet.exe'
+    args: ['mcp', '--data-dir', 'C:/ZCodeWorks/PocketForge/forge/data/faucet']
+    timeout: 300
+  browser:
+    type: stdio
+    name: browser
+    enabled: true
+    cmd: 'C:/ZCodeWorks/PocketForge/forge/bin/node-v22/node-v22.21.1-win-x64/node.exe'
+    args: ['C:/ZCodeWorks/PocketForge/forge/bin/pw-mcp/node_modules/@playwright/mcp/cli.js', '--browser', 'msedge', '--user-data-dir', 'C:/ZCodeWorks/PocketForge/forge/data/pw-profile', '--allowed-origins', '*']
+    timeout: 300

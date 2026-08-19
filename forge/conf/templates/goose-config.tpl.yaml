@@ -1,0 +1,20 @@
+# 由启动器生成（__FORGE_ROOT__ 占位）——goose 不会展开 ${VAR}，必须写入绝对路径
+GOOSE_PROVIDER: openai
+GOOSE_MODEL: myopencode/glm-5.2
+GOOSE_MODE: smart_approve
+
+extensions:
+  faucet-db:
+    type: stdio
+    name: faucet-db
+    enabled: true
+    cmd: '__FORGE_ROOT__/bin/faucet/faucet.exe'
+    args: ['mcp', '--data-dir', '__FORGE_ROOT__/data/faucet']
+    timeout: 300
+  browser:
+    type: stdio
+    name: browser
+    enabled: true
+    cmd: '__NODE_DIR__/node.exe'
+    args: ['__FORGE_ROOT__/bin/pw-mcp/node_modules/@playwright/mcp/cli.js', '--browser', 'msedge', '--user-data-dir', '__FORGE_ROOT__/data/pw-profile', '--allowed-origins', '*']
+    timeout: 300

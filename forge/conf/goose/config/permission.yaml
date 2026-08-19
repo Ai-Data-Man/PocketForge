@@ -1,0 +1,30 @@
+smart_approve:
+  always_allow: []
+  ask_before:
+  - browser__browser_click
+  - browser__browser_close
+  - browser__browser_drag
+  - browser__browser_drop
+  - browser__browser_evaluate
+  - browser__browser_file_upload
+  - browser__browser_fill_form
+  - browser__browser_handle_dialog
+  - browser__browser_hover
+  - browser__browser_navigate
+  - browser__browser_navigate_back
+  - browser__browser_press_key
+  - browser__browser_resize
+  - browser__browser_run_code_unsafe
+  - browser__browser_select_option
+  - browser__browser_tabs
+  - browser__browser_type
+  - edit
+  - extensionmanager__manage_extensions
+  - faucet-db__faucet_delete
+  - faucet-db__faucet_insert
+  - faucet-db__faucet_update
+  - read_image
+  - shell
+  - todo__todo_write
+  - write
+  never_allow: []
