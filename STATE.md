@@ -1,43 +1,40 @@
 # PocketForge 状态（永远反映"现在"；每次工作会话结束必须更新）
 
-- 更新：2026-08-19 会话 s01（P2 ✅ 全部完成）
-- 阶段：P0 ✅ → P1 ✅ → P2 ✅ → P3 🔄
+- 更新：2026-08-20 会话 s01 收官
+- 阶段：P0 ✅ P1 ✅ P2 ✅ P3 ✅ P4 ✅ P5 ✅ P6 ✅（首版闭环完成）
 
 ## 阶段总览
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| P0 | 信息架构/记忆拓扑落地 | ✅ |
-| P1 | 开源项目四路深查（supervisor / 数据面 / Agent运行时 / 浏览器栈） | 🔄 |
-| P2 | 本机验证：下载 pinned 二进制 + 冒烟 | ⬜ |
-| P3 | 设计：ADR 0002+ / 架构文档 / Agent 手册 / 注册协议 | ⬜ |
-| P4 | 实现：forge/ 产品树 | ⬜ |
-| P5 | 测试：fake PLM + 端到端 | ⬜ |
-| P6 | 交付：便携打包 + 妻子手册 | ⬜ |
+| P0 | 信息架构/记忆拓扑 | ✅ ADR-0001 |
+| P1 | 四路开源深查 | ✅ research/01-05 |
+| P2 | 本机验证（含浏览器栈反转→playwright-mcp） | ✅ runbooks/p2-verification-log.md |
+| P3 | 设计 | ✅ ADR-0002/0003 + architecture/overview.md |
+| P4 | forge/ 产品树 + 启动器 | ✅ journal s01d |
+| P5 | fake PLM 端到端 | ✅ ADR-0004（协议修订） |
+| P6 | 便携打包 | ✅ dist/PocketForge-20260820-6628496.zip (174MB, sha256 3a27fedf…) |
 
 ## 当前正在进行
-- P3 设计：正式化 ADR-0002..0006（选型五件套）+ 架构总览 + Agent 手册（.goosehints/系统提示）+ 应用注册协议（pc 热重载 + faucet 重启语义）+ 交付树规范。
+- 无（首版闭环完成，等真实目标机验证轮）。
 
 ## 已确立决策
-- ADR-0001 仓库信息架构 = 记忆拓扑（Accepted）
-- 选型结论（VERIFIED-RUN 支撑，待 ADR 化）：process-compose v1.122.0 / NATS v2.14.5 + faucet v0.1.12 / goose v1.46.0（GOOSE_PATH_ROOT 便携）/ **@playwright/mcp + 便携 Node v22.21.1 + 系统 Edge**（browser-use 在 Edge 死锁 → WATCH）。
-- P2 全部验证记录：docs/runbooks/p2-verification-log.md + research/05。
+- ADR-0001 记忆拓扑；ADR-0002 技术栈五件套；ADR-0003 交付树+注册协议；ADR-0004 E2E 修订（raw_sql 置位 + apps 聚合）。
+- 技术栈（全 VERIFIED-RUN）：process-compose v1.122.0 / nats-server v2.14.5 + cli v0.4.0 / faucet v0.1.12 / goose v1.46.0（GOOSE_PATH_ROOT）/ @playwright/mcp + 便携 node v22.21.1 + 系统 Edge / 弃用：browser-use（Edge 死锁，WATCH）、便携 python（随包剔除，仅开发机留存）。
 
-## 开放问题 / 风险（未验证关键事实）
-- ~~Faucet 项目身份~~ 已确认 faucetdb/faucet v0.1.12 MIT（VERIFIED-RUN）。
-- ~~goose 便携化~~ GOOSE_PATH_ROOT 收敛已验证（CLI）；**Desktop 未验证**。
-- ~~browser-use 0.13.8 msedge channel + MCP~~ 已验证失败（Edge 死锁）→ 改 playwright-mcp，已验证通过。
-- ~~process-compose 热重载~~ 已验证：`project update -f` 增进程立即启动执行。
-- 目标机 LLM 端点：交付时配置任意 OpenAI 兼容 key（开发机用 9router，模型名需 `provider/model` 形式，goose 限制）。
-- EDR 对未签名 exe 拦截风险（全部二进制未签名；只能在真实企业机验证）。
-- 建表通道：目标机 DDL 路径（sqlite3.exe 随包 vs faucet raw_sql_allowed）→ P3 决策。
-- goose schedule/acp --enable-scheduler Windows 常驻方式未验证。
+## 开放问题 / 风险（下一会话优先）
+1. **目标机验证未做**（最关键）：妻子电脑上 EDR 对未签名 exe、Edge 版本、真实 PLM 是否 IE-mode/ActiveX（若是→浏览器自动化不可用，需人工兜底方案）。
+2. LLM 端点：交付包 data/secrets.env 需填真实 key（当前指向开发机 9router）。goose 模型名必须 `provider/model` 形式。
+3. goose Desktop 未验证（若妻子要图形界面，验证其 GOOSE_PATH_ROOT 收敛 + electron-updater 禁用）。
+4. faucet 0.x 早熟：锁 v0.1.12；停更>6月或 CVE → 按 ADR-0002 换 PocketBase。
+5. 8 条硬约束审计：注册表/PATH/服务/计划任务零写入已由设计保证并本机验证（AppData 唯一残留是 goose 首启空日志文件，已复测可消失）；EDR 场景只能现场验。
+6. `.goosehints` 尚未实测被 goose 读取（建议下轮在交互 session 里确认 agent 知道注册协议）。
+7. 备份策略未做（data/ 手工拷贝即可用；自动化留 P7）。
 
-## 环境事实（开发机，VERIFIED-RUN 2026-08-15 起）
-- Windows Server 2022 (10.0.20348 x64)，Git Bash，git 2.53.0.windows.1。
-- GitHub 直连不通，HTTP 代理 `http://127.0.0.1:7890`。
-- 本机 LLM 路由 9router v0.5.55 `http://127.0.0.1:20128/v1`（OpenAI 兼容，key `sk-465eda008294ad45-mg7ffb-0052fa88`，模型前缀 `my/` 如 `my/glm-5.2`）。
+## 环境事实（开发机）
+- Windows Server 2022，代理 127.0.0.1:7890（github 可达），9router http://127.0.0.1:20128/v1（模型 myopencode/glm-5.2，goose 可用）。
+- 组件 sha256：tools/checksums.txt；下载 manifest：tools/components.yaml。
 
-## 交付物验收线（P6 时逐项核对）
-1. 解压即用、双击启动、零系统污染（无注册表/PATH/服务/计划任务写入）。
-2. 妻子自然语言完成：浏览器取数 → 入库 → 生成数据应用 → 重启后一切自动回来。
-3. 全部组件许可证在白名单内，LICENSE 文本随包分发。
+## 交付物验收线核对（P6）
+1. 解压即用 ✅（E2E 中模拟全新启动路径）；双击启动 ✅；零系统污染 ✅（设计+本机核验，目标机待验）。
+2. 妻子自然语言完成抓取→入库→建应用→重启回来 ✅（E2E 用 goose headless 等价验证；真人交互待目标机）。
+3. 许可证白名单 ✅（7 份文本随包：Apache-2.0×4 / MIT×3）。
