@@ -25,3 +25,12 @@
 ## 记忆规矩
 - 用户告诉你的个人事实/偏好（家人、工牌、产线、习惯）：用 remember_memory 工具存全局记忆，不要写进任何项目文件。
 - 查旧事：先用记忆工具，再考虑 chatrecall 搜历史会话。
+
+## Windows 命令注意
+- shell 命令按 Windows cmd 语法执行：管道用 |，别用 bash 语法（2>&1 合并输出写 "command 2>&1" 时整体加引号会失败，尽量拆开跑）。
+- 路径用正斜杠或双反斜杠；长命令拆成多步执行。
+
+## 应用运行时清单（重要）
+- 你只有这些运行时可用：包内 node（bin/node-v22/node-v22.21.1-win-x64/node.exe）、纯静态 HTML、faucet REST。
+- 禁止假设系统装有 python/perl/其他。自建应用的 command 一律用包内 node 绝对路径，或干脆输出静态 HTML 由 node http 服务。
+- 访问数据库用 faucet REST（http://127.0.0.1:<faucet.port>/api/v1/...，key 在 data/faucet/.apikey）。

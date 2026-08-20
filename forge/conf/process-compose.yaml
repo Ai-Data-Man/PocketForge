@@ -44,3 +44,12 @@ processes:
     depends_on:
       faucet:
         condition: process_healthy
+
+  faucet-rawsql:
+    command: '${FORGE_ROOT}/bin/node-v22/node-v22.21.1-win-x64/node.exe ${FORGE_ROOT}/bin/faucet-rawsql.js ${FORGE_ROOT}/data/faucet/faucet.db'
+    is_daemon: false
+    availability:
+      restart: 'no'
+    depends_on:
+      faucet:
+        condition: process_healthy

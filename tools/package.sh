@@ -10,12 +10,14 @@ DIST="$ROOT/dist"
 OUT="$DIST/PocketForge-${DATE}-${VER}.zip"
 mkdir -p "$DIST"
 
-# 1) 清运行时状态（交付包零残留）；排除已弃用组件（browser-use 便携 Python，见 research/05）
+# 1) 清运行时状态（交付包零残留）；排除已弃用组件与运行时生成物
 TMP=$(mktemp -d)
 cp -r "$FORGE" "$TMP/forge-pkg"
 rm -rf "$TMP/forge-pkg/data"/* "$TMP/forge-pkg/conf/goose/state" "$TMP/forge-pkg/conf/goose/data" \
        "$TMP/forge-pkg/conf/ports.env.yaml" "$TMP/forge-pkg/conf/apps.env.yaml" "$TMP/forge-pkg/apps"/* \
-       "$TMP/forge-pkg/bin/python" "$TMP/forge-pkg/bin/bu-config" 2>/dev/null || true
+       "$TMP/forge-pkg/bin/python" "$TMP/forge-pkg/bin/bu-config" \
+       "$TMP/forge-pkg/bin/memory-mcp.cmd" "$TMP/forge-pkg/conf/diag.ps1" \
+       "$TMP/forge-pkg/conf/goose/config/memory" "$TMP/forge-pkg/conf/goose/config/config.yaml" 2>/dev/null || true
 mkdir -p "$TMP/forge-pkg/data/logs" "$TMP/forge-pkg/apps" "$TMP/forge-pkg/data/sqlite"
 
 # 2) 许可证清点（缺 = 失败）
