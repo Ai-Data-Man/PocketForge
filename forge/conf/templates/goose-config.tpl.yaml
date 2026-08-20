@@ -22,3 +22,10 @@ extensions:
     type: platform
     name: chatrecall
     enabled: true
+  memory:
+    type: stdio
+    name: memory
+    enabled: true
+    cmd: 'cmd'
+    args: ['/c', '__FORGE_ROOT__/bin/memory-mcp.cmd']
+    timeout: 120

@@ -1,4 +1,4 @@
-# PocketForge 启动器核心逻辑（由 启动数字员工.cmd 调用）
+﻿# PocketForge 启动器核心逻辑（由 启动数字员工.cmd 调用）
 # 模板替换：goose 不展开环境变量，须写入绝对路径
 $ErrorActionPreference = 'Stop'
 $ForgeRoot = Split-Path -Parent $PSScriptRoot
@@ -12,6 +12,21 @@ $nodeDir  = Join-Path $ForgeRoot 'bin\node-v22\node-v22.21.1-win-x64'
 $tpl = [IO.File]::ReadAllText($tplPath)
 $cfg = $tpl.Replace('__FORGE_ROOT__', ($ForgeRoot -replace '\\','/')).Replace('__NODE_DIR__', ($nodeDir -replace '\\','/'))
 [IO.File]::WriteAllText($cfgPath, $cfg)
+
+# 1b) memory MCP 包装脚本生成（goose spawn 扩展子进程时丢弃父 env → wrapper 内强制便携根）
+$memTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\memory-mcp.tpl.cmd'))
+$memCmd = $memTpl.Replace('__FORGE_ROOT__', $ForgeRoot)
+[IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\memory-mcp.cmd'), $memCmd)
+
+# 1c) memory junction：goose-mcp 硬编码 %APPDATA%\Block\goose\config\memory（无视 GOOSE_PATH_ROOT，
+#     见 docs/research/04-goose.md）。NTFS junction 重定向到便携目录（免管理员；卸载=删 junction）。
+$memPort = Join-Path $ForgeRoot 'conf\goose\config\memory'
+New-Item -ItemType Directory -Force -Path $memPort | Out-Null
+$memApp  = Join-Path $env:APPDATA 'Block\goose\config\memory'
+if (-not (Test-Path $memApp)) {
+    New-Item -ItemType Directory -Force -Path (Split-Path $memApp) | Out-Null
+    cmd /c mklink /J "$memApp" "$memPort" | Out-Null
+}
 
 # 2) 首启 secrets
 $secrets = Join-Path $ForgeRoot 'data\secrets.env'
