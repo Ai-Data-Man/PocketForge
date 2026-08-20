@@ -18,3 +18,7 @@ extensions:
     cmd: '__NODE_DIR__/node.exe'
     args: ['__FORGE_ROOT__/bin/pw-mcp/node_modules/@playwright/mcp/cli.js', '--browser', 'msedge', '--user-data-dir', '__FORGE_ROOT__/data/pw-profile', '--allowed-origins', '*']
     timeout: 300
+  chatrecall:
+    type: platform
+    name: chatrecall
+    enabled: true
