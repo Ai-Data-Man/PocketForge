@@ -21,3 +21,5 @@ forge/apps/*.yaml
 !forge/conf/_app-template.yaml
 forge/conf/apps.env.yaml
 conf/apps.env.yaml
+forge/conf/goose/config/memory/
+forge/conf/diag.ps1
