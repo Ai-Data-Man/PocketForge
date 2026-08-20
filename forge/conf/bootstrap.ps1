@@ -65,4 +65,17 @@ $overlay = "processes:`n  faucet:`n    command: `"$($ForgeRoot -replace '\\','/'
 $rawTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\faucet-rawsql.tpl.js'))
 [IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\faucet-rawsql.js'), $rawTpl)
 
+# 5b) 备份脚本生成（每日启动时执行，保留 7 份）
+$bakTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\forge-backup.tpl.js'))
+[IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\forge-backup.js'), $bakTpl)
+
+# 5c) 首启欢迎页（仅首次：data/welcome.done 不存在时生成 html 并由启动器打开）
+$done = Join-Path $ForgeRoot 'data\welcome.done'
+if (-not (Test-Path $done)) {
+    $wTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\welcome.tpl.html'))
+    [IO.File]::WriteAllText((Join-Path $ForgeRoot 'data\welcome.html'), $wTpl)
+    'ok' | Set-Content $done
+    Write-Host '[PocketForge] first run: welcome.html ready'
+}
+
 Write-Host "[PocketForge] starting... pc=$pcPort faucet=$faucetPort"

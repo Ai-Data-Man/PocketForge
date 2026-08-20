@@ -18,6 +18,12 @@ set "NODE_DIR=%FORGE_ROOT%\bin\node-v22\node-v22.21.1-win-x64"
 set "NO_PROXY=127.0.0.1,localhost"
 set "no_proxy=127.0.0.1,localhost"
 
+rem ---- first-run welcome page (data\welcome.html exists only on first run) ----
+if exist "%FORGE_ROOT%\data\welcome.html" (
+  start "" "%FORGE_ROOT%\data\welcome.html"
+  ren "%FORGE_ROOT%\data\welcome.html" welcome.shown 2>nul
+)
+
 echo [PocketForge] starting... pc=%PC_PORT% faucet=%FAUCET_PORT%
 cd /d "%FORGE_ROOT%"
 

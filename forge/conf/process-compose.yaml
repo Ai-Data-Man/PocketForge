@@ -53,3 +53,13 @@ processes:
     depends_on:
       faucet:
         condition: process_healthy
+
+  daily-backup:
+    command: '${FORGE_ROOT}/bin/node-v22/node-v22.21.1-win-x64/node.exe ${FORGE_ROOT}/bin/forge-backup.js ${FORGE_ROOT} 7'
+    is_daemon: false
+    availability:
+      restart: 'no'
+    log_location: '${FORGE_ROOT}/data/logs/backup.log'
+    depends_on:
+      faucet-rawsql:
+        condition: process_completed_successfully
