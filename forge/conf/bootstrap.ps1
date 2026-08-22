@@ -38,24 +38,48 @@ if (-not (Test-Path $secrets)) {
         'FAUCET_ADMIN_EMAIL=admin@pocketforge.local',
         'FAUCET_ADMIN_PW=' + (& $chars).Substring(0,24),
         'FORGE_AGENT_API_KEY=',
-        'FORGE_AGENT_HOST=http://127.0.0.1:20128/v1/'
+        'FORGE_AGENT_HOST=http://127.0.0.1:20128/v1/',
+        'GOOSE_MODEL_NAME=myopencode/glm-5.2'
     )
     [IO.File]::WriteAllLines($secrets, $lines)
+} else {
+    # 幂等补缺失键（模板演进时旧部署也能拿到新键）
+    $existing = @(Get-Content $secrets) | Where-Object { $_ -and -not $_.StartsWith('#') }
+    $have = @{}
+    foreach ($l in $existing) { $k = $l.Split('=')[0]; $have[$k] = $true }
+    $add = @()
+    if (-not $have['GOOSE_MODEL_NAME']) { $add += 'GOOSE_MODEL_NAME=myopencode/glm-5.2' }
+    if (-not $have['FORGE_AGENT_API_KEY']) { $add += 'FORGE_AGENT_API_KEY=' }
+    if (-not $have['FORGE_AGENT_HOST']) { $add += 'FORGE_AGENT_HOST=http://127.0.0.1:20128/v1/' }
+    if ($add.Count -gt 0) { Add-Content $secrets ($add -join [Environment]::NewLine) }
 }
 
-# 3) 端口探测（冲突 +1，最多 5 次）
+# 3) 端口探测（运行中的栈不动：端口文件存在且活着则跳过重写）
+function Test-PortAlive([int]$p) {
+    $c = New-Object Net.Sockets.TcpClient
+    try { $c.Connect('127.0.0.1', $p); $c.Close(); return $true } catch { return $false }
+}
 function Pick-Port([int]$start) {
     $p = $start
     for ($i=0; $i -lt 5; $i++) {
-        $c = New-Object Net.Sockets.TcpClient
-        try { $c.Connect('127.0.0.1', $p); $c.Close(); $p++ } catch { break }
+        if (Test-PortAlive $p) { $p++ } else { break }
     }
     return $p
 }
-$pcPort = Pick-Port 8099
-$faucetPort = Pick-Port 8091
-"$pcPort" | Set-Content (Join-Path $ForgeRoot 'data\pc.port')
-"$faucetPort" | Set-Content (Join-Path $ForgeRoot 'data\faucet.port')
+$pcFile = Join-Path $ForgeRoot 'data\pc.port'
+$faucetFile = Join-Path $ForgeRoot 'data\faucet.port'
+if ((Test-Path $pcFile) -and (Test-PortAlive (Get-Content $pcFile))) {
+    $pcPort = Get-Content $pcFile
+} else {
+    $pcPort = Pick-Port 8099
+    "$pcPort" | Set-Content $pcFile
+}
+if ((Test-Path $faucetFile)) {
+    $faucetPort = Get-Content $faucetFile
+} else {
+    $faucetPort = Pick-Port 8091
+    "$faucetPort" | Set-Content $faucetFile
+}
 
 # 4) ports overlay 生成（pc 也不展开任意变量到 readiness port——用显式值）
 $overlay = "processes:`n  faucet:`n    command: `"$($ForgeRoot -replace '\\','/')/bin/faucet/faucet.exe serve --foreground --host 127.0.0.1 --port $faucetPort --data-dir $($ForgeRoot -replace '\\','/')/data/faucet`"`n    readiness_probe:`n      http_get:`n        host: 127.0.0.1`n        port: $faucetPort`n        scheme: http`n        path: /healthz"
@@ -68,6 +92,10 @@ $rawTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\faucet-ra
 # 5b) 备份脚本生成（每日启动时执行，保留 7 份）
 $bakTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\forge-backup.tpl.js'))
 [IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\forge-backup.js'), $bakTpl)
+
+# 5d) 聊天桥脚本与页面（ACP <-> WebSocket，妻子聊天入口后端）
+$bridgeTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\chat-bridge.tpl.js'))
+[IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\chat-bridge.js'), $bridgeTpl)
 
 # 5c) 首启欢迎页（仅首次：data/welcome.done 不存在时生成 html 并由启动器打开）
 $done = Join-Path $ForgeRoot 'data\welcome.done'

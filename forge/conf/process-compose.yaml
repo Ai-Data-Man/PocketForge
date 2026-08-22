@@ -63,3 +63,27 @@ processes:
     depends_on:
       faucet-rawsql:
         condition: process_completed_successfully
+
+  chat-bridge:
+    command: '${FORGE_ROOT}/bin/node-v22/node-v22.21.1-win-x64/node.exe ${FORGE_ROOT}/bin/chat-bridge.js'
+    environment:
+      - 'FORGE_ROOT=${FORGE_ROOT}'
+      - 'PORT=8790'
+      - 'GOOSE_MODE=auto'
+      - 'GOOSE_PROVIDER=openai'
+      - 'GOOSE_MODEL=${GOOSE_MODEL_NAME}'
+      - 'OPENAI_API_KEY=${FORGE_AGENT_API_KEY}'
+      - 'OPENAI_HOST=${FORGE_AGENT_HOST}'
+      - 'OPENAI_BASE_PATH=chat/completions'
+      - 'NO_PROXY=127.0.0.1,localhost'
+    is_daemon: true
+    availability:
+      restart: 'on_failure'
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        port: 8790
+        scheme: http
+        path: /healthz
+      period_seconds: 5
+      failure_threshold: 12

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>小 forge · 数字员工</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:#f2f5f3;display:flex;flex-direction:column;height:100vh}
+header{background:#0b6b3a;color:#fff;padding:14px 20px;font-size:19px;display:flex;justify-content:space-between;align-items:center}
+header .dot{width:10px;height:10px;border-radius:50%;background:#ff6b6b;display:inline-block;margin-right:6px}
+header .dot.ok{background:#7dff9e}
+#chat{flex:1;overflow-y:auto;padding:18px 20px;display:flex;flex-direction:column;gap:12px}
+.msg{max-width:78%;padding:12px 16px;border-radius:14px;font-size:16px;line-height:1.65;white-space:pre-wrap;word-break:break-word}
+.msg.user{align-self:flex-end;background:#0b6b3a;color:#fff;border-bottom-right-radius:4px}
+.msg.agent{align-self:flex-start;background:#fff;border:1px solid #dde8e1;border-bottom-left-radius:4px}
+.msg.agent.tool{background:#f6f8f6;color:#4a6a5a;font-size:13px;border-style:dashed}
+.typing{align-self:flex-start;color:#7a8a80;font-size:14px;padding:4px 16px}
+#inputbar{display:flex;gap:10px;padding:14px 20px;background:#fff;border-top:1px solid #e2e8e4}
+#txt{flex:1;font-size:17px;padding:12px 14px;border:2px solid #cfe0d6;border-radius:12px;outline:none;font-family:inherit}
+#txt:focus{border-color:#0b6b3a}
+#send{font-size:17px;padding:12px 26px;background:#0b6b3a;color:#fff;border:none;border-radius:12px;cursor:pointer}
+#send:disabled{background:#9db8ac}
+.hint{color:#8a9a90;font-size:13px;text-align:center;padding:0 0 8px}
+</style>
+</head>
+<body>
+<header><span><span class="dot" id="status"></span>小 forge 在线</span><span style="font-size:13px;opacity:.8">你的数字员工</span></header>
+<div id="chat"><div class="msg agent">你好！我是小 forge。想做什么直接打字告诉我，比如「帮我看看库存报表」。</div></div>
+<div class="typing" id="typing" style="display:none">小 forge 正在干活……</div>
+<div id="inputbar">
+  <input id="txt" placeholder="想让我做什么？" autocomplete="off">
+  <button id="send">发送</button>
+</div>
+<div class="hint">它在公司系统里需要你登录时会弹出浏览器 · 说「做个体检」可检查它的身体</div>
+<script>
+const chat=document.getElementById('chat'),txt=document.getElementById('txt'),send=document.getElementById('send'),
+      typing=document.getElementById('typing'),status=document.getElementById('status');
+let ws, sessionId=null, busy=false;
+function connect(){
+  ws=new WebSocket('ws://'+location.host);
+  ws.onopen=()=>{status.classList.add('ok'); newSession();};
+  ws.onclose=()=>{status.classList.remove('ok'); setTimeout(connect,2000);};
+  ws.onmessage=e=>{
+    const m=JSON.parse(e.data);
+    if(m.sys==='session'){sessionId=m.sessionId; return;}
+    if(m.sys==='error'){add('⚠ '+m.text,'agent'); busy=false; typing.style.display='none'; return;}
+    if(!m.agent) return;
+    const p=m.agent;
+    if(p.method==='session/update'){
+      const u=p.params.update;
+      if(u.sessionUpdate==='agent_message_chunk') add(u.content.text,'agent',true);
+      if(u.sessionUpdate==='user_message_chunk') add(u.content.text,'user',true);
+      if(u.sessionUpdate==='tool_call'||u.sessionUpdate==='tool_call_update'){
+        if(u.toolCallUpdate&&u.toolCallUpdate.status) addTool('🔧 '+(u.title||u.toolCallUpdate.title||''));
+      }
+      if(u.sessionUpdate==='plan'){/* future */}
+    }
+    if(p.method==='session/request_permission'){
+      // auto structure: ask user via simple confirm, reply
+      const q=p.params;
+      add('（需要你点头：'+(q.options&&q.options.map(o=>o.name).join(' / ')+'）'),'agent');
+      if(q.options&&q.options.length){ callAcpReply(p.params.callId, q.options[0].optionId); }
+    }
+    if(p.method==='stop'){busy=false;typing.style.display='none';}
+  };
+}
+function newSession(){ ws.send(JSON.stringify({type:'new_session'})); }
+function callAcpReply(callId, option){ ws.send(JSON.stringify({type:'acp_reply', callId, option})); }
+let lastAgent=null,lastUser=null;
+function add(text,who,chunk){
+  typing.style.display='none';
+  let el = who==='agent'?lastAgent:lastUser;
+  if(chunk&&el&&el.dataset.chunk==='1'){ el.textContent+=text; }
+  else{
+    el=document.createElement('div'); el.className='msg '+who; el.textContent=text; el.dataset.chunk='1';
+    chat.appendChild(el); el.scrollIntoView({behavior:'smooth'});
+    if(who==='agent')lastAgent=el; else lastUser=el;
+    // reset the other stream anchor
+    if(who==='agent')lastUser=null; else lastAgent=null;
+  }
+  chat.scrollTop=chat.scrollHeight;
+}
+function addTool(text){
+  const el=document.createElement('div'); el.className='msg agent tool'; el.textContent=text;
+  chat.appendChild(el); chat.scrollTop=chat.scrollHeight; lastAgent=null; lastUser=null;
+}
+function submit(){
+  const t=txt.value.trim(); if(!t||busy)return;
+  add(t,'user'); txt.value=''; busy=true; typing.style.display='block';
+  ws.send(JSON.stringify({type:'prompt',text:t,sessionId}));
+}
+send.onclick=submit;
+txt.onkeydown=e=>{if(e.key==='Enter')submit();};
+connect();
+</script>
+</body></html>
