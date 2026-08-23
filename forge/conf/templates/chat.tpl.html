@@ -80,6 +80,7 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
 .prov.active{border-color:var(--g);background:#eaf4ee}
 .prov .nm{font-weight:bold}
 .prov .hd{color:var(--mut);font-size:11px;flex:1}
+.mpick{display:block;font-size:13px;padding:4px 2px;cursor:pointer}
 .prov button{border:none;background:none;cursor:pointer;font-size:13px}
 #save-cfg{width:100%;padding:11px;background:var(--g);color:#fff;border:none;border-radius:9px;font-size:15px;cursor:pointer;margin-top:6px}
 .mbar{margin-top:8px;display:flex;gap:6px;opacity:0;transition:opacity .15s}
@@ -143,18 +144,15 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
   </div>
   <div class="frow"><label>接口地址（OpenAI 兼容 /v1 结尾）</label><input id="cfg-host" placeholder="https://.../v1/"></div>
   <div class="frow"><label>API Key</label><input id="cfg-key" type="password" placeholder="sk-..."></div>
-  <div class="frow"><label>模型</label>
-    <div style="display:flex;gap:6px">
-      <input id="cfg-model" list="model-list" placeholder="点右侧⟳拉取列表或手填" style="flex:1">
-      <datalist id="model-list"></datalist>
-      <button id="fetch-models" class="mini">⟳</button>
+  <div class="frow"><label>这家服务商的模型（先拉取，勾选进员工可选池）</label>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <button id="fetch-models" class="mini" style="flex:1">⟳ 拉取模型列表</button>
+      <button id="test-model" class="mini" style="flex:1">🔌 测试连通</button>
     </div>
-    <div class="fnote" id="cfg-model-hint">模型格式一般是 provider/model</div>
+    <div id="model-pool" style="max-height:180px;overflow-y:auto;border:1px solid var(--line);border-radius:9px;padding:10px"></div>
+    <div class="fnote" id="cfg-model-hint">拉取后勾选 3-5 个常用的就够；顶栏随时切换</div>
   </div>
-  <div style="display:flex;gap:8px">
-    <button id="test-model" style="flex:1;padding:10px;background:#0e6ba8;color:#fff;border:none;border-radius:9px;font-size:14px;cursor:pointer">🔌 测试连通</button>
-    <button id="save-cfg" style="flex:1;padding:10px;background:var(--g);color:#fff;border:none;border-radius:9px;font-size:14px;cursor:pointer">💾 保存并启用</button>
-  </div>
+  <button id="save-cfg" style="width:100%;padding:11px;background:var(--g);color:#fff;border:none;border-radius:9px;font-size:15px;cursor:pointer">💾 保存这家服务商</button>
   <div class="fnote" id="save-note" style="margin-top:10px"></div>
 </div></div>
 <script>
@@ -166,7 +164,7 @@ let streamEl=null, toolCards=new Map();
 
 function connect(){
   ws=new WebSocket('ws://'+location.host);
-  ws.onopen=()=>{status.classList.add('ok'); loadSessions(); if(!sessionId) subscribe(null);};
+  ws.onopen=()=>{status.classList.add('ok'); loadSessions(); loadProvidersUI(); if(!sessionId) subscribe(null);};
   ws.onclose=()=>{status.classList.remove('ok'); setTimeout(connect,2000);};
   ws.onmessage=e=>{
     const m=JSON.parse(e.data);
@@ -183,9 +181,17 @@ function connect(){
     }
     if(m.sys==='error'){ addErr(m.text); setBusy(false); return; }
     if(m.sys==='hello'){ $('version').textContent='v'+m.version; return; }
-    if(m.sys==='models'){ const dl=$('model-list'); dl.innerHTML=''; for(const id of (m.models||[]).slice(0,200)){ const o=document.createElement('option'); o.value=id; dl.appendChild(o);} note('拉到 '+(m.models||[]).length+' 个模型，点模型框选择'); return; }
+    if(m.sys==='models'){
+      fetchedModels=m.models||[];
+      note('拉到 '+fetchedModels.length+' 个模型，下面勾选要给员工用的（勾上才算）');
+      renderFetchPool();
+      return;
+    }
     if(m.sys==='test_result'){ note(m.ok?('✅ 连通 OK（HTTP '+m.http+'）回复: '+m.reply):('❌ 失败 HTTP '+m.http+' '+m.reply)); return; }
-    if(m.sys==='providers'){ renderProviders(m.list||[]); return; }
+    if(m.sys==='providers'){ providerList=m.list||[]; renderProviders(providerList); renderModelLabel(); return; }
+    if(m.sys==='model_switched'){ addErr('✅ 已切到 '+m.provider+' · '+m.model+(m.restarted?'（对话需要重新打开）':'')); if(m.restarted){ loadSessions(); } else loadSessions(); return; }
+    if(m.sys==='provider_switching'){ addErr('正在切换服务商到 '+m.to+'（几秒）…'); return; }
+    if(m.sys==='provider_switched'){ addErr('✅ 已切到 '+m.provider+'，默认模型 '+m.model+'；点击旧会话继续（上下文都在）'); loadSessions(); return; }
     if(m.sys==='saved_config'){ note('已保存'); return; }
     if(m.rpc){ onRpc(m.rpc); return; }
     if(m.agent){ onAgentEvent(m.agent); }
@@ -233,38 +239,43 @@ function openSession(sid){
 }
 function renderModelLabel(){
   try{
-    const cur=configOptions.find(o=>o.id==='model'); const prov=configOptions.find(o=>o.id==='provider');
-    $('model-cur').textContent=(cur&&cur.currentValue)||'未设置';
-    $('model-label').textContent=(prov&&prov.currentValue||'');
+    const cur=configOptions.find(o=>o.id==='model');
+    const act=(providerList.find(p=>p.active)||{});
+    $('model-cur').textContent=(act.name?act.name+' · ':'')+(cur&&cur.currentValue||'未设置');
     buildModelItems();
   }catch{}
+}
+let providerList=[]; let curProvName=null;
+function poolModels(){
+  // 可选池 = 各家勾选的 models，标 (家·模型)
+  const out=[];
+  for(const pr of providerList) for(const m of (pr.models||[])) out.push({value:m, provider:pr.name, activeProvider:!!pr.active});
+  return out;
 }
 function buildModelItems(filter){
   const box=$('model-items'); if(!box) return;
   const cur=configOptions.find(o=>o.id==='model');
-  const opts=((cur&&cur.options)||[]);
+  const pool=poolModels();
   const f=(filter||'').toLowerCase();
-  const shown=opts.filter(o=>!f||(o.value+' '+(o.name||'')).toLowerCase().includes(f)).slice(0,80);
+  const shown=pool.filter(o=>!f||(o.value+' '+o.provider).toLowerCase().includes(f)).slice(0,80);
   box.innerHTML='';
-  if(!opts.length){ box.innerHTML='<div class="model-note">模型列表为空——到 ⚙️ 设置里配好服务商后点⟳拉取</div>'; return; }
+  if(!pool.length){ box.innerHTML='<div class="model-note">可选池是空的——到 ⚙️ 设置里，选一个服务商档案，拉取模型后勾选几个。</div>'; return; }
   for(const o of shown){
-    const el=document.createElement('div'); el.className='mi'+((cur&&cur.currentValue)===o.value?' cur':'');
-    el.textContent=o.name&&o.name!==o.value?(o.value+' · '+o.name):o.value;
+    const el=document.createElement('div'); el.className='mi'+((cur&&cur.currentValue)===o.value&&o.activeProvider?' cur':'');
+    el.textContent=o.provider+' · '+o.value;
     el.onclick=()=>{ switchModel(o.value); $('model-pick').classList.remove('open'); };
     box.appendChild(el);
   }
   const note=document.createElement('div'); note.className='model-note';
-  note.textContent=opts.length+' 个可选（来自当前服务商）；要换服务商去 ⚙️ 设置';
+  note.textContent=pool.length+' 个可选（各服务商勾选的）；增删去 ⚙️ 设置';
   box.appendChild(note);
 }
 function switchModel(v){
-  if(!sessionId) return;
-  note('');
-  rpc2('session/set_config_option',{sessionId,configId:'model',value:v}).then(d=>{
-    if(d.result){ configOptions=d.result.configOptions||configOptions; renderModelLabel(); addErr('已切到 '+v); }
-    else addErr('切换失败：'+JSON.stringify(d.error&&d.error.message||''));
-  });
+  if(!sessionId){ addErr('先开一个对话（或点一个旧会话），再切模型。'); return; }
+  addErr('正在切换到 '+v+' …');
+  ws.send(JSON.stringify({type:'switch_model',model:v}));
 }
+function loadProvidersUI(){ ws.send(JSON.stringify({type:'providers'})); }
 $('model-pick').onclick=e=>{
   const pk=$('model-pick');
   if(e.target.id==='model-search') return;
@@ -358,39 +369,123 @@ $('refresh-sessions').onclick=loadSessions;
 $('burger').onclick=()=>$('side').classList.toggle('hidden');
 $('mode').onchange=e=>{ localStorage.setItem('pf_mode',e.target.value);
   if(sessionId) rpc2('session/set_mode',{sessionId,modeId:e.target.value}).catch(()=>addErr('模式切换失败')); };
-$('open-settings').onclick=()=>{ $('modal').classList.add('on'); loadProviders(); };
+$('open-settings').onclick=()=>{ $('modal').classList.add('on'); loadProvidersUI(); };
 $('modal').onclick=e=>{ if(e.target.id==='modal') $('modal').classList.remove('on'); };
-function loadProviders(){ ws.send(JSON.stringify({type:'providers'})); }
-wsProvHandler=null;
+
+
 $('prov-add').onclick=()=>{
-  const name=$('prov-name').value.trim(); if(!name)return note('先填名称');
-  ws.send(JSON.stringify({type:'providers',save:true,add:{name,host:$('cfg-host').value.trim(),model:$('cfg-model').value.trim(),key:$('cfg-key').value.trim()}}));
-  $('prov-name').value=''; setTimeout(loadProviders,300);
+  const name=$('prov-name').value.trim(); if(!name)return note('先填一个名字，比如 公司中转');
+  curProvName=name;
+  ws.send(JSON.stringify({type:'providers',save:true,add:{name,host:$('cfg-host').value.trim(),models:[],key:$('cfg-key').value.trim()}}));
+  $('prov-name').value='';
+  note('已新建「'+name+'」。填好地址和 Key 后点保存，再⟳拉取模型勾选。');
+  setTimeout(loadProvidersUI,300);
 };
 function renderProviders(list){
+  providerList=list;
   const box=$('prov-list'); box.innerHTML='';
+  if(!list.length){ box.innerHTML='<div class="fnote">还没有服务商。在下面填：名称+地址+Key，点「添加」。</div>'; }
+  let selected=null;
   for(const pr of list){
     const el=document.createElement('div'); el.className='prov'+(pr.active?' active':'');
-    el.innerHTML='<span class="nm">'+pr.name+'</span><span class="hd">'+(pr.model||'')+' · '+(pr.hasKey?'🔑已存':'⚠无key')+'</span>';
+    el.innerHTML='<span class="nm">'+pr.name+'</span><span class="hd">'+((pr.models||[]).length+' 个模型 · '+(pr.hasKey?'🔑':'⚠无key'))+'</span>';
     const use=document.createElement('button'); use.textContent=pr.active?'✓使用中':'启用';
-    use.onclick=()=>{ ws.send(JSON.stringify({type:'providers',save:true,activate:pr.name})); note('已切换到 '+pr.name+'，重启后生效'); setTimeout(loadProviders,300); };
+    use.onclick=(e)=>{e.stopPropagation(); ws.send(JSON.stringify({type:'providers',save:true,activate:pr.name})); note('已切换到 '+pr.name); };
     const del=document.createElement('button'); del.textContent='✕';
-    del.onclick=()=>{ ws.send(JSON.stringify({type:'providers',save:true,remove:pr.name})); setTimeout(loadProviders,300); };
+    del.onclick=(e)=>{e.stopPropagation(); if(confirm('删除服务商「'+pr.name+'」？')) ws.send(JSON.stringify({type:'providers',save:true,remove:pr.name})); };
     el.appendChild(use); el.appendChild(del);
-    el.onclick=e=>{ if(e.target.tagName!=='BUTTON'){ $('cfg-host').value=pr.host||''; $('cfg-model').value=pr.model||''; } };
+    el.onclick=()=>{ selected=pr; fillProvForm(pr); renderModelPool(pr); };
+    if(pr.active && !selected) selected=pr;
     box.appendChild(el);
   }
-  const act=list.find(p=>p.active);
-  if(act){ $('cfg-host').value=act.host||$('cfg-host').value; $('cfg-model').value=act.model||$('cfg-model').value; }
+  if(selected){ renderModelPool(selected); fillProvForm(selected); }
 }
-$('fetch-models').onclick=()=>{ note('拉取模型列表…'); ws.send(JSON.stringify({type:'list_models',host:$('cfg-host').value.trim(),key:$('cfg-key').value.trim()})); };
+
+function fillProvForm(pr){
+  curProvName=pr.name;
+  $('cfg-host').value=pr.host||'';
+  $('cfg-key').value='';
+  $('prov-name').value='';
+}
+let fetchedModels=null;
+function renderFetchPool(){
+  const box=$('model-pool'); if(!box)return;
+  const pr=providerList.find(x=>x.name===curProvName);
+  const inPool=new Set((pr&&pr.models)||[]);
+  box.innerHTML='<div class="fnote" style="margin:6px 0">勾选进可选池（已勾 '+(pr&&pr.models||[]).length+' 个）：</div>';
+  const wrap=document.createElement('div'); wrap.style.cssText='max-height:150px;overflow-y:auto';
+  for(const m of fetchedModels){
+    const lab=document.createElement('label'); lab.className='mpick';
+    const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=inPool.has(m);
+    cb.onchange=()=>{
+      const cur=providerList.find(x=>x.name===curProvName);
+      if(!cur)return;
+      cur.models=cb.checked?[...new Set([...(cur.models||[]),m])]:(cur.models||[]).filter(x=>x!==m);
+      ws.send(JSON.stringify({type:'providers',save:true,update:{name:curProvName,models:cur.models}}));
+      box.firstChild.innerHTML='勾选进可选池（已勾 '+cur.models.length+' 个）：';
+      note(cb.checked?('已加入 '+m):('已移除 '+m));
+    };
+    lab.appendChild(cb); lab.appendChild(document.createTextNode(' '+m));
+    wrap.appendChild(lab);
+  }
+  box.appendChild(wrap);
+}
+function renderModelPool(pr){
+  const box=$('model-pool'); if(!box) return;
+  box.innerHTML='<div class="fnote" style="margin:6px 0">「'+pr.name+'」可选池（勾选的才出现在顶栏）：</div>';
+  if(!(pr.models||[]).length){ box.innerHTML+='<div class="fnote">还没勾任何模型。点「⟳ 拉取模型列表」然后勾选。</div>'; return; }
+  for(const m of pr.models){
+    const lab=document.createElement('label'); lab.className='mpick';
+    const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=true; cb.value=m;
+    cb.onchange=()=>{ // 取消勾选=从池中移除
+      if(!cb.checked && curProvName){
+        const upd=providerList.find(x=>x.name===curProvName);
+        if(upd){ upd.models=upd.models.filter(x=>x!==m);
+          ws.send(JSON.stringify({type:'providers',save:true,update:{name:curProvName,models:upd.models}}));
+          note('已从可选池移除 '+m); }
+      }
+    };
+    lab.appendChild(cb); lab.appendChild(document.createTextNode(' '+m));
+    box.appendChild(lab);
+  }
+  const addrow=document.createElement('div'); addrow.style.cssText='display:flex;gap:6px;margin-top:8px';
+  addrow.innerHTML='<input id="pool-add" placeholder="手动加一个模型名" style="flex:1;padding:7px 9px;border:1px solid var(--line);border-radius:7px;font-size:12px"><button class="mini" id="pool-add-btn">加入</button>';
+  box.appendChild(addrow);
+  setTimeout(()=>{
+    const btn=document.getElementById('pool-add-btn');
+    if(btn) btn.onclick=()=>{
+      const v=document.getElementById('pool-add').value.trim(); if(!v||!curProvName)return;
+      const upd=providerList.find(x=>x.name===curProvName);
+      if(upd&&!upd.models.includes(v)){ upd.models.push(v);
+        ws.send(JSON.stringify({type:'providers',save:true,update:{name:curProvName,models:upd.models}}));
+        note('已加入 '+v); renderModelPool(upd); }
+    };
+  },0);
+}
+$('fetch-models').onclick=()=>{
+  const host=$('cfg-host').value.trim();
+  if(!host){ note('先填接口地址'); return; }
+  note('拉取中…');
+  pendingFetchHost=host;
+  ws.send(JSON.stringify({type:'list_models',host,key:$('cfg-key').value.trim()}));
+};
+let pendingFetchHost=null;
 $('test-model').onclick=()=>{ note('测试中…');
   ws.send(JSON.stringify({type:'test_model',host:$('cfg-host').value.trim(),key:$('cfg-key').value.trim(),model:$('cfg-model').value.trim()})); };
 $('save-cfg').onclick=()=>{
-  const model=$('cfg-model').value.trim(),host=$('cfg-host').value.trim();
-  if(!model||!host) return note('模型和接口地址必填');
-  ws.send(JSON.stringify({type:'save_config',config:{model,host,key:$('cfg-key').value.trim()}}));
-  note('已保存。重启「启动数字员工」后生效。');
+  const host=$('cfg-host').value.trim();
+  if(!host) return note('接口地址必填');
+  let name=curProvName;
+  const newName=$('prov-name').value.trim();
+  if(newName&&newName!==curProvName){ name=newName; }
+  if(!name) return note('先在上方选一家（或填新名称）');
+  const key=$('cfg-key').value.trim();
+  const ex=providerList.find(x=>x.name===curProvName);
+  const models=(ex&&ex.models)||[];
+  ws.send(JSON.stringify({type:'providers',save:true,update:{name,host,key:key||((ex&&ex.hasKey&&ex.key)||''),models}}));
+  curProvName=name; $('prov-name').value='';
+  note('已保存「'+name+'」。Key 留空则沿用原值。');
+  setTimeout(loadProvidersUI,300);
 };
 function note(t){ $('save-note').textContent=t; }
 $('open-skills').onclick=async()=>{

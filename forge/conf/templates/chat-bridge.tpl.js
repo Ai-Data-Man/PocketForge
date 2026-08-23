@@ -26,29 +26,58 @@ function readSecrets(file) {
 }
 const secrets = readSecrets(path.join(ROOT, 'data', 'secrets.env'));
 
-const acp = spawn(GOOSE, ['acp'], {
-    env: {
+// ---- provider profiles (data/providers.json v2): [{name,host,key,models[],active}] ----
+const PROV_FILE = path.join(ROOT, 'data', 'providers.json');
+function readProviders() {
+    let list = [];
+    try { list = JSON.parse(require('fs').readFileSync(PROV_FILE, 'utf8')); } catch { return []; }
+    // v1->v2 迁移：model(单值) -> models(数组)
+    for (const p of list) {
+        if (!Array.isArray(p.models)) p.models = p.model ? [p.model] : [];
+        delete p.model;
+    }
+    return list;
+}
+function writeProviders(list) { require('fs').writeFileSync(PROV_FILE, JSON.stringify(list, null, 2)); }
+function activeProvider() {
+    const list = readProviders();
+    return list.find(p => p.active) || null;
+}
+
+let acp = null;
+let acpBuf = '';
+let nextId = 1;
+const waiting = new Map();
+const allClients = new Set();
+const sessionClients = new Map();
+const wsSession = new WeakMap();
+
+function spawnAcp() {
+    const act = activeProvider();
+    const env = {
         ...process.env,
         GOOSE_PATH_ROOT: path.join(ROOT, 'conf', 'goose'),
         GOOSE_DISABLE_KEYRING: '1',
         GOOSE_TELEMETRY_ENABLED: 'false',
         GOOSE_MODE: 'auto',
         GOOSE_PROVIDER: 'openai',
-        GOOSE_MODEL: secrets.GOOSE_MODEL_NAME || 'myopencode/glm-5.2',
-        OPENAI_API_KEY: secrets.FORGE_AGENT_API_KEY || process.env.OPENAI_API_KEY,
-        OPENAI_HOST: secrets.FORGE_AGENT_HOST || process.env.OPENAI_HOST,
+        GOOSE_MODEL: (act && act.models && act.models[0]) || secrets.GOOSE_MODEL_NAME || 'myopencode/glm-5.2',
+        OPENAI_API_KEY: (act && act.key) || secrets.FORGE_AGENT_API_KEY || process.env.OPENAI_API_KEY,
+        OPENAI_HOST: (act && act.host) || secrets.FORGE_AGENT_HOST || process.env.OPENAI_HOST,
         OPENAI_BASE_PATH: 'chat/completions',
-    },
-    stdio: ['pipe', 'pipe', 'pipe'],
-});
-let acpBuf = '';
-let nextId = 1;
-const waiting = new Map();      // rpc id -> {ws, resolve, reject}
-const allClients = new Set();   // all connected ws
-const sessionClients = new Map(); // acp sessionId -> Set(ws) that loaded it
-const wsSession = new WeakMap();  // ws -> active acp sessionId
+    };
+    const child = spawn(GOOSE, ['acp'], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+    child.stdout.on('data', chunk => onAcpData(chunk));
+    child.stderr.on('data', d => process.stderr.write('[acp] ' + d));
+    child.on('exit', c => {
+        console.log('acp exited', c);
+        if (child === acp) process.exit(1);
+    });
+    return child;
+}
+acp = spawnAcp();
 
-acp.stdout.on('data', chunk => {
+function onAcpData(chunk) {
     acpBuf += chunk.toString('utf8');
     let idx;
     while ((idx = acpBuf.indexOf('\n')) !== -1) {
@@ -56,14 +85,12 @@ acp.stdout.on('data', chunk => {
         acpBuf = acpBuf.slice(idx + 1);
         if (!line) continue;
         let msg; try { msg = JSON.parse(line); } catch { continue; }
-        // responses: resolve waiters (subscribe/prompt use resolve); rpc passthrough forwards raw
         if (msg.id !== undefined && (msg.result !== undefined || msg.error !== undefined) && waiting.has(msg.id)) {
             const w = waiting.get(msg.id); waiting.delete(msg.id);
             if (w.resolve) { w.resolve(msg.result !== undefined ? msg.result : msg); }
             else if (w.ws && w.ws.alive) w.ws.send({ rpc: msg });
             continue;
         }
-        // notifications -> broadcast to session subscribers (or everyone if no sid)
         if (msg.method) {
             const sid = msg.params && msg.params.sessionId;
             const set = sid ? sessionClients.get(sid) : null;
@@ -72,22 +99,37 @@ acp.stdout.on('data', chunk => {
             else for (const ws of allClients) ws.send(obj);
         }
     }
-});
-acp.stderr.on('data', d => process.stderr.write('[acp] ' + d));
-acp.on('exit', c => { console.log('acp exited', c); process.exit(1); });
+}
 
 async function init() {
+    acpBuf = '';
     const res = await new Promise((resolve, reject) => {
         const id = nextId++;
         waiting.set(id, { ws: null, resolve, reject });
         acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'initialize', params: { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false } } }) + '\n');
+        setTimeout(() => reject(new Error('initialize timeout')), 20000);
     });
     acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'initialized' }) + '\n');
-    console.log('ACP initialized:', res.agentInfo && res.agentInfo.name);
+    console.log('ACP initialized:', res.agentInfo && res.agentInfo.name, '| provider:', (activeProvider() || {}).name || 'secrets.env', '| model:', env0Model());
     acpCaps = res;
+}
+function env0Model() {
+    const act = activeProvider();
+    return (act && act.models && act.models[0]) || secrets.GOOSE_MODEL_NAME || '';
 }
 let acpCaps = null;
 init().catch(e => { console.error('init failed', e); process.exit(1); });
+
+// ---- 热重启：切换 provider 档案后重建 acp 子进程（保留会话 DB，客户端 reconnect 后 session/load 恢复） ----
+async function hotRestartProvider() {
+    const oldChild = acp;
+    try { oldChild.removeAllListeners('exit'); oldChild.kill(); } catch {}
+    waiting.clear();
+    sessionClients.clear();
+    acp = spawnAcp();
+    await init();
+    for (const ws of allClients) ws.send({ sys: 'provider_switched', provider: (activeProvider() || {}).name, model: env0Model() });
+}
 
 const server = http.createServer((req, res) => {
     const url = (req.url || '/').split('?')[0];
@@ -277,32 +319,66 @@ function handleClient(ws, msg) {
         }
 
         if (msg.type === 'providers') {
-            // multi-provider profiles in data/providers.json
-            const f = path.join(ROOT, 'data', 'providers.json');
-            let list = [];
-            try { list = JSON.parse(require('fs').readFileSync(f, 'utf8')); } catch {}
+            let list = readProviders();
+            let needRestart = false;
             if (msg.save) {
                 if (msg.activate !== undefined) {
+                    const was = (list.find(p => p.active) || {}).name;
                     for (const pr of list) pr.active = pr.name === msg.activate;
+                    needRestart = was !== msg.activate;
                 }
-                if (msg.add) list.push(msg.add);
-                if (msg.remove) list = list.filter(pr => pr.name !== msg.remove);
-                require('fs').writeFileSync(f, JSON.stringify(list, null, 2));
-            }
-            // activation writes through to secrets.env
-            if (msg.activate !== undefined) {
-                const act = list.find(pr => pr.active);
-                if (act) {
-                    const sf = path.join(ROOT, 'data', 'secrets.env');
-                    const lines = require('fs').readFileSync(sf, 'utf8').split('\n').filter(l => l && !l.startsWith('#'));
-                    const keep = lines.filter(l => !/^(GOOSE_MODEL_NAME|FORGE_AGENT_HOST|FORGE_AGENT_API_KEY)=/.test(l.trim()));
-                    keep.push('GOOSE_MODEL_NAME=' + (act.model || ''));
-                    keep.push('FORGE_AGENT_HOST=' + (act.host || ''));
-                    keep.push('FORGE_AGENT_API_KEY=' + (act.key || ''));
-                    require('fs').writeFileSync(sf, keep.join(String.fromCharCode(10)) + String.fromCharCode(10));
+                if (msg.add) {
+                    const ex = list.find(p => p.name === msg.add.name);
+                    if (ex) Object.assign(ex, msg.add); else list.push(msg.add);
+                    if (list.length === 1) list[0].active = true;
                 }
+                if (msg.remove) {
+                    list = list.filter(pr => pr.name !== msg.remove);
+                    if (!list.find(p => p.active) && list[0]) { list[0].active = true; needRestart = true; }
+                }
+                if (msg.update) {
+                    const ex = list.find(p => p.name === msg.update.name);
+                    if (ex) { Object.assign(ex, msg.update); needRestart = !!ex.active; }
+                }
+                writeProviders(list);
             }
-            ws.send({ sys: 'providers', list: list.map(pr => ({ name: pr.name, host: pr.host, model: pr.model, active: !!pr.active, hasKey: !!pr.key })) });
+            const act = list.find(p => p.active);
+            if (act) {
+                const sf = path.join(ROOT, 'data', 'secrets.env');
+                const lines = require('fs').readFileSync(sf, 'utf8').split('\n').filter(l => l && !l.startsWith('#'));
+                const keep = lines.filter(l => !/^(GOOSE_MODEL_NAME|FORGE_AGENT_HOST|FORGE_AGENT_API_KEY)=/.test(l.trim()));
+                keep.push('GOOSE_MODEL_NAME=' + (act.models && act.models[0] || ''));
+                keep.push('FORGE_AGENT_HOST=' + (act.host || ''));
+                keep.push('FORGE_AGENT_API_KEY=' + (act.key || ''));
+                require('fs').writeFileSync(sf, keep.join(String.fromCharCode(10)) + String.fromCharCode(10));
+            }
+            ws.send({ sys: 'providers', list: list.map(pr => ({ name: pr.name, host: pr.host, models: pr.models || [], active: !!pr.active, hasKey: !!pr.key })) });
+            if (needRestart) hotRestartProvider().catch(e => console.error('hot restart failed', e));
+            return;
+        }
+
+        if (msg.type === 'switch_model') {
+            // {model} — 可选池内切换：同供应商走 set_config_option，跨供应商热重启 acp
+            const list = readProviders();
+            const target = list.find(p => (p.models || []).includes(msg.model));
+            if (!target) return ws.send({ sys: 'error', text: '该模型不在可选池：' + msg.model });
+            if (target.active) {
+                const sid = wsSession.get(ws);
+                if (!sid) return ws.send({ sys: 'error', text: '先开一个对话再切模型' });
+                const id = nextId++;
+                acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/set_config_option', params: { sessionId: sid, configId: 'model', value: msg.model } }) + '\n');
+                waiting.set(id, { ws, resolve: (res) => {
+                    if (res && res.configOptions) ws.send({ sys: 'model_switched', model: msg.model, provider: target.name });
+                    else ws.send({ sys: 'error', text: '切换失败，试试重开对话' });
+                }});
+            } else {
+                for (const pr of list) pr.active = pr.name === target.name;
+                writeProviders(list);
+                ws.send({ sys: 'provider_switching', to: target.name, model: msg.model });
+                hotRestartProvider().then(() => {
+                    ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, restarted: true });
+                }).catch(e => ws.send({ sys: 'error', text: '切换供应商失败: ' + e.message }));
+            }
             return;
         }
 
