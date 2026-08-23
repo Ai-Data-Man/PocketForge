@@ -375,14 +375,30 @@ function handleClient(ws, msg) {
             const target = list.find(p => (p.models || []).includes(msg.model));
             if (!target) return ws.send({ sys: 'error', text: '该模型不在可选池：' + msg.model });
             if (target.active) {
+                const doSet = (sessionId) => {
+                    const id = nextId++;
+                    acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/set_config_option', params: { sessionId, configId: 'model', value: msg.model } }) + '\n');
+                    waiting.set(id, { ws, resolve: (res) => {
+                        if (res && res.configOptions) ws.send({ sys: 'model_switched', model: msg.model, provider: target.name });
+                        else ws.send({ sys: 'error', text: '切换失败，试试重开对话' });
+                    }});
+                };
                 const sid = wsSession.get(ws);
-                if (!sid) return ws.send({ sys: 'error', text: '先开一个对话再切模型' });
-                const id = nextId++;
-                acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/set_config_option', params: { sessionId: sid, configId: 'model', value: msg.model } }) + '\n');
-                waiting.set(id, { ws, resolve: (res) => {
-                    if (res && res.configOptions) ws.send({ sys: 'model_switched', model: msg.model, provider: target.name });
-                    else ws.send({ sys: 'error', text: '切换失败，试试重开对话' });
-                }});
+                if (sid) { doSet(sid); }
+                else {
+                    // 无活动会话（桥重启丢状态/新窗口）：自动开新会话再切，用户无感
+                    const nid = nextId++;
+                    waiting.set(nid, { ws, resolve: (res) => {
+                        if (res && res.sessionId) {
+                            wsSession.set(ws, res.sessionId);
+                            if (!sessionClients.has(res.sessionId)) sessionClients.set(res.sessionId, new Set());
+                            sessionClients.get(res.sessionId).add(ws);
+                            ws.send({ sys: 'subscribed', sessionId: res.sessionId, modes: res.modes || [], configOptions: res.configOptions || [] });
+                            doSet(res.sessionId);
+                        } else ws.send({ sys: 'error', text: '开新对话失败，稍后再试' });
+                    }});
+                    acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: nid, method: 'session/new', params: { cwd: ROOT, mcpServers: [] } }) + '\n');
+                }
             } else {
                 for (const pr of list) pr.active = pr.name === target.name;
                 writeProviders(list);
