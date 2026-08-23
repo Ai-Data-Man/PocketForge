@@ -50,6 +50,14 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
 #stop{font-size:14px;padding:11px 16px;background:#b00020;color:#fff;border:none;border-radius:11px;cursor:pointer;display:none}
 /* settings modal */
 #modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:9}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:9}
+.modal-bg.on{display:flex}
+.panel-box{background:#fff;border-radius:14px;width:520px;max-height:78vh;overflow-y:auto;padding:20px 22px}
+.skill{border:1px solid var(--line);border-radius:11px;padding:12px 14px;margin-bottom:10px}
+.skill .nm{font-weight:bold;font-size:14px}
+.skill .ds{font-size:12.5px;color:var(--mut);margin:4px 0 8px;line-height:1.5}
+.skill .ops{display:flex;gap:8px}
+.skill pre{background:#fafcfb;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:11.5px;max-height:220px;overflow:auto;white-space:pre-wrap;margin:8px 0 0}
 #modal.on{display:flex}
 #panel{background:#fff;border-radius:14px;width:430px;max-height:80vh;overflow-y:auto;padding:20px 22px}
 #panel h3{margin:0 0 12px;font-size:17px}
@@ -57,7 +65,17 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
 .frow label{display:block;font-size:13px;color:var(--mut);margin-bottom:5px}
 .frow input,.frow select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;font-family:inherit}
 .fnote{font-size:12px;color:var(--mut);margin-top:4px}
+.mini{padding:8px 14px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;font-size:13px;font-family:inherit}
+.prov{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;margin-bottom:6px;font-size:13px}
+.prov.active{border-color:var(--g);background:#eaf4ee}
+.prov .nm{font-weight:bold}
+.prov .hd{color:var(--mut);font-size:11px;flex:1}
+.prov button{border:none;background:none;cursor:pointer;font-size:13px}
 #save-cfg{width:100%;padding:11px;background:var(--g);color:#fff;border:none;border-radius:9px;font-size:15px;cursor:pointer;margin-top:6px}
+.mbar{margin-top:8px;display:flex;gap:6px;opacity:0;transition:opacity .15s}
+.msg:hover .mbar{opacity:1}
+.msgbtn{border:none;background:rgba(11,107,58,.08);color:#0b6b3a;border-radius:6px;font-size:11px;padding:3px 10px;cursor:pointer}
+.msg.user .msgbtn{background:rgba(255,255,255,.25);color:#fff}
 .dot{width:9px;height:9px;border-radius:50%;background:#ff6b6b;display:inline-block}
 .dot.ok{background:#7dff9e}
 </style>
@@ -69,6 +87,7 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
   <div id="sessions"></div>
   <footer>
     <button class="icobtn" id="refresh-sessions" title="刷新会话列表">⟳</button>
+    <button class="icobtn" id="open-skills" title="技能">🧩</button>
     <button class="icobtn" id="open-settings" title="设置">⚙️</button>
     <span style="font-size:11px;color:var(--mut);align-self:center" id="version"></span>
   </footer>
@@ -83,6 +102,7 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
       <option value="chat">只聊天不动手</option>
     </select>
     <span id="model-label"></span>
+    <button class="icobtn" onclick="exportChat()" title="导出对话">📤</button>
   </div>
   <div id="chat"></div>
   <div class="typing" id="typing" style="display:none">小 forge 正在干活……</div>
@@ -92,15 +112,38 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
     <button id="stop">停止</button>
   </div>
 </div>
+<div id="skills-modal" class="modal-bg"><div class="panel-box">
+  <h3>🧩 小 forge 的技能（它学会的本领）</h3>
+  <div class="fnote" style="margin-bottom:10px">这些是它积累的操作手册。聊天时说相关的活儿它就会自动用；也可以点「让它现在用」。</div>
+  <div id="skills-list"></div>
+</div></div>
 <div id="modal"><div id="panel">
-  <h3>⚙️ 设置</h3>
-  <div class="frow"><label>大模型（provider/model）</label><input id="cfg-model" placeholder="myopencode/glm-5.2"><div class="fnote" id="cfg-model-hint"></div></div>
-  <div class="frow"><label>接口地址（OpenAI 兼容 /v1）</label><input id="cfg-host" placeholder="https://.../v1/"></div>
+  <h3>⚙️ 大模型设置</h3>
+  <div class="frow"><label>服务商档案（可多个，一键切换）</label>
+    <div id="prov-list"></div>
+    <div style="display:flex;gap:6px;margin-top:6px">
+      <input id="prov-name" placeholder="名称，如 公司中转" style="flex:1">
+      <button id="prov-add" class="mini">添加</button>
+    </div>
+  </div>
+  <div class="frow"><label>接口地址（OpenAI 兼容 /v1 结尾）</label><input id="cfg-host" placeholder="https://.../v1/"></div>
   <div class="frow"><label>API Key</label><input id="cfg-key" type="password" placeholder="sk-..."></div>
-  <button id="save-cfg">保存（重启后生效）</button>
+  <div class="frow"><label>模型</label>
+    <div style="display:flex;gap:6px">
+      <input id="cfg-model" list="model-list" placeholder="点右侧⟳拉取列表或手填" style="flex:1">
+      <datalist id="model-list"></datalist>
+      <button id="fetch-models" class="mini">⟳</button>
+    </div>
+    <div class="fnote" id="cfg-model-hint">模型格式一般是 provider/model</div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button id="test-model" style="flex:1;padding:10px;background:#0e6ba8;color:#fff;border:none;border-radius:9px;font-size:14px;cursor:pointer">🔌 测试连通</button>
+    <button id="save-cfg" style="flex:1;padding:10px;background:var(--g);color:#fff;border:none;border-radius:9px;font-size:14px;cursor:pointer">💾 保存并启用</button>
+  </div>
   <div class="fnote" id="save-note" style="margin-top:10px"></div>
 </div></div>
 <script>
+window.__root = '__FORGE_ROOT__';
 const $=id=>document.getElementById(id);
 const chat=$('chat'),txt=$('txt'),send=$('send'),stopBtn=$('stop'),typing=$('typing'),status=$('status');
 let ws, sessionId=null, busy=false, modes=[], configOptions=[];
@@ -122,6 +165,10 @@ function connect(){
     }
     if(m.sys==='error'){ addErr(m.text); setBusy(false); return; }
     if(m.sys==='hello'){ $('version').textContent='v'+m.version; return; }
+    if(m.sys==='models'){ const dl=$('model-list'); dl.innerHTML=''; for(const id of (m.models||[]).slice(0,200)){ const o=document.createElement('option'); o.value=id; dl.appendChild(o);} note('拉到 '+(m.models||[]).length+' 个模型，点模型框选择'); return; }
+    if(m.sys==='test_result'){ note(m.ok?('✅ 连通 OK（HTTP '+m.http+'）回复: '+m.reply):('❌ 失败 HTTP '+m.http+' '+m.reply)); return; }
+    if(m.sys==='providers'){ renderProviders(m.list||[]); return; }
+    if(m.sys==='saved_config'){ note('已保存'); return; }
     if(m.rpc){ onRpc(m.rpc); return; }
     if(m.agent){ onAgentEvent(m.agent); }
   };
@@ -142,18 +189,23 @@ function onRpc(d){
 function loadSessions(){ rpc2('session/list').then(d=>{ const s=(d.result&&d.result.sessions)||[]; renderSessions(s); }).catch(()=>{}); }
 function renderSessions(list){
   const box=$('sessions'); box.innerHTML='';
-  for(const s of list.slice(0,40)){
+  const real=list.filter(s=>{const t=(s._meta&&s._meta.sessionType)||'standard';return t!=='scheduled';});
+  for(const s of real.slice(0,40)){
     const el=document.createElement('div'); el.className='sitem'+(s.sessionId===sessionId?' active':'');
     el.innerHTML=(s.title||'未命名').slice(0,26)+'<br><span class="t">'+(s.updatedAt||'').slice(5,16).replace('T',' ')+'</span>';
     el.onclick=()=>openSession(s.sessionId);
     box.appendChild(el);
   }
 }
-function markActiveSession(){ [...$('sessions').children].forEach(el=>el.classList.remove('active')); loadSessions(); }
+function markActiveSession(){ loadSessions(); }
 function subscribe(sid){ ws.send(JSON.stringify({type:'subscribe',sessionId:sid})); chat.innerHTML=''; toolCards.clear(); if(!sid) addMsg('你好！我是小 forge。想做什么直接打字告诉我。','agent'); }
 function openSession(sid){
-  rpc2('session/load',{sessionId:sid,cwd:null,mcpServers:[]}).then(()=>subscribe(sid)).catch(()=>addErr('打开会话失败'));
+  // 先订阅再载入：load 的历史回放通知才能流进 UI
+  ws.send(JSON.stringify({type:'subscribe',sessionId:sid}));
+  chat.innerHTML=''; toolCards.clear(); markActive(sid);
+  rpc2('session/load',{sessionId:sid,cwd:window.__root||'.',mcpServers:[]}).catch(()=>addErr('打开会话失败'));
 }
+function markActive(sid){ sessionId=sid; [...$('sessions').children].forEach(el=>el.classList.remove('active')); }
 function renderModelLabel(){
   try{ const cur=configOptions.find(o=>o.id==='model'); const prov=configOptions.find(o=>o.id==='provider');
     $('model-label').textContent=(prov&&prov.currentValue||'')+' / '+(cur&&cur.currentValue||'');
@@ -167,12 +219,12 @@ function addMsg(text,who){
   if(who==='agent'&&streamEl&&streamEl.dataset.live==='1'){ streamEl.textContent+=text; }
   else{
     const el=document.createElement('div'); el.className='msg '+who; el.textContent=text;
-    if(who==='agent'){ el.dataset.live='1'; streamEl=el; } else streamEl=null;
+    if(who==='agent'){ el.dataset.live='1'; streamEl=el; } else { el.appendChild(msgButtons()); streamEl=null; }
     chat.appendChild(el);
   }
   chat.scrollTop=chat.scrollHeight;
 }
-function endStream(){ if(streamEl){ streamEl.dataset.live='0'; streamEl=null; } }
+function endStream(){ if(streamEl){ streamEl.dataset.live='0'; if(!streamEl.querySelector('.mbar')) streamEl.appendChild(msgButtons()); streamEl=null; } }
 function toolCard(upd){
   const id=upd.toolCallId;
   let card=toolCards.get(id);
@@ -222,23 +274,102 @@ send.onclick=submit;
 txt.onkeydown=e=>{if(e.key==='Enter')submit();};
 stopBtn.onclick=()=>{ ws.send(JSON.stringify({type:'cancel'})); setBusy(false); };
 $('newchat').onclick=()=>subscribe(null);
+// 导出当前对话（小白：存成 txt 给别人看）
+window.exportChat=()=>{
+  const NL=String.fromCharCode(10);
+  const msgs=[...document.querySelectorAll('.msg')].map(m=>(m.classList.contains('user')?'我：':'小 forge：')+NL+m.textContent).join(NL+NL);
+  const tools=[...document.querySelectorAll('.card .ttl')].map(t=>'🔧 '+t.textContent).join(NL);
+  const blob=new Blob(['PocketForge 对话导出  '+new Date().toLocaleString()+NL+NL+msgs+(tools?NL+NL+'用到的工具：'+NL+tools:'')],{type:'text/plain;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='对话-'+new Date().toISOString().slice(0,10)+'.txt'; a.click();
+};
+// Ctrl+Enter 或 Enter 发送；Ctrl+K 新对话；Ctrl+/ 技能
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==='k'){ e.preventDefault(); subscribe(null); }
+  if((e.ctrlKey||e.metaKey)&&e.key==='/'){ e.preventDefault(); $('open-skills').click(); }
+});
+// 粘贴图片 -> 提示（ACP 支持图片 content，后续接）
+txt.addEventListener('paste',e=>{
+  for(const item of (e.clipboardData||{}).items||[]){
+    if(item.type.startsWith('image/')){ e.preventDefault(); addErr('暂不支持直接贴图，先把图片存成文件再告诉我路径'); break; }
+  }
+});
 $('refresh-sessions').onclick=loadSessions;
 $('burger').onclick=()=>$('side').classList.toggle('hidden');
 $('mode').onchange=e=>{ if(sessionId) rpc2('session/set_mode',{sessionId,modeId:e.target.value}).catch(()=>addErr('模式切换失败')); };
-$('open-settings').onclick=()=>{ $('modal').classList.add('on');
-  rpc2('session/list').then(()=>{}); // warm
-  fetch('/healthz').then(()=>{});
-  // prefill from configOptions if present
-  const cur=configOptions.find(o=>o.id==='model');
-  if(cur){ $('cfg-model').value=cur.currentValue||''; $('cfg-host').value=localStorage.getItem('host')||''; }
-};
+$('open-settings').onclick=()=>{ $('modal').classList.add('on'); loadProviders(); };
 $('modal').onclick=e=>{ if(e.target.id==='modal') $('modal').classList.remove('on'); };
-$('save-cfg').onclick=()=>{
-  const payload={model:$('cfg-model').value.trim(),host:$('cfg-host').value.trim(),key:$('cfg-key').value.trim()};
-  if(!payload.model||!payload.host){ $('save-note').textContent='模型和接口地址必填'; return; }
-  ws.send(JSON.stringify({type:'save_config',config:payload}));
-  $('save-note').textContent='已发送。重启「启动数字员工」后生效。';
+function loadProviders(){ ws.send(JSON.stringify({type:'providers'})); }
+wsProvHandler=null;
+$('prov-add').onclick=()=>{
+  const name=$('prov-name').value.trim(); if(!name)return note('先填名称');
+  ws.send(JSON.stringify({type:'providers',save:true,add:{name,host:$('cfg-host').value.trim(),model:$('cfg-model').value.trim(),key:$('cfg-key').value.trim()}}));
+  $('prov-name').value=''; setTimeout(loadProviders,300);
 };
+function renderProviders(list){
+  const box=$('prov-list'); box.innerHTML='';
+  for(const pr of list){
+    const el=document.createElement('div'); el.className='prov'+(pr.active?' active':'');
+    el.innerHTML='<span class="nm">'+pr.name+'</span><span class="hd">'+(pr.model||'')+' · '+(pr.hasKey?'🔑已存':'⚠无key')+'</span>';
+    const use=document.createElement('button'); use.textContent=pr.active?'✓使用中':'启用';
+    use.onclick=()=>{ ws.send(JSON.stringify({type:'providers',save:true,activate:pr.name})); note('已切换到 '+pr.name+'，重启后生效'); setTimeout(loadProviders,300); };
+    const del=document.createElement('button'); del.textContent='✕';
+    del.onclick=()=>{ ws.send(JSON.stringify({type:'providers',save:true,remove:pr.name})); setTimeout(loadProviders,300); };
+    el.appendChild(use); el.appendChild(del);
+    el.onclick=e=>{ if(e.target.tagName!=='BUTTON'){ $('cfg-host').value=pr.host||''; $('cfg-model').value=pr.model||''; } };
+    box.appendChild(el);
+  }
+  const act=list.find(p=>p.active);
+  if(act){ $('cfg-host').value=act.host||$('cfg-host').value; $('cfg-model').value=act.model||$('cfg-model').value; }
+}
+$('fetch-models').onclick=()=>{ note('拉取模型列表…'); ws.send(JSON.stringify({type:'list_models',host:$('cfg-host').value.trim(),key:$('cfg-key').value.trim()})); };
+$('test-model').onclick=()=>{ note('测试中…');
+  ws.send(JSON.stringify({type:'test_model',host:$('cfg-host').value.trim(),key:$('cfg-key').value.trim(),model:$('cfg-model').value.trim()})); };
+$('save-cfg').onclick=()=>{
+  const model=$('cfg-model').value.trim(),host=$('cfg-host').value.trim();
+  if(!model||!host) return note('模型和接口地址必填');
+  ws.send(JSON.stringify({type:'save_config',config:{model,host,key:$('cfg-key').value.trim()}}));
+  note('已保存。重启「启动数字员工」后生效。');
+};
+function note(t){ $('save-note').textContent=t; }
+$('open-skills').onclick=async()=>{
+  $('skills-modal').classList.add('on');
+  try{
+    const r=await fetch('/api/skills'); const list=await r.json();
+    const box=$('skills-list'); box.innerHTML='';
+    if(!list.length){ box.innerHTML='<div class="fnote">还没有技能。让它干活时说「记住这个做法」，它就会自己学。</div>'; return; }
+    for(const sk of list){
+      const el=document.createElement('div'); el.className='skill';
+      el.innerHTML='<div class="nm">'+sk.name+'</div><div class="ds">'+(sk.description||'（无说明）')+'</div>';
+      const ops=document.createElement('div'); ops.className='ops';
+      const use=document.createElement('button'); use.className='mini'; use.textContent='让它现在用';
+      use.onclick=()=>{ $('skills-modal').classList.remove('on'); $('txt').value='请按技能 '+sk.name+' 的流程来做'; $('txt').focus(); };
+      const view=document.createElement('button'); view.className='mini'; view.textContent='看内容';
+      view.onclick=()=>{
+        const pre=el.querySelector('pre');
+        if(pre) pre.remove();
+        else { const pre=document.createElement('pre'); pre.textContent=sk.body; el.appendChild(pre); }
+      };
+      ops.appendChild(use); ops.appendChild(view); el.appendChild(ops); box.appendChild(el);
+    }
+  }catch(e){ $('skills-list').innerHTML='<div class="fnote">读取失败：'+e.message+'</div>'; }
+};
+$('skills-modal').onclick=e=>{ if(e.target.id==='skills-modal') e.target.classList.remove('on'); };
+
+// 消息操作：复制 / 重发
+document.getElementById('chat').addEventListener('click', async e=>{
+  const btn=e.target.closest('.msgbtn'); if(!btn) return;
+  const msg=btn.closest('.msg');
+  if(btn.dataset.act==='copy'){ await navigator.clipboard.writeText(msg.textContent); btn.textContent='已复制✓'; setTimeout(()=>btn.textContent='复制',1200); }
+  if(btn.dataset.act==='retry'){ $('txt').value=msg.textContent; submit(); }
+});
+function msgButtons(){
+  const bar=document.createElement('div'); bar.className='mbar';
+  for(const [act,label] of [['copy','复制'],['retry','重发']]){
+    const b=document.createElement('button'); b.className='msgbtn'; b.dataset.act=act; b.textContent=label; bar.appendChild(b);
+  }
+  return bar;
+}
+
 connect();
 </script>
 </body></html>

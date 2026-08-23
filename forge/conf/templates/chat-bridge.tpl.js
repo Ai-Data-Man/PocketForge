@@ -90,10 +90,41 @@ let acpCaps = null;
 init().catch(e => { console.error('init failed', e); process.exit(1); });
 
 const server = http.createServer((req, res) => {
-    if (req.url === '/' || req.url.startsWith('/?')) {
+    const url = (req.url || '/').split('?')[0];
+    if (url === '/' ) {
+        const html = require('fs').readFileSync(PAGE, 'utf8').replace('__FORGE_ROOT__', ROOT.split(String.fromCharCode(92)).join('/'));
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        res.end(require('fs').readFileSync(PAGE));
-    } else if (req.url === '/healthz') { res.writeHead(200); res.end('ok'); }
+        res.end(html);
+    } else if (url === '/healthz') { res.writeHead(200); res.end('ok'); }
+    else if (url === '/api/skills') {
+        // scan .agents/skills/*/SKILL.md (project) + conf/goose/config/skills (global-ish)
+        const out = [];
+        const dirs = [path.join(ROOT, '.agents', 'skills')];
+        for (const d of dirs) {
+            try {
+                for (const ent of require('fs').readdirSync(d, { withFileTypes: true })) {
+                    if (!ent.isDirectory()) continue;
+                    const f = path.join(d, ent.name, 'SKILL.md');
+                    try {
+                        const raw = require('fs').readFileSync(f, 'utf8');
+                        const nl = String.fromCharCode(10);
+                        const fm = raw.split(nl + '---' + nl);
+                        let meta = {};
+                        if (fm.length >= 3) {
+                            for (const line of fm[1].split(nl)) {
+                                const mm = line.match(/^([a-zA-Z_]+):\s*(.+)$/);
+                                if (mm) meta[mm[1]] = mm[2];
+                            }
+                        }
+                        const body = (fm.length >= 3 ? fm.slice(2).join(nl + '---' + nl) : raw).trim();
+                        out.push({ name: ent.name, description: meta.description || '', body: body.slice(0, 4000), path: f });
+                    } catch {}
+                }
+            } catch {}
+        }
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(out));
+    }
     else { res.writeHead(404); res.end(); }
 });
 
@@ -203,6 +234,75 @@ function handleClient(ws, msg) {
 
         if (msg.type === 'acp_reply') {
             acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: msg.callId, result: { outcome: { outcome: 'selected', optionId: msg.option } } }) + '\n');
+            return;
+        }
+
+        if (msg.type === 'list_models') {
+            // fetch {host}/models with key; host from secrets or msg.override
+            const host = (msg.host || secrets.FORGE_AGENT_HOST || '').replace(/\/$/, '');
+            const key = msg.key || secrets.FORGE_AGENT_API_KEY || '';
+            if (!host) return ws.send({ sys: 'error', text: '未配置接口地址' });
+            const url = host + '/models';
+            require('http').get(url, { headers: { Authorization: 'Bearer ' + key } }, res => {
+                let b = '';
+                res.on('data', c => b += c);
+                res.on('end', () => {
+                    try { const j = JSON.parse(b); ws.send({ sys: 'models', models: (j.data || j.models || []).map(m => m.id || m.name || String(m)) }); }
+                    catch { ws.send({ sys: 'error', text: 'models 响应解析失败 (HTTP ' + res.statusCode + ')' }); }
+                });
+            }).on('error', e => ws.send({ sys: 'error', text: '连接失败: ' + e.message }));
+            return;
+        }
+
+        if (msg.type === 'test_model') {
+            const host = (msg.host || secrets.FORGE_AGENT_HOST || '').replace(/\/$/, '');
+            const key = msg.key || secrets.FORGE_AGENT_API_KEY || '';
+            const model = msg.model || secrets.GOOSE_MODEL_NAME || '';
+            const body = JSON.stringify({ model, messages: [{ role: 'user', content: 'reply with exactly: ok' }], max_tokens: 512 });
+            const u = new URL(host + '/chat/completions');
+            const reqMod = require(u.protocol === 'https:' ? 'https' : 'http');
+            const req = reqMod.request(u, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, timeout: 30000 }, res => {
+                let b = '';
+                res.on('data', c => b += c);
+                res.on('end', () => {
+                    let txt = '';
+                    try { const clean = b.replace(/data:\s*\[DONE\][\s\S]*$/, '').trim(); const j = JSON.parse(clean); const c = j.choices && j.choices[0]; const m = c && c.message; txt = (m && (m.content || m.reasoning_content)) || (c && c.text) || ('HTTP ' + res.statusCode + ' OK'); } catch { txt = b.slice(0, 80); }
+                    ws.send({ sys: 'test_result', ok: res.statusCode === 200, http: res.statusCode, reply: String(txt).slice(0, 60), model });
+                });
+            });
+            req.on('error', e => ws.send({ sys: 'test_result', ok: false, http: 0, reply: e.message.slice(0, 80), model }));
+            req.on('timeout', () => { req.destroy(); ws.send({ sys: 'test_result', ok: false, http: 0, reply: '30s 超时', model }); });
+            req.write(body); req.end();
+            return;
+        }
+
+        if (msg.type === 'providers') {
+            // multi-provider profiles in data/providers.json
+            const f = path.join(ROOT, 'data', 'providers.json');
+            let list = [];
+            try { list = JSON.parse(require('fs').readFileSync(f, 'utf8')); } catch {}
+            if (msg.save) {
+                if (msg.activate !== undefined) {
+                    for (const pr of list) pr.active = pr.name === msg.activate;
+                }
+                if (msg.add) list.push(msg.add);
+                if (msg.remove) list = list.filter(pr => pr.name !== msg.remove);
+                require('fs').writeFileSync(f, JSON.stringify(list, null, 2));
+            }
+            // activation writes through to secrets.env
+            if (msg.activate !== undefined) {
+                const act = list.find(pr => pr.active);
+                if (act) {
+                    const sf = path.join(ROOT, 'data', 'secrets.env');
+                    const lines = require('fs').readFileSync(sf, 'utf8').split('\n').filter(l => l && !l.startsWith('#'));
+                    const keep = lines.filter(l => !/^(GOOSE_MODEL_NAME|FORGE_AGENT_HOST|FORGE_AGENT_API_KEY)=/.test(l.trim()));
+                    keep.push('GOOSE_MODEL_NAME=' + (act.model || ''));
+                    keep.push('FORGE_AGENT_HOST=' + (act.host || ''));
+                    keep.push('FORGE_AGENT_API_KEY=' + (act.key || ''));
+                    require('fs').writeFileSync(sf, keep.join(String.fromCharCode(10)) + String.fromCharCode(10));
+                }
+            }
+            ws.send({ sys: 'providers', list: list.map(pr => ({ name: pr.name, host: pr.host, model: pr.model, active: !!pr.active, hasKey: !!pr.key })) });
             return;
         }
 
