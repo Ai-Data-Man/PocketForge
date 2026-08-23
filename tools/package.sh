@@ -12,7 +12,10 @@ mkdir -p "$DIST"
 
 # 1) 清运行时状态（交付包零残留）；排除已弃用组件与运行时生成物
 TMP=$(mktemp -d)
-cp -r "$FORGE" "$TMP/forge-pkg"
+# 复制时跳过锁定/运行时目录（robocopy /XD；聊天窗口开着也能打包）
+TMP_WIN=$(cygpath -w "$TMP")
+MSYS_NO_PATHCONV=1 robocopy "$(cygpath -w "$FORGE")" "$TMP_WIN\forge-pkg" /E /XD "$(cygpath -w "$FORGE")\data\chat-window-profile" "$(cygpath -w "$FORGE")\data\pw-chat-check" "$(cygpath -w "$FORGE")\data\pw-chat-v2check" "$(cygpath -w "$FORGE")\data\backups" /NFL /NDL /NJH /NJS /NP >/dev/null 2>&1 || true
+mkdir -p "$TMP/forge-pkg/data/logs"
 rm -rf "$TMP/forge-pkg/data"/* "$TMP/forge-pkg/conf/goose/state" "$TMP/forge-pkg/conf/goose/data" \
        "$TMP/forge-pkg/conf/ports.env.yaml" "$TMP/forge-pkg/conf/apps.env.yaml" "$TMP/forge-pkg/apps"/* \
        "$TMP/forge-pkg/bin/python" "$TMP/forge-pkg/bin/bu-config" \
