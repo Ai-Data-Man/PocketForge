@@ -45,15 +45,22 @@ done
 [ "$MISS" = 0 ] || { echo "license incomplete"; exit 1; }
 
 # 3) zip（保持 UTF-8 文件名：用 python zipfile）
-python - "$TMP/forge-pkg" "$OUT" <<'EOF'
-import sys, os, zipfile, locale
+python - "$TMP/forge-pkg" "$OUT" <<'PYEOF'
+import sys, os, zipfile
 src, out = sys.argv[1], sys.argv[2]
+SKIP = ('data/chat-window-profile', 'data/pw-chat-check', 'data/pw-chat-v2check', 'data/backups', 'conf/goose/state', 'conf/goose/data')
+n = 0
 with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
     for root, dirs, files in os.walk(src):
+        rel = os.path.relpath(root, src).replace(os.sep, '/')
+        if any(rel == sk or rel.startswith(sk + '/') for sk in SKIP):
+            dirs[:] = []
+            continue
         for f in files:
             p = os.path.join(root, f)
             z.write(p, os.path.relpath(p, src))
-print('zip ok:', out, os.path.getsize(out), 'bytes')
-EOF
+            n += 1
+print('zip ok:', out, os.path.getsize(out), 'bytes,', n, 'files')
+PYEOF
 sha256sum "$OUT" > "$OUT.sha256"
 cat "$OUT.sha256"
