@@ -17,7 +17,7 @@ rm -rf "$TMP/forge-pkg/data"/* "$TMP/forge-pkg/conf/goose/state" "$TMP/forge-pkg
        "$TMP/forge-pkg/conf/ports.env.yaml" "$TMP/forge-pkg/conf/apps.env.yaml" "$TMP/forge-pkg/apps"/* \
        "$TMP/forge-pkg/bin/python" "$TMP/forge-pkg/bin/bu-config" \
        "$TMP/forge-pkg/bin/memory-mcp.cmd" "$TMP/forge-pkg/conf/diag.ps1" \
-       "$TMP/forge-pkg/conf/goose/config/memory" "$TMP/forge-pkg/conf/goose/config/config.yaml" 2>/dev/null || true
+       "$TMP/forge-pkg/conf/goose/config/memory" "$TMP/forge-pkg/conf/goose/config/config.yaml"        "$TMP/forge-pkg/data/chat-window-profile" "$TMP/forge-pkg/data/pw-chat-check" "$TMP/forge-pkg/data/pw-chat-v2check"        "$TMP/forge-pkg/data/backups" 2>/dev/null || true
 mkdir -p "$TMP/forge-pkg/data/logs" "$TMP/forge-pkg/apps" "$TMP/forge-pkg/data/sqlite"
 
 # 2) 许可证清点（缺 = 失败）
