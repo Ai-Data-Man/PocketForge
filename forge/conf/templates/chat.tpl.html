@@ -18,6 +18,9 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
 .sitem:hover{background:#f0f5f2}
 .sitem.active{background:#e2efe7;font-weight:bold}
 .sitem .t{color:var(--mut);font-size:11px;font-weight:normal}
+.sdel{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:none;background:none;color:#b66;cursor:pointer;font-size:12px;display:none}
+.sitem{position:relative}
+.sitem:hover .sdel{display:block}
 #side footer{border-top:1px solid var(--line);padding:8px 14px;display:flex;gap:8px}
 .icobtn{background:none;border:none;cursor:pointer;font-size:15px;padding:6px;border-radius:7px}
 .icobtn:hover{background:#f0f5f2}
@@ -87,6 +90,7 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
 .msg:hover .mbar{opacity:1}
 .msgbtn{border:none;background:rgba(11,107,58,.08);color:#0b6b3a;border-radius:6px;font-size:11px;padding:3px 10px;cursor:pointer}
 .msg.user .msgbtn{background:rgba(255,255,255,.25);color:#fff}
+.msg.info{background:#eef6f1;border-color:#cfe4d8;color:#2a4a3a;font-size:13.5px}
 .dot{width:9px;height:9px;border-radius:50%;background:#ff6b6b;display:inline-block}
 .dot.ok{background:#7dff9e}
 </style>
@@ -170,6 +174,7 @@ function connect(){
     const m=JSON.parse(e.data);
     if(m.sys==='subscribed'){
       sessionId=m.sessionId; currentSid=m.sessionId;
+      if(pendingSwitch){ const v=pendingSwitch; pendingSwitch=null; setTimeout(()=>ws.send(JSON.stringify({type:'switch_model',model:v})),800); }
       document.querySelectorAll('.sitem').forEach(el=>el.classList.toggle('active', el.dataset.sid===m.sessionId));
       modes=(m.modes&&m.modes.availableModes)||[]; configOptions=m.configOptions||[];
     let cur=(m.modes&&m.modes.currentModeId); const saved=localStorage.getItem('pf_mode');
@@ -179,7 +184,7 @@ function connect(){
       markActiveSession();
       return;
     }
-    if(m.sys==='error'){ addErr(m.text); setBusy(false); return; }
+    if(m.sys==='error'){ addErr(m.text+(m.text.includes('可选池')?'。到 ⚙️ 设置里勾选它，或换顶栏列表里有的模型。':'')); setBusy(false); return; }
     if(m.sys==='hello'){ $('version').textContent='v'+m.version; return; }
     if(m.sys==='models'){
       fetchedModels=m.models||[];
@@ -189,9 +194,13 @@ function connect(){
     }
     if(m.sys==='test_result'){ note(m.ok?('✅ 连通 OK（HTTP '+m.http+'）回复: '+m.reply):('❌ 失败 HTTP '+m.http+' '+m.reply)); return; }
     if(m.sys==='providers'){ providerList=m.list||[]; renderProviders(providerList); renderModelLabel(); return; }
-    if(m.sys==='model_switched'){ addErr('✅ 已切到 '+m.provider+' · '+m.model+(m.restarted?'（对话需要重新打开）':'')); if(m.restarted){ loadSessions(); } else loadSessions(); return; }
-    if(m.sys==='provider_switching'){ addErr('正在切换服务商到 '+m.to+'（几秒）…'); return; }
-    if(m.sys==='provider_switched'){ addErr('✅ 已切到 '+m.provider+'，默认模型 '+m.model+'；点击旧会话继续（上下文都在）'); loadSessions(); return; }
+    if(m.sys==='model_switched'){
+      if(m.restarted){ addInfo('✅ 已切到 '+m.provider+' · '+m.model+'。刚才的对话要先重新打开：点左侧列表里的那个对话即可继续（内容都在）。'); loadSessions(); }
+      else addInfo('✅ 已切到 '+m.provider+' · '+m.model+'，直接继续说话就行。');
+      return;
+    }
+    if(m.sys==='provider_switching'){ addInfo('正在切换到「'+m.to+'」…大约 5 秒，稍等提示。'); return; }
+    if(m.sys==='provider_switched'){ addInfo('✅ 已切到 '+m.provider+'（默认模型 '+m.model+'）。'); loadSessions(); return; }
     if(m.sys==='saved_config'){ note('已保存'); return; }
     if(m.rpc){ onRpc(m.rpc); return; }
     if(m.agent){ onAgentEvent(m.agent); }
@@ -223,6 +232,15 @@ function renderSessions(list){
     el.dataset.sid=s.sessionId;
     el.innerHTML=(s.title||'未命名').slice(0,26)+'<br><span class="t">'+(s.updatedAt||'').slice(5,16).replace('T',' ')+'</span>';
     el.onclick=()=>openSession(s.sessionId);
+    const del=document.createElement('button'); del.className='sdel'; del.textContent='✕'; del.title='删除这个对话';
+    del.onclick=(e)=>{ e.stopPropagation();
+      if(confirm('删除对话「'+(s.title||'未命名')+'」？删除后找不回来。')){
+        ws.send(JSON.stringify({type:'rpc',method:'session/close',params:{sessionId:s.sessionId}}));
+        if(currentSid===s.sessionId){ currentSid=null; sessionId=null; chat.innerHTML=''; }
+        setTimeout(loadSessions,600);
+      }
+    };
+    el.appendChild(del);
     box.appendChild(el);
   }
 }
@@ -271,10 +289,16 @@ function buildModelItems(filter){
   box.appendChild(note);
 }
 function switchModel(v){
-  if(!sessionId){ addErr('先开一个对话（或点一个旧会话），再切模型。'); return; }
-  addErr('正在切换到 '+v+' …');
+  if(!sessionId){
+    addInfo('还没打开对话——先帮你开个新对话，然后切到 '+v+'。');
+    pendingSwitch=v;
+    subscribe(null);
+    return;
+  }
+  addInfo('正在切换到 '+v+' …');
   ws.send(JSON.stringify({type:'switch_model',model:v}));
 }
+let pendingSwitch=null;
 function loadProvidersUI(){ ws.send(JSON.stringify({type:'providers'})); }
 $('model-pick').onclick=e=>{
   const pk=$('model-pick');
@@ -286,6 +310,7 @@ $('model-search').oninput=e=>buildModelItems(e.target.value);
 document.addEventListener('click',e=>{ if(!e.target.closest('#model-pick')) $('model-pick').classList.remove('open'); });
 function setBusy(b){ busy=b; typing.style.display=b?'block':'none'; send.disabled=b; stopBtn.style.display=b?'inline-block':'none'; }
 function addErr(t){ const el=document.createElement('div'); el.className='msg agent'; el.textContent='⚠ '+t; chat.appendChild(el); chat.scrollTop=chat.scrollHeight; }
+function addInfo(t){ const el=document.createElement('div'); el.className='msg agent info'; el.textContent=t; chat.appendChild(el); chat.scrollTop=chat.scrollHeight; }
 function addMsg(text,who){
   typing.style.display='none';
   if(who==='agent'&&streamEl&&streamEl.dataset.live==='1'){ streamEl.textContent+=text; }
@@ -338,7 +363,9 @@ function onAgentEvent(p){
   if(p.method==='stop'){ setBusy(false); endStream(); loadSessions(); }
 }
 function submit(){
-  const t=txt.value.trim(); if(!t||busy||!sessionId)return;
+  const t=txt.value.trim(); if(!t)return;
+  if(!sessionId){ addInfo('对话还没开好，1 秒后再发一次。'); return; }
+  if(busy){ addInfo('它还在干活（可以点「停止」打断它，或者等它做完）。'); return; }
   addMsg(t,'user'); txt.value=''; setBusy(true);
   ws.send(JSON.stringify({type:'prompt',text:t}));
 }
@@ -349,7 +376,13 @@ $('newchat').onclick=()=>subscribe(null);
 // 导出当前对话（小白：存成 txt 给别人看）
 window.exportChat=()=>{
   const NL=String.fromCharCode(10);
-  const msgs=[...document.querySelectorAll('.msg')].map(m=>(m.classList.contains('user')?'我：':'小 forge：')+NL+m.textContent).join(NL+NL);
+  const msgs=[...document.querySelectorAll('.msg')].filter(m=>!m.classList.contains('info'))
+    .map(m=>{
+      let t=m.textContent;
+      const btns=[''+String.fromCharCode(10)+'复制',''+String.fromCharCode(10)+'重发'];
+      for(const b of btns){ const idx=t.indexOf(b); if(idx!==-1) t=t.slice(0,idx); }
+      return (m.classList.contains('user')?'我：':'小 forge：')+NL+t.trimEnd();
+    }).join(NL+NL);
   const tools=[...document.querySelectorAll('.card .ttl')].map(t=>'🔧 '+t.textContent).join(NL);
   const blob=new Blob(['PocketForge 对话导出  '+new Date().toLocaleString()+NL+NL+msgs+(tools?NL+NL+'用到的工具：'+NL+tools:'')],{type:'text/plain;charset=utf-8'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='对话-'+new Date().toISOString().slice(0,10)+'.txt'; a.click();

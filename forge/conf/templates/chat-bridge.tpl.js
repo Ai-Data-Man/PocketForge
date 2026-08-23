@@ -338,7 +338,12 @@ function handleClient(ws, msg) {
                 }
                 if (msg.update) {
                     const ex = list.find(p => p.name === msg.update.name);
-                    if (ex) { Object.assign(ex, msg.update); needRestart = !!ex.active; }
+                    if (ex) {
+                        const patch = { ...msg.update };
+                        if (!patch.key) delete patch.key;   // key 留空 = 沿用原值（UI 脱敏不回传）
+                        Object.assign(ex, patch);
+                        needRestart = !!ex.active;
+                    }
                 }
                 writeProviders(list);
             }
