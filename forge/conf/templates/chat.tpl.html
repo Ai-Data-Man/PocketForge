@@ -27,6 +27,16 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
 #burger{background:none;border:none;font-size:18px;cursor:pointer}
 #mode{padding:5px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;font-family:inherit;font-size:13px;cursor:pointer}
 #model-label{color:var(--mut);font-size:12px;margin-left:auto}
+#model-pick{position:relative;cursor:pointer;padding:5px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:13px;user-select:none;max-width:230px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#model-pick:hover{border-color:var(--g)}
+#model-drop{display:none;position:absolute;top:110%;left:0;z-index:30;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.12);width:300px}
+#model-pick.open #model-drop{display:block}
+#model-search{width:100%;box-sizing:border-box;border:none;border-bottom:1px solid var(--line);padding:9px 12px;border-radius:10px 10px 0 0;outline:none;font-size:13px;font-family:inherit}
+#model-items{max-height:280px;overflow-y:auto}
+#model-items .mi{padding:8px 12px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#model-items .mi:hover{background:#f0f5f2}
+#model-items .mi.cur{background:#e2efe7;font-weight:bold}
+.model-note{padding:6px 12px;font-size:11px;color:var(--mut)}
 /* chat */
 #chat{flex:1;overflow-y:auto;padding:18px 22px;display:flex;flex-direction:column;gap:10px}
 .msg{max-width:80%;padding:11px 15px;border-radius:13px;font-size:15.5px;line-height:1.65;white-space:pre-wrap;word-break:break-word}
@@ -95,6 +105,10 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
 <div id="main">
   <div id="topbar">
     <button id="burger">☰</button>
+    <div id="model-pick" title="点这里换模型">
+      <span id="model-cur">模型加载中…</span>
+      <div id="model-drop"><input id="model-search" placeholder="搜索模型…"><div id="model-items"></div></div>
+    </div>
     <select id="mode" title="工作模式">
       <option value="auto">自动干活</option>
       <option value="smart_approve">重要操作问我</option>
@@ -118,8 +132,9 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
   <div id="skills-list"></div>
 </div></div>
 <div id="modal"><div id="panel">
-  <h3>⚙️ 大模型设置</h3>
-  <div class="frow"><label>服务商档案（可多个，一键切换）</label>
+  <h3>⚙️ 服务商连接</h3>
+  <div class="fnote" style="margin-bottom:10px">这里管"连到哪家大模型服务商"。每个档案 = 地址 + Key + 默认模型。顶栏可随时换模型（不用来这里）。</div>
+  <div class="frow"><label>服务商档案</label>
     <div id="prov-list"></div>
     <div style="display:flex;gap:6px;margin-top:6px">
       <input id="prov-name" placeholder="名称，如 公司中转" style="flex:1">
@@ -156,9 +171,12 @@ function connect(){
   ws.onmessage=e=>{
     const m=JSON.parse(e.data);
     if(m.sys==='subscribed'){
-      sessionId=m.sessionId;
+      sessionId=m.sessionId; currentSid=m.sessionId;
+      document.querySelectorAll('.sitem').forEach(el=>el.classList.toggle('active', el.dataset.sid===m.sessionId));
       modes=(m.modes&&m.modes.availableModes)||[]; configOptions=m.configOptions||[];
-    const cur=(m.modes&&m.modes.currentModeId); if(cur)$('mode').value=cur;
+    let cur=(m.modes&&m.modes.currentModeId); const saved=localStorage.getItem('pf_mode');
+    if(saved&&cur&&saved!==cur){ rpc2('session/set_mode',{sessionId:m.sessionId,modeId:saved}); cur=saved; }
+    if(cur)$('mode').value=cur;
     renderModelLabel();
       markActiveSession();
       return;
@@ -182,36 +200,79 @@ function rpc2(method, params){
   return new Promise(res=>pendingMap.set(id,res));
 }
 function onRpc(d){
-  // responses carry jsonrpc id we assigned via nextId on server; we match by simple FIFO since single client
   const keys=[...pendingMap.keys()];
   if(keys.length){ const k=keys[0]; const f=pendingMap.get(k); pendingMap.delete(k); f(d); }
+  // load/set_config 响应都带 configOptions -> 刷新顶栏
+  const r=d.result;
+  if(r&&r.configOptions){ configOptions=r.configOptions; if(r.modes){ const cur=r.modes.currentModeId; if(cur)$('mode').value=cur; } renderModelLabel(); }
 }
 function loadSessions(){ rpc2('session/list').then(d=>{ const s=(d.result&&d.result.sessions)||[]; renderSessions(s); }).catch(()=>{}); }
+let currentSid=null;
 function renderSessions(list){
   const box=$('sessions'); box.innerHTML='';
   const real=list.filter(s=>{const t=(s._meta&&s._meta.sessionType)||'standard';return t!=='scheduled';});
+  if(!real.length){ box.innerHTML='<div style="padding:12px;font-size:12px;color:var(--mut)">还没有对话。点上面「＋ 新对话」开始。</div>'; return; }
   for(const s of real.slice(0,40)){
-    const el=document.createElement('div'); el.className='sitem'+(s.sessionId===sessionId?' active':'');
+    const el=document.createElement('div'); el.className='sitem'+(s.sessionId===currentSid?' active':'');
+    el.dataset.sid=s.sessionId;
     el.innerHTML=(s.title||'未命名').slice(0,26)+'<br><span class="t">'+(s.updatedAt||'').slice(5,16).replace('T',' ')+'</span>';
     el.onclick=()=>openSession(s.sessionId);
     box.appendChild(el);
   }
 }
-function markActiveSession(){ loadSessions(); }
+function markActiveSession(){ /* 保留列表不动，仅由 currentSid 驱动高亮 */ }
 function subscribe(sid){ ws.send(JSON.stringify({type:'subscribe',sessionId:sid})); chat.innerHTML=''; toolCards.clear(); if(!sid) addMsg('你好！我是小 forge。想做什么直接打字告诉我。','agent'); }
 function openSession(sid){
+  if(busy){ addErr('它正在干活，等一下或先停止。'); return; }
   // 先订阅再载入：load 的历史回放通知才能流进 UI
   ws.send(JSON.stringify({type:'subscribe',sessionId:sid}));
-  chat.innerHTML=''; toolCards.clear(); markActive(sid);
+  chat.innerHTML=''; toolCards.clear();
+  currentSid=sid; sessionId=sid;
+  [...document.querySelectorAll('.sitem')].forEach(el=>el.classList.remove('active'));
   rpc2('session/load',{sessionId:sid,cwd:window.__root||'.',mcpServers:[]}).catch(()=>addErr('打开会话失败'));
 }
-function markActive(sid){ sessionId=sid; [...$('sessions').children].forEach(el=>el.classList.remove('active')); }
 function renderModelLabel(){
-  try{ const cur=configOptions.find(o=>o.id==='model'); const prov=configOptions.find(o=>o.id==='provider');
-    $('model-label').textContent=(prov&&prov.currentValue||'')+' / '+(cur&&cur.currentValue||'');
-    if(cur&&cur.options) $('cfg-model-hint').textContent='可选：'+cur.options.slice(0,6).map(o=>o.value).join('、')+(cur.options.length>6?'…':'');
+  try{
+    const cur=configOptions.find(o=>o.id==='model'); const prov=configOptions.find(o=>o.id==='provider');
+    $('model-cur').textContent=(cur&&cur.currentValue)||'未设置';
+    $('model-label').textContent=(prov&&prov.currentValue||'');
+    buildModelItems();
   }catch{}
 }
+function buildModelItems(filter){
+  const box=$('model-items'); if(!box) return;
+  const cur=configOptions.find(o=>o.id==='model');
+  const opts=((cur&&cur.options)||[]);
+  const f=(filter||'').toLowerCase();
+  const shown=opts.filter(o=>!f||(o.value+' '+(o.name||'')).toLowerCase().includes(f)).slice(0,80);
+  box.innerHTML='';
+  if(!opts.length){ box.innerHTML='<div class="model-note">模型列表为空——到 ⚙️ 设置里配好服务商后点⟳拉取</div>'; return; }
+  for(const o of shown){
+    const el=document.createElement('div'); el.className='mi'+((cur&&cur.currentValue)===o.value?' cur':'');
+    el.textContent=o.name&&o.name!==o.value?(o.value+' · '+o.name):o.value;
+    el.onclick=()=>{ switchModel(o.value); $('model-pick').classList.remove('open'); };
+    box.appendChild(el);
+  }
+  const note=document.createElement('div'); note.className='model-note';
+  note.textContent=opts.length+' 个可选（来自当前服务商）；要换服务商去 ⚙️ 设置';
+  box.appendChild(note);
+}
+function switchModel(v){
+  if(!sessionId) return;
+  note('');
+  rpc2('session/set_config_option',{sessionId,configId:'model',value:v}).then(d=>{
+    if(d.result){ configOptions=d.result.configOptions||configOptions; renderModelLabel(); addErr('已切到 '+v); }
+    else addErr('切换失败：'+JSON.stringify(d.error&&d.error.message||''));
+  });
+}
+$('model-pick').onclick=e=>{
+  const pk=$('model-pick');
+  if(e.target.id==='model-search') return;
+  pk.classList.toggle('open');
+  if(pk.classList.contains('open')){ $('model-search').value=''; buildModelItems(''); setTimeout(()=>$('model-search').focus(),50); }
+};
+$('model-search').oninput=e=>buildModelItems(e.target.value);
+document.addEventListener('click',e=>{ if(!e.target.closest('#model-pick')) $('model-pick').classList.remove('open'); });
 function setBusy(b){ busy=b; typing.style.display=b?'block':'none'; send.disabled=b; stopBtn.style.display=b?'inline-block':'none'; }
 function addErr(t){ const el=document.createElement('div'); el.className='msg agent'; el.textContent='⚠ '+t; chat.appendChild(el); chat.scrollTop=chat.scrollHeight; }
 function addMsg(text,who){
@@ -271,7 +332,7 @@ function submit(){
   ws.send(JSON.stringify({type:'prompt',text:t}));
 }
 send.onclick=submit;
-txt.onkeydown=e=>{if(e.key==='Enter')submit();};
+txt.onkeydown=e=>{ if(e.key==='Enter'&&!e.isComposing)submit(); };
 stopBtn.onclick=()=>{ ws.send(JSON.stringify({type:'cancel'})); setBusy(false); };
 $('newchat').onclick=()=>subscribe(null);
 // 导出当前对话（小白：存成 txt 给别人看）
@@ -295,7 +356,8 @@ txt.addEventListener('paste',e=>{
 });
 $('refresh-sessions').onclick=loadSessions;
 $('burger').onclick=()=>$('side').classList.toggle('hidden');
-$('mode').onchange=e=>{ if(sessionId) rpc2('session/set_mode',{sessionId,modeId:e.target.value}).catch(()=>addErr('模式切换失败')); };
+$('mode').onchange=e=>{ localStorage.setItem('pf_mode',e.target.value);
+  if(sessionId) rpc2('session/set_mode',{sessionId,modeId:e.target.value}).catch(()=>addErr('模式切换失败')); };
 $('open-settings').onclick=()=>{ $('modal').classList.add('on'); loadProviders(); };
 $('modal').onclick=e=>{ if(e.target.id==='modal') $('modal').classList.remove('on'); };
 function loadProviders(){ ws.send(JSON.stringify({type:'providers'})); }
