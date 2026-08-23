@@ -92,6 +92,11 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
 .msgbtn{border:none;background:rgba(11,107,58,.08);color:#0b6b3a;border-radius:6px;font-size:11px;padding:3px 10px;cursor:pointer}
 .msg.user .msgbtn{background:rgba(255,255,255,.25);color:#fff}
 .msg.info{background:#eef6f1;border-color:#cfe4d8;color:#2a4a3a;font-size:13.5px}
+.mdtab{border-collapse:collapse;margin:6px 0;font-size:13.5px}
+.mdtab th,.mdtab td{border:1px solid #d5e2da;padding:4px 10px}
+.mdtab th{background:#eef5f0}
+.mdcode{background:#f6f8f6;border:1px solid var(--line);border-radius:8px;padding:10px;font-family:Consolas,monospace;font-size:12px;overflow-x:auto;white-space:pre-wrap;margin:6px 0}
+.msg.agent code{background:#eef3ef;border-radius:4px;padding:1px 5px;font-size:13px}
 .dot{width:9px;height:9px;border-radius:50%;background:#ff6b6b;display:inline-block}
 .dot.ok{background:#7dff9e}
 </style>
@@ -103,6 +108,7 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
   <div id="sessions"></div>
   <footer>
     <button class="icobtn" id="refresh-sessions" title="刷新会话列表">⟳</button>
+    <button class="icobtn" id="open-artifacts" title="文件（它做出来的东西）">📎</button>
     <button class="icobtn" id="open-skills" title="技能">🧩</button>
     <button class="icobtn" id="open-settings" title="设置">⚙️</button>
     <span style="font-size:11px;color:var(--mut);align-self:center" id="version"></span>
@@ -132,6 +138,12 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
     <button id="stop">停止</button>
   </div>
 </div>
+<div id="art-modal" class="modal-bg"><div class="panel-box">
+  <h3>📎 文件（它做出来的东西）</h3>
+  <div class="fnote" style="margin-bottom:10px">它生成的图片、报表、文档都存在这里。点开预览，右键/长按可另存。</div>
+  <div id="art-list"></div>
+</div></div>
+<div id="slash-menu" style="display:none;position:absolute;bottom:64px;left:18px;right:18px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.14);z-index:40;max-height:250px;overflow-y:auto"></div>
 <div id="skills-modal" class="modal-bg"><div class="panel-box">
   <h3>🧩 小 forge 的技能（它学会的本领）</h3>
   <div class="fnote" style="margin-bottom:10px">这些是它积累的操作手册。聊天时说相关的活儿它就会自动用；也可以点「让它现在用」。</div>
@@ -244,9 +256,9 @@ function renderSessions(list){
     const del=document.createElement('button'); del.className='sdel'; del.textContent='✕'; del.title='删除这个对话';
     del.onclick=(e)=>{ e.stopPropagation();
       if(confirm('删除对话「'+(s.title||'未命名')+'」？删除后找不回来。')){
-        ws.send(JSON.stringify({type:'rpc',method:'session/close',params:{sessionId:s.sessionId}}));
+        ws.send(JSON.stringify({type:'delete_session',sessionId:s.sessionId}));
         if(currentSid===s.sessionId){ currentSid=null; sessionId=null; chat.innerHTML=''; }
-        setTimeout(loadSessions,600);
+        setTimeout(loadSessions,800);
       }
     };
     el.appendChild(del);
@@ -322,6 +334,55 @@ document.addEventListener('click',e=>{ if(!e.target.closest('#model-pick')) $('m
 function setBusy(b){ busy=b; typing.style.display=b?'block':'none'; send.disabled=b; stopBtn.style.display=b?'inline-block':'none'; }
 function addErr(t){ const el=document.createElement('div'); el.className='msg agent'; el.textContent='⚠ '+t; chat.appendChild(el); chat.scrollTop=chat.scrollHeight; }
 function addInfo(t){ const el=document.createElement('div'); el.className='msg agent info'; el.textContent=t; chat.appendChild(el); chat.scrollTop=chat.scrollHeight; }
+function mdRender(raw){
+  let h = raw.split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;');
+  const NLCH = String.fromCharCode(10);
+  const parts = h.split('```');
+  for (let i = 1; i < parts.length; i += 2) {
+    const c = parts[i];
+    const nlPos = c.indexOf(NLCH);
+    parts[i] = '<pre class=\"mdcode\">' + (nlPos >= 0 ? c.slice(nlPos + 1) : c) + '</pre>';
+  }
+  h = parts.join('');
+  h = h.split('**').join('</b>').split('</b>').map(function(x, i2){ return i2 % 2 ? '</b>' + x : x; }).join('');
+  const lines = h.split(NLCH);
+  const out = [];
+  let tableBuf = [];
+  function flushTable(){
+    if (!tableBuf.length) return;
+    const rows = tableBuf.map(r => r.split('|').slice(1, -1).map(c => c.trim()));
+    tableBuf = [];
+    if (rows.length < 2) { out.push.apply(out, arguments); return; }
+    const isSep = rows[1].every(c => c.replace(/[:-]/g, '') === '');
+    if (!isSep) { out.push.apply(out, arguments2); return; }
+    let t = '<table class=\"mdtab\"><thead><tr>';
+    for (const c of rows[0]) t += '<th>' + c + '</th>';
+    t += '</tr></thead><tbody>';
+    for (const r of rows.slice(2)) { t += '<tr>'; for (const c of r) t += '<td>' + c + '</td>'; t += '</tr>'; }
+    t += '</tbody></table>';
+    out.push(t);
+  }
+  let rawLines = [];
+  for (const ln of lines) rawLines.push(ln);
+  const kept = [];
+  for (const ln of rawLines) {
+    if (ln.trim().startsWith('|') && ln.trim().endsWith('|')) tableBuf.push(ln.trim());
+    else { flushTable2(kept, tableBuf); kept.push(ln.startsWith('- ') || ln.startsWith('* ') ? '&bull; ' + ln.slice(2) : ln); }
+  }
+  flushTable2(kept, tableBuf);
+  return kept.join('<br>');
+}
+function flushTable2(out, bufRef){
+  if (!bufRef.length) return;
+  const rows = bufRef.map(r => r.split('|').slice(1, -1).map(c => c.trim()));
+  bufRef.length = 0;
+  if (rows.length < 2 || !rows[1].every(c => c.replace(/[:-]/g, '') === '')) { out.push(rows.join ? rows.map(r=>r.join(' ')).join('<br>') : String(rows)); return; }
+  let t = '<table class=\"mdtab\"><thead><tr>';
+  for (const c of rows[0]) t += '<th>' + c + '</th>';
+  t += '</tr></thead><tbody>';
+  for (const r of rows.slice(2)) { t += '<tr>'; for (const c of r) t += '<td>' + c + '</td>'; t += '</tr>'; }
+  out.push(t + '</tbody></table>');
+}
 function addMsg(text,who){
   typing.style.display='none';
   if(who==='agent'&&streamEl&&streamEl.dataset.live==='1'){ streamEl.textContent+=text; }
@@ -332,7 +393,13 @@ function addMsg(text,who){
   }
   chat.scrollTop=chat.scrollHeight;
 }
-function endStream(){ if(streamEl){ streamEl.dataset.live='0'; if(!streamEl.querySelector('.mbar')) streamEl.appendChild(msgButtons()); streamEl=null; } }
+function endStream(){ if(streamEl){
+  streamEl.dataset.live='0';
+  const txt = streamEl.textContent;
+  streamEl.innerHTML = mdRender(txt);
+  if(!streamEl.querySelector('.mbar')) streamEl.appendChild(msgButtons());
+  streamEl=null;
+} }
 function toolCard(upd){
   const id=upd.toolCallId;
   let card=toolCards.get(id);
@@ -573,6 +640,59 @@ function msgButtons(){
   }
   return bar;
 }
+
+$('open-artifacts').onclick=async()=>{
+  $('art-modal').classList.add('on');
+  try{
+    const r=await fetch('/api/artifacts'); const list=await r.json();
+    const box=$('art-list'); box.innerHTML='';
+    if(!list.length){ box.innerHTML='<div class="fnote">还没有文件。让它做报表/截图/文档后会出现在这里。</div>'; return; }
+    for(const a of list){
+      const el=document.createElement('div'); el.className='skill';
+      el.innerHTML='<div class="nm">'+a.name+' <span style="font-weight:normal;color:var(--mut);font-size:11px">'+(a.size>1048576?(a.size/1048576).toFixed(1)+'MB':Math.round(a.size/1024)+'KB')+'</span></div>';
+      el.style.cursor='pointer';
+      const ops=document.createElement('div'); ops.className='ops'; ops.style.cssText='display:flex;gap:8px;margin-top:6px';
+      const pv=document.createElement('button'); pv.className='mini'; pv.textContent='预览';
+      pv.onclick=e=>{ e.stopPropagation(); window.open('/preview/'+encodeURIComponent(a.name),'_blank'); };
+      const op=document.createElement('button'); op.className='mini'; op.textContent='本机打开';
+      op.onclick=e=>{ e.stopPropagation(); fetch('/open/'+encodeURIComponent(a.name)); op.textContent='已请求打开'; };
+      ops.appendChild(pv); ops.appendChild(op); el.appendChild(ops);
+      el.onclick=()=>window.open('/preview/'+encodeURIComponent(a.name),'_blank');
+      box.appendChild(el);
+    }
+  }catch(e){ $('art-list').innerHTML='<div class="fnote">读取失败：'+e.message+'</div>'; }
+};
+$('art-modal').onclick=e=>{ if(e.target.id==='art-modal') e.target.classList.remove('on'); };
+
+// 斜杠命令（小白入口：输入 / 弹出能做的事）
+const SLASH=[
+  {cmd:'/新对话', desc:'开始一个新对话', run:()=>subscribe(null)},
+  {cmd:'/技能', desc:'看它学会的本领', run:()=>$('open-skills').click()},
+  {cmd:'/文件', desc:'看它做出来的文件', run:()=>$('open-artifacts').click()},
+  {cmd:'/设置', desc:'服务商连接与模型', run:()=>$('open-settings').click()},
+  {cmd:'/体检', desc:'给它做全身检查', run:()=>{$('txt').value='做个体检'; submit();}},
+  {cmd:'/导出', desc:'把这段对话存成文本', run:()=>exportChat()},
+  {cmd:'/停止', desc:'停下手里的活', run:()=>ws.send(JSON.stringify({type:'cancel'}))},
+];
+txt.addEventListener('input',()=>{
+  const v=txt.value;
+  if(v.startsWith('/')){
+    const q=v.slice(1).toLowerCase();
+    const hits=SLASH.filter(c=>c.cmd.slice(1).startsWith(q)||c.desc.includes(q));
+    const menu=$('slash-menu');
+    menu.innerHTML='';
+    for(const c of (hits.length?hits:SLASH)){
+      const el=document.createElement('div'); el.className='mi'; el.style.padding='9px 14px';
+      el.innerHTML='<b>'+c.cmd+'</b> <span style="color:var(--mut);font-size:12px">'+c.desc+'</span>';
+      el.onclick=()=>{ txt.value=''; menu.style.display='none'; c.run(); };
+      menu.appendChild(el);
+    }
+    menu.style.display='block';
+  } else $('slash-menu').style.display='none';
+});
+txt.addEventListener('keydown',e=>{
+  if(e.key==='Escape') $('slash-menu').style.display='none';
+});
 
 connect();
 </script>

@@ -174,6 +174,64 @@ const server = http.createServer((req, res) => {
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(out));
     }
+    else if (url.startsWith('/vendor/')) {
+        const name = decodeURIComponent(url.slice('/vendor/'.length));
+        if (name.includes('..')) { res.writeHead(400); res.end(); return; }
+        const f = path.join(ROOT, 'conf', 'web-assets', 'vendor', name);
+        require('fs').readFile(f, (e, buf) => {
+            if (e) { res.writeHead(404); res.end(); return; }
+            res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'max-age=86400' });
+            res.end(buf);
+        });
+    }
+    else if (url.startsWith('/preview/')) {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.end(require('fs').readFileSync(path.join(ROOT, 'conf', 'web-assets', 'preview.html')));
+    }
+    else if (url.startsWith('/vendor/')) {
+        const name = decodeURIComponent(url.slice('/vendor/'.length));
+        if (name.includes('..')) { res.writeHead(400); res.end(); return; }
+        const f = path.join(ROOT, 'conf', 'web-assets', 'vendor', name);
+        require('fs').readFile(f, (e, buf) => {
+            if (e) { res.writeHead(404); res.end(); return; }
+            res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'max-age=86400' });
+            res.end(buf);
+        });
+    }
+    else if (url.startsWith('/preview/')) {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.end(require('fs').readFileSync(path.join(ROOT, 'conf', 'web-assets', 'preview.html')));
+    }
+    else if (url.startsWith('/open/')) {
+        // 用系统默认程序打开本地文件（cmd start）
+        const name = decodeURIComponent(url.slice('/open/'.length));
+        if (name.includes('..')) { res.writeHead(400); res.end(); return; }
+        const f = path.join(ROOT, 'data', 'artifacts', name);
+        if (!require('fs').existsSync(f)) { res.writeHead(404); res.end(JSON.stringify({ok:false, err:'not found'})); return; }
+        require('child_process').exec('start "" "' + f + '"', { shell: 'cmd.exe' }, () => {});
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ok:true}));
+    }
+    else if (url.startsWith('/artifact/')) {
+        // 制品服务：/artifact/<文件名> -> data/artifacts/<文件名>（禁止路径穿越）
+        const name = decodeURIComponent(url.slice('/artifact/'.length)).split(String.fromCharCode(92)).join('/');
+        if (name.includes('..') || name.includes(':')) { res.writeHead(400); res.end(); return; }
+        const f = path.join(ROOT, 'data', 'artifacts', name);
+        require('fs').readFile(f, (e, buf) => {
+            if (e) { res.writeHead(404); res.end(); return; }
+            const ext = path.extname(f).toLowerCase();
+            const mime = { '.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.svg':'image/svg+xml','.pdf':'application/pdf','.md':'text/markdown; charset=utf-8','.txt':'text/plain; charset=utf-8','.html':'text/html; charset=utf-8','.json':'application/json','.csv':'text/csv; charset=utf-8' }[ext] || 'application/octet-stream';
+            res.writeHead(200, { 'content-type': mime, 'cache-control': 'no-cache' });
+            res.end(buf);
+        });
+    }
+    else if (url === '/api/artifacts') {
+        const dir = path.join(ROOT, 'data', 'artifacts');
+        let list = [];
+        try { list = require('fs').readdirSync(dir).filter(f => !f.startsWith('.')).map(f => ({ name: f, size: require('fs').statSync(path.join(dir, f)).size })).sort((a,b) => b.name.localeCompare(a.name)).slice(0, 100); } catch {}
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(list));
+    }
     else { res.writeHead(404); res.end(); }
 });
 
@@ -278,6 +336,20 @@ function handleClient(ws, msg) {
         if (msg.type === 'cancel') {
             const sid = wsSession.get(ws);
             if (sid) acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'session/cancel', params: { sessionId: sid } }) + '\n');
+            return;
+        }
+
+        if (msg.type === 'delete_session') {
+            // ACP session/close 不删记录；硬删 sessions.db（messages + sessions 行）
+            try {
+                const { DatabaseSync } = require('node:sqlite');
+                const db = new DatabaseSync(path.join(ROOT, 'conf', 'goose', 'data', 'sessions', 'sessions.db'));
+                const m = db.prepare('DELETE FROM messages WHERE session_id = ?').run(msg.sessionId);
+                const r = db.prepare('DELETE FROM sessions WHERE id = ?').run(msg.sessionId);
+                db.close();
+                console.log('session deleted', msg.sessionId, 'messages:', m.changes, 'row:', r.changes);
+                ws.send({ sys: 'session_deleted', sessionId: msg.sessionId, ok: r.changes > 0 });
+            } catch (e) { ws.send({ sys: 'error', text: '删除失败: ' + e.message }); }
             return;
         }
 
