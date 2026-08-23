@@ -150,16 +150,23 @@ const server = http.createServer((req, res) => {
                     try {
                         const raw = require('fs').readFileSync(f, 'utf8');
                         const nl = String.fromCharCode(10);
-                        const fm = raw.split(nl + '---' + nl);
-                        let meta = {};
-                        if (fm.length >= 3) {
-                            for (const line of fm[1].split(nl)) {
-                                const mm = line.match(/^([a-zA-Z_]+):\s*(.+)$/);
-                                if (mm) meta[mm[1]] = mm[2];
-                            }
+                        const lines = raw.split(nl);
+                        let meta = {}; const bodyLines = [];
+                        let inFm = false, fmDone = false, fmMulti = null;
+                        for (const line of lines) {
+                            if (!fmDone && line.trim() === '---') { if (inFm) { fmDone = true; continue; } inFm = true; continue; }
+                            if (inFm && !fmDone) {
+                                const mm = line.match(/^([a-zA-Z_]+):\s*(.*)$/);
+                                if (mm) {
+                                    if (mm[2] === '|' || mm[2] === '>') { fmMulti = mm[1]; continue; }
+                                    meta[mm[1]] = mm[2];
+                                } else if (fmMulti && /^\s+\S/.test(line)) {
+                                    meta[fmMulti] = (meta[fmMulti] ? meta[fmMulti] + ' ' : '') + line.trim();
+                                } else { fmMulti = null; }
+                            } else if (fmDone) bodyLines.push(line);
                         }
-                        const body = (fm.length >= 3 ? fm.slice(2).join(nl + '---' + nl) : raw).trim();
-                        out.push({ name: ent.name, description: meta.description || '', body: body.slice(0, 4000), path: f });
+                        const body = bodyLines.join(nl).trim();
+                        out.push({ name: ent.name, description: (meta.description || '').replace(/^['\"]|['\"]$/g, ''), body: body.slice(0, 4000), path: f });
                     } catch {}
                 }
             } catch {}

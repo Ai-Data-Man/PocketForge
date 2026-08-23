@@ -195,6 +195,9 @@ function connect(){
     if(m.sys==='test_result'){ note(m.ok?('✅ 连通 OK（HTTP '+m.http+'）回复: '+m.reply):('❌ 失败 HTTP '+m.http+' '+m.reply)); return; }
     if(m.sys==='providers'){ providerList=m.list||[]; renderProviders(providerList); renderModelLabel(); return; }
     if(m.sys==='model_switched'){
+      // 顶栏立即反映（不信 configOptions 缓存）
+      $('model-cur').textContent=m.provider+' · '+m.model;
+      lastKnownModel=m.model;
       if(m.restarted){ addInfo('✅ 已切到 '+m.provider+' · '+m.model+'。刚才的对话要先重新打开：点左侧列表里的那个对话即可继续（内容都在）。'); loadSessions(); }
       else addInfo('✅ 已切到 '+m.provider+' · '+m.model+'，直接继续说话就行。');
       return;
@@ -219,7 +222,12 @@ function onRpc(d){
   if(keys.length){ const k=keys[0]; const f=pendingMap.get(k); pendingMap.delete(k); f(d); }
   // load/set_config 响应都带 configOptions -> 刷新顶栏
   const r=d.result;
-  if(r&&r.configOptions){ configOptions=r.configOptions; if(r.modes){ const cur=r.modes.currentModeId; if(cur)$('mode').value=cur; } renderModelLabel(); }
+  if(r&&r.configOptions){
+    configOptions=r.configOptions;
+    if(!lastKnownModel){ const m0=r.configOptions.find(o=>o.id==='model'); if(m0&&m0.currentValue) lastKnownModel=m0.currentValue; }
+    if(r.modes){ const cur=r.modes.currentModeId; if(cur)$('mode').value=cur; }
+    renderModelLabel();
+  }
 }
 function loadSessions(){ rpc2('session/list').then(d=>{ const s=(d.result&&d.result.sessions)||[]; renderSessions(s); }).catch(()=>{}); }
 let currentSid=null;
@@ -255,11 +263,13 @@ function openSession(sid){
   [...document.querySelectorAll('.sitem')].forEach(el=>el.classList.remove('active'));
   rpc2('session/load',{sessionId:sid,cwd:window.__root||'.',mcpServers:[]}).catch(()=>addErr('打开会话失败'));
 }
+let lastKnownModel=null;
 function renderModelLabel(){
   try{
     const cur=configOptions.find(o=>o.id==='model');
     const act=(providerList.find(p=>p.active)||{});
-    $('model-cur').textContent=(act.name?act.name+' · ':'')+(cur&&cur.currentValue||'未设置');
+    const model=lastKnownModel||(cur&&cur.currentValue)||'未设置';
+    $('model-cur').textContent=(act.name?act.name+' · ':'')+model;
     buildModelItems();
   }catch{}
 }
@@ -504,7 +514,10 @@ $('fetch-models').onclick=()=>{
 };
 let pendingFetchHost=null;
 $('test-model').onclick=()=>{ note('测试中…');
-  ws.send(JSON.stringify({type:'test_model',host:$('cfg-host').value.trim(),key:$('cfg-key').value.trim(),model:$('cfg-model').value.trim()})); };
+  const pr=providerList.find(x=>x.name===curProvName);
+  const model=(pr&&pr.models&&pr.models[0])||lastKnownModel||'';
+  if(!model){ note('这家还没勾任何模型；也可以先测试连通（用默认模型）'); }
+  ws.send(JSON.stringify({type:'test_model',host:$('cfg-host').value.trim(),key:$('cfg-key').value.trim(),model})); };
 $('save-cfg').onclick=()=>{
   const host=$('cfg-host').value.trim();
   if(!host) return note('接口地址必填');
