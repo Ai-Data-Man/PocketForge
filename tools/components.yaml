@@ -33,3 +33,10 @@ components:
     asset: goose-x86_64-pc-windows-msvc.zip
     license: Apache-2.0
     url: https://github.com/aaif-goose/goose/releases/download/v1.46.0/goose-x86_64-pc-windows-msvc.zip
+  # P28: npm 型组件（非 release zip；由 forge/bin/vendor/artifact-vcs/package.json 锁定版本，npm --omit=dev 安装）
+  - name: isomorphic-git
+    version: 1.41.9
+    repo: isomorphic-git/isomorphic-git
+    asset: npm tarball (vendored in bin/vendor/artifact-vcs/node_modules)
+    license: MIT
+    url: https://registry.npmjs.org/isomorphic-git/-/isomorphic-git-1.41.9.tgz

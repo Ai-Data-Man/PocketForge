@@ -34,6 +34,7 @@ declare -A SRC=(
  [goose.Apache-2.0]="https://raw.githubusercontent.com/aaif-goose/goose/main/LICENSE"
  [node.MIT]="https://raw.githubusercontent.com/nodejs/node/main/LICENSE"
  [playwright-mcp.Apache-2.0]="$FORGE/bin/pw-mcp/node_modules/@playwright/mcp/LICENSE"
+ [isomorphic-git.MIT]="$FORGE/bin/vendor/artifact-vcs/node_modules/isomorphic-git/LICENSE.md"
 )
 MISS=0
 for name in "${!SRC[@]}"; do
