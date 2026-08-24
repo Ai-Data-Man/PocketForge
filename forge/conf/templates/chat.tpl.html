@@ -74,7 +74,7 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
 .st.err{color:#b00020;font-weight:bold}
 .typing{align-self:flex-start;color:var(--mut);font-size:13px;padding:2px 15px}
 /* input */
-#inputbar{display:flex;gap:9px;padding:13px 18px;background:#fff;border-top:1px solid var(--line)}
+#inputbar{position:relative;display:flex;gap:9px;padding:13px 18px;background:#fff;border-top:1px solid var(--line)}
 #txt{flex:1;font-size:16px;padding:11px 13px;border:2px solid var(--line);border-radius:11px;outline:none;font-family:inherit}
 #txt:focus{border-color:var(--g)}
 #send{font-size:16px;padding:11px 22px;background:var(--g);color:#fff;border:none;border-radius:11px;cursor:pointer}
@@ -117,6 +117,15 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
 .msg.agent code{background:#eef3ef;border-radius:4px;padding:1px 5px;font-size:13px}
 .dot{width:9px;height:9px;border-radius:50%;background:#ff6b6b;display:inline-block}
 .dot.ok{background:#7dff9e}
+.expl{white-space:pre-wrap;font-family:"Microsoft YaHei",system-ui,sans-serif;color:#2a4a3a;background:#eef6f1;border-radius:8px;padding:8px 10px;margin-top:8px;font-size:12.5px;line-height:1.6}
+.expbtn{margin-left:6px}
+.vbtn{border:none;background:none;cursor:pointer;font-size:12px;padding:2px 4px;border-radius:5px;flex-shrink:0}
+.vbtn:hover{background:#e2efe7}
+.vlist{border-top:1px dashed var(--line);margin:4px 0 6px;padding:4px 6px;background:#fafcfb;border-radius:7px}
+.vitem{display:flex;align-items:center;gap:6px;font-size:11.5px;padding:3px 0;color:var(--tx)}
+.vitem .vt{color:var(--mut);flex-shrink:0}
+.vitem .vm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vitem button{border:none;background:rgba(11,107,58,.08);color:#0b6b3a;border-radius:5px;font-size:10.5px;padding:2px 7px;cursor:pointer;flex-shrink:0}
 </style>
 </head>
 <body>
@@ -124,7 +133,6 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
   <header><span class="dot" id="status"></span>小 forge</header>
   <button id="newchat">＋ 新对话</button>
   <div id="side-label-sess" style="padding:2px 14px;font-size:11px;color:var(--mut)">对话</div>
-  <div id="sessions"></div>
   <div id="sessions"></div>
   <footer>
     <button class="icobtn" id="refresh-sessions" title="刷新会话列表">⟳</button>
@@ -160,7 +168,12 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
   </div>
 </div>
 <div id="rside">
-  <header>📁 工作区<button class="icobtn" id="rside-close">✕</button></header>
+  <header>📁 工作区<button class="icobtn" id="ws-refresh" title="刷新">⟳</button><button class="icobtn" id="rside-close">✕</button></header>
+  <div style="padding:0 10px 6px">
+    <select id="ws-pick" style="width:100%;box-sizing:border-box;padding:7px 8px;border:1px solid var(--line);border-radius:8px;font-size:12.5px;font-family:inherit;background:#fff"></select>
+    <div class="fnote" id="ws-meta" style="margin-top:4px"></div>
+    <button class="mini" id="ws-introduce" style="display:none;width:100%;margin-top:4px;color:#0b6b3a;font-weight:bold">📥 把这个工作区引进当前对话</button>
+  </div>
   <div class="toolbar">
     <button class="mini" id="up-btn2">⬆ 上传文件</button>
     <button class="mini" id="link-btn">🔗 外部目录</button>
@@ -202,11 +215,15 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
   <div class="fnote" id="save-note" style="margin-top:10px"></div>
 </div></div>
 <script>
+// 顶层防崩：任何一处初始化异常不允许杀死整页 JS（s12 ClipboardItem、s13 up-btn 两次教训）
+window.__pfErrors=[]; window.onerror=function(m,s,l,c,e){ __pfErrors.push(String(m)+' @行'+l); return false; };
 window.__root = '__FORGE_ROOT__';
 const $=id=>document.getElementById(id);
 const chat=$('chat'),txt=$('txt'),send=$('send'),stopBtn=$('stop'),typing=$('typing'),status=$('status');
 let ws, sessionId=null, busy=false, modes=[], configOptions=[];
 let streamEl=null, toolCards=new Map();
+let curWs=null, wsList=[]; // 每个对话一个制品工作区（ADR-0007）
+connect(); // WebSocket 先建立：后面的初始化代码崩了也不影响通信主链路
 
 function connect(){
   ws=new WebSocket('ws://'+location.host);
@@ -216,14 +233,15 @@ function connect(){
     const m=JSON.parse(e.data);
     if(m.sys==='subscribed'){
       sessionId=m.sessionId; currentSid=m.sessionId;
-      if(pendingSwitch){ const v=pendingSwitch; pendingSwitch=null; setTimeout(()=>ws.send(JSON.stringify({type:'switch_model',model:v})),800); }
+      if(pendingSwitch){ const v=pendingSwitch; pendingSwitch=null; setTimeout(()=>wssend({type:'switch_model',model:v}),800); }
       document.querySelectorAll('.sitem').forEach(el=>el.classList.toggle('active', el.dataset.sid===m.sessionId));
       modes=(m.modes&&m.modes.availableModes)||[]; configOptions=m.configOptions||[];
     let cur=(m.modes&&m.modes.currentModeId); const saved=localStorage.getItem('pf_mode');
     if(saved&&cur&&saved!==cur){ rpc2('session/set_mode',{sessionId:m.sessionId,modeId:saved}); cur=saved; }
     if(cur)$('mode').value=cur;
-    renderModelLabel();
+      renderModelLabel();
       markActiveSession();
+      ensureWs();
       return;
     }
     if(m.sys==='error'){ addErr(m.text+(m.text.includes('可选池')?'。到 ⚙️ 设置里勾选它，或换顶栏列表里有的模型。':'')); setBusy(false); return; }
@@ -247,16 +265,24 @@ function connect(){
     if(m.sys==='provider_switching'){ addInfo('正在切换到「'+m.to+'」…大约 5 秒，稍等提示。'); return; }
     if(m.sys==='provider_switched'){ addInfo('✅ 已切到 '+m.provider+'（默认模型 '+m.model+'）。'); loadSessions(); return; }
     if(m.sys==='saved_config'){ note('已保存'); return; }
+    if(m.sys==='tool_explanation'){
+      const card=toolCards.get(m.id); if(!card) return;
+      let d=card.querySelector('.expl');
+      if(!d){ d=document.createElement('div'); d.className='expl'; card.querySelector('.body').appendChild(d); }
+      d.textContent='💡 '+m.text;
+      card.open=true;
+      const b=card.querySelector('.expbtn'); if(b){ b.disabled=false; b.textContent='这是干啥？'; }
+      return;
+    }
     if(m.rpc){ onRpc(m.rpc); return; }
     if(m.agent){ onAgentEvent(m.agent); }
   };
 }
-function rpc(method, params){ ws.send(JSON.stringify({type:'rpc',method,params:params||{}})); return new Promise(res=>{ const h=e=>{ const d=JSON.parse(e.data); if(d.rpc&&d.rpc.id===pending); }; /* responses come via rpc tag; poll map */ pendingMap.set(pendingId, res); }); }
 let pendingId=1; const pendingMap=new Map();
-const _origSend=()=>{};
+function wssend(o){ if(ws&&ws.readyState===1){ ws.send(JSON.stringify(o)); return true; } addInfo('服务还没连上，正在自动重连，几秒后再试。'); return false; }
 function rpc2(method, params){
   const id=++pendingId;
-  ws.send(JSON.stringify({type:'rpc',method,params:Object.assign({__cid:id},params||{})}));
+  wssend({type:'rpc',method,params:Object.assign({__cid:id},params||{})});
   return new Promise(res=>pendingMap.set(id,res));
 }
 function onRpc(d){
@@ -285,7 +311,7 @@ function renderSessions(list){
     const del=document.createElement('button'); del.className='sdel'; del.textContent='✕'; del.title='删除这个对话';
     del.onclick=(e)=>{ e.stopPropagation();
       if(confirm('删除对话「'+(s.title||'未命名')+'」？删除后找不回来。')){
-        ws.send(JSON.stringify({type:'delete_session',sessionId:s.sessionId}));
+        wssend({type:'delete_session',sessionId:s.sessionId});
         if(currentSid===s.sessionId){ currentSid=null; sessionId=null; chat.innerHTML=''; }
         setTimeout(loadSessions,800);
       }
@@ -295,11 +321,11 @@ function renderSessions(list){
   }
 }
 function markActiveSession(){ /* 保留列表不动，仅由 currentSid 驱动高亮 */ }
-function subscribe(sid){ ws.send(JSON.stringify({type:'subscribe',sessionId:sid})); chat.innerHTML=''; toolCards.clear(); if(!sid) addMsg('你好！我是小 forge。想做什么直接打字告诉我。','agent'); }
+function subscribe(sid){ wssend({type:'subscribe',sessionId:sid}); chat.innerHTML=''; toolCards.clear(); if(!sid) addMsg('你好！我是小 forge。想做什么直接打字告诉我。','agent'); }
 function openSession(sid){
   if(busy){ addErr('它正在干活，等一下或先停止。'); return; }
   // 先订阅再载入：load 的历史回放通知才能流进 UI
-  ws.send(JSON.stringify({type:'subscribe',sessionId:sid}));
+  wssend({type:'subscribe',sessionId:sid});
   chat.innerHTML=''; toolCards.clear();
   currentSid=sid; sessionId=sid;
   [...document.querySelectorAll('.sitem')].forEach(el=>el.classList.remove('active'));
@@ -348,10 +374,10 @@ function switchModel(v){
     return;
   }
   addInfo('正在切换到 '+v+' …');
-  ws.send(JSON.stringify({type:'switch_model',model:v}));
+  wssend({type:'switch_model',model:v});
 }
 let pendingSwitch=null;
-function loadProvidersUI(){ ws.send(JSON.stringify({type:'providers'})); }
+function loadProvidersUI(){ wssend({type:'providers'}); }
 $('model-pick').onclick=e=>{
   const pk=$('model-pick');
   if(e.target.id==='model-search') return;
@@ -375,26 +401,9 @@ function mdRender(raw){
   h = parts.join('');
   h = h.split('**').join('</b>').split('</b>').map(function(x, i2){ return i2 % 2 ? '</b>' + x : x; }).join('');
   const lines = h.split(NLCH);
-  const out = [];
   let tableBuf = [];
-  function flushTable(){
-    if (!tableBuf.length) return;
-    const rows = tableBuf.map(r => r.split('|').slice(1, -1).map(c => c.trim()));
-    tableBuf = [];
-    if (rows.length < 2) { out.push.apply(out, arguments); return; }
-    const isSep = rows[1].every(c => c.replace(/[:-]/g, '') === '');
-    if (!isSep) { out.push.apply(out, arguments2); return; }
-    let t = '<table class=\"mdtab\"><thead><tr>';
-    for (const c of rows[0]) t += '<th>' + c + '</th>';
-    t += '</tr></thead><tbody>';
-    for (const r of rows.slice(2)) { t += '<tr>'; for (const c of r) t += '<td>' + c + '</td>'; t += '</tr>'; }
-    t += '</tbody></table>';
-    out.push(t);
-  }
-  let rawLines = [];
-  for (const ln of lines) rawLines.push(ln);
   const kept = [];
-  for (const ln of rawLines) {
+  for (const ln of lines) {
     if (ln.trim().startsWith('|') && ln.trim().endsWith('|')) tableBuf.push(ln.trim());
     else { flushTable2(kept, tableBuf); kept.push(ln.startsWith('- ') || ln.startsWith('* ') ? '&bull; ' + ln.slice(2) : ln); }
   }
@@ -442,11 +451,23 @@ function toolCard(upd){
   if(upd.title) ttl.textContent=upd.title;
   const raw=upd.content&&upd.content.raw;
   if(raw){ try{ body.textContent+= (typeof raw==='string'? raw : JSON.stringify(raw,null,1)); }catch{} }
-  if(upd.toolCallUpdate){
-    const s=upd.toolCallUpdate.status;
-    st.className='st '+(s==='completed'?'done':s==='failed'?'err':'');
-    st.textContent=s==='completed'?'完成':s==='failed'?'失败':(s||'');
-    if(s==='completed'||s==='in_progress') endStream();
+  // ACP 两种形态都可能出现：tool_call 自带最终 status，或 tool_call_update 增量
+  const st8=(upd.toolCallUpdate&&upd.toolCallUpdate.status)||upd.status;
+  if(st8){
+    st.className='st '+(st8==='completed'?'done':st8==='failed'?'err':'');
+    st.textContent=st8==='completed'?'完成':st8==='failed'?'失败':(st8||'');
+    if(st8==='completed'||st8==='in_progress') endStream();
+    // 完成后给小白一个"看懂它干了啥"的入口：按当前会话模型解释这次工具调用
+    if((st8==='completed'||st8==='failed')&&!card.querySelector('.expbtn')){
+      const b=document.createElement('button'); b.className='msgbtn expbtn'; b.textContent='这是干啥？';
+      b.title='让小 forge 用大白话解释这一步';
+      b.onclick=()=>{
+        b.disabled=true; b.textContent='想想…';
+        wssend({type:'explain_tool', id, title:ttl.textContent, content:(body.textContent||'').slice(-1500), model:lastKnownModel});
+        setTimeout(()=>{ b.disabled=false; b.textContent='这是干啥？'; },15000);
+      };
+      card.querySelector('summary').appendChild(b);
+    }
   }
   chat.scrollTop=chat.scrollHeight;
 }
@@ -464,7 +485,7 @@ function onAgentEvent(p){
   if(p.method==='session/request_permission'){
     const opts=p.params.options||[];
     addErr('（需要确认：'+opts.map(o=>o.name).join(' / ')+'，已自动选择第一项）');
-    ws.send(JSON.stringify({type:'acp_reply',callId:p.id,option:opts[0]&&opts[0].optionId}));
+    wssend({type:'acp_reply',callId:p.id,option:opts[0]&&opts[0].optionId});
     return;
   }
   if(p.method==='stop'){ setBusy(false); endStream(); loadSessions(); }
@@ -474,11 +495,20 @@ function submit(){
   if(!sessionId){ addInfo('对话还没开好，1 秒后再发一次。'); return; }
   if(busy){ addInfo('它还在干活（可以点「停止」打断它，或者等它做完）。'); return; }
   addMsg(t,'user'); txt.value=''; setBusy(true);
-  ws.send(JSON.stringify({type:'prompt',text:t}));
+  wssend({type:'prompt',text:t});
 }
 send.onclick=submit;
-txt.onkeydown=e=>{ if(e.key==='Enter'&&!e.isComposing)submit(); };
-stopBtn.onclick=()=>{ ws.send(JSON.stringify({type:'cancel'})); setBusy(false); };
+txt.onkeydown=e=>{
+  if(e.key==='Enter'&&!e.isComposing){
+    // slash 菜单开着时，Enter = 执行第一个匹配项，而不是把 "/xx" 发给员工
+    const menu=$('slash-menu');
+    if(txt.value.startsWith('/')&&menu.style.display==='block'&&slashCur.length){
+      e.preventDefault(); const c=slashCur[0]; txt.value=''; menu.style.display='none'; c.run(); return;
+    }
+    submit();
+  }
+};
+stopBtn.onclick=()=>{ wssend({type:'cancel'}); setBusy(false); };
 $('newchat').onclick=()=>subscribe(null);
 // 导出当前对话（小白：存成 txt 给别人看）
 window.exportChat=()=>{
@@ -516,7 +546,7 @@ $('modal').onclick=e=>{ if(e.target.id==='modal') $('modal').classList.remove('o
 $('prov-add').onclick=()=>{
   const name=$('prov-name').value.trim(); if(!name)return note('先填一个名字，比如 公司中转');
   curProvName=name;
-  ws.send(JSON.stringify({type:'providers',save:true,add:{name,host:$('cfg-host').value.trim(),models:[],key:$('cfg-key').value.trim()}}));
+  wssend({type:'providers',save:true,add:{name,host:$('cfg-host').value.trim(),models:[],key:$('cfg-key').value.trim()}});
   $('prov-name').value='';
   note('已新建「'+name+'」。填好地址和 Key 后点保存，再⟳拉取模型勾选。');
   setTimeout(loadProvidersUI,300);
@@ -530,9 +560,9 @@ function renderProviders(list){
     const el=document.createElement('div'); el.className='prov'+(pr.active?' active':'');
     el.innerHTML='<span class="nm">'+pr.name+'</span><span class="hd">'+((pr.models||[]).length+' 个模型 · '+(pr.hasKey?'🔑':'⚠无key'))+'</span>';
     const use=document.createElement('button'); use.textContent=pr.active?'✓使用中':'启用';
-    use.onclick=(e)=>{e.stopPropagation(); ws.send(JSON.stringify({type:'providers',save:true,activate:pr.name})); note('已切换到 '+pr.name); };
+    use.onclick=(e)=>{e.stopPropagation(); wssend({type:'providers',save:true,activate:pr.name}); note('已切换到 '+pr.name); };
     const del=document.createElement('button'); del.textContent='✕';
-    del.onclick=(e)=>{e.stopPropagation(); if(confirm('删除服务商「'+pr.name+'」？')) ws.send(JSON.stringify({type:'providers',save:true,remove:pr.name})); };
+    del.onclick=(e)=>{e.stopPropagation(); if(confirm('删除服务商「'+pr.name+'」？')) wssend({type:'providers',save:true,remove:pr.name}); };
     el.appendChild(use); el.appendChild(del);
     el.onclick=()=>{ selected=pr; fillProvForm(pr); renderModelPool(pr); };
     if(pr.active && !selected) selected=pr;
@@ -561,7 +591,7 @@ function renderFetchPool(){
       const cur=providerList.find(x=>x.name===curProvName);
       if(!cur)return;
       cur.models=cb.checked?[...new Set([...(cur.models||[]),m])]:(cur.models||[]).filter(x=>x!==m);
-      ws.send(JSON.stringify({type:'providers',save:true,update:{name:curProvName,models:cur.models}}));
+      wssend({type:'providers',save:true,update:{name:curProvName,models:cur.models}});
       box.firstChild.innerHTML='勾选进可选池（已勾 '+cur.models.length+' 个）：';
       note(cb.checked?('已加入 '+m):('已移除 '+m));
     };
@@ -581,7 +611,7 @@ function renderModelPool(pr){
       if(!cb.checked && curProvName){
         const upd=providerList.find(x=>x.name===curProvName);
         if(upd){ upd.models=upd.models.filter(x=>x!==m);
-          ws.send(JSON.stringify({type:'providers',save:true,update:{name:curProvName,models:upd.models}}));
+          wssend({type:'providers',save:true,update:{name:curProvName,models:upd.models}});
           note('已从可选池移除 '+m); }
       }
     };
@@ -597,7 +627,7 @@ function renderModelPool(pr){
       const v=document.getElementById('pool-add').value.trim(); if(!v||!curProvName)return;
       const upd=providerList.find(x=>x.name===curProvName);
       if(upd&&!upd.models.includes(v)){ upd.models.push(v);
-        ws.send(JSON.stringify({type:'providers',save:true,update:{name:curProvName,models:upd.models}}));
+        wssend({type:'providers',save:true,update:{name:curProvName,models:upd.models}});
         note('已加入 '+v); renderModelPool(upd); }
     };
   },0);
@@ -607,14 +637,14 @@ $('fetch-models').onclick=()=>{
   if(!host){ note('先填接口地址'); return; }
   note('拉取中…');
   pendingFetchHost=host;
-  ws.send(JSON.stringify({type:'list_models',host,key:$('cfg-key').value.trim()}));
+  wssend({type:'list_models',host,key:$('cfg-key').value.trim()});
 };
 let pendingFetchHost=null;
 $('test-model').onclick=()=>{ note('测试中…');
   const pr=providerList.find(x=>x.name===curProvName);
   const model=(pr&&pr.models&&pr.models[0])||lastKnownModel||'';
   if(!model){ note('这家还没勾任何模型；也可以先测试连通（用默认模型）'); }
-  ws.send(JSON.stringify({type:'test_model',host:$('cfg-host').value.trim(),key:$('cfg-key').value.trim(),model})); };
+  wssend({type:'test_model',host:$('cfg-host').value.trim(),key:$('cfg-key').value.trim(),model}); };
 $('save-cfg').onclick=()=>{
   const host=$('cfg-host').value.trim();
   if(!host) return note('接口地址必填');
@@ -625,7 +655,7 @@ $('save-cfg').onclick=()=>{
   const key=$('cfg-key').value.trim();
   const ex=providerList.find(x=>x.name===curProvName);
   const models=(ex&&ex.models)||[];
-  ws.send(JSON.stringify({type:'providers',save:true,update:{name,host,key:key||((ex&&ex.hasKey&&ex.key)||''),models}}));
+  wssend({type:'providers',save:true,update:{name,host,key:key||((ex&&ex.hasKey&&ex.key)||''),models}});
   curProvName=name; $('prov-name').value='';
   note('已保存「'+name+'」。Key 留空则沿用原值。');
   setTimeout(loadProvidersUI,300);
@@ -633,7 +663,8 @@ $('save-cfg').onclick=()=>{
 function note(t){ $('save-note').textContent=t; }
 let atItems=[];
 function renderAtMenu(q){
-  fetch('/api/artifacts').then(r=>r.json()).then(list=>{
+  if(!curWs) return;
+  fetch('/api/artifacts?ws='+encodeURIComponent(curWs)).then(r=>r.json()).then(list=>{
     atItems=list;
     const hits=list.filter(f=>f.name.toLowerCase().includes(q)).slice(0,12);
     const menu=$('at-menu');
@@ -641,10 +672,10 @@ function renderAtMenu(q){
       for(const f of hits){
         const el=document.createElement('div'); el.className='mi';
         el.innerHTML='<span>'+fileIcon(f.name)+'</span><b>'+f.name.split('/').pop()+'</b><span style="color:var(--mut);font-size:11px;margin-left:auto">'+f.name.split('/')[0]+'</span>';
-        el.onclick=()=>{ txt.value=txt.value.replace(/@[^@\s]*$/,'data/artifacts/'+f.name+' '); $('at-menu').style.display='none'; txt.focus(); };
+        el.onclick=()=>{ txt.value=txt.value.replace(/@[^@\s]*$/,'data/artifacts/'+curWs+'/'+f.name+' '); $('at-menu').style.display='none'; txt.focus(); };
         menu.appendChild(el);
       }
-      menu.style.display='block';
+      menu.style.display=hits.length?'block':'none';
     }
   });
 }
@@ -689,36 +720,53 @@ function msgButtons(){
 
 
 
-// 斜杠命令（小白入口：输入 / 弹出能做的事）
+// 斜杠命令（小白入口：输入 / 弹出能做的事；中文英文拼音首词都能搜到）
+let slashCur=[];
+let skillCmds=[]; // 技能动态并入 slash 菜单
+async function loadSkillCmds(){
+  try{
+    const r=await fetch('/api/skills'); const list=await r.json();
+    skillCmds=list.map(sk=>({cmd:'/技能·'+sk.name, alias:[sk.name], desc:(sk.description||'让它按学会的本领来做').slice(0,42), isSkill:true,
+      run:()=>{ $('txt').value='请按技能 '+sk.name+' 的流程来做'; submit(); }}));
+  }catch{}
+}
+loadSkillCmds();
 const SLASH=[
-  {cmd:'/新对话', desc:'开始一个新对话', run:()=>subscribe(null)},
-  {cmd:'/技能', desc:'看它学会的本领', run:()=>$('open-skills').click()},
-  {cmd:'/文件', desc:'打开工作区文件面板', run:()=>$('rside-toggle').click()},
-  {cmd:'/设置', desc:'服务商连接与模型', run:()=>$('open-settings').click()},
-  {cmd:'/体检', desc:'给它做全身检查', run:()=>{$('txt').value='做个体检'; submit();}},
-  {cmd:'/导出', desc:'把这段对话存成文本', run:()=>exportChat()},
-  {cmd:'/停止', desc:'停下手里的活', run:()=>ws.send(JSON.stringify({type:'cancel'}))},
+  {cmd:'/新对话', alias:['new','xin','开新'], desc:'开始一个新对话', run:()=>subscribe(null)},
+  {cmd:'/技能', alias:['skills','jineng'], desc:'看它学会的本领', run:()=>$('open-skills').click()},
+  {cmd:'/文件', alias:['files','wenjian','工作区'], desc:'打开工作区文件面板', run:()=>$('rside-toggle').click()},
+  {cmd:'/设置', alias:['settings','shezhi','服务商','模型'], desc:'服务商连接与模型', run:()=>$('open-settings').click()},
+  {cmd:'/体检', alias:['check','tijian','自检'], desc:'给它做全身检查', run:()=>{$('txt').value='做个体检'; submit();}},
+  {cmd:'/导出', alias:['export','daochu','保存对话'], desc:'把这段对话存成文本', run:()=>exportChat()},
 ];
+function slashHits(q){
+  const all=SLASH.concat(skillCmds);
+  if(!q) return all;
+  q=q.toLowerCase();
+  return all.filter(c=>{
+    const hay=(c.cmd.slice(1)+' '+(c.desc||'')+' '+(c.alias||[]).join(' ')).toLowerCase();
+    return hay.split(/[\s\/·]+/).some(t=>t.startsWith(q)) || hay.includes(q);
+  });
+}
 txt.addEventListener('input',()=>{
   const v=txt.value;
   const atM=v.match(/@([^@\s]*)$/);
   if(atM){ renderAtMenu(atM[1].toLowerCase()); return; }
+  const menu=$('slash-menu');
   if(v.startsWith('/')){
-    const q=v.slice(1).toLowerCase();
-    const hits=SLASH.filter(c=>c.cmd.slice(1).startsWith(q)||c.desc.includes(q));
-    const menu=$('slash-menu');
+    slashCur=slashHits(v.slice(1));
     menu.innerHTML='';
-    for(const c of (hits.length?hits:SLASH)){
+    for(const c of slashCur.slice(0,14)){
       const el=document.createElement('div'); el.className='mi'; el.style.padding='9px 14px';
-      el.innerHTML='<b>'+c.cmd+'</b> <span style="color:var(--mut);font-size:12px">'+c.desc+'</span>';
+      el.innerHTML='<b>'+(c.isSkill?'🧩 ':'')+c.cmd+'</b> <span style="color:var(--mut);font-size:12px">'+c.desc+'</span>';
       el.onclick=()=>{ txt.value=''; menu.style.display='none'; c.run(); };
       menu.appendChild(el);
     }
-    menu.style.display='block';
-  } else $('slash-menu').style.display='none';
+    menu.style.display=slashCur.length?'block':'none';
+  } else { menu.style.display='none'; slashCur=[]; }
 });
 txt.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){ $('slash-menu').style.display='none'; $('at-menu').style.display='none'; }
+  if(e.key==='Escape'){ $('slash-menu').style.display='none'; $('at-menu').style.display='none'; slashCur=[]; }
 });
 
 // ---- 文件树 + 上传 + @引用 + 复制 ----
@@ -734,9 +782,11 @@ function fileIcon(n){
   return'📦';
 }
 function loadFileTree(){
-  fetch('/api/artifacts').then(r=>r.json()).then(list=>{
-    const box=$('rtree'); box.innerHTML='';
-    if(!list.length){ box.innerHTML='<div class="fnote" style="padding:8px">暂无文件</div>'; return; }
+  const box=$('rtree');
+  if(!curWs){ box.innerHTML='<div class="fnote" style="padding:8px">正在准备工作区…</div>'; return; }
+  fetch('/api/artifacts?ws='+encodeURIComponent(curWs)).then(r=>r.json()).then(list=>{
+    box.innerHTML='';
+    if(!list.length){ box.innerHTML='<div class="fnote" style="padding:8px">这个工作区还没有文件。上传、拖入文件，或让我干活生成。</div>'; return; }
     let lastDir='';
     for(const f of list.slice(0,80)){
       const dir=f.name.includes('/')?f.name.split('/')[0]:'';
@@ -744,19 +794,106 @@ function loadFileTree(){
       const el=document.createElement('div'); el.className='rfile'; el.dataset.path=f.name;
       el.innerHTML='<span class="ico">'+fileIcon(f.name)+'</span><span class="nm">'+f.name.split('/').pop()+'</span><span class="sz">'+fmtSize(f.size)+'</span>';
       el.title='点击预览';
-      el.onclick=()=>window.open('/preview/'+encodeURIComponent(f.name),'_blank');
+      el.onclick=()=>window.open('/preview/'+encodeURIComponent(curWs+'/'+f.name),'_blank');
+      const vb=document.createElement('button'); vb.className='vbtn'; vb.textContent='🕘'; vb.title='这个文件改过几版，点开看';
+      vb.onclick=(ev)=>{ ev.stopPropagation(); toggleVersions(f, el); };
+      el.appendChild(vb);
       box.appendChild(el);
     }
   }).catch(()=>{});
 }
+// ---- 工作区：每个对话一个（ADR-0007）；全局视角可看所有工作区并「引入」到当前对话 ----
+async function loadWorkspaces(){
+  try{ const r=await fetch('/api/workspaces'); wsList=(await r.json())||[]; renderWsBar(); }catch{}
+}
+async function ensureWs(){
+  if(!sessionId) return;
+  await loadWorkspaces();
+  const mine=wsList.find(w=>w.sid===sessionId);
+  if(mine){ curWs=mine.id; renderWsBar(); loadFileTree(); return; }
+  try{
+    const r=await fetch('/api/ws/new?sid='+encodeURIComponent(sessionId));
+    const d=await r.json();
+    if(d.ok){ curWs=d.ws; addInfo('已为这个对话开好专属工作区，上传的文件和它做出来的东西都放这里。'); }
+  }catch{}
+  await loadWorkspaces(); loadFileTree();
+}
+function wsLabel(w){
+  const t=w.id==='ws-imported'?'旧文件(导入)':('对话 '+w.id.slice(3).replace('-',' '));
+  return t+' · '+w.files+'个文件'+(w.sid?(w.sid===sessionId?' (本对话)':''):' (未关联)');
+}
+function renderWsBar(){
+  const pick=$('ws-pick'); if(!pick) return;
+  pick.innerHTML='';
+  for(const w of wsList){
+    const o=document.createElement('option'); o.value=w.id; o.textContent=wsLabel(w);
+    if(w.id===curWs) o.selected=true;
+    pick.appendChild(o);
+  }
+  if(!wsList.length) pick.innerHTML='<option>（还没有工作区）</option>';
+  const cur=wsList.find(w=>w.id===curWs);
+  $('ws-meta').textContent=cur?('最近活动：'+(cur.mtime?new Date(cur.mtime).toLocaleString('zh',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—')+' · '+fmtSize(cur.bytes)):'';
+  // 非本对话的工作区（含未关联的孤儿）都可引入当前对话
+  $('ws-introduce').style.display=(cur&&cur.sid!==sessionId)?'block':'none';
+}
+$('ws-pick').onchange=e=>{ curWs=e.target.value; renderWsBar(); loadFileTree(); };
+$('ws-refresh').onclick=()=>{ loadWorkspaces(); loadFileTree(); };
+$('ws-introduce').onclick=async()=>{
+  if(!curWs||!sessionId) return;
+  try{
+    const r=await fetch('/api/ws/bind',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,sid:sessionId})});
+    const d=await r.json();
+    if(d.ok){ addInfo('已把这个工作区引进当前对话——里面所有文件都能直接用了（消息里 @ 文件名即可）。'); await loadWorkspaces(); loadFileTree(); }
+    else alert('引入失败: '+(d.err||''));
+  }catch(e){ alert('引入失败: '+e.message); }
+};
+// ---- 版本时间线：点 🕘 展开该文件的历史版本，可预览/一键恢复 ----
 $('rside-toggle').onclick=()=>{ $('rside').classList.toggle('open'); loadFileTree(); };
+// ---- 版本时间线：点 🕘 展开该文件的历史版本，可预览/一键恢复 ----
+async function toggleVersions(f, rowEl){
+  const old=rowEl.nextElementSibling;
+  if(old&&old.classList&&old.classList.contains('vlist')){ old.remove(); return; }
+  const box=document.createElement('div'); box.className='vlist';
+  box.innerHTML='<div class="fnote" style="padding:2px">读取历史…</div>';
+  rowEl.parentNode.insertBefore(box, rowEl.nextSibling);
+  try{
+    const r=await fetch('/api/vcs/log?ws='+encodeURIComponent(curWs||'')+'&file='+encodeURIComponent(f.name));
+    const d=await r.json();
+    if(!d.ok||!d.versions.length){ box.innerHTML='<div class="fnote" style="padding:2px">还没有历史版本——改动过一次后这里就有了</div>'; return; }
+    box.innerHTML='';
+    for(const v of d.versions){
+      const it=document.createElement('div'); it.className='vitem';
+      it.innerHTML='<span class="vt">'+v.time+'</span><span class="vm" title="'+(v.msg||'').replace(/"/g,'&quot;')+'">'+(v.msg||'(无说明)')+'</span>';
+      const pv=document.createElement('button'); pv.textContent='看'; pv.title='预览这一版';
+      pv.onclick=()=>window.open('/api/vcs/blob?ws='+encodeURIComponent(curWs||'')+'&file='+encodeURIComponent(f.name)+'&oid='+v.oid,'_blank');
+      const rs=document.createElement('button'); rs.textContent='恢复'; rs.title='把这个文件变回这一版（当前版会先自动存一版）';
+      rs.onclick=async()=>{
+        if(!confirm('把「'+f.name.split('/').pop()+'」恢复到 '+v.time+' 那一版？')) return;
+        rs.disabled=true; rs.textContent='恢复中…';
+        try{
+          const rr=await fetch('/api/vcs/restore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,file:f.name,oid:v.oid})});
+          const dd=await rr.json();
+          if(dd.ok){ addInfo('已把「'+f.name.split('/').pop()+'」恢复到上一版。'); loadFileTree(); }
+          else { alert('恢复失败: '+(dd.err||'未知')); rs.disabled=false; rs.textContent='恢复'; }
+        }catch(e){ alert('恢复失败: '+e.message); rs.disabled=false; rs.textContent='恢复'; }
+      };
+      it.appendChild(pv); it.appendChild(rs);
+      box.appendChild(it);
+    }
+  }catch(e){ box.innerHTML='<div class="fnote" style="padding:2px">读取失败</div>'; }
+}
 $('rside-close').onclick=()=>$('rside').classList.remove('open');
 $('up-btn2').onclick=()=>$('up-input').click();
 $('link-btn').onclick=()=>{ const r=$('link-row'); r.style.display=r.style.display==='none'?'block':'none'; };
 $('link-ok').onclick=()=>{
   const p=$('link-path').value.trim(); if(!p)return;
-  fetch('/api/link?target='+encodeURIComponent(p)+'&label='+encodeURIComponent(p.split('\\').pop().split('/').pop()))
-    .then(r=>r.json()).then(d=>{ if(d.ok){ loadFileTree(); $('link-row').style.display='none'; } else note('链接失败: '+d.err); });
+  if(!curWs){ note('工作区还没准备好，几秒后再试'); return; }
+  fetch('/api/link?ws='+encodeURIComponent(curWs)+'&target='+encodeURIComponent(p)+'&label='+encodeURIComponent(p.split('\\').pop().split('/').pop()))
+    .then(r=>r.json()).then(d=>{
+      if(d.ok){ loadFileTree(); $('link-row').style.display='none'; addInfo('已把文件夹「'+d.name+'」接进本对话的工作区，里面的文件都能 @ 引用了。'); }
+      else note('链接失败: '+(d.err||'未知原因'));
+    })
+    .catch(()=>note('链接失败：服务没响应'));
 };
 function copyArtifact(f){
   const e2=(f.name.match(/\.([a-z0-9]+)$/i)||[])[1]?.toLowerCase();
@@ -766,28 +903,38 @@ function copyArtifact(f){
     fetch('/artifact/'+encodeURIComponent(f.name)).then(r=>r.text()).then(t=>navigator.clipboard.writeText(t)).then(()=>note('已复制内容到剪贴板')).catch(()=>fallbackCopyPath(f.name));
   }
 }
-function fallbackCopyPath(name){ ws.send(JSON.stringify({type:'copy_artifact',name})); note('已请求复制（系统剪贴板）'); }
-$('up-btn').onclick=()=>$('up-input').click();
+function fallbackCopyPath(name){ wssend({type:'copy_artifact',name}); note('已请求复制（系统剪贴板）'); }
 $('up-btn2').addEventListener('click',()=>$('up-input').click());
 $('up-input').onchange=async()=>{
+  if(!curWs){ note('工作区还没准备好，几秒后再试'); return; }
+  const names=[];
   for(const f of $('up-input').files){
-    const buf=await f.arrayBuffer();
-    await fetch('/api/upload?name='+encodeURIComponent(f.name),{method:'POST',body:buf});
+    try{
+      const buf=await f.arrayBuffer();
+      const r=await fetch('/api/upload?ws='+encodeURIComponent(curWs)+'&name='+encodeURIComponent(f.name),{method:'POST',body:buf});
+      const d=await r.json(); if(d.ok) names.push(d.name);
+    }catch(e){}
   }
   $('up-input').value='';
-  loadFileTree(); note('上传完成，已在文件区');
+  loadFileTree();
+  if(names.length){ addInfo('已收到 '+names.length+' 个文件，放在本对话工作区的 uploads/ 里。想让我处理它，就在消息里 @ 它的文件名。'); }
+  else note('上传失败，请重试');
 };
 // 拖拽上传
 document.addEventListener('dragover',e=>{e.preventDefault();});
 document.addEventListener('drop',async e=>{
   e.preventDefault();
+  if(!curWs){ addErr('工作区还没准备好，等状态灯变绿再拖文件进来。'); return; }
+  const names=[];
   for(const f of (e.dataTransfer||{}).files||[]){
-    const buf=await f.arrayBuffer();
-    await fetch('/api/upload?name='+encodeURIComponent(f.name),{method:'POST',body:buf});
+    try{
+      const buf=await f.arrayBuffer();
+      const r=await fetch('/api/upload?ws='+encodeURIComponent(curWs)+'&name='+encodeURIComponent(f.name),{method:'POST',body:buf});
+      const d=await r.json(); if(d.ok) names.push(d.name);
+    }catch(err){}
   }
-  if((e.dataTransfer||{}).files&&e.dataTransfer.files.length){ loadFileTree(); addInfo('收到 '+e.dataTransfer.files.length+' 个文件（在左侧「文件」区，消息里用 @ 引用即可让我处理）'); }
+  if(names.length){ loadFileTree(); addInfo('收到 '+names.length+' 个文件（在本对话的工作区里）。消息里用 @ 引用即可让我处理。'); }
 });
 
-connect();
 </script>
 </body></html>
