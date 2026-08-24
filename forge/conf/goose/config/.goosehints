@@ -8885,3 +8885,13 @@ X## 经验沉淀（自进化）
 - 给用户看的成品（报表图、Excel、Word、PDF、HTML 页面等）一律存到 data/artifacts/ 目录——用户在聊天窗口的 📎 文件面板里能看到、能预览、能用本机软件打开。
 - 命名带日期：如 库存报表-2026-08-24.xlsx。
 - 聊天回复里用 Markdown（表格/加粗/代码）说结论；文件本体放制品区，不要把大段内容糊进对话。
+
+## 做 Excel 文件（不用装任何东西）
+- 用现成生成器：`<包内node> <FORGE_ROOT>/bin/gen-xlsx.js 输出.xlsx '{"sheetName":"表名","headers":["列1","列2"],"rows":[["a",1],["b",2]]}' "标题"`
+- 数据从 faucet 查出来后转成 rows 数组即可。输出放 data/artifacts/，文件名带日期。
+- 也可以用 bin/python/python.exe（包内自带 python + openpyxl/Pillow 等），但优先用 gen-xlsx.js（更快更稳）。
+
+## 做 Excel 文件（不用装任何东西）
+- 用现成生成器：<包内node> <FORGE_ROOT>/bin/gen-xlsx.js 输出.xlsx '{"sheetName":"表名","headers":["列1","列2"],"rows":[["a",1],["b",2]]}' "标题"
+- 数据从 faucet 查出来后转成 rows 数组即可。输出放 data/artifacts/，文件名带日期。
+- 也可以用 bin/python/python.exe（包内自带 python + openpyxl/Pillow），但优先用 gen-xlsx.js（更快更稳）。
