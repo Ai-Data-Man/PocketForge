@@ -216,7 +216,7 @@ const server = http.createServer((req, res) => {
         // 制品服务：/artifact/<文件名> -> data/artifacts/<文件名>（禁止路径穿越）
         const name = decodeURIComponent(url.slice('/artifact/'.length)).split(String.fromCharCode(92)).join('/');
         if (name.includes('..') || name.includes(':')) { res.writeHead(400); res.end(); return; }
-        const f = path.join(ROOT, 'data', 'artifacts', name);
+        const f = path.join(ROOT, 'data', 'artifacts', name.split('/').join(path.sep));
         require('fs').readFile(f, (e, buf) => {
             if (e) { res.writeHead(404); res.end(); return; }
             const ext = path.extname(f).toLowerCase();
@@ -227,10 +227,43 @@ const server = http.createServer((req, res) => {
     }
     else if (url === '/api/artifacts') {
         const dir = path.join(ROOT, 'data', 'artifacts');
-        let list = [];
-        try { list = require('fs').readdirSync(dir).filter(f => !f.startsWith('.')).map(f => ({ name: f, size: require('fs').statSync(path.join(dir, f)).size })).sort((a,b) => b.name.localeCompare(a.name)).slice(0, 100); } catch {}
+        function listDir(d, prefix) {
+            let out = [];
+            try {
+                for (const f of require('fs').readdirSync(d)) {
+                    if (f.startsWith('.') || f.startsWith('_')) continue;
+                    const full = path.join(d, f);
+                    const st = require('fs').statSync(full);
+                    if (st.isDirectory()) out.push.apply(out, listDir(full, prefix ? prefix + '/' + f : f));
+                    else out.push({ name: (prefix ? prefix + '/' : '') + f, size: st.size });
+                }
+            } catch {}
+            return out;
+        }
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify(list));
+        res.end(JSON.stringify(listDir(dir, '')));
+    }
+    else if (url.startsWith('/api/upload') && req.method === 'POST') {
+        const qs = new URL(req.url, 'http://x').searchParams;
+        const fname = (qs.get('name') || ('upload-' + Date.now())).replace(/[\\/:*?"<>|]/g, '_');
+        const chunks = [];
+        req.on('data', c => chunks.push(c));
+        req.on('end', () => {
+            try {
+                const dir = path.join(ROOT, 'data', 'artifacts', 'uploads');
+                require('fs').mkdirSync(dir, { recursive: true });
+                let finalName = fname;
+                const extM = fname.match(/(\.[^.]+)$/);
+                const base = extM ? fname.slice(0, fname.length - extM[1].length) : fname;
+                const ext = extM ? extM[1] : '';
+                let n = 1;
+                while (require('fs').existsSync(path.join(dir, finalName))) { finalName = base + '-v' + (++n) + ext; }
+                require('fs').writeFileSync(path.join(dir, finalName), Buffer.concat(chunks));
+                console.log('uploaded:', finalName);
+                res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ ok: true, name: 'uploads/' + finalName }));
+            } catch (e) { res.writeHead(500); res.end(JSON.stringify({ ok: false, err: e.message })); }
+        });
     }
     else { res.writeHead(404); res.end(); }
 });
@@ -350,6 +383,15 @@ function handleClient(ws, msg) {
                 console.log('session deleted', msg.sessionId, 'messages:', m.changes, 'row:', r.changes);
                 ws.send({ sys: 'session_deleted', sessionId: msg.sessionId, ok: r.changes > 0 });
             } catch (e) { ws.send({ sys: 'error', text: '删除失败: ' + e.message }); }
+            return;
+        }
+
+        if (msg.type === 'copy_artifact') {
+            const rel = String(msg.name || '').split('/').join(path.sep);
+            const f = path.join(ROOT, 'data', 'artifacts', rel);
+            if (rel.includes('..') || !require('fs').existsSync(f)) return ws.send({ sys: 'error', text: '文件不存在' });
+            require('child_process').spawn('powershell', ['-NoProfile', '-Command', 'Set-Clipboard -LiteralPath "' + f + '"'], { detached: true, stdio: 'ignore' }).unref();
+            ws.send({ sys: 'copied', name: msg.name });
             return;
         }
 

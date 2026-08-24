@@ -13,7 +13,12 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
 #side.hidden{margin-left:-250px}
 #side header{padding:14px 14px 8px;font-weight:bold;font-size:16px;display:flex;align-items:center;gap:8px}
 #newchat{margin:4px 14px 10px;padding:9px;background:var(--g);color:#fff;border:none;border-radius:9px;cursor:pointer;font-size:14px;font-family:inherit}
-#sessions{flex:1;overflow-y:auto;padding:0 8px 8px}
+#sessions{flex:0 1 auto;overflow-y:auto;padding:0 8px 8px;max-height:42%}
+#filetree{min-height:60px;overflow-y:auto;padding:0 8px}
+.ftree{padding:5px 6px;border-radius:7px;font-size:12.5px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:5px}
+.ftree:hover{background:#f0f5f2}
+.ftree .ico{width:16px;text-align:center}
+.ftree .sz{color:var(--mut);font-size:10.5px;margin-left:auto}
 .sitem{padding:9px 10px;border-radius:8px;cursor:pointer;font-size:13px;line-height:1.4;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sitem:hover{background:#f0f5f2}
 .sitem.active{background:#e2efe7;font-weight:bold}
@@ -105,7 +110,16 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
 <div id="side">
   <header><span class="dot" id="status"></span>小 forge</header>
   <button id="newchat">＋ 新对话</button>
+  <div id="side-label-sess" style="padding:2px 14px;font-size:11px;color:var(--mut)">对话</div>
   <div id="sessions"></div>
+  <div id="side-label-files" style="padding:6px 14px 4px;font-size:11px;color:var(--mut);border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+    <span>文件</span>
+    <span>
+      <button class="icobtn" id="up-btn" title="上传文件" style="font-size:13px;padding:3px 5px">⬆</button>
+      <input type="file" id="up-input" multiple style="display:none">
+    </span>
+  </div>
+  <div id="filetree" style="flex:0 0 auto;max-height:34%;overflow-y:auto;padding:0 8px"></div>
   <footer>
     <button class="icobtn" id="refresh-sessions" title="刷新会话列表">⟳</button>
     <button class="icobtn" id="open-artifacts" title="文件（它做出来的东西）">📎</button>
@@ -181,7 +195,7 @@ let streamEl=null, toolCards=new Map();
 
 function connect(){
   ws=new WebSocket('ws://'+location.host);
-  ws.onopen=()=>{status.classList.add('ok'); loadSessions(); loadProvidersUI(); if(!sessionId) subscribe(null);};
+  ws.onopen=()=>{status.classList.add('ok'); loadSessions(); loadProvidersUI(); loadFileTree(); if(!sessionId) subscribe(null);};
   ws.onclose=()=>{status.classList.remove('ok'); setTimeout(connect,2000);};
   ws.onmessage=e=>{
     const m=JSON.parse(e.data);
@@ -602,6 +616,23 @@ $('save-cfg').onclick=()=>{
   setTimeout(loadProvidersUI,300);
 };
 function note(t){ $('save-note').textContent=t; }
+let atItems=[];
+function renderAtMenu(q){
+  fetch('/api/artifacts').then(r=>r.json()).then(list=>{
+    atItems=list;
+    const hits=list.filter(f=>f.name.toLowerCase().includes(q)).slice(0,12);
+    const menu=document.getElementById('slash-menu');
+    if(menu){ menu.innerHTML='';
+      for(const f of hits){
+        const el=document.createElement('div'); el.className='mi'; el.style.padding='9px 14px';
+        el.innerHTML=fileIcon(f.name)+' <b>'+f.name.split('/').pop()+'</b> <span style="color:var(--mut);font-size:11px">'+(f.name.includes('/')?f.name.split('/')[0]:'')+'</span>';
+        el.onclick=()=>{ txt.value=txt.value.replace(/@[^@\s]*$/,'data/artifacts/'+f.name+' '); $('slash-menu').style.display='none'; txt.focus(); };
+        menu.appendChild(el);
+      }
+      menu.style.display='block';
+    }
+  });
+}
 $('open-skills').onclick=async()=>{
   $('skills-modal').classList.add('on');
   try{
@@ -676,6 +707,8 @@ const SLASH=[
 ];
 txt.addEventListener('input',()=>{
   const v=txt.value;
+  const atM=v.match(/@([^@\s]*)$/);
+  if(atM){ renderAtMenu(atM[1].toLowerCase()); return; }
   if(v.startsWith('/')){
     const q=v.slice(1).toLowerCase();
     const hits=SLASH.filter(c=>c.cmd.slice(1).startsWith(q)||c.desc.includes(q));
@@ -692,6 +725,63 @@ txt.addEventListener('input',()=>{
 });
 txt.addEventListener('keydown',e=>{
   if(e.key==='Escape') $('slash-menu').style.display='none';
+});
+
+// ---- 文件树 + 上传 + @引用 + 复制 ----
+function fmtSize(n){ return n > 1048576 ? (n/1048576).toFixed(1)+'MB' : Math.round(n/1024)+'KB'; }
+function fileIcon(n){
+  const e=(n.match(/\.([a-z0-9]+)$/i)||[])[1]?.toLowerCase()||'';
+  if(['png','jpg','jpeg','gif','webp','svg'].includes(e))return'🖼️';
+  if(['xlsx','xls','csv'].includes(e))return'📊';
+  if(['docx','doc'].includes(e))return'📄';
+  if(['pdf'].includes(e))return'📕';
+  if(['html','htm'].includes(e))return'🌐';
+  if(['md','txt','log','json'].includes(e))return'📝';
+  return'📦';
+}
+function loadFileTree(){
+  fetch('/api/artifacts').then(r=>r.json()).then(list=>{
+    const box=$('filetree'); box.innerHTML='';
+    if(!list.length){ box.innerHTML='<div style="padding:6px;font-size:12px;color:var(--mut)">暂无文件</div>'; return; }
+    for(const f of list.slice(0,60)){
+      const el=document.createElement('div'); el.className='ftree'; el.dataset.path=f.name;
+      el.innerHTML='<span class="ico">'+fileIcon(f.name)+'</span>'+f.name.split('/').pop()+'<span class="sz">'+fmtSize(f.size)+'</span>';
+      el.title='点击预览 · Shift+点复制 · @'+f.name+' 可在消息里引用';
+      el.onclick=e=>{
+        if(e.shiftKey){ copyArtifact(f); return; }
+        window.open('/preview/'+encodeURIComponent(f.name),'_blank');
+      };
+      box.appendChild(el);
+    }
+  }).catch(()=>{});
+}
+function copyArtifact(f){
+  const e2=(f.name.match(/\.([a-z0-9]+)$/i)||[])[1]?.toLowerCase();
+  if(['png','jpg','jpeg','gif','webp','bmp'].includes(e2)){
+    fetch('/artifact/'+encodeURIComponent(f.name)).then(r=>r.blob()).then(b=>navigator.clipboard.write([new ClipboardItem({'image/'+(e2==='jpg'?'jpeg':e2):b})])).then(()=>note('已复制图片到剪贴板')).catch(()=>fallbackCopyPath(f.name));
+  } else {
+    fetch('/artifact/'+encodeURIComponent(f.name)).then(r=>r.text()).then(t=>navigator.clipboard.writeText(t)).then(()=>note('已复制内容到剪贴板')).catch(()=>fallbackCopyPath(f.name));
+  }
+}
+function fallbackCopyPath(name){ ws.send(JSON.stringify({type:'copy_artifact',name})); note('已请求复制（系统剪贴板）'); }
+$('up-btn').onclick=()=>$('up-input').click();
+$('up-input').onchange=async()=>{
+  for(const f of $('up-input').files){
+    const buf=await f.arrayBuffer();
+    await fetch('/api/upload?name='+encodeURIComponent(f.name),{method:'POST',body:buf});
+  }
+  $('up-input').value='';
+  loadFileTree(); note('上传完成，已在文件区');
+};
+// 拖拽上传
+document.addEventListener('dragover',e=>{e.preventDefault();});
+document.addEventListener('drop',async e=>{
+  e.preventDefault();
+  for(const f of (e.dataTransfer||{}).files||[]){
+    const buf=await f.arrayBuffer();
+    await fetch('/api/upload?name='+encodeURIComponent(f.name),{method:'POST',body:buf});
+  }
+  if((e.dataTransfer||{}).files&&e.dataTransfer.files.length){ loadFileTree(); addInfo('收到 '+e.dataTransfer.files.length+' 个文件（在左侧「文件」区，消息里用 @ 引用即可让我处理）'); }
 });
 
 connect();
