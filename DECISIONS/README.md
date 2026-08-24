@@ -10,5 +10,6 @@ ADR（架构决策记录）= 持久的"为什么"。一经 Accepted 正文不可
 | 0004 | E2E 验收结论与协议修订 | Accepted |
 | 0005 | 数字员工记忆架构（四层） | Accepted |
 | 0006 | 二开（fork）策略——默认不二开 | Accepted |
+| 0007 | 制品工作区架构——每会话一区 + isomorphic-git 版本管理 | Accepted |
 
 模板见 `_template.md`。
