@@ -51,6 +51,19 @@ const FSS = require('fs');
     } catch (e) { console.error('artifact migrate failed:', e.message); }
 })();
 
+// 会话库护栏：调度任务会话只留最新 20 条（s14 教训：daily-mem cron 误配 */2 刷出 1700+ 条，把真实对话挤出列表）
+(function pruneScheduled() {
+    try {
+        const dbf = path.join(ROOT, 'conf', 'goose', 'data', 'sessions', 'sessions.db');
+        if (!FSS.existsSync(dbf)) return;
+        const { DatabaseSync } = require('node:sqlite');
+        const db = new DatabaseSync(dbf);
+        db.prepare("DELETE FROM messages WHERE session_id IN (SELECT id FROM sessions WHERE session_type='scheduled' AND id NOT IN (SELECT id FROM sessions WHERE session_type='scheduled' ORDER BY created_at DESC LIMIT 20))").run();
+        db.prepare("DELETE FROM sessions WHERE session_type='scheduled' AND id NOT IN (SELECT id FROM sessions WHERE session_type='scheduled' ORDER BY created_at DESC LIMIT 20)").run();
+        db.close();
+    } catch (e) { console.error('prune scheduled failed:', e.message); }
+})();
+
 function wsValidId(id) { return /^ws-[0-9]{4}-[0-9]{6}[a-z]*$/.test(String(id || '')) || String(id || '') === 'ws-imported'; }
 function wsDir(id) { return path.join(ART_DIR, id); }
 function wsNewId() {
@@ -62,6 +75,22 @@ function wsNewId() {
 const WSMAP_FILE = path.join(ROOT, 'data', 'workspace-map.json');
 function readWsMap() { try { return JSON.parse(FSS.readFileSync(WSMAP_FILE, 'utf8')); } catch { return {}; } }
 function writeWsMap(m) { FSS.mkdirSync(path.dirname(WSMAP_FILE), { recursive: true }); FSS.writeFileSync(WSMAP_FILE, JSON.stringify(m, null, 2)); }
+
+// ---- 工作区元数据(.forge,ADR-0008):附件身份等语义信息与存放路径解耦 ----
+function forgeFile(ws) { return path.join(wsDir(ws), '.forge'); }
+function readForgeMeta(ws) { try { return JSON.parse(FSS.readFileSync(forgeFile(ws), 'utf8')); } catch { return {}; } }
+function writeForgeMeta(ws, meta) { try { FSS.writeFileSync(forgeFile(ws), JSON.stringify(meta, null, 2)); } catch {} }
+
+// ---- 会话归档(data/session-archive.json):纯 UI 生命周期态 ----
+const ARCH_FILE = path.join(ROOT, 'data', 'session-archive.json');
+function readArch() { try { return JSON.parse(FSS.readFileSync(ARCH_FILE, 'utf8')); } catch { return {}; } }
+function writeArch(m) { FSS.mkdirSync(path.dirname(ARCH_FILE), { recursive: true }); FSS.writeFileSync(ARCH_FILE, JSON.stringify(m, null, 2)); }
+function wsState(id, map, arch) {
+    const sid = (map[id] || {}).sid;
+    if (!sid) return 'orphan';
+    if (arch[sid]) return 'archived';
+    return 'active';
+}
 
 let _git = null;
 function ig() {
@@ -351,8 +380,9 @@ async function handleHttp(req, res) {
         });
     }
     else if (url === '/api/workspaces') {
-        // 全局工作区视角：所有工作区 + 元信息 + 会话绑定（孤儿 = 绑定的会话已删除）
+        // 全局工作区视角：所有工作区 + 元信息 + 生命周期状态（active/archived/orphan）
         const map = readWsMap();
+        const arch = readArch();
         const out = [];
         try {
             for (const ent of FSS.readdirSync(ART_DIR, { withFileTypes: true })) {
@@ -361,7 +391,7 @@ async function handleHttp(req, res) {
                 (function walk(d) {
                     try {
                         for (const f of FSS.readdirSync(d)) {
-                            if (f === '.git') continue;
+                            if (f === '.git' || f === '.forge') continue;
                             const full = path.join(d, f);
                             const st = FSS.statSync(full);
                             if (st.isDirectory()) walk(full);
@@ -369,12 +399,205 @@ async function handleHttp(req, res) {
                         }
                     } catch {}
                 })(path.join(ART_DIR, ent.name));
-                out.push({ id: ent.name, files, bytes, mtime, sid: (map[ent.name] || {}).sid || null });
+                out.push({ id: ent.name, files, bytes, mtime, sid: (map[ent.name] || {}).sid || null, state: wsState(ent.name, map, arch) });
             }
         } catch {}
         out.sort((a, b) => b.mtime - a.mtime);
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(out));
+    }
+    else if (url === '/api/sessions/archive') {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        if (req.method === 'POST') {
+            const chunks = [];
+            req.on('data', c => chunks.push(c));
+            req.on('end', () => {
+                try {
+                    const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                    if (!b.sid) throw new Error('缺 sid');
+                    const arch = readArch();
+                    if (b.archived) arch[b.sid] = Date.now(); else delete arch[b.sid];
+                    writeArch(arch);
+                    res.end(JSON.stringify({ ok: true }));
+                } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
+            });
+        } else {
+            res.end(JSON.stringify({ ok: true, arch: readArch() }));
+        }
+    }
+    else if (url === '/api/ws/tree') {
+        // 工作区真目录树：dir/file/link 三型；附件身份来自 .forge（与路径解耦）
+        const qs = new URL(req.url, 'http://x').searchParams;
+        const ws = qs.get('ws') || '';
+        if (!wsValidId(ws)) { res.writeHead(400); res.end(); return; }
+        const att = new Set(readForgeMeta(ws).attachments || []);
+        const budget = { n: 400 };
+        function build(d, prefix) {
+            const out = [];
+            let ents = [];
+            try { ents = FSS.readdirSync(d, { withFileTypes: true }); } catch {}
+            for (const ent of ents) {
+                if (ent.name.startsWith('.') || ent.name.startsWith('_')) continue;
+                if (budget.n-- <= 0) break;
+                const rel = (prefix ? prefix + '/' : '') + ent.name;
+                const full = path.join(d, ent.name);
+                let st; try { st = FSS.lstatSync(full); } catch { continue; }
+                if (st.isSymbolicLink()) {
+                    let tgt = ''; try { tgt = FSS.readlinkSync(full); } catch {}
+                    const node = { name: ent.name, path: rel, type: 'link', target: tgt };
+                    try { if (FSS.statSync(full).isDirectory()) node.children = build(full, rel); } catch {}
+                    out.push(node);
+                }
+                else if (st.isDirectory()) out.push({ name: ent.name, path: rel, type: 'dir', children: build(full, rel) });
+                else out.push({ name: ent.name, path: rel, type: 'file', size: st.size, mtime: st.mtimeMs, att: att.has(rel) });
+            }
+            out.sort((a, b) => ((a.type === 'file') - (b.type === 'file')) || a.name.localeCompare(b.name, 'zh'));
+            return out;
+        }
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, root: { name: ws, path: '', type: 'dir', children: build(wsDir(ws), '') }, attachments: [...att] }));
+    }
+    else if (url === '/api/ws/link' && req.method === 'POST') {
+        // 把另一个工作区以 junction 形式引入当前工作区（相对引用语义，物理为绝对路径）
+        const chunks = [];
+        req.on('data', c => chunks.push(c));
+        req.on('end', () => {
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            try {
+                const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                if (!wsValidId(b.ws) || !FSS.existsSync(wsDir(b.ws))) throw new Error('当前工作区不存在');
+                if (!wsValidId(b.target) || !FSS.existsSync(wsDir(b.target))) throw new Error('目标工作区不存在');
+                if (b.target === b.ws) throw new Error('不能把工作区引进它自己');
+                let label = String(b.label || '').replace(/[\\/:*?"<>|.\s]/g, '-').slice(0, 40);
+                if (!label) label = b.target;
+                const dest = path.join(wsDir(b.ws), label);
+                if (FSS.existsSync(dest)) throw new Error('已存在同名「' + label + '」，换个名字');
+                const tReal = FSS.realpathSync(wsDir(b.target));
+                const wReal = FSS.realpathSync(wsDir(b.ws));
+                if (wReal === tReal || wReal.startsWith(tReal + path.sep)) throw new Error('不能把工作区引进它的内部（会成环）');
+                FSS.symlinkSync(tReal, dest, 'junction');
+                console.log('ws link:', b.ws + '/' + label, '->', b.target);
+                res.end(JSON.stringify({ ok: true, name: label }));
+            } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
+        });
+    }
+    else if (url === '/api/ws/unlink' && req.method === 'POST') {
+        const chunks = [];
+        req.on('data', c => chunks.push(c));
+        req.on('end', () => {
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            try {
+                const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                const rel = vcsSafeRel(b.path);
+                if (!wsValidId(b.ws) || !rel || rel.includes('/')) throw new Error('参数不完整');
+                const dest = path.join(wsDir(b.ws), rel.split('/').join(path.sep));
+                const st = FSS.lstatSync(dest);
+                if (!st.isSymbolicLink()) throw new Error('那不是一个链接');
+                FSS.rmSync(dest);
+                console.log('ws unlink:', b.ws + '/' + rel);
+                res.end(JSON.stringify({ ok: true }));
+            } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
+        });
+    }
+    else if (url === '/api/ws/delete' && req.method === 'POST') {
+        // 删除整个工作区：仅孤儿或绑定归档会话的区允许；被任何活跃区链接引用时拒绝
+        const chunks = [];
+        req.on('data', c => chunks.push(c));
+        req.on('end', async () => {
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            try {
+                const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                if (!wsValidId(b.ws)) throw new Error('参数不完整');
+                const map = readWsMap(), arch = readArch();
+                const stt = wsState(b.ws, map, arch);
+                if (stt === 'active') throw new Error('该工作区还绑着活跃对话，请先归档那个对话');
+                const tReal = FSS.realpathSync(wsDir(b.ws));
+                for (const ent of FSS.readdirSync(ART_DIR, { withFileTypes: true })) {
+                    if (!ent.isDirectory() || !wsValidId(ent.name) || ent.name === b.ws) continue;
+                    for (const ch of FSS.readdirSync(path.join(ART_DIR, ent.name), { withFileTypes: true })) {
+                        if (!ch.isSymbolicLink()) continue;
+                        try {
+                            const lp = FSS.readlinkSync(path.join(ART_DIR, ent.name, ch.name));
+                            if (FSS.realpathSync(lp) === tReal) throw new Error('正被活跃工作区「' + ent.name + '」引用，先在那里取消引入');
+                        } catch (e2) { if (String(e2.message).includes('引用')) throw e2; }
+                    }
+                }
+                FSS.rmSync(wsDir(b.ws), { recursive: true, force: true });
+                delete map[b.ws]; writeWsMap(map);
+                console.log('ws deleted:', b.ws);
+                res.end(JSON.stringify({ ok: true }));
+            } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
+        });
+    }
+    else if (url === '/api/fs/new' && req.method === 'POST') {
+        // 轻量文件管理：新建文件/目录（IDE 能力的最小集）
+        const chunks = [];
+        req.on('data', c => chunks.push(c));
+        req.on('end', () => {
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            try {
+                const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                const rel = vcsSafeRel(b.path);
+                if (!wsValidId(b.ws) || !rel) throw new Error('参数不完整');
+                if (/^(?:[^/]*\/)?\./.test(rel.split('/').pop())) throw new Error('名字不能以点开头');
+                const full = path.join(wsDir(b.ws), rel.split('/').join(path.sep));
+                if (FSS.existsSync(full)) throw new Error('已经存在同名文件或文件夹');
+                if (b.type === 'dir') FSS.mkdirSync(full, { recursive: true });
+                else { FSS.mkdirSync(path.dirname(full), { recursive: true }); FSS.writeFileSync(full, ''); }
+                console.log('fs new:', b.type, b.ws + '/' + rel);
+                res.end(JSON.stringify({ ok: true }));
+            } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
+        });
+    }
+    else if (url === '/api/fs/rename' && req.method === 'POST') {
+        const chunks = [];
+        req.on('data', c => chunks.push(c));
+        req.on('end', async () => {
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            try {
+                const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                const rel = vcsSafeRel(b.path);
+                const name = String(b.name || '').trim();
+                if (!wsValidId(b.ws) || !rel || !name) throw new Error('参数不完整');
+                if (/[\\/:*?"<>|]/.test(name) || name.startsWith('.') || name.startsWith('_')) throw new Error('名字含非法字符');
+                const root = wsDir(b.ws);
+                const full = path.join(root, rel.split('/').join(path.sep));
+                if (!FSS.existsSync(full)) throw new Error('原文件不存在');
+                if (FSS.lstatSync(full).isSymbolicLink()) throw new Error('链接请在「浏览全部」里管理');
+                const nrel = rel.split('/').slice(0, -1).concat(name).join('/');
+                const nfull = path.join(root, nrel.split('/').join(path.sep));
+                if (FSS.existsSync(nfull)) throw new Error('已存在同名');
+                try { await vcsSnapshot(root, rel, '重命名前自动保存'); } catch {}
+                FSS.renameSync(full, nfull);
+                try { await ig().remove({ fs: fsp, dir: root, filepath: rel }); await vcsSnapshot(root, nrel, '重命名：' + rel.slice(rel.lastIndexOf('/') + 1) + ' → ' + name); } catch {}
+                // 附件元数据跟随改名
+                const meta = readForgeMeta(b.ws);
+                if (meta.attachments && meta.attachments.includes(rel)) meta.attachments = meta.attachments.map(p => p === rel ? nrel : p);
+                writeForgeMeta(b.ws, meta);
+                res.end(JSON.stringify({ ok: true, path: nrel }));
+            } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
+        });
+    }
+    else if (url === '/api/fs/delete' && req.method === 'POST') {
+        const chunks = [];
+        req.on('data', c => chunks.push(c));
+        req.on('end', async () => {
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            try {
+                const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                const rel = vcsSafeRel(b.path);
+                if (!wsValidId(b.ws) || !rel) throw new Error('参数不完整');
+                const root = wsDir(b.ws);
+                const full = path.join(root, rel.split('/').join(path.sep));
+                const st = FSS.lstatSync(full);
+                if (!st.isSymbolicLink() && st.isFile()) { try { await vcsSnapshot(root, rel, '删除前自动保存'); } catch {} }
+                FSS.rmSync(full, { recursive: true, force: true });
+                const meta = readForgeMeta(b.ws);
+                if (meta.attachments) { meta.attachments = meta.attachments.filter(p => p !== rel && !p.startsWith(rel + '/')); writeForgeMeta(b.ws, meta); }
+                console.log('fs delete:', b.ws + '/' + rel);
+                res.end(JSON.stringify({ ok: true }));
+            } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
+        });
     }
     else if (url === '/api/ws/new') {
         const qs = new URL(req.url, 'http://x').searchParams;
@@ -448,6 +671,11 @@ async function handleHttp(req, res) {
                 let n = 1;
                 while (FSS.existsSync(path.join(dir, finalName))) { finalName = base + '-v' + (++n) + ext; }
                 FSS.writeFileSync(path.join(dir, finalName), Buffer.concat(chunks));
+                const meta = readForgeMeta(ws);
+                meta.attachments = meta.attachments || [];
+                const rp = 'uploads/' + finalName;
+                if (!meta.attachments.includes(rp)) { meta.attachments.push(rp); if (meta.attachments.length > 1000) meta.attachments = meta.attachments.slice(-1000); }
+                writeForgeMeta(ws, meta);
                 console.log('uploaded:', ws + '/uploads/' + finalName);
                 res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify({ ok: true, name: 'uploads/' + finalName }));
