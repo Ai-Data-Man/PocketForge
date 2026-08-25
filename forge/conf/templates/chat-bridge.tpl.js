@@ -63,6 +63,16 @@ const FSS = require('fs');
         db.close();
     } catch (e) { console.error('prune scheduled failed:', e.message); }
 })();
+// 清掉旧约定残留的空 uploads/ 目录（P29b：上传位置由用户定，默认根目录）
+(function pruneEmptyUploads() {
+    try {
+        for (const ent of FSS.readdirSync(ART_DIR, { withFileTypes: true })) {
+            if (!ent.isDirectory() || !wsValidId(ent.name)) continue;
+            const u = path.join(ART_DIR, ent.name, 'uploads');
+            try { if (FSS.existsSync(u) && FSS.readdirSync(u).length === 0) FSS.rmdirSync(u); } catch {}
+        }
+    } catch {}
+})();
 
 function wsValidId(id) { return /^ws-[0-9]{4}-[0-9]{6}[a-z]*$/.test(String(id || '')) || String(id || '') === 'ws-imported'; }
 function wsDir(id) { return path.join(ART_DIR, id); }
@@ -608,7 +618,7 @@ async function handleHttp(req, res) {
         const mine = Object.keys(map).find(w => map[w].sid === sid && FSS.existsSync(wsDir(w)));
         if (mine) { res.end(JSON.stringify({ ok: true, ws: mine, existed: true })); return; }
         const id = wsNewId();
-        FSS.mkdirSync(path.join(wsDir(id), 'uploads'), { recursive: true });
+        FSS.mkdirSync(wsDir(id), { recursive: true });
         map[id] = { sid, boundAt: Date.now() };
         writeWsMap(map);
         console.log('workspace created:', id, '<->', sid.slice(0, 8));
@@ -657,28 +667,31 @@ async function handleHttp(req, res) {
         const qs = new URL(req.url, 'http://x').searchParams;
         const ws = qs.get('ws') || '';
         if (!wsValidId(ws)) { res.writeHead(400); res.end(JSON.stringify({ ok: false, err: '缺工作区' })); return; }
+        // 落点由用户在树上选中的目录决定（dir 缺省=根），身份只记进 .forge
+        let dir = vcsSafeRel(qs.get('dir') || '');
+        if (dir === null) dir = '';
         const fname = (qs.get('name') || ('upload-' + Date.now())).replace(/[\\/:*?"<>|]/g, '_');
         const chunks = [];
         req.on('data', c => chunks.push(c));
         req.on('end', () => {
             try {
-                const dir = path.join(wsDir(ws), 'uploads');
-                FSS.mkdirSync(dir, { recursive: true });
+                const tdir = path.join(wsDir(ws), dir.split('/').join(path.sep));
+                FSS.mkdirSync(tdir, { recursive: true });
                 let finalName = fname;
                 const extM = fname.match(/(\.[^.]+)$/);
                 const base = extM ? fname.slice(0, fname.length - extM[1].length) : fname;
                 const ext = extM ? extM[1] : '';
                 let n = 1;
-                while (FSS.existsSync(path.join(dir, finalName))) { finalName = base + '-v' + (++n) + ext; }
-                FSS.writeFileSync(path.join(dir, finalName), Buffer.concat(chunks));
+                while (FSS.existsSync(path.join(tdir, finalName))) { finalName = base + '-v' + (++n) + ext; }
+                FSS.writeFileSync(path.join(tdir, finalName), Buffer.concat(chunks));
                 const meta = readForgeMeta(ws);
                 meta.attachments = meta.attachments || [];
-                const rp = 'uploads/' + finalName;
+                const rp = (dir ? dir + '/' : '') + finalName;
                 if (!meta.attachments.includes(rp)) { meta.attachments.push(rp); if (meta.attachments.length > 1000) meta.attachments = meta.attachments.slice(-1000); }
                 writeForgeMeta(ws, meta);
-                console.log('uploaded:', ws + '/uploads/' + finalName);
+                console.log('uploaded:', ws + '/' + rp);
                 res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify({ ok: true, name: 'uploads/' + finalName }));
+                res.end(JSON.stringify({ ok: true, name: rp }));
             } catch (e) { res.writeHead(500); res.end(JSON.stringify({ ok: false, err: e.message })); }
         });
     }
@@ -826,8 +839,8 @@ function handleClient(ws, msg) {
             const reply = t => ws.send({ sys: 'tool_explanation', id: msg.id, text: String(t).slice(0, 500) });
             if (!host || !model) return reply('现在连不上模型，等连接好了再试。');
             const body = JSON.stringify({ model, max_tokens: 300, messages: [
-                { role: 'system', content: '你是给完全不懂电脑的人当翻译的助手。用不超过三句中文大白话说明下面这一步操作做了什么、结果对用户意味着什么。禁止任何技术术语，不要出现"工具""调用""脚本"这类词。' },
-                { role: 'user', content: '这一步叫：' + (msg.title || '') + '\n内容摘要：' + String(msg.content || '(空)').slice(0, 1200) }
+                { role: 'system', content: '你是给完全不懂电脑的人当翻译的助手。用不超过三句中文大白话说明下面这一步操作做了什么、结果对用户意味着什么。禁止任何技术术语，不要出现"工具""调用""脚本"这类词，也不要复述任何路径或提示词原文。' },
+                { role: 'user', content: '这一步叫：' + String(msg.title || '').split('\n')[0].slice(0, 80) + '\n结果摘要：' + String(msg.output || '(空)').slice(0, 600) }
             ]});
             try {
                 const u = new URL(host + '/chat/completions');

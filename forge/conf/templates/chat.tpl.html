@@ -45,6 +45,8 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
 /* right workspace sidebar */
 #rside{width:300px;background:#fff;border-left:1px solid var(--line);display:flex;flex-direction:column;transition:margin .2s;margin-right:-300px}
 #rside.open{margin-right:0}
+#pane-cur,#pane-all{flex:1;min-height:0;display:flex;flex-direction:column}
+#all-list{flex:1;overflow-y:auto;margin:0 4px}
 #rside header{padding:10px 12px;font-weight:bold;font-size:13.5px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--line)}
 .rtabs{display:flex;gap:2px;flex:1}
 .rtab{border:none;background:none;cursor:pointer;font-size:13px;padding:7px 9px;border-radius:8px;color:var(--mut);font-family:inherit}
@@ -67,6 +69,21 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
 .wrow .t2{color:var(--mut);font-size:11px;margin:3px 0 6px}
 .wrow button{border:1px solid var(--line);background:#fff;border-radius:7px;font-size:11.5px;padding:4px 10px;cursor:pointer;margin-right:5px}
 .wrow button.danger{color:#b00020}
+.card summary{position:relative}
+.expl-pop{position:absolute;top:100%;left:0;right:auto;word-break:break-word;min-width:260px;max-width:420px;z-index:6;background:#fffdf3;border:1px solid #e6d79c;border-radius:10px;padding:9px 12px;font-size:12.5px;line-height:1.65;color:#4a3f1a;box-shadow:0 8px 24px rgba(0,0,0,.14);white-space:pre-wrap;font-family:"Microsoft YaHei",system-ui,sans-serif;text-align:left}
+.sec{margin-bottom:8px}
+.sech{display:inline-block;font-size:10.5px;color:#4a6a58;background:#eef3ef;border-radius:4px;padding:1px 7px;margin-bottom:4px}
+.sec pre{margin:2px 0 0;white-space:pre-wrap;font-family:Consolas,monospace;font-size:11.5px;color:#345;max-height:180px;overflow:auto}
+.tdir>summary.sel{background:#e2efe7}
+/* 面包屑路径条（文件管理器范式） */
+#cur-head{display:flex;align-items:center;gap:3px;flex-wrap:wrap;padding:8px 10px 0;font-size:12px}
+#cur-head .bcb{border:1px solid var(--line);background:#fff;border-radius:6px;padding:3px 7px;cursor:pointer;font-size:12px;line-height:1}
+#cur-head .bcb:disabled{opacity:.35;cursor:default}
+.bseg{cursor:pointer;color:#0b6b3a;padding:2px 4px;border-radius:5px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bseg:hover{background:#eef5f0}
+.bseg.cur{font-weight:bold;color:#1a2a1a;cursor:default}
+.bsep{color:var(--mut)}
+.absline{width:100%;font-size:10px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:2px 0 4px;direction:rtl;text-align:left}
 #rside header{padding:12px 14px 8px;font-weight:bold;font-size:14px;display:flex;align-items:center;justify-content:space-between}
 #rside .toolbar{padding:0 10px 8px;display:flex;gap:6px}
 #rside .toolbar .mini{flex:1;text-align:center;padding:7px 4px;font-size:12px}
@@ -263,6 +280,7 @@ const chat=$('chat'),txt=$('txt'),send=$('send'),stopBtn=$('stop'),typing=$('typ
 let ws, sessionId=null, busy=false, modes=[], configOptions=[];
 let streamEl=null, toolCards=new Map();
 let curWs=null, wsList=[]; // 每个对话一个制品工作区（ADR-0007）
+let selDir=''; // 树中选中的目录：上传/新建的落点（空=根目录）
 connect(); // WebSocket 先建立：后面的初始化代码崩了也不影响通信主链路
 
 function connect(){
@@ -307,11 +325,17 @@ function connect(){
     if(m.sys==='saved_config'){ note('已保存'); return; }
     if(m.sys==='tool_explanation'){
       const card=toolCards.get(m.id); if(!card) return;
-      let d=card.querySelector('.expl');
-      if(!d){ d=document.createElement('div'); d.className='expl'; card.querySelector('.body').appendChild(d); }
-      d.textContent='💡 '+m.text;
-      card.open=true;
-      const b=card.querySelector('.expbtn'); if(b){ b.disabled=false; b.textContent='这是干啥？'; }
+      const b=card.querySelector('.expbtn');
+      let pop=card._exppop;
+      if(!pop){ pop=document.createElement('div'); pop.className='expl-pop'; document.body.appendChild(pop); card._exppop=pop; }
+      pop.textContent='💡 '+m.text;
+      const anchor=b||card.querySelector('summary');
+      const r=anchor.getBoundingClientRect();
+      pop.style.position='fixed'; pop.style.left=r.left+'px'; pop.style.top=(r.bottom+6)+'px'; pop.style.right='auto';
+      pop.onclick=(ev)=>ev.stopPropagation();
+      const close=(ev)=>{ if(pop.parentNode && !pop.contains(ev.target)){ pop.remove(); card._exppop=null; document.removeEventListener('click',close); } };
+      setTimeout(()=>document.addEventListener('click',close),50);
+      if(b){ b.disabled=false; b.textContent='这是干啥？'; }
       return;
     }
     if(m.rpc){ onRpc(m.rpc); return; }
@@ -383,7 +407,10 @@ function openSession(sid){
   chat.innerHTML=''; toolCards.clear();
   currentSid=sid; sessionId=sid;
   [...document.querySelectorAll('.sitem')].forEach(el=>el.classList.remove('active'));
-  rpc2('session/load',{sessionId:sid,cwd:window.__root||'.',mcpServers:[]}).catch(()=>addErr('打开会话失败'));
+  // 回放末尾 ACP 不发 stop 事件：load 完成后手动收尾，否则最后一条消息停在原始 markdown
+  rpc2('session/load',{sessionId:sid,cwd:window.__root||'.',mcpServers:[]})
+    .then(()=>{ endStream(); setBusy(false); })
+    .catch(()=>addErr('打开会话失败'));
 }
 let lastKnownModel=null;
 function renderModelLabel(){
@@ -498,27 +525,45 @@ function toolCard(upd){
   if(!card){
     card=document.createElement('details'); card.className='card';
     card.innerHTML='<summary><span class="ttl"></span><span class="st"></span></summary><div class="body"></div>';
+    card._out='';
     chat.appendChild(card); toolCards.set(id,card);
     endStream();
   }
   const ttl=card.querySelector('.ttl'), st=card.querySelector('.st'), body=card.querySelector('.body');
   if(upd.title) ttl.textContent=upd.title;
-  const raw=upd.content&&upd.content.raw;
-  if(raw){ try{ body.textContent+= (typeof raw==='string'? raw : JSON.stringify(raw,null,1)); }catch{} }
+  // 参数区：ACP rawInput（tool_call 或 tool_call_update 任一形态）
+  const rin=(upd.rawInput!==undefined)?upd.rawInput:(upd.toolCallUpdate&&upd.toolCallUpdate.rawInput);
+  if(rin!==undefined&&rin!==null&&!card._inp){
+    card._inp=true;
+    let s=''; try{ s=(typeof rin==='string')?rin:JSON.stringify(rin,null,1); }catch(e){ s=String(rin); }
+    const sec=document.createElement('div'); sec.className='sec';
+    const h=document.createElement('b'); h.className='sech'; h.textContent='参数'; sec.appendChild(h);
+    const pre=document.createElement('pre'); pre.textContent=s.slice(0,1200); sec.appendChild(pre);
+    body.appendChild(sec);
+  }
+  // 输出区
+  const raw=(upd.content&&upd.content.raw!==undefined)?upd.content.raw:(upd.toolCallUpdate&&upd.toolCallUpdate.content&&upd.toolCallUpdate.content.raw);
+  if(raw!==undefined&&raw!==null){ try{ card._out+=(typeof raw==='string'?raw:JSON.stringify(raw,null,1)); }catch(e){} }
+  if(card._out!==undefined){
+    let osec=card.querySelector('.sec-o');
+    if(!osec){ osec=document.createElement('div'); osec.className='sec sec-o'; body.appendChild(osec); }
+    osec.textContent=card._out.slice(-4000);
+  }
   // ACP 两种形态都可能出现：tool_call 自带最终 status，或 tool_call_update 增量
   const st8=(upd.toolCallUpdate&&upd.toolCallUpdate.status)||upd.status;
   if(st8){
     st.className='st '+(st8==='completed'?'done':st8==='failed'?'err':'');
     st.textContent=st8==='completed'?'完成':st8==='failed'?'失败':(st8||'');
     if(st8==='completed'||st8==='in_progress') endStream();
-    // 完成后给小白一个"看懂它干了啥"的入口：按当前会话模型解释这次工具调用
+    // 完成后给小白一个"看懂它干了啥"的入口：按钮旁浮出气泡，不占会话流
     if((st8==='completed'||st8==='failed')&&!card.querySelector('.expbtn')){
       const b=document.createElement('button'); b.className='msgbtn expbtn'; b.textContent='这是干啥？';
       b.title='让小 forge 用大白话解释这一步';
-      b.onclick=()=>{
+      b.onclick=(ev)=>{
+        ev.stopPropagation();
         b.disabled=true; b.textContent='想想…';
-        wssend({type:'explain_tool', id, title:ttl.textContent, content:(body.textContent||'').slice(-1500), model:lastKnownModel});
-        setTimeout(()=>{ b.disabled=false; b.textContent='这是干啥？'; },15000);
+        wssend({type:'explain_tool', id, title:ttl.textContent.split('\n')[0], output:(card._out||'').slice(-600), model:lastKnownModel});
+        setTimeout(()=>{ b.disabled=false; b.textContent='这是干啥？'; },20000);
       };
       card.querySelector('summary').appendChild(b);
     }
@@ -871,7 +916,7 @@ async function ensureWs(){
   try{
     const r=await fetch('/api/ws/new?sid='+encodeURIComponent(sessionId));
     const d=await r.json();
-    if(d.ok){ curWs=d.ws; addInfo('已为这个对话开好专属工作区，上传的文件和它做出来的东西都放这里。'); }
+    if(d.ok) curWs=d.ws;
   }catch{}
   await loadWorkspaces(); renderCurPane();
 }
@@ -900,8 +945,8 @@ async function renderCurPane(){
     box.innerHTML='';
     const headId='cur-head';
     let h=$(headId);
-    if(!h){ h=document.createElement('div'); h.id=headId; h.style.cssText='padding:6px 10px;font-size:12px;color:var(--mut)'; box.parentNode.insertBefore(h,box); }
-    h.textContent=wsDisplayName({id:curWs,sid:sessionId})+' · 工作区 '+curWs;
+    if(!h){ h=document.createElement('div'); h.id=headId; box.parentNode.insertBefore(h,box); }
+    markSel();
     if(!(root.children||[]).length){ box.innerHTML='<div class="fnote" style="padding:8px">还是空的。上传、拖入文件，或让我干活生成。</div>'; return; }
     if($('att-only').checked){
       const flat=[];
@@ -913,21 +958,68 @@ async function renderCurPane(){
     for(const c of (root.children||[])) box.appendChild(dirOrFileNode(c,0));
   }catch(e){ box.innerHTML='<div class="fnote" style="padding:8px">读取失败</div>'; }
 }
+function tactBtn(txt,title,fn){
+  const b=document.createElement('button'); b.className='tact'; b.textContent=txt; b.title=title;
+  b.onclick=(ev)=>{ ev.stopPropagation(); ev.preventDefault(); fn(ev); };
+  return b;
+}
+function esc(s){ return String(s).split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;'); }
+function markSel(){
+  document.querySelectorAll('#rtree .tdir>summary').forEach(s2=>s2.classList.toggle('sel',s2.dataset.dir===selDir));
+  const h=$('cur-head'); if(!h||!curWs) return;
+  const segs=selDir?selDir.split('/'):[];
+  let html='<button class="bcb" id="bc-up" title="回到上一级文件夹"'+(segs.length?'':' disabled')+'>⬆</button>'+
+           '<button class="bcb" id="bc-root" title="回到工作区根目录"'+(segs.length?'':' disabled')+'>🏠</button>';
+  html+='<span class="bseg'+(segs.length?'':' cur')+'" data-p="">'+esc(wsDisplayName({id:curWs,sid:sessionId}))+'</span>';
+  let acc='';
+  for(const s of segs){
+    acc=acc?acc+'/'+s:s;
+    html+='<span class="bsep">›</span><span class="bseg'+(acc===selDir?' cur':'')+'" data-p="'+esc(acc)+'">'+esc(s)+'</span>';
+  }
+  const abs=(window.__root||'')+'/data/artifacts/'+curWs+(selDir?'/'+selDir:'');
+  html+='<div class="absline" title="'+esc(abs)+'">'+esc(abs)+'</div>';
+  h.innerHTML=html;
+  $('bc-up').onclick=()=>{ const p=selDir.split('/'); p.pop(); selDir=p.join('/'); markSel(); };
+  $('bc-root').onclick=()=>{ selDir=''; markSel(); };
+  h.querySelectorAll('.bseg').forEach(el=>el.onclick=()=>{ selDir=el.dataset.p; markSel(); });
+}
 function dirOrFileNode(n,depth){
   if(n.type==='file') return fileNode(n,depth);
-  const det=document.createElement('details'); det.className='tdir'; det.open=depth<1;
+  const det=document.createElement('details'); det.className='tdir'; det.open=depth<1||selDir===n.path||(selDir&&selDir.startsWith(n.path+'/'));
   det.style.marginLeft=(depth?14:0)+'px';
-  const sum=document.createElement('summary');
+  const sum=document.createElement('summary'); sum.dataset.dir=n.type==='dir'?n.path:'';
   sum.innerHTML='<span>'+(n.type==='link'?'🔗':'📁')+'</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+n.name+'</span>'+
     (n.type==='link'?'<span class="bdg link" title="'+String(n.target||'').replace(/"/g,'&quot;')+'">链接</span>':'');
+  sum.addEventListener('click',()=>{ if(n.type==='dir'){ selDir=n.path; markSel(); } });
+  if(n.type==='dir'){
+    // 目录级快捷创建：文件管理的基本语义——在哪个文件夹上操作就建在哪
+    sum.appendChild(tactBtn('＋📄','在这个文件夹里新建文件',async()=>{
+      const nm=prompt('新文件叫什么名字？'); if(!nm) return;
+      const r=await fetch('/api/fs/new',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:n.path+'/'+nm,type:'file'})});
+      const d=await r.json(); d.ok?(selDir=n.path,renderCurPane()):alert('创建失败: '+(d.err||''));
+    }));
+    sum.appendChild(tactBtn('＋📁','在这个文件夹里新建子文件夹',async()=>{
+      const nm=prompt('新文件夹叫什么名字？'); if(!nm) return;
+      const r=await fetch('/api/fs/new',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:n.path+'/'+nm,type:'dir'})});
+      const d=await r.json(); d.ok?(selDir=n.path,renderCurPane()):alert('创建失败: '+(d.err||''));
+    }));
+    sum.appendChild(tactBtn('✎','重命名这个文件夹',async()=>{
+      const nn=prompt('改成什么名字？',n.name); if(!nn||nn===n.name) return;
+      const r=await fetch('/api/fs/rename',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:n.path,name:nn})});
+      const d=await r.json(); if(d.ok){ if(selDir===n.path) selDir=d.path; renderCurPane(); } else alert('改名失败: '+(d.err||''));
+    }));
+    sum.appendChild(tactBtn('🗑','删除这个文件夹（连同里面所有内容）',async()=>{
+      if(!confirm('删除文件夹「'+n.name+'」？里面的文件也会一起删掉。')) return;
+      const r=await fetch('/api/fs/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:n.path})});
+      const d=await r.json(); if(d.ok){ if(selDir===n.path||selDir.startsWith(n.path+'/')) selDir=''; renderCurPane(); } else alert('删除失败: '+(d.err||''));
+    }));
+  }
   if(n.type==='link'){
-    const un=document.createElement('button'); un.className='tact'; un.textContent='✕'; un.title='取消引入（只移除链接，不动原文件）';
-    un.onclick=async(ev)=>{
-      ev.stopPropagation(); ev.preventDefault();
+    const un=tactBtn('✕','取消引入（只移除链接，不动原文件）',async()=>{
       if(!confirm('取消引入「'+n.name+'」？只移除这个链接，原工作区和文件都不动。')) return;
       const r=await fetch('/api/ws/unlink',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:n.path})});
       const d=await r.json(); d.ok?renderCurPane():alert('失败: '+(d.err||''));
-    };
+    });
     sum.appendChild(un);
   }
   det.appendChild(sum);
@@ -940,17 +1032,16 @@ function fileNode(n,depth){
   el.innerHTML='<span>'+fileIcon(n.name)+'</span><span class="nm">'+n.name+'</span>'+
     (n.att?'<span class="bdg">附件</span>':'')+'<span class="sz">'+fmtSize(n.size||0)+'</span>';
   el.onclick=()=>window.open('/preview/'+encodeURIComponent(curWs+'/'+n.path),'_blank');
-  const mk=(txt,title,fn)=>{ const b=document.createElement('button'); b.className='tact'; b.textContent=txt; b.title=title; b.onclick=(ev)=>{ev.stopPropagation();fn();}; return b; };
-  el.appendChild(mk('↗','用电脑里的办公软件打开',async()=>{
+  el.appendChild(tactBtn('↗','用电脑里的办公软件打开',async()=>{
     try{ const r=await fetch('/open/'+encodeURIComponent(curWs+'/'+n.path)); const d=await r.json(); d.ok?note('已在电脑上打开 '+n.name):alert('打不开: '+(d.err||'')); }catch(e){ alert('打不开: '+e.message); }
   }));
-  el.appendChild(mk('🕘','历史版本',(ev)=>toggleVersions({name:n.path,size:n.size},el)));
-  el.appendChild(mk('✎','重命名',async()=>{
+  el.appendChild(tactBtn('🕘','历史版本',(ev)=>toggleVersions({name:n.path,size:n.size},el)));
+  el.appendChild(tactBtn('✎','重命名',async()=>{
     const nn=prompt('改成什么名字？',n.name); if(!nn||nn===n.name) return;
     const r=await fetch('/api/fs/rename',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:n.path,name:nn})});
     const d=await r.json(); d.ok?renderCurPane():alert('改名失败: '+(d.err||''));
   }));
-  el.appendChild(mk('🗑','删除',async()=>{
+  el.appendChild(tactBtn('🗑','删除',async()=>{
     if(!confirm('删除「'+n.name+'」？'+(n.att?'':'\n（删之前会自动存一版，可在历史版本里找回）'))) return;
     const r=await fetch('/api/fs/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:n.path})});
     const d=await r.json(); d.ok?renderCurPane():alert('删除失败: '+(d.err||''));
@@ -987,6 +1078,11 @@ function renderAllPane(){
   if(allFilter.page>pages) allFilter.page=pages;
   const slice=list.slice((allFilter.page-1)*PAGE_N, allFilter.page*PAGE_N);
   const box=$('all-list'); box.innerHTML='';
+  if(allFilter.chip==='active'&&wsList.some(w=>w.state!=='active')){
+    const tip=document.createElement('div'); tip.className='fnote'; tip.style.cssText='padding:2px 12px 8px';
+    tip.textContent='归档对话和未关联的工作区在上方状态片里查看；未关联的可以删除。';
+    box.appendChild(tip);
+  }
   if(!slice.length){ box.innerHTML='<div class="fnote" style="padding:10px">没有符合条件的工作区。</div>'; }
   for(const w of slice){
     const row=document.createElement('div'); row.className='wrow';
@@ -1041,20 +1137,20 @@ function renderAllPane(){
 function showTab(which){
   $('tabbtn-cur').classList.toggle('on',which==='cur');
   $('tabbtn-all').classList.toggle('on',which==='all');
-  $('pane-cur').style.display=which==='cur'?'block':'none';
-  $('pane-all').style.display=which==='all'?'block':'none';
+  $('pane-cur').style.display=which==='cur'?'flex':'none';
+  $('pane-all').style.display=which==='all'?'flex':'none';
   if(which==='cur') renderCurPane(); else { renderChips(); renderAllPane(); }
 }
 $('tabbtn-cur').onclick=()=>showTab('cur');
 $('tabbtn-all').onclick=()=>{ showTab('all'); loadWorkspaces(); };
 $('ws-refresh').onclick=()=>{ loadWorkspaces(); renderCurPane(); loadArch().then(loadSessions); };
 $('att-only').onchange=()=>renderCurPane();
-$('nf-btn').onclick=async()=>{ const nm=prompt('新文件叫什么名字？'); if(!nm) return;
-  const r=await fetch('/api/fs/new',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:nm,type:'file'})});
+$('nf-btn').onclick=async()=>{ const nm=prompt('新文件叫什么名字？（放进当前选中的文件夹：'+(selDir||'根目录')+'）'); if(!nm) return;
+  const r=await fetch('/api/fs/new',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:(selDir?selDir+'/':'')+nm,type:'file'})});
   const d=await r.json(); d.ok?renderCurPane():alert('创建失败: '+(d.err||'')); };
-$('nd-btn').onclick=async()=>{ const nm=prompt('新文件夹叫什么名字？'); if(!nm) return;
-  const r=await fetch('/api/fs/new',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:nm,type:'dir'})});
-  const d=await r.json(); d.ok?renderCurPane():alert('创建失败: '+(d.err||'')); };
+$('nd-btn').onclick=async()=>{ const nm=prompt('新文件夹叫什么名字？（放在 '+(selDir||'根目录')+' 下）'); if(!nm) return;
+  const r=await fetch('/api/fs/new',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:(selDir?selDir+'/':'')+nm,type:'dir'})});
+  const d=await r.json(); d.ok?(selDir=selDir?selDir+'/'+nm:nm,renderCurPane()):alert('创建失败: '+(d.err||'')); };
 // ---- 版本时间线：点 🕘 展开该文件的历史版本，可预览/一键恢复 ----
 $('rside-toggle').onclick=()=>{ $('rside').classList.toggle('open'); renderCurPane(); loadWorkspaces(); };
 // ---- 版本时间线：点 🕘 展开该文件的历史版本，可预览/一键恢复 ----
@@ -1119,16 +1215,16 @@ $('up-input').onchange=async()=>{
   for(const f of $('up-input').files){
     try{
       const buf=await f.arrayBuffer();
-      const r=await fetch('/api/upload?ws='+encodeURIComponent(curWs)+'&name='+encodeURIComponent(f.name),{method:'POST',body:buf});
+      const r=await fetch('/api/upload?ws='+encodeURIComponent(curWs)+'&dir='+encodeURIComponent(selDir||'')+'&name='+encodeURIComponent(f.name),{method:'POST',body:buf});
       const d=await r.json(); if(d.ok) names.push(d.name);
     }catch(e){}
   }
   $('up-input').value='';
   renderCurPane();
-  if(names.length){ addInfo('已收到 '+names.length+' 个文件，放在本对话工作区的 uploads/ 里。想让我处理它，就在消息里 @ 它的文件名。'); }
+  if(names.length){ addInfo('已收到 '+names.length+' 个文件，放在「'+(selDir||'根目录')+'」里。想让我处理它，就在消息里 @ 它的文件名。'); }
   else note('上传失败，请重试');
 };
-// 拖拽上传
+// 拖拽上传（落点=选中的文件夹）
 document.addEventListener('dragover',e=>{e.preventDefault();});
 document.addEventListener('drop',async e=>{
   e.preventDefault();
@@ -1137,11 +1233,11 @@ document.addEventListener('drop',async e=>{
   for(const f of (e.dataTransfer||{}).files||[]){
     try{
       const buf=await f.arrayBuffer();
-      const r=await fetch('/api/upload?ws='+encodeURIComponent(curWs)+'&name='+encodeURIComponent(f.name),{method:'POST',body:buf});
+      const r=await fetch('/api/upload?ws='+encodeURIComponent(curWs)+'&dir='+encodeURIComponent(selDir||'')+'&name='+encodeURIComponent(f.name),{method:'POST',body:buf});
       const d=await r.json(); if(d.ok) names.push(d.name);
     }catch(err){}
   }
-  if(names.length){ renderCurPane(); addInfo('收到 '+names.length+' 个文件（在本对话的工作区里）。消息里用 @ 引用即可让我处理。'); }
+  if(names.length){ renderCurPane(); addInfo('收到 '+names.length+' 个文件（在「'+(selDir||'根目录')+'」）。消息里用 @ 引用即可让我处理。'); }
 });
 
 </script>
