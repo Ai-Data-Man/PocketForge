@@ -495,7 +495,9 @@ function submit(){
   if(!sessionId){ addInfo('对话还没开好，1 秒后再发一次。'); return; }
   if(busy){ addInfo('它还在干活（可以点「停止」打断它，或者等它做完）。'); return; }
   addMsg(t,'user'); txt.value=''; setBusy(true);
-  wssend({type:'prompt',text:t});
+  // ponytail: 工作区路径随提示词注入（agent 不看 UI）；若将来提示词很长可改为桥接侧 system 注入
+  const hint=(curWs&&!/^[\s\S]*data\/artifacts\//.test(t))?(''+String.fromCharCode(10)+'（系统备注：本对话制品工作区目录是 data/artifacts/'+curWs+'/，新建或修改交付物默认放这里，覆盖前按版本管理技能先存一版）'):'';
+  wssend({type:'prompt',text:t+hint});
 }
 send.onclick=submit;
 txt.onkeydown=e=>{
