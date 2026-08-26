@@ -32,6 +32,10 @@
 - 验证状态三级：`UNVERIFIED`（仅文档）→ `VERIFIED-DOC`（官方源核对）→ `VERIFIED-RUN`（本机跑通，含日期与版本）。
 - 未验证的关键事实必须出现在 `STATE.md` 开放问题区。
 
+## 3.5 状态 Schema 纪律（ADR-0009）
+- 改任何自有状态文件（workspace-map/session-archive/providers/.forge 等）的格式 = 同一提交内必须：_schema 版本号 +1、注册表迁移步骤、迁移自测；无迁移的变更视为破坏性提交。
+- sessions.db / schedule.json / faucet 数据归组件自迁移，永不手改。
+
 ## 4. 仓库分区
 - `forge/` = 产品本体（交付物运行时树；打包只取它 + 许可证文本）。
 - `tools/` = 开发侧工具（下载 manifest、校验、打包、e2e 测试）。
