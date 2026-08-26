@@ -33,6 +33,13 @@ const ART_DIR = path.join(ROOT, 'data', 'artifacts');
 const fsp = require('fs').promises;
 const FSS = require('fs');
 
+// 断电安全写：临时文件+rename，杜绝截断归零（审查 I7）
+function atomicWrite(file, data) {
+    const tmp = file + '.tmp-' + process.pid + '-' + Date.now();
+    FSS.writeFileSync(tmp, data);
+    FSS.renameSync(tmp, file);
+}
+
 // v2→v3 一次性迁移：旧版散落文件 + 根级 .git → ws-imported/（历史保留）
 (function migrateV3() {
     try {
@@ -84,17 +91,17 @@ function wsNewId() {
 }
 const WSMAP_FILE = path.join(ROOT, 'data', 'workspace-map.json');
 function readWsMap() { try { return JSON.parse(FSS.readFileSync(WSMAP_FILE, 'utf8')); } catch { return {}; } }
-function writeWsMap(m) { FSS.mkdirSync(path.dirname(WSMAP_FILE), { recursive: true }); FSS.writeFileSync(WSMAP_FILE, JSON.stringify(m, null, 2)); }
+function writeWsMap(m) { FSS.mkdirSync(path.dirname(WSMAP_FILE), { recursive: true }); atomicWrite(WSMAP_FILE, JSON.stringify(m, null, 2)); }
 
 // ---- 工作区元数据(.forge,ADR-0008):附件身份等语义信息与存放路径解耦 ----
 function forgeFile(ws) { return path.join(wsDir(ws), '.forge'); }
 function readForgeMeta(ws) { try { return JSON.parse(FSS.readFileSync(forgeFile(ws), 'utf8')); } catch { return {}; } }
-function writeForgeMeta(ws, meta) { try { FSS.writeFileSync(forgeFile(ws), JSON.stringify(meta, null, 2)); } catch {} }
+function writeForgeMeta(ws, meta) { try { atomicWrite(forgeFile(ws), JSON.stringify(meta, null, 2)); } catch {} }
 
 // ---- 会话归档(data/session-archive.json):纯 UI 生命周期态 ----
 const ARCH_FILE = path.join(ROOT, 'data', 'session-archive.json');
 function readArch() { try { return JSON.parse(FSS.readFileSync(ARCH_FILE, 'utf8')); } catch { return {}; } }
-function writeArch(m) { FSS.mkdirSync(path.dirname(ARCH_FILE), { recursive: true }); FSS.writeFileSync(ARCH_FILE, JSON.stringify(m, null, 2)); }
+function writeArch(m) { FSS.mkdirSync(path.dirname(ARCH_FILE), { recursive: true }); atomicWrite(ARCH_FILE, JSON.stringify(m, null, 2)); }
 function wsState(id, map, arch) {
     const sid = (map[id] || {}).sid;
     if (!sid) return 'orphan';
@@ -151,7 +158,7 @@ function readProviders() {
     }
     return list;
 }
-function writeProviders(list) { require('fs').writeFileSync(PROV_FILE, JSON.stringify(list, null, 2)); }
+function writeProviders(list) { atomicWrite(PROV_FILE, JSON.stringify(list, null, 2)); };
 function activeProvider() {
     const list = readProviders();
     return list.find(p => p.active) || null;
@@ -201,7 +208,12 @@ function onAcpData(chunk) {
         if (msg.id !== undefined && (msg.result !== undefined || msg.error !== undefined) && waiting.has(msg.id)) {
             const w = waiting.get(msg.id); waiting.delete(msg.id);
             if (w.resolve) { w.resolve(msg.result !== undefined ? msg.result : msg); }
-            else if (w.ws && w.ws.alive) w.ws.send({ rpc: msg });
+            else if (w.ws && w.ws.alive) {
+                // I8: 带回客户端关联 id
+                const out = { rpc: msg };
+                if (w.__cid !== undefined) out.rpc.__cid = w.__cid;
+                w.ws.send(out);
+            }
             continue;
         }
         if (msg.method) {
@@ -237,6 +249,8 @@ init().catch(e => { console.error('init failed', e); process.exit(1); });
 async function hotRestartProvider() {
     const oldChild = acp;
     try { oldChild.removeAllListeners('exit'); oldChild.kill(); } catch {}
+    // M6(审查s15): 清 waiting 前先 reject 在途请求，否则前端 spinner 永挂
+    for (const [, w] of waiting) { if (w.reject) { try { w.reject(new Error('provider switching')); } catch {} } }
     waiting.clear();
     sessionClients.clear();
     acp = spawnAcp();
@@ -314,6 +328,10 @@ async function handleHttp(req, res) {
             if (!/^[a-zA-Z]:[\\/]/.test(target)) throw new Error('请填完整路径，比如 C:\\Users\\你\\Desktop\\报表');
             let st; try { st = FSS.statSync(target); } catch { throw new Error('找不到这个文件夹，检查一下路径'); }
             if (!st.isDirectory()) throw new Error('这是一个文件，请填文件夹的路径');
+            // I2(审查s15): 防环——目标不得是 artifacts 本身或其上级（否则遍历成环）
+            const tReal = FSS.realpathSync(target);
+            const aReal = FSS.realpathSync(ART_DIR);
+            if (tReal === aReal || aReal.startsWith(tReal + path.sep)) throw new Error('这个文件夹包含工作区本身，不能链接进来');
             const dest = path.join(wsDir(ws), label);
             if (FSS.existsSync(dest)) throw new Error('这个工作区里已经有叫「' + label + '」的文件夹了，换个名字或先删掉旧的');
             FSS.symlinkSync(target, dest, 'junction');
@@ -356,8 +374,8 @@ async function handleHttp(req, res) {
                 if (!wsValidId(ws) || !rel || !oid) throw new Error('参数不完整');
                 const root = wsDir(ws);
                 const full = path.join(root, rel.split('/').join(path.sep));
-                if (!FSS.existsSync(full)) throw new Error('文件不存在');
-                // 先把当前内容存一版（防手滑丢数据），再写入旧版并记录
+                // I4(审查s15): 已删除的文件也能恢复——数据在 git 对象库里，不要求工作树存在该文件
+                FSS.mkdirSync(path.dirname(full), { recursive: true });
                 try { await vcsSnapshot(root, rel, '恢复前自动保存当前版'); } catch {}
                 const b = await ig().readBlob({ fs: fsp, dir: root, oid: await vcsFullOid(root, oid), filepath: rel });
                 await fsp.writeFile(full, Buffer.from(b.blob));
@@ -370,7 +388,8 @@ async function handleHttp(req, res) {
     else if (url.startsWith('/open/')) {
         // 用系统默认程序打开本地文件（cmd start）
         const name = decodeURIComponent(url.slice('/open/'.length));
-        if (name.includes('..')) { res.writeHead(400); res.end(); return; }
+        // I5(审查s15): 名字进 cmd shell 前先过黑名单——拒绝引号与 cmd 元字符，杜绝注入
+        if (name.includes('..') || ['"', '%', '^', '&', '|', '<', '>', '!'].some(ch => name.includes(ch))) { res.writeHead(400); res.end(JSON.stringify({ok:false, err:'bad name'})); return; }
         const f = path.join(ROOT, 'data', 'artifacts', name);
         if (!require('fs').existsSync(f)) { res.writeHead(404); res.end(JSON.stringify({ok:false, err:'not found'})); return; }
         require('child_process').exec('start "" "' + f + '"', { shell: 'cmd.exe' }, () => {});
@@ -398,17 +417,19 @@ async function handleHttp(req, res) {
             for (const ent of FSS.readdirSync(ART_DIR, { withFileTypes: true })) {
                 if (!ent.isDirectory() || ent.name.startsWith('.') || !wsValidId(ent.name)) continue;
                 let files = 0, bytes = 0, mtime = 0;
-                (function walk(d) {
+                // I2(审查s15): lstat 跳过 junction + 节点预算——链接外部大目录不再全盘扫描
+                (function walk(d, b) {
                     try {
                         for (const f of FSS.readdirSync(d)) {
                             if (f === '.git' || f === '.forge') continue;
                             const full = path.join(d, f);
-                            const st = FSS.statSync(full);
-                            if (st.isDirectory()) walk(full);
+                            const st = FSS.lstatSync(full);
+                            if (st.isSymbolicLink()) continue;
+                            if (st.isDirectory()) { if (--b.n > 0) walk(full, b); }
                             else { files++; bytes += st.size; if (st.mtimeMs > mtime) mtime = st.mtimeMs; }
                         }
                     } catch {}
-                })(path.join(ART_DIR, ent.name));
+                })(path.join(ART_DIR, ent.name), { n: 2000 });
                 out.push({ id: ent.name, files, bytes, mtime, sid: (map[ent.name] || {}).sid || null, state: wsState(ent.name, map, arch) });
             }
         } catch {}
@@ -601,6 +622,25 @@ async function handleHttp(req, res) {
                 const full = path.join(root, rel.split('/').join(path.sep));
                 const st = FSS.lstatSync(full);
                 if (!st.isSymbolicLink() && st.isFile()) { try { await vcsSnapshot(root, rel, '删除前自动保存'); } catch {} }
+                // I3(审查s15): 目录删除前对其内文件逐个快照(上限80)，否则整棵消失无副本
+                if (!st.isSymbolicLink() && st.isDirectory()) {
+                    const files = [];
+                    (function w2(d, b) {
+                        let ents; try { ents = FSS.readdirSync(d); } catch { return; }
+                        for (const f of ents) {
+                            if (files.length >= 80 || b.n <= 0) return;
+                            if (f === '.git' || f === '.forge' || f.startsWith('.')) continue;
+                            const fp = path.join(d, f);
+                            let s2; try { s2 = FSS.lstatSync(fp); } catch { continue; }
+                            if (s2.isDirectory()) w2(fp, { n: --b.n });
+                            else if (s2.isFile()) files.push(fp);
+                        }
+                    })(full, { n: 80 });
+                    for (const fp of files) {
+                        const r2 = path.relative(root, fp).split(path.sep).join('/');
+                        try { await vcsSnapshot(root, r2, '删除文件夹前自动保存'); } catch {}
+                    }
+                }
                 FSS.rmSync(full, { recursive: true, force: true });
                 const meta = readForgeMeta(b.ws);
                 if (meta.attachments) { meta.attachments = meta.attachments.filter(p => p !== rel && !p.startsWith(rel + '/')); writeForgeMeta(b.ws, meta); }
@@ -647,21 +687,24 @@ async function handleHttp(req, res) {
         const qs = new URL(req.url, 'http://x').searchParams;
         const ws = qs.get('ws') || '';
         if (!wsValidId(ws)) { res.writeHead(400); res.end(); return; }
-        function listDir(d, prefix) {
+        function listDir(d, prefix, b) {
             let out = [];
             try {
                 for (const f of FSS.readdirSync(d)) {
                     if (f.startsWith('.') || f.startsWith('_')) continue;
+                    if (b.n <= 0) return out;
                     const full = path.join(d, f);
-                    let st; try { st = FSS.statSync(full); } catch { continue; }
-                    if (st.isDirectory()) out.push.apply(out, listDir(full, prefix ? prefix + '/' + f : f));
+                    let st; try { st = FSS.lstatSync(full); } catch { continue; }
+                    // I2(审查s15): 跳过 junction，预算封顶
+                    if (st.isSymbolicLink()) { out.push({ name: (prefix ? prefix + '/' : '') + f + '/', size: 0 }); continue; }
+                    if (st.isDirectory()) out.push.apply(out, listDir(full, prefix ? prefix + '/' + f : f, b));
                     else out.push({ name: (prefix ? prefix + '/' : '') + f, size: st.size });
                 }
             } catch {}
             return out;
         }
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify(listDir(wsDir(ws), '')));
+        res.end(JSON.stringify(listDir(wsDir(ws), '', { n: 500 })));
     }
     else if (url.startsWith('/api/upload') && req.method === 'POST') {
         const qs = new URL(req.url, 'http://x').searchParams;
@@ -704,6 +747,9 @@ const server = http.createServer((req, res) => Promise.resolve(handleHttp(req, r
 }));
 
 server.on('upgrade', (req, socket) => {
+    // C1(审查s15): 任意网页可连本机WS(CSWSH)——只接受本页面origin，否则API key可经test_model外带
+    const origin = req.headers.origin || '';
+    if (origin !== 'http://127.0.0.1:' + PORT) return socket.destroy();
     const key = req.headers['sec-websocket-key'];
     if (!key) return socket.destroy();
     const accept = crypto.createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
@@ -758,9 +804,13 @@ function handleClient(ws, msg) {
 
         // generic passthrough: {type:'rpc', method, params} -> ACP request; response routed back to this ws
         if (msg.type === 'rpc') {
+            // I8(审查s15): 回显客户端关联 id，前端按 id 结算而不是 FIFO 猜
+            const cid = msg.params && msg.params.__cid;
+            const params = Object.assign({}, msg.params || {});
+            delete params.__cid;
             const id = nextId++;
-            waiting.set(id, { ws });
-            acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: msg.method, params: msg.params || {} }) + '\n');
+            waiting.set(id, { ws, __cid: cid });
+            acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: msg.method, params }) + '\n');
             return;
         }
 
@@ -815,7 +865,12 @@ function handleClient(ws, msg) {
                 const m = db.prepare('DELETE FROM messages WHERE session_id = ?').run(msg.sessionId);
                 const r = db.prepare('DELETE FROM sessions WHERE id = ?').run(msg.sessionId);
                 db.close();
-                console.log('session deleted', msg.sessionId, 'messages:', m.changes, 'row:', r.changes);
+                // I1(审查s15): 会话删了就解除其工作区绑定，否则区卡在 active 态永远无法清理
+                const wsm = readWsMap();
+                let unbound = false;
+                for (const k of Object.keys(wsm)) if (wsm[k].sid === msg.sessionId) { delete wsm[k]; unbound = true; }
+                if (unbound) writeWsMap(wsm);
+                console.log('session deleted', msg.sessionId, 'messages:', m.changes, 'row:', r.changes, 'unbound:', unbound);
                 ws.send({ sys: 'session_deleted', sessionId: msg.sessionId, ok: r.changes > 0 });
             } catch (e) { ws.send({ sys: 'error', text: '删除失败: ' + e.message }); }
             return;
@@ -825,7 +880,9 @@ function handleClient(ws, msg) {
             const rel = String(msg.name || '').split('/').join(path.sep);
             const f = path.join(ROOT, 'data', 'artifacts', rel);
             if (rel.includes('..') || !require('fs').existsSync(f)) return ws.send({ sys: 'error', text: '文件不存在' });
-            require('child_process').spawn('powershell', ['-NoProfile', '-Command', 'Set-Clipboard -LiteralPath "' + f + '"'], { detached: true, stdio: 'ignore' }).unref();
+            // I5(审查s15): 路径经 base64 进 PowerShell 再解码，引号/反引号无法逃逸
+            const b64 = Buffer.from(f, 'utf8').toString('base64');
+            require('child_process').spawn('powershell', ['-NoProfile', '-Command', '$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("' + b64 + '"));Set-Clipboard -LiteralPath $p'], { detached: true, stdio: 'ignore' }).unref();
             ws.send({ sys: 'copied', name: msg.name });
             return;
         }
@@ -941,7 +998,7 @@ function handleClient(ws, msg) {
                 keep.push('GOOSE_MODEL_NAME=' + (act.models && act.models[0] || ''));
                 keep.push('FORGE_AGENT_HOST=' + (act.host || ''));
                 keep.push('FORGE_AGENT_API_KEY=' + (act.key || ''));
-                require('fs').writeFileSync(sf, keep.join(String.fromCharCode(10)) + String.fromCharCode(10));
+                atomicWrite(sf, keep.join(String.fromCharCode(10)) + String.fromCharCode(10));
             }
             ws.send({ sys: 'providers', list: list.map(pr => ({ name: pr.name, host: pr.host, models: pr.models || [], active: !!pr.active, hasKey: !!pr.key })) });
             if (needRestart) hotRestartProvider().catch(e => console.error('hot restart failed', e));

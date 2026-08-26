@@ -35,6 +35,7 @@ declare -A SRC=(
  [node.MIT]="https://raw.githubusercontent.com/nodejs/node/main/LICENSE"
  [playwright-mcp.Apache-2.0]="$FORGE/bin/pw-mcp/node_modules/@playwright/mcp/LICENSE"
  [isomorphic-git.MIT]="$FORGE/bin/vendor/artifact-vcs/node_modules/isomorphic-git/LICENSE.md"
+ [DOMPurify.Apache-2.0]="$FORGE/conf/web-assets/vendor/purify.min.js"
 )
 MISS=0
 for name in "${!SRC[@]}"; do

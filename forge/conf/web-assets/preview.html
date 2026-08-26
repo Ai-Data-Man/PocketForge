@@ -14,6 +14,7 @@ img{max-width:100%}
 #err{color:#b00020;padding:30px;text-align:center}
 </style>
 <script src="/vendor/marked.min.js"></script>
+<script src="/vendor/purify.min.js"></script>
 <script src="/vendor/mammoth.browser.min.js"></script>
 
 </head>
@@ -38,12 +39,13 @@ async function main(){
     window.location.href = '/artifact/' + encodeURIComponent(file); // 浏览器原生 PDF
   } else if (ext === 'md' || ext === 'markdown' || ext === 'txt' || ext === 'log'){
     const text = await res.text();
-    if (ext === 'md' || ext === 'markdown') content.innerHTML = marked.parse(text);
+    if (ext === 'md' || ext === 'markdown') content.innerHTML = DOMPurify.sanitize(marked.parse(text));
     else content.innerHTML = '<pre>' + text.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</pre>';
   } else if (ext === 'html' || ext === 'htm'){
     const text = await res.text();
     const iframe = document.createElement('iframe');
     iframe.style.cssText = 'width:100%;height:70vh;border:1px solid #dde;border-radius:8px';
+    iframe.sandbox = ''; // C2: 禁脚本，预览静态外观即可
     iframe.srcdoc = text;
     content.innerHTML = ''; content.appendChild(iframe);
   } else if (ext === 'docx'){

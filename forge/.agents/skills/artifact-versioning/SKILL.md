@@ -31,3 +31,5 @@ node bin\artifact-vcs.js restore  data/artifacts/<工作区> data/artifacts/<工
 
 6. 用户提到以前对话做的东西时：它的完整路径形如 `data/artifacts/ws-xxxx/...`。直接用这个路径读和改就行；改之前同样先 snapshot。
 7. 工作区里的 🔗 链接目录（引入的其他工作区、外链文件夹）当普通子目录用即可，里面的文件改前也先 snapshot（按它所在链接下的实际路径）。`.forge` 和 `.git` 是系统文件，不要动。
+
+7. 用户想找回**已删除**的文件时：它删前通常自动存过版。用 `log` 查该文件所在工作区的历史（文件不在了也能查），再用 `restore` 恢复——恢复会自动重建文件。
