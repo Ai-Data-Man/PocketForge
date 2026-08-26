@@ -88,6 +88,6 @@ function loadXlsxShim(){
     });
   });
 }
-window.addEventListener('load', function(){ setTimeout(function(){ loadXlsxShim().catch(function(e){ console.warn(e.message); }).then(function(){ return main(); }).catch(function(e){ content.innerHTML = '<div id="err">预览失败：' + e.message + '</div>'; }); }, 60); });
+window.addEventListener('load', function(){ setTimeout(function(){ loadXlsxShim().catch(function(e){ console.warn(e.message); }).then(function(){ return main(); }).catch(function(e){ content.innerHTML = '<div id="err">预览失败：' + String(e.message||e).replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</div>'; }); }, 60); });
 </script>
 </body></html>
