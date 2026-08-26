@@ -403,8 +403,13 @@ async function handleHttp(req, res) {
         const f = path.join(ROOT, 'data', 'artifacts', name.split('/').join(path.sep));
         require('fs').readFile(f, (e, buf) => {
             if (e) { res.writeHead(404); res.end(); return; }
-            const ext = path.extname(f).toLowerCase();
-            res.writeHead(200, { 'content-type': MIME[ext] || 'application/octet-stream', 'cache-control': 'no-cache' });
+const ext = path.extname(f).toLowerCase();
+            const headers = { 'content-type': MIME[ext] || 'application/octet-stream', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' };
+            // R2-C1: html/svg 内联打开=同源脚本，穿透 Origin 白名单外带 key——强制下载
+            if (['.html', '.htm', '.svg', '.xml'].includes(ext)) {
+                headers['content-disposition'] = "attachment; filename*=UTF-8''" + encodeURIComponent(path.basename(f));
+            }
+            res.writeHead(200, headers);
             res.end(buf);
         });
     }
@@ -692,6 +697,7 @@ async function handleHttp(req, res) {
             try {
                 for (const f of FSS.readdirSync(d)) {
                     if (f.startsWith('.') || f.startsWith('_')) continue;
+                    b.n--; // R2-I1: 预算要真的递减，否则形同虚设
                     if (b.n <= 0) return out;
                     const full = path.join(d, f);
                     let st; try { st = FSS.lstatSync(full); } catch { continue; }
@@ -1056,7 +1062,7 @@ function handleClient(ws, msg) {
                 if (c.model) keep.push('GOOSE_MODEL_NAME=' + c.model);
                 if (c.host) keep.push('FORGE_AGENT_HOST=' + c.host);
                 if (c.key) keep.push('FORGE_AGENT_API_KEY=' + c.key);
-                require('fs').writeFileSync(f, keep.join('\n') + '\n');
+                atomicWrite(f, keep.join('\n') + '\n');
                 console.log('config saved (takes effect after restart):', c.model || '', c.host || '');
                 ws.send({ sys: 'saved_config' });
             } catch (e) { ws.send({ sys: 'error', text: '保存失败: ' + e.message }); }

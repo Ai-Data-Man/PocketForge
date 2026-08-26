@@ -19,7 +19,7 @@ img{max-width:100%}
 
 </head>
 <body>
-<div id="bar"><span id="fname"></span><a id="dl">⬇ 下载原文件</a></div>
+<div id="bar"><span id="fname"></span><a id="dl" download="">⬇ 下载原文件</a></div>
 <div id="content"><div id="hint">加载中…</div></div>
 <script>
 const name = decodeURIComponent(location.hash.slice(1));
@@ -32,11 +32,11 @@ const content = document.getElementById('content');
 async function main(){
   const ext = (file.match(/\.([a-z0-9]+)$/i)||[])[1]?.toLowerCase() || '';
   const res = await fetch('/artifact/' + encodeURIComponent(file));
-  if (!res.ok){ content.innerHTML = '<div id="err">文件不存在或无法读取：' + file + '</div>'; return; }
+  if (!res.ok){ const ef = file.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); content.innerHTML = '<div id="err">文件不存在或无法读取：' + ef + '</div>'; return; }
   if (['png','jpg','jpeg','gif','webp','svg','bmp'].includes(ext)){
     content.innerHTML = '<img src="/artifact/' + encodeURIComponent(file) + '">';
   } else if (ext === 'pdf'){
-    window.location.href = '/artifact/' + encodeURIComponent(file); // 浏览器原生 PDF
+    window.open('/artifact/' + encodeURIComponent(file), '_blank'); // R2-C1: pdf 也走新标签+服务端 disposition，不在本源导航
   } else if (ext === 'md' || ext === 'markdown' || ext === 'txt' || ext === 'log'){
     const text = await res.text();
     if (ext === 'md' || ext === 'markdown') content.innerHTML = DOMPurify.sanitize(marked.parse(text));
@@ -51,7 +51,7 @@ async function main(){
   } else if (ext === 'docx'){
     const buf = await res.arrayBuffer();
     const r = await mammoth.convertToHtml({ arrayBuffer: buf });
-    content.innerHTML = r.value || '(空文档)';
+    content.innerHTML = DOMPurify.sanitize(r.value || '(空文档)');
   } else if (['xlsx','xls','csv'].includes(ext)){
     const XLSXlib = (typeof XLSX !== 'undefined' && XLSX) || window.XLSX || window['xlsx'] || globalThis.XLSX;
     if (!XLSXlib) throw new Error('xlsx 库未加载; window keys=' + Object.keys(window).filter(function(k){return k.toLowerCase().indexOf('xls')>=0||k==='marked'||k.toLowerCase().indexOf('mammoth')>=0;}).join(',') + '; readyState=' + document.readyState);
@@ -62,12 +62,12 @@ async function main(){
       if (wb.SheetNames.length > 1) html += '<h3 style="color:#0b6b3a">' + sheetName + '</h3>';
       html += XLSXlib.utils.sheet_to_html(wb.Sheets[sheetName]);
     }
-    content.innerHTML = html;
+    content.innerHTML = DOMPurify.sanitize(html);
   } else if (['json'].includes(ext)){
     const j = await res.json();
     content.innerHTML = '<pre>' + JSON.stringify(j, null, 2).replace(/</g,'&lt;') + '</pre>';
   } else {
-    content.innerHTML = '<div id="hint">这类文件（.' + ext + '）不支持预览，<a href="/artifact/' + encodeURIComponent(file) + '">点此下载</a>查看。</div>';
+    content.innerHTML = '<div id="hint">这类文件（.' + ext + '）不支持预览，<a download="" href="/artifact/' + encodeURIComponent(file) + '">点此下载</a>查看。</div>';
   }
 }
 function loadScript(src){

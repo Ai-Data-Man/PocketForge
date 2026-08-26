@@ -616,7 +616,7 @@ window.exportChat=()=>{
   const NL=String.fromCharCode(10);
   const msgs=[...document.querySelectorAll('.msg')].filter(m=>!m.classList.contains('info'))
     .map(m=>{
-      let t=m.textContent.replace(/(复制|重发)\s*$/,'');
+      let t=m.textContent.replace(/((复制|重发)\s*)+$/,'');
       return (m.classList.contains('user')?'我：':'小 forge：')+NL+t.trimEnd();
     }).join(NL+NL);
   const tools=[...document.querySelectorAll('.card .ttl')].map(t=>'🔧 '+t.textContent).join(NL);
