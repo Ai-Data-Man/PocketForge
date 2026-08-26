@@ -309,7 +309,7 @@ async function handleHttp(req, res) {
     const url = (req.url || '/').split('?')[0];
     if (url === '/' ) {
         const html = require('fs').readFileSync(PAGE, 'utf8').replace('__FORGE_ROOT__', ROOT.split(String.fromCharCode(92)).join('/'));
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache, no-store, must-revalidate' });
         res.end(html);
     } else if (url === '/healthz') { res.writeHead(200); res.end('ok'); }
     else if (url === '/api/skills') {
