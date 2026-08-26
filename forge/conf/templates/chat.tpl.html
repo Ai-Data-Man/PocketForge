@@ -270,6 +270,15 @@ body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(
   </div>
   <button id="save-cfg" style="width:100%;padding:11px;background:var(--g);color:#fff;border:none;border-radius:9px;font-size:15px;cursor:pointer">💾 保存这家服务商</button>
   <div class="fnote" id="save-note" style="margin-top:10px"></div>
+  <h3 style="margin:18px 0 8px">🩹 关于与升级</h3>
+  <div class="fnote" style="margin-bottom:8px">当前版本 <b id="upd-cur">…</b><span id="upd-warn" style="color:#a80"></span>。升级自动完成，你的对话和文件都不会动；万一失败会自动还原。</div>
+  <div style="display:flex;gap:6px">
+    <button id="upd-check" class="mini" style="flex:1">检查更新</button>
+    <button id="upd-go" class="mini" style="flex:1;display:none;background:var(--g);color:#fff"></button>
+    <button id="upd-manual-btn" class="mini" style="flex:1">离线升级</button>
+    <input type="file" id="upd-file" accept=".zip" style="display:none">
+  </div>
+  <div class="fnote" id="upd-status" style="margin-top:8px"></div>
 </div></div>
 <script>
 // 顶层防崩：任何一处初始化异常不允许杀死整页 JS（s12 ClipboardItem、s13 up-btn 两次教训）
@@ -767,9 +776,10 @@ function renderAtMenu(q){
     const menu=$('at-menu');
     if(menu){ menu.innerHTML='';
       for(const f of hits){
+        const isDir=f.dir||f.name.endsWith('/');
         const el=document.createElement('div'); el.className='mi';
-        el.innerHTML='<span>'+fileIcon(f.name)+'</span><b>'+f.name.split('/').pop()+'</b><span style="color:var(--mut);font-size:11px;margin-left:auto">'+f.name.split('/')[0]+'</span>';
-        el.onclick=()=>{ txt.value=txt.value.replace(/@[^@\s]*$/,'data/artifacts/'+curWs+'/'+f.name+' '); $('at-menu').style.display='none'; txt.focus(); };
+        el.innerHTML='<span>'+(isDir?'📁':fileIcon(f.name))+'</span><b>'+esc(f.name.replace(/\/$/,''))+'</b><span style="color:var(--mut);font-size:11px;margin-left:auto">'+(isDir?'文件夹':esc(f.name.split('/')[0]))+'</span>';
+        el.onclick=()=>{ txt.value=txt.value.replace(/@[^@\s]*$/,'data/artifacts/'+curWs+'/'+f.name.replace(/\/$/,'')+' '); $('at-menu').style.display='none'; txt.focus(); };
         menu.appendChild(el);
       }
       menu.style.display=hits.length?'block':'none';
@@ -816,6 +826,73 @@ function msgButtons(){
 }
 
 
+
+// ---- 升级（ADR-0009）----
+let updAsset=null, updPoll=null;
+async function updateRefresh(){
+  try{
+    const d=await (await fetch('/api/update/status')).json();
+    $('upd-cur').textContent=d.version||'?';
+    $('upd-warn').textContent=(d.warnings&&d.warnings.length)?(' ⚠ '+d.warnings[0]):'';
+    const st=d.status;
+    if(st&&st.stage&&!st.ok&&!st.rolledBack&&(st.stage!=='done')){
+      $('upd-status').textContent='⏳ '+(st.msg||st.stage)+' '+(st.pct?st.pct+'%':'');
+      if(!updPoll) updPoll=setInterval(updateStatusTick,2500);
+    } else if(st){
+      $('upd-status').textContent=(st.ok?'✅ ':'❌ ')+st.msg;
+      if(updPoll){ clearInterval(updPoll); updPoll=null; loadSessions(); loadWorkspaces(); }
+    }
+  }catch{}
+}
+function updateStatusTick(){
+  fetch('/api/update/status').then(r=>r.json()).then(d=>{
+    const st=d.status||{};
+    if(!st.stage||st.stage==='done'||st.rolledBack){
+      clearInterval(updPoll); updPoll=null;
+      $('upd-status').textContent=(st.ok?'✅ ':'❌ ')+(st.msg||'');
+      loadSessions(); loadWorkspaces();
+    } else $('upd-status').textContent='⏳ '+(st.msg||st.stage)+' '+(st.pct?st.pct+'%':'');
+  }).catch(()=>{});
+}
+$('upd-check').onclick=async()=>{
+  const b=$('upd-check'); b.disabled=true; b.textContent='检查中…';
+  try{
+    const d=await (await fetch('/api/update/check')).json();
+    if(d.ok===false){ $('upd-status').textContent='⚠ '+d.err; }
+    else{
+      $('upd-cur').textContent=d.current||d.current;
+      if(d.hasNew&&d.asset){ updAsset=d.asset; $('upd-go').style.display='block'; $('upd-go').textContent='一键升级到 v'+d.latest; $('upd-status').textContent='发现新版本 v'+d.latest; }
+      else{ $('upd-go').style.display='none'; updAsset=null; $('upd-status').textContent=d.latest?('已是最新（线上 v'+d.latest+'）'):'未获取到线上版本信息'; }
+    }
+  }catch(e){ $('upd-status').textContent='⚠ 检查失败：'+e.message; }
+  b.disabled=false; b.textContent='检查更新';
+};
+$('upd-go').onclick=async()=>{
+  if(!updAsset) return;
+  if(!confirm('升级会自动重启数字员工，期间请勿关闭电脑。确定开始？')) return;
+  const r=await fetch('/api/update/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url:updAsset.url})});
+  const d=await r.json();
+  if(d.ok){ $('upd-status').textContent='⏳ 升级器已启动，页面稍后自动重连…'; if(!updPoll) updPoll=setInterval(updateStatusTick,2500); }
+  else $('upd-status').textContent='❌ '+d.err;
+};
+$('upd-manual-btn').onclick=()=>$('upd-file').click();
+$('upd-file').onchange=function(){
+  const f=this.files[0]; this.value='';
+  if(!f) return;
+  if(!/^PocketForge-.+\.zip$/.test(f.name)){ $('upd-status').textContent='⚠ 请选择 PocketForge-*.zip 安装包'; return; }
+  if(!confirm('用这个安装包离线升级？数字员工将自动重启。')) return;
+  const xhr=new XMLHttpRequest();
+  xhr.open('POST','/api/update/upload?name='+encodeURIComponent(f.name));
+  xhr.upload.onprogress=e=>{ if(e.lengthComputable) $('upd-status').textContent='上传中 '+Math.round(e.loaded/e.total*100)+'%'; };
+  xhr.onload=()=>{ let d={}; try{ d=JSON.parse(xhr.responseText); }catch{}
+    if(d.ok){ $('upd-status').textContent='安装包就绪，启动升级器…';
+      fetch('/api/update/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({staged:d.name})})
+        .then(r=>r.json()).then(d2=>{ if(d2.ok){ if(!updPoll) updPoll=setInterval(updateStatusTick,2500); } else $('upd-status').textContent='❌ '+d2.err; });
+    } else $('upd-status').textContent='❌ 上传失败';
+  };
+  xhr.send(f);
+};
+updateRefresh();
 
 // 斜杠命令（小白入口：输入 / 弹出能做的事；中文英文拼音首词都能搜到）
 let slashCur=[];
@@ -935,24 +1012,78 @@ async function renderCurPane(){
   try{
     const r=await fetch('/api/ws/tree?ws='+encodeURIComponent(curWs));
     const d=await r.json();
-    const root=d.root||{children:[]};
-    const attN=(d.attachments||[]).length;
-    $('att-n').textContent=attN;
+    curTreeRoot=d.root||{children:[]};
+    $('att-n').textContent=(d.attachments||[]).length;
     box.innerHTML='';
     const headId='cur-head';
     let h=$(headId);
     if(!h){ h=document.createElement('div'); h.id=headId; box.parentNode.insertBefore(h,box); }
+    if(selDir && !nodeAt(selDir)) selDir=''; // 目录被删/改名后回落根目录
     markSel();
-    if(!(root.children||[]).length){ box.innerHTML='<div class="fnote" style="padding:8px">还是空的。上传、拖入文件，或让我干活生成。</div>'; return; }
-    if($('att-only').checked){
-      const flat=[];
-      (function w(n){ for(const c of (n.children||[])){ if(c.type==='file'&&c.att) flat.push(c); w(c);} })(root);
-      if(!flat.length){ box.innerHTML='<div class="fnote" style="padding:8px">还没有附件（拷进来的文件）。</div>'; return; }
-      for(const f of flat) box.appendChild(fileNode(f,0));
-      return;
-    }
-    for(const c of (root.children||[])) box.appendChild(dirOrFileNode(c,0));
   }catch(e){ box.innerHTML='<div class="fnote" style="padding:8px">读取失败</div>'; }
+}
+// 资源管理器范式：视图=当前文件夹的内容（单层），点子目录即下钻，面包屑/⬆/🏠负责回退
+let curTreeRoot={children:[]};
+function nodeAt(p){
+  if(!p) return curTreeRoot;
+  let n=curTreeRoot;
+  for(const seg of p.split('/')){
+    n=(n.children||[]).find(c=>c.name===seg && c.type!=='file');
+    if(!n) return null;
+  }
+  return n;
+}
+function renderExplorer(){
+  const box=$('rtree');
+  const n=nodeAt(selDir);
+  if(!n){ selDir=''; markSel(); return renderExplorer(); }
+  let kids=(n.children||[]).slice();
+  if($('att-only').checked) kids=kids.filter(c=>c.type==='file'&&c.att);
+  box.innerHTML='';
+  if(!kids.length){
+    box.innerHTML='<div class="fnote" style="padding:8px">'+(selDir?'这个文件夹是空的。':'还是空的。上传、拖入文件，或让我干活生成。')+'</div>';
+    return;
+  }
+  for(const c of kids) box.appendChild(entryRow(c));
+}
+// 单层行：目录/链接=点击下钻；文件=预览+操作
+function entryRow(c){
+  if(c.type==='file') return fileNode(c,0);
+  const el=document.createElement('div'); el.className='tnode';
+  el.innerHTML='<span>'+(c.type==='link'?'🔗':'📁')+'</span><span class="nm">'+esc(c.name)+'</span>'+
+    (c.type==='link'?'<span class="bdg link" title="'+String(c.target||'').replace(/"/g,'&quot;')+'">链接</span>':'');
+  el.title='点击进入这个文件夹';
+  el.onclick=()=>{ selDir=c.path; markSel(); };
+  if(c.type==='dir'){
+    el.appendChild(tactBtn('＋📄','在这个文件夹里新建文件',async()=>{
+      const nm=prompt('新文件叫什么名字？'); if(!nm) return;
+      const r=await fetch('/api/fs/new',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:c.path+'/'+nm,type:'file'})});
+      const d=await r.json(); d.ok?(selDir=c.path,renderCurPane()):alert('创建失败: '+(d.err||''));
+    }));
+    el.appendChild(tactBtn('＋📁','在这个文件夹里新建子文件夹',async()=>{
+      const nm=prompt('新文件夹叫什么名字？'); if(!nm) return;
+      const r=await fetch('/api/fs/new',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:c.path+'/'+nm,type:'dir'})});
+      const d=await r.json(); d.ok?(selDir=c.path,renderCurPane()):alert('创建失败: '+(d.err||''));
+    }));
+  }
+  el.appendChild(tactBtn('✎','重命名',async()=>{
+    const nn=prompt('改成什么名字？',c.name); if(!nn||nn===c.name) return;
+    const r=await fetch('/api/fs/rename',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:c.path,name:nn})});
+    const d=await r.json(); if(d.ok){ if(selDir===c.path) selDir=d.path; else if(selDir.startsWith(c.path+'/')) selDir=d.path+selDir.slice(c.path.length); renderCurPane(); } else alert('改名失败: '+(d.err||''));
+  }));
+  el.appendChild(tactBtn('🗑','删除',async()=>{
+    if(!confirm('删除文件夹「'+c.name+'」？里面的文件也会一起删掉。')) return;
+    const r=await fetch('/api/fs/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:c.path})});
+    const d=await r.json(); if(d.ok){ if(selDir===c.path||selDir.startsWith(c.path+'/')) selDir=''; renderCurPane(); } else alert('删除失败: '+(d.err||''));
+  }));
+  if(c.type==='link'){
+    el.appendChild(tactBtn('✕','取消引入（只移除链接，不动原文件）',async()=>{
+      if(!confirm('取消引入「'+c.name+'」？只移除这个链接，原工作区和文件都不动。')) return;
+      const r=await fetch('/api/ws/unlink',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:c.path})});
+      const d=await r.json(); d.ok?renderCurPane():alert('失败: '+(d.err||''));
+    }));
+  }
+  return el;
 }
 function tactBtn(txt,title,fn){
   const b=document.createElement('button'); b.className='tact'; b.textContent=txt; b.title=title;
@@ -978,49 +1109,8 @@ function markSel(){
   $('bc-up').onclick=()=>{ const p=selDir.split('/'); p.pop(); selDir=p.join('/'); markSel(); };
   $('bc-root').onclick=()=>{ selDir=''; markSel(); };
   h.querySelectorAll('.bseg').forEach(el=>el.onclick=()=>{ selDir=el.dataset.p; markSel(); });
-}
-function dirOrFileNode(n,depth){
-  if(n.type==='file') return fileNode(n,depth);
-  const det=document.createElement('details'); det.className='tdir'; det.open=depth<1||selDir===n.path||(selDir&&selDir.startsWith(n.path+'/'));
-  det.style.marginLeft=(depth?14:0)+'px';
-  const sum=document.createElement('summary'); sum.dataset.dir=n.type==='dir'?n.path:'';
-  sum.innerHTML='<span>'+(n.type==='link'?'🔗':'📁')+'</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+n.name+'</span>'+
-    (n.type==='link'?'<span class="bdg link" title="'+String(n.target||'').replace(/"/g,'&quot;')+'">链接</span>':'');
-  sum.addEventListener('click',()=>{ if(n.type==='dir'){ selDir=n.path; markSel(); } });
-  if(n.type==='dir'){
-    // 目录级快捷创建：文件管理的基本语义——在哪个文件夹上操作就建在哪
-    sum.appendChild(tactBtn('＋📄','在这个文件夹里新建文件',async()=>{
-      const nm=prompt('新文件叫什么名字？'); if(!nm) return;
-      const r=await fetch('/api/fs/new',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:n.path+'/'+nm,type:'file'})});
-      const d=await r.json(); d.ok?(selDir=n.path,renderCurPane()):alert('创建失败: '+(d.err||''));
-    }));
-    sum.appendChild(tactBtn('＋📁','在这个文件夹里新建子文件夹',async()=>{
-      const nm=prompt('新文件夹叫什么名字？'); if(!nm) return;
-      const r=await fetch('/api/fs/new',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:n.path+'/'+nm,type:'dir'})});
-      const d=await r.json(); d.ok?(selDir=n.path,renderCurPane()):alert('创建失败: '+(d.err||''));
-    }));
-    sum.appendChild(tactBtn('✎','重命名这个文件夹',async()=>{
-      const nn=prompt('改成什么名字？',n.name); if(!nn||nn===n.name) return;
-      const r=await fetch('/api/fs/rename',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:n.path,name:nn})});
-      const d=await r.json(); if(d.ok){ if(selDir===n.path) selDir=d.path; renderCurPane(); } else alert('改名失败: '+(d.err||''));
-    }));
-    sum.appendChild(tactBtn('🗑','删除这个文件夹（连同里面所有内容）',async()=>{
-      if(!confirm('删除文件夹「'+n.name+'」？里面的文件也会一起删掉。')) return;
-      const r=await fetch('/api/fs/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:n.path})});
-      const d=await r.json(); if(d.ok){ if(selDir===n.path||selDir.startsWith(n.path+'/')) selDir=''; renderCurPane(); } else alert('删除失败: '+(d.err||''));
-    }));
-  }
-  if(n.type==='link'){
-    const un=tactBtn('✕','取消引入（只移除链接，不动原文件）',async()=>{
-      if(!confirm('取消引入「'+n.name+'」？只移除这个链接，原工作区和文件都不动。')) return;
-      const r=await fetch('/api/ws/unlink',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:n.path})});
-      const d=await r.json(); d.ok?renderCurPane():alert('失败: '+(d.err||''));
-    });
-    sum.appendChild(un);
-  }
-  det.appendChild(sum);
-  for(const c of (n.children||[])) det.appendChild(dirOrFileNode(c,depth+1));
-  return det;
+  // 导航收口：任何位置变化（⬆/🏠/面包屑/点入）都在这里重渲染列表
+  if(curWs && $('rtree')) renderExplorer();
 }
 function fileNode(n,depth){
   const el=document.createElement('div'); el.className='tnode'; el.style.paddingLeft=(4+depth*14)+'px';

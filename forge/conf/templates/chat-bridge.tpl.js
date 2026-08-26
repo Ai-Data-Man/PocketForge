@@ -26,6 +26,9 @@ function readSecrets(file) {
 }
 const secrets = readSecrets(path.join(ROOT, 'data', 'secrets.env'));
 
+// 真版本号（ADR-0009）：package.sh 打包时写入的 VERSION 是唯一真相源
+const APP_VERSION = (() => { try { return require('fs').readFileSync(path.join(__dirname, '..', 'VERSION'), 'utf8').trim() || 'dev'; } catch { return 'dev'; } })();
+
 const MIME = { '.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.svg':'image/svg+xml','.pdf':'application/pdf','.md':'text/markdown; charset=utf-8','.txt':'text/plain; charset=utf-8','.html':'text/html; charset=utf-8','.json':'application/json','.csv':'text/csv; charset=utf-8' };
 
 // ---- 制品版本管理（ADR-0007）：每会话一个工作区目录，isomorphic-git(MIT)，仓库在各自工作区内 ----
@@ -70,6 +73,34 @@ function atomicWrite(file, data) {
         db.close();
     } catch (e) { console.error('prune scheduled failed:', e.message); }
 })();
+function readJson(f, dft) { try { return JSON.parse(FSS.readFileSync(f, 'utf8')); } catch { return dft; } }
+// ---- 状态 schema 迁移管线（ADR-0009）：自描述 _schema + 顺序幂等步骤 + 迁移前留档 ----
+const stateWarnings = [];
+const STATE_SCHEMAS = {
+    'workspace-map.json': { latest: 1, steps: {} },
+    'session-archive.json': { latest: 1, steps: {} },
+    '.forge': { latest: 1, steps: {} },
+};
+function migrateJsonAt(f, key) {
+    const meta = STATE_SCHEMAS[key];
+    if (!meta) return;
+    let j; try { j = JSON.parse(FSS.readFileSync(f, 'utf8')); } catch { return; }
+    let v = (typeof j._schema === 'number') ? j._schema : 0;
+    if (v > meta.latest) { stateWarnings.push(key + ' 由更新版本创建(schema ' + v + ' > ' + meta.latest + ')，已保持原样'); return; }
+    if (v === meta.latest) return;
+    try { FSS.copyFileSync(f, f + '.pre-migration-' + Date.now()); } catch {}
+    while (v < meta.latest) { v++; const step = meta.steps[v]; if (step) j = step(j); }
+    try { j._schema = meta.latest; atomicWrite(f, JSON.stringify(j, null, 2)); } catch {}
+}
+(function migrateAllState() {
+    for (const rel of Object.keys(STATE_SCHEMAS)) migrateJsonAt(path.join(ROOT, 'data', rel), rel);
+    try {
+        for (const ent of FSS.readdirSync(ART_DIR, { withFileTypes: true })) {
+            if (ent.isDirectory()) migrateJsonAt(path.join(ART_DIR, ent.name, '.forge'), '.forge');
+        }
+    } catch {}
+})();
+
 // 清掉旧约定残留的空 uploads/ 目录（P29b：上传位置由用户定，默认根目录）
 (function pruneEmptyUploads() {
     try {
@@ -258,6 +289,22 @@ async function hotRestartProvider() {
     for (const ws of allClients) ws.send({ sys: 'provider_switched', provider: (activeProvider() || {}).name, model: env0Model() });
 }
 
+function fetchBufJson(url) {
+    return new Promise((resolve, reject) => {
+        const u = new URL(url);
+        require('https').get({ hostname: u.hostname, path: u.pathname + u.search, headers: { 'user-agent': 'PocketForge-Updater', accept: 'application/vnd.github+json' }, timeout: 8000 }, res => {
+            let b = ''; res.on('data', c => b += c); res.on('end', () => { try { resolve(JSON.parse(b)); } catch (e) { reject(e); } });
+        }).on('error', reject).on('timeout', function(){ this.destroy(); reject(new Error('超时')); });
+    });
+}
+function cmpVer(a, b) {
+    const pa = String(a).split('.'), pb = String(b).split('.');
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+        const x = parseInt(pa[i], 10) || 0, y = parseInt(pb[i], 10) || 0;
+        if (x !== y) return x - y;
+    }
+    return 0;
+}
 async function handleHttp(req, res) {
     const url = (req.url || '/').split('?')[0];
     if (url === '/' ) {
@@ -314,6 +361,68 @@ async function handleHttp(req, res) {
     else if (url.startsWith('/preview/')) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         res.end(require('fs').readFileSync(path.join(ROOT, 'conf', 'web-assets', 'preview.html')));
+    }
+    else if (url === '/api/update/status') {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        let staged = [];
+        try {
+            staged = FSS.readdirSync(path.join(ROOT, 'data', 'updates')).filter(n => /^PocketForge-.+\.zip$/.test(n) && !n.endsWith('.sha256'));
+        } catch {}
+        const status = readJson(path.join(ROOT, 'data', 'updates', 'status.json'), null);
+        res.end(JSON.stringify({ ok: true, version: APP_VERSION, warnings: stateWarnings, staged, status }));
+    }
+    else if (url === '/api/update/check') {
+        // 对比本地 VERSION 与 GitHub 最新 release；失败时仍可走离线通道
+        const cfg = readJson(path.join(ROOT, 'data', 'update.json'), {});
+        let staged = [];
+        try { staged = FSS.readdirSync(path.join(ROOT, 'data', 'updates')).filter(n => /^PocketForge-.+\.zip$/.test(n)); } catch {}
+        if (!cfg.repo) { res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' }); return res.end(JSON.stringify({ ok: false, err: '未配置升级源', current: APP_VERSION, staged })); }
+        fetchBufJson('https://api.github.com/repos/' + cfg.repo + '/releases/latest').then(rel => {
+            const zipA = (rel.assets || []).find(a => /^PocketForge-.+\.zip$/.test(a.name));
+            const out = { ok: true, current: APP_VERSION, latest: String(rel.tag_name || '').replace(/^v/, ''), staged };
+            if (zipA) out.asset = { name: zipA.name, url: zipA.browser_download_url };
+            out.hasNew = !!(out.asset && cmpVer(out.latest, out.current) > 0);
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify(out));
+        }).catch(e => {
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: false, err: '查询升级源失败：' + e.message + '（可用离线升级）', current: APP_VERSION, staged }));
+        });
+    }
+    else if (url.startsWith('/api/update/upload') && req.method === 'POST') {
+        // 离线升级：小白在弹窗里选好下载好的 zip，直接流式落到 data/updates/
+        const qs = new URL(req.url, 'http://x').searchParams;
+        const fname = (qs.get('name') || ('PocketForge-manual-' + Date.now() + '.zip')).replace(/[\/:*?"<>|]/g, '_');
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        if (!/^PocketForge-[\w.-]+\.zip$/.test(fname)) { res.end(JSON.stringify({ ok: false, err: '文件名需形如 PocketForge-*.zip' })); return; }
+        FSS.mkdirSync(path.join(ROOT, 'data', 'updates'), { recursive: true });
+        const ws2 = FSS.createWriteStream(path.join(ROOT, 'data', 'updates', fname));
+        req.pipe(ws2);
+        ws2.on('finish', () => res.end(JSON.stringify({ ok: true, name: fname })));
+        ws2.on('error', e => res.end(JSON.stringify({ ok: false, err: e.message })));
+    }
+    else if (url === '/api/update/start' && req.method === 'POST') {
+        const chunks = [];
+        req.on('data', c => chunks.push(c));
+        req.on('end', () => {
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            try {
+                const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                const runnerArgs = ['--root', ROOT];
+                if (b.staged) {
+                    if (!/^PocketForge-[\w.-]+\.zip$/.test(b.staged) || !FSS.existsSync(path.join(ROOT, 'data', 'updates', b.staged))) throw new Error('离线包不存在');
+                    runnerArgs.push('--staged', b.staged);
+                } else if (b.url) {
+                    const cfg = readJson(path.join(ROOT, 'data', 'update.json'), {});
+                    if (!cfg.repo || !String(b.url).startsWith('https://github.com/' + cfg.repo + '/releases/download/')) throw new Error('下载地址不在配置的升级源内');
+                    runnerArgs.push('--url', String(b.url));
+                } else throw new Error('缺少升级包');
+                FSS.mkdirSync(path.join(ROOT, 'data', 'updates'), { recursive: true });
+                FSS.writeFileSync(path.join(ROOT, 'data', 'updates', 'status.json'), JSON.stringify({ stage: 'starting', ok: false, msg: '升级器启动中…', ts: Date.now() }));
+                spawn(process.execPath, [path.join(ROOT, 'bin', 'update-runner.js'), ...runnerArgs], { detached: true, stdio: 'ignore' }).unref();
+                res.end(JSON.stringify({ ok: true }));
+            } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
+        });
     }
     else if (url === '/api/link') {
         // 外部目录接入：NTFS junction（无需管理员权限），链进 <工作区>/<label>
@@ -702,9 +811,14 @@ const ext = path.extname(f).toLowerCase();
                     const full = path.join(d, f);
                     let st; try { st = FSS.lstatSync(full); } catch { continue; }
                     // I2(审查s15): 跳过 junction，预算封顶
-                    if (st.isSymbolicLink()) { out.push({ name: (prefix ? prefix + '/' : '') + f + '/', size: 0 }); continue; }
-                    if (st.isDirectory()) out.push.apply(out, listDir(full, prefix ? prefix + '/' + f : f, b));
-                    else out.push({ name: (prefix ? prefix + '/' : '') + f, size: st.size });
+                    const pfx = prefix ? prefix + '/' : '';
+                    if (st.isSymbolicLink()) { out.push({ name: pfx + f + '/', dir: true }); continue; }
+                    if (st.isDirectory()) {
+                        // 目录本身也作为条目返回（@ 可引用文件夹），尾部斜杠标记
+                        out.push({ name: pfx + f + '/', dir: true });
+                        out.push.apply(out, listDir(full, pfx + f, b));
+                    }
+                    else out.push({ name: pfx + f, size: st.size });
                 }
             } catch {}
             return out;
@@ -787,7 +901,7 @@ server.on('upgrade', (req, socket) => {
     });
     socket.on('error', () => drop(ws));
     socket.on('close', () => drop(ws));
-    ws.send({ sys: 'hello', version: 2, caps: acpCaps ? { modes: true } : {} });
+    ws.send({ sys: 'hello', version: 2, app: APP_VERSION, caps: acpCaps ? { modes: true } : {} });
 });
 function drop(ws) {
     ws.alive = false;
