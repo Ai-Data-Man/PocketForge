@@ -197,8 +197,9 @@ function healthz(timeoutMs, expectVer) {
 }
 
 async function main() {
+    let localVer = 'dev'; // s41: 提升到 try 外——回滚分支(catch)也要读它，原 const 声明会导致 ReferenceError
     try {
-        const localVer = (fs.readFileSync(path.join(ROOT, 'VERSION'), 'utf8').trim()) || 'dev';
+        localVer = (fs.readFileSync(path.join(ROOT, 'VERSION'), 'utf8').trim()) || 'dev';
         ST.from = localVer;
         const zipFile = await locateZip();
         verifySha(zipFile);
