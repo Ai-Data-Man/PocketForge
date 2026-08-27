@@ -31,3 +31,8 @@
 - **.goosehints 603KB 污染**（P11 期 3b57906 起随每次提交入库）：同段「经验沉淀」重复 2208 次、"PocketForge" 字符散斑穿插。写入者 = P11 会话期的开发侧 agent 脚本（一次性；bootstrap/bridge/backup 均只读该文件）。修复：从 019622f 干净版重建 4.3KB 手册（补沟通规矩/制品/gen-xlsx 段），模板化 conf/templates/goose-hints.tpl.md 为唯一真相源，bootstrap 每启幂等重建 + 越界（>50KB/<1KB）留档 data/logs。单测：坏文件→guard 触发→重建成功。
 - **502 真因（9router-server.log 实锤）**：glm-5.2 combo 的 myopencode 线路对 goose 形状请求（STREAM·40TOOL）回 **401→锁定120s→429→锁定300s**，双线全锁后 combo 报错（goose 收到 502）。之前"40 工具丢 tool_calls/大 payload 502"的 curl 归因是时序巧合，撤回。修复在上游线路（9router 换 key/换线），PocketForge 无需改动。
 - 沙盒 C:\PocketForge-Test 无 hints（老包），下次打包自然带上干净版。
+
+## s21（23:30 前）— 快赢双件套
+- **干完了提醒**：长任务结束（busy→idle 边沿）时若页面在后台，document.title 以 1.2s 轮转「✅ 干完了 — 小 forge」；visibilitychange 回前台即停并复位标题。
+- **聊天记录搜索**：左栏顶部搜索框（≥2 字，300ms 防抖）→ `/api/search`（只读 sessions.db，messages.content_json LIKE，40 条上限）→ 结果卡（会话名+中文时间+命中片段）→ 点击 openSession 跳转。片段提取含 text 与 thinking 块（toolRequest/Response 用 JSON 摘要兜底）。GUI 实测：搜「报表/库存」命中真实历史会话，点击跳转正常。
+- 修复 3 处：桥端 DatabaseSync 作用域漏 require；sqlite TIMESTAMP 字符串被当 unix 秒致 NaN 日期（改字符串解析）；空片段兜底文案。

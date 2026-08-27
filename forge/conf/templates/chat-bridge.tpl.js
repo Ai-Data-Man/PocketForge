@@ -578,6 +578,41 @@ const ext = path.extname(f).toLowerCase();
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(out));
     }
+    else if (url === '/api/search') {
+        // s21: 聊天记录搜索（只读 sessions.db）。LIKE 匹配 content_json；
+        // 当前量级（千条）毫秒级，量级上来再考虑 FTS5。
+        const qs = new URL(req.url, 'http://x').searchParams;
+        const q = (qs.get('q') || '').trim();
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        if (q.length < 2) { res.end(JSON.stringify({ ok: true, hits: [] })); return; }
+        try {
+            const { DatabaseSync } = require('node:sqlite');
+            const db = new DatabaseSync(path.join(ROOT, 'conf', 'goose', 'data', 'sessions', 'sessions.db'));
+            const rows = db.prepare(
+                "SELECT m.session_id AS sid, s.name AS title, m.role, m.content_json AS cj, m.timestamp AS ts " +
+                "FROM messages m LEFT JOIN sessions s ON s.id = m.session_id " +
+                "WHERE m.content_json LIKE ? ESCAPE '\\' " +
+                "ORDER BY m.id DESC LIMIT 40"
+            ).all('%' + q.replace(/[\\%_]/g, c => '\\' + c) + '%');
+            db.close();
+            const hits = rows.map(r => {
+                let text = '';
+                try {
+                    const arr = JSON.parse(r.cj);
+                    // 拼所有可读文本；thinking 块也纳入（toolRequest/Response 无正文）
+                    for (const c of arr) {
+                        if (!c || typeof c !== 'object') continue;
+                        if (c.type === 'text' || c.type === 'thinking') text += (c.text || c.thinking || '') + ' ';
+                        else if (c.type === 'toolRequest' && c.toolCall) { try { text += JSON.stringify(c.toolCall).slice(0, 200) + ' '; } catch {} }
+                    }
+                } catch {}
+                const i = text.indexOf(q);
+                const frag = i >= 0 ? text.slice(Math.max(0, i - 40), i + q.length + 80).replace(/\s+/g, ' ') : text.replace(/\s+/g, ' ').slice(0, 100);
+                return { sid: r.sid, title: r.title || '未命名', role: r.role, ts: r.ts, frag };
+            });
+            res.end(JSON.stringify({ ok: true, hits }));
+        } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message, hits: [] })); }
+    }
     else if (url === '/api/extensions') {
         // 小白能力开关（s17 A）：改 conf/goose/config/config.yaml 各扩展 enabled。
         // bootstrap 幂等重写会保留用户开关值（配套改动见 bootstrap.ps1 / ADR-0010）。

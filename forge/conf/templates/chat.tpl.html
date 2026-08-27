@@ -66,6 +66,14 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 #newchat:hover{filter:brightness(1.08)}
 #newchat:active{filter:brightness(.92)}
 #sessions{flex:0 1 auto;overflow-y:auto;padding:0 8px 8px;max-height:42%}
+#chat-search{margin:2px 8px 4px;padding:8px 11px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;background:var(--panel);color:var(--tx);outline:none;box-sizing:border-box;width:calc(100% - 16px)}
+#chat-search:focus{border-color:var(--acc)}
+#search-results{flex:1 1 auto;overflow-y:auto;padding:0 8px 8px;border-top:1px solid var(--line);margin-top:2px}
+#search-results .sh{padding:8px 6px;border-bottom:1px dashed var(--line);cursor:pointer}
+#search-results .sh:hover{background:var(--hover)}
+#search-results .sh .t{font-size:.72rem;color:var(--acc);font-weight:600}
+#search-results .sh .f{font-size:.74rem;color:var(--tx-2);line-height:1.45;word-break:break-all}
+#search-results .sh .d{font-size:.68rem;color:var(--mut)}
 .sitem{position:relative;padding:calc(8px*var(--pd)) 10px;border-radius:var(--r-s);cursor:pointer;font-size:calc(.82rem);line-height:1.4;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid transparent}
 .sitem:hover{background:var(--hover)}
 .sitem.active{background:var(--acc);color:var(--acc-contrast);font-weight:600}
@@ -234,6 +242,8 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
   <header><span class="dot" id="status"></span>小 forge</header>
   <button id="newchat">＋ 新对话</button>
   <div id="side-label-sess" style="padding:2px 14px;font-size:11px;color:var(--mut)">对话</div>
+  <input id="chat-search" placeholder="🔍 搜聊天记录…" autocomplete="off">
+  <div id="search-results" style="display:none"></div>
   <div id="sessions"></div>
   <footer>
     <button class="icobtn" id="refresh-sessions" title="刷新会话列表">⟳</button>
@@ -606,7 +616,17 @@ $('model-pick').onclick=e=>{
 };
 $('model-search').oninput=e=>buildModelItems(e.target.value);
 document.addEventListener('click',e=>{ if(!e.target.closest('#model-pick')) $('model-pick').classList.remove('open'); });
-function setBusy(b){ busy=b; typing.style.display=b?'block':'none'; send.disabled=b; stopBtn.style.display=b?'inline-block':'none'; }
+function setBusy(b){ busy=b; typing.style.display=b?'block':'none'; send.disabled=b; stopBtn.style.display=b?'inline-block':'none';
+  // s21: 小白「干完了」提醒——后台标签页时标题闪烁，回来即停
+  if(!b){ if(document.hidden){ notifyDone(); } else { stopNotify(); } } else { stopNotify(); } }
+let notifyTimer=null;
+function notifyDone(){
+  if(notifyTimer) return;
+  let flip=false;
+  notifyTimer=setInterval(()=>{ flip=!flip; document.title=flip?'\u2705 干完了 — 小 forge':'小 forge · 数字员工'; },1200);
+}
+function stopNotify(){ if(notifyTimer){ clearInterval(notifyTimer); notifyTimer=null; document.title='小 forge · 数字员工'; } }
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) stopNotify(); });
 function addErr(t){ const el=document.createElement('div'); el.className='msg agent'; el.textContent='⚠ '+t; chat.appendChild(el); chat.scrollTop=chat.scrollHeight; }
 function addInfo(t){ const el=document.createElement('div'); el.className='msg agent info'; el.textContent=t; chat.appendChild(el); chat.scrollTop=chat.scrollHeight; }
 function mdRender(raw){
@@ -815,6 +835,31 @@ $('burger').onclick=()=>$('side').classList.toggle('hidden');
 $('mode').onchange=e=>{ localStorage.setItem('pf_mode',e.target.value);
   if(sessionId) rpc2('session/set_mode',{sessionId,modeId:e.target.value}).catch(()=>addErr('模式切换失败')); };
 $('open-settings').onclick=()=>{ $('modal').classList.add('on'); loadProvidersUI(); loadExtUI(); loadMemUI(); };
+
+// ---- s21: 聊天记录搜索（左栏；>=2 字触发，防抖 300ms；点结果跳会话） ----
+let searchTimer=null;
+$('chat-search').oninput=e=>{
+  const q=e.target.value.trim();
+  clearTimeout(searchTimer);
+  if(q.length<2){ $('search-results').style.display='none'; $('sessions').style.display=''; return; }
+  searchTimer=setTimeout(async()=>{
+    try{
+      const r=await apiJSON('/api/search?q='+encodeURIComponent(q));
+      const box=$('search-results'); box.innerHTML='';
+      if(!r.ok||!r.hits.length){ box.innerHTML='<div class="fnote" style="padding:8px 6px">没找到含「'+esc(q)+'」的聊天。</div>'; }
+      else for(const h of r.hits){
+        const el=document.createElement('div'); el.className='sh';
+        const m=String(h.ts||'').match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+        const tstr=m?(+m[2])+'月'+(+m[3])+'日 '+m[4]+':'+m[5]:'';
+        const frag=(h.frag&&h.frag.trim())?h.frag:'（该条无文字内容）';
+        el.innerHTML='<div class="t">'+esc((h.title||'未命名').slice(0,22))+(tstr?' · '+tstr:'')+'</div><div class="f">…'+esc(frag)+'…</div>';
+        el.onclick=()=>{ openSession(h.sid); $('search-results').style.display='none'; $('sessions').style.display=''; $('chat-search').value=''; };
+        box.appendChild(el);
+      }
+      box.style.display='block'; $('sessions').style.display='none';
+    }catch(e2){}
+  },300);
+};
 
 // ---- s17: 能力开关 + 记忆管理（小白视角；护栏=permission.yaml ask_before 的大白话） ----
 async function apiJSON(url, opt){
