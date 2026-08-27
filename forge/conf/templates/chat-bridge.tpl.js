@@ -118,6 +118,12 @@ function migrateJsonAt(f, key) {
 function wsValidId(id) { return /^ws-[0-9]{4}-[0-9]{6}[a-z]*$/.test(String(id || '')) || String(id || '') === 'ws-imported'; }
 // s34: sid 白名单——goose 原生 sid 形如 20260827_26；放行字母数字/_/-，杜绝任意串进 workspace-map
 function sidValid(sid) { return typeof sid === 'string' && /^[\w\-]{1,128}$/.test(sid); }
+// s37: Windows 保留设备名（con/nul/aux/com1-9/lpt1-9…）——建成文件后资源管理器/cmd 均无法删除
+const WIN_RESERVED_RE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9]|com¹|com²|com³|lpt¹|lpt²|lpt³)$/i;
+function fileNameSafe(name) {
+    if (WIN_RESERVED_RE.test(String(name).replace(/\.[^.]*$/, ''))) return false;
+    return true;
+}
 function wsDir(id) { return path.join(ART_DIR, id); }
 function wsNewId() {
     const d = new Date(), p = n => String(n).padStart(2, '0');
@@ -928,6 +934,9 @@ const ext = path.extname(f).toLowerCase();
                 const rel = vcsSafeRel(b.path);
                 if (!wsValidId(b.ws) || !rel) throw new Error('参数不完整');
                 if (/^(?:[^/]*\/)?\./.test(rel.split('/').pop())) throw new Error('名字不能以点开头');
+                // s37: Windows 保留设备名（con/nul/aux/com1-9/lpt1-9 等）——建出来将无法用常规方式删除
+                const baseName = rel.split('/').pop().replace(/\.[^.]*$/, '');
+                if (!fileNameSafe(baseName)) throw new Error('这个名字是 Windows 保留的，换一个吧');
                 const full = path.join(wsDir(b.ws), rel.split('/').join(path.sep));
                 if (FSS.existsSync(full)) throw new Error('已经存在同名文件或文件夹');
                 if (b.type === 'dir') FSS.mkdirSync(full, { recursive: true });
@@ -948,6 +957,7 @@ const ext = path.extname(f).toLowerCase();
                 const name = String(b.name || '').trim();
                 if (!wsValidId(b.ws) || !rel || !name) throw new Error('参数不完整');
                 if (/[\\/:*?"<>|]/.test(name) || name.startsWith('.') || name.startsWith('_')) throw new Error('名字含非法字符');
+                if (!fileNameSafe(name)) throw new Error('这个名字是 Windows 保留的，换一个吧');
                 const root = wsDir(b.ws);
                 const full = path.join(root, rel.split('/').join(path.sep));
                 if (!FSS.existsSync(full)) throw new Error('原文件不存在');
@@ -1077,6 +1087,7 @@ const ext = path.extname(f).toLowerCase();
         let dir = vcsSafeRel(qs.get('dir') || '');
         if (dir === null) dir = '';
         const fname = (qs.get('name') || ('upload-' + Date.now())).replace(/[\\/:*?"<>|]/g, '_');
+        if (!fileNameSafe(fname)) { res.writeHead(400); res.end(JSON.stringify({ ok: false, err: '名字是 Windows 保留的，换一个吧' })); return; }
         const chunks = [];
         req.on('data', c => chunks.push(c));
         req.on('end', () => {

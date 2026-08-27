@@ -93,3 +93,8 @@
 - tools/e2e/fuzz-chat.sh：12 项异常输入断言（空体/null/字符串体/类型混淆/遍历 id/正则元字符/内部路径泄漏检测），全部通过。
 - 当轮真实收获：修 3 个问题——①搜索结果态无恢复路径（✕ 按钮 + Escape + 空 query 恢复，残留状态类 bug）；②/memory 的 category 数字类型绕过正则致 ENOENT 内部路径泄漏（typeof 校验 + existsSync 前置）；③ws/new、ws/bind 的 sid 无格式校验（sidValid 白名单）。
 - 方法论：交互矩阵残留状态 + 类型混淆 fuzz 比肉眼 review 高效，后续每加端点应同步补 fuzz 断言。
+
+## s36/s37（01:50 前）
+- s36：搜索陈旧响应守卫（seq 序号，防慢响应覆盖新结果）。
+- s37（Windows 特有）：fs/new、fs/rename、upload 统一拒绝保留设备名 con/prn/aux/nul/com1-9/lpt1-9（含带扩展名形态 CON.txt）——这类文件资源管理器/cmd 均无法删除，会造成工作区永久污染。实测矩阵：con 拒/CON.txt 拒/connect.md 过/auxiliary.md 过。
+- fuzz-chat.sh 固化 12 断言 + e2e-chat 18 断言双回归通过。
