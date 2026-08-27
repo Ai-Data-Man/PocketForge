@@ -99,6 +99,9 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 
 /* ---------- 右侧工作区栏 ---------- */
 #rside{width:300px;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;transition:margin .2s;margin-right:-300px}
+#pane-cur,#pane-all{flex:1;min-height:0;display:flex;flex-direction:column}
+#rtree{flex:1;min-height:0;overflow-y:auto;padding:0 6px 8px}
+#all-list{flex:1;min-height:0;overflow-y:auto;margin:0 6px 8px}
 #rside.open{margin-right:0}
 #rside header{padding:10px 12px;font-weight:600;font-size:.85rem;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--line)}
 .rtabs{display:flex;gap:2px;flex:1}
