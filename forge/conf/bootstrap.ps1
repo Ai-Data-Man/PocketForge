@@ -44,6 +44,13 @@ if (Test-Path $hintsTplPath) {
     }
     Copy-Item $hintsTplPath $hintsPath -Force
 }
+# hints 模板支持 __FORGE_ROOT__ 占位符（定时任务命令需要绝对路径）
+if (Test-Path $hintsPath) {
+    $hRaw = [IO.File]::ReadAllText($hintsPath)
+    if ($hRaw.Contains('__FORGE_ROOT__')) {
+        [IO.File]::WriteAllText($hintsPath, $hRaw.Replace('__FORGE_ROOT__', $ForgeRoot))
+    }
+}
 
 # 1c) memory junction：goose-mcp 硬编码 %APPDATA%\Block\goose\config\memory（无视 GOOSE_PATH_ROOT，
 #     见 docs/research/04-goose.md）。NTFS junction 重定向到便携目录（免管理员；卸载=删 junction）。

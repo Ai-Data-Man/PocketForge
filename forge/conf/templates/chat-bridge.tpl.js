@@ -616,6 +616,50 @@ const ext = path.extname(f).toLowerCase();
             res.end(JSON.stringify({ ok: true, hits }));
         } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message, hits: [] })); }
     }
+    else if (url === '/api/schedules') {
+        // s32: 定时任务只读列表+删除（ADR-0010 复议：写入走 agent 自然语言→goose schedule add，
+        // UI 不暴露 cron；删除经 goose CLI 处理 store 清理，不手改 schedule.json）。
+        const SCHED = path.join(ROOT, 'conf', 'goose', 'data', 'schedule.json');
+        function readTitle(source) {
+            try {
+                const m = FSS.readFileSync(source, 'utf8').match(/^title:\s*(.+)$/m);
+                return m ? m[1].trim() : null;
+            } catch { return null; }
+        }
+        if (req.method === 'GET') {
+            let list = [];
+            try { list = JSON.parse(FSS.readFileSync(SCHED, 'utf8')); } catch {}
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify(list.map(j => ({
+                id: j.id, cron: j.cron, paused: !!j.paused,
+                title: readTitle(j.source) || j.id,
+                lastRun: j.last_run || null,
+            }))));
+        } else if (req.method === 'POST') {
+            // 删除经 goose CLI（比手改 json 安全：会同步清 store 里的 recipe）
+            const chunks = [];
+            req.on('data', c => chunks.push(c));
+            req.on('end', () => {
+                let id = '';
+                try { id = String(JSON.parse(Buffer.concat(chunks).toString('utf8')).id || ''); } catch {}
+                if (!/^[\w\-\.]{1,64}$/.test(id)) {
+                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: false, err: '参数不合法' })); return;
+                }
+                const { spawn } = require('child_process');
+                const p = spawn(GOOSE, ['schedule', 'remove', '--schedule-id', id], {
+                    env: { ...process.env, GOOSE_PATH_ROOT: path.join(ROOT, 'conf', 'goose'), GOOSE_DISABLE_KEYRING: '1', NO_PROXY: (process.env.NO_PROXY || '127.0.0.1,localhost') },
+                });
+                let out = '';
+                p.stdout.on('data', c => out += c);
+                p.stderr.on('data', c => out += c);
+                p.on('close', code => {
+                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: code === 0, out: out.slice(0, 300) }));
+                });
+            });
+        } else { res.writeHead(405); res.end(); }
+    }
     else if (url === '/api/extensions') {
         // 小白能力开关（s17 A）：改 conf/goose/config/config.yaml 各扩展 enabled。
         // bootstrap 幂等重写会保留用户开关值（配套改动见 bootstrap.ps1 / ADR-0010）。
