@@ -17,11 +17,16 @@
 ## 手工回归清单（GUI，改动 chat.tpl.html / chat-bridge.tpl.js 后必跑）
 1. 页面加载：bridge ok，左栏列表/归档折叠正常
 2. 新对话：欢迎语 + 4 个快捷任务 chips（点 chip 填入输入框）
-3. 搜索：左栏搜「库存」出结果卡（中文时间非 NaN），点击跳会话；点「＋新对话」列表恢复
-4. 设置面板：本事开关（3 项可切换、写盘需重启生效提示）/ 记住的事（空态文案 + 删除）/ 定时任务（cron 转人话 + 🗑）/ 护栏说明 / 外观（昼夜 × 4 皮肤，permcard 与 ext 区块继承令牌）
-5. 权限确认卡（LLM 链路恢复时）：approve 模式发写文件任务 → 卡片渲染（title+参数）→ 点「这次可以」→ 工具执行 → agent 汇报；60s 超时自动 allow_once
-6. 真任务冒烟：gen-xlsx 生成制品 → 工具卡完成态 → 制品卡预览 → 本机打开
-7. 后台提醒：任务进行中切走窗口，完成后标题闪「✅ 干完了」
+3. 搜索：左栏搜「库存」出结果卡（中文时间非 NaN），点击跳会话；✕ 或 Escape 恢复列表；点「＋新对话」也恢复
+4. 管理面板（🧠）：本事开关 3 项（切换写盘提示）/ 记住的事（空态 + 删单条）/ 定时任务（cron 转人话 + 🗑）/ 护栏说明
+5. 技能弹窗（🧩）：已装技能列表 + 「先看内容」展开全文 + 可添加区安装后条目消失
+6. 设置面板（⚙️）：服务商 / 外观（昼夜 × 4 皮肤）/ 关于与升级——已不含管理类区块（s43 迁出）
+7. 权限确认卡（LLM 链路恢复时）：approve 模式发写文件任务 → 卡片渲染 → 「这次可以」→ 执行 → 汇报；60s 超时自动 allow_once；后台标签时标题闪「⚠️ 等你确认」
+8. 真任务冒烟：gen-xlsx 生成制品 → 工具卡完成态 → 制品卡预览 → 本机打开
+9. 后台提醒：任务进行中切走窗口，完成后标题闪「✅ 干完了」
+
+## 开发会话起栈
+勿手工 Stop+起 bridge（会与 pc 编排竞争，见 journal 02:55 事故）。用 `powershell -File forge/conf/dev-stack-up.ps1`；单进程操作走 `pc -p 8099 process restart chat-bridge`。
 
 ## 端点速查（chat-bridge）
 GET /healthz /api/skills /api/schedules /api/extensions /api/memory /api/search?q= /api/workspaces /api/ws/tree /api/artifacts /api/vcs/log|blob /api/update/status
