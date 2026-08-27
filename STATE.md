@@ -35,7 +35,7 @@ ADR-0001 记忆拓扑 / ADR-0002 五件套技术栈 / ADR-0003 交付树+注册�
 ## 开放问题 / 风险
 1. 真实公司机差异（EDR、真实 PLM IE-mode）——待真机
 2. chat-bridge :8790 无冲突探测（Origin 校验已加，端口冲突仍无）
-3. 权限请求 UI ~~简化版~~ → s19 已改为对话流内确认卡（四选项+超时兜底）；**真实验证挂起**：9router 上游对大工具集（40+ schema）丢 tool_calls/502（curl 同形状复现，glm-5.2/deepseek-v4-flash 均），修在上游；permission.yaml 工具名前缀是否与 goose 内部名一致待验证
+3. 权限请求 UI ~~简化版~~ → s19 已改为对话流内确认卡（四选项+超时兜底）；**真实验证挂起**：glm-5.2 的 myopencode 上游线路 401/429 锁定（9router 日志实锤，非本地问题），线路恢复后跑 e2e 权限探针 + permission.yaml 工具名前缀核查
 4. 新对话模型回落服务商默认（goose 会话语义）
 5. welcome 页在无默认浏览器关联的极端机器上不弹
 6. junction 以绝对路径存储：forge 整体搬家后链接失效（ADR-0008 复核条件）

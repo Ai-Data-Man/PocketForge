@@ -26,3 +26,8 @@
 - **护栏实证调查（未完案）**：approve/smart_approve 模式探针"写文件零权限请求"——根因不是 goose 护栏失灵（源码证实 inspect 链 fail-closed），而是 **9router 上游对 goose 大工具集（40+ schema）请求丢失 tool_calls/返回 502**，agent 根本没机会调工具。curl 同形状复现：1 工具=正常 tool_calls；40 工具=纯文本/502。glm-5.2、deepseek-v4-flash 均现。→ 修在上游（9router 换上游/调参），PocketForge 侧记录风险。
 - research/04-goose.md 补 5 条 s19 取证（permission 语义/ACP 权限形态/router 缺陷/provider 优先级）。
 - 教训再录：heredoc f-string 的 `{}` 会被 python f-string 吃掉（用字符串拼接写测试脚本）；bytes stdout 记得 decode。
+
+## s20（同夜 23:20 前）— .goosehints 污染修复 + 502 真因定案
+- **.goosehints 603KB 污染**（P11 期 3b57906 起随每次提交入库）：同段「经验沉淀」重复 2208 次、"PocketForge" 字符散斑穿插。写入者 = P11 会话期的开发侧 agent 脚本（一次性；bootstrap/bridge/backup 均只读该文件）。修复：从 019622f 干净版重建 4.3KB 手册（补沟通规矩/制品/gen-xlsx 段），模板化 conf/templates/goose-hints.tpl.md 为唯一真相源，bootstrap 每启幂等重建 + 越界（>50KB/<1KB）留档 data/logs。单测：坏文件→guard 触发→重建成功。
+- **502 真因（9router-server.log 实锤）**：glm-5.2 combo 的 myopencode 线路对 goose 形状请求（STREAM·40TOOL）回 **401→锁定120s→429→锁定300s**，双线全锁后 combo 报错（goose 收到 502）。之前"40 工具丢 tool_calls/大 payload 502"的 curl 归因是时序巧合，撤回。修复在上游线路（9router 换 key/换线），PocketForge 无需改动。
+- 沙盒 C:\PocketForge-Test 无 hints（老包），下次打包自然带上干净版。
