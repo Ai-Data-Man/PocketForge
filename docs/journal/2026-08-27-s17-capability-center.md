@@ -36,3 +36,8 @@
 - **干完了提醒**：长任务结束（busy→idle 边沿）时若页面在后台，document.title 以 1.2s 轮转「✅ 干完了 — 小 forge」；visibilitychange 回前台即停并复位标题。
 - **聊天记录搜索**：左栏顶部搜索框（≥2 字，300ms 防抖）→ `/api/search`（只读 sessions.db，messages.content_json LIKE，40 条上限）→ 结果卡（会话名+中文时间+命中片段）→ 点击 openSession 跳转。片段提取含 text 与 thinking 块（toolRequest/Response 用 JSON 摘要兜底）。GUI 实测：搜「报表/库存」命中真实历史会话，点击跳转正常。
 - 修复 3 处：桥端 DatabaseSync 作用域漏 require；sqlite TIMESTAMP 字符串被当 unix 秒致 NaN 日期（改字符串解析）；空片段兜底文案。
+
+## s22（23:40 前）— 502 终案 + 权限面板真机验证通过
+- **502 双因定案**：①IE/WinINET 系统代理（127.0.0.1:7890，ProxyEnable=1）劫持 goose 进程出网——goose/reqwest 读系统代理，对 127.0.0.1:20128 的请求被 Clash 转发后 502；curl/python 不读 IE 代理故反复"复现失败"。NO_PROXY=127.0.0.1,localhost 即解。②叠加 glm-5.2 myopencode 线路 401/429 账号锁定。生产链路 pc 已给 chat-bridge 注入 NO_PROXY 并随 process.env 传给 acp 子进程，无暴露；仅手工探针环境缺此变量。
+- **权限确认卡端到端 VERIFIED-RUN**：approve 模式真会话 → agent 发起 write 工具调用 → 卡片渲染（标题 write · 路径 / rawInput JSON / 四按钮 / 护栏说明）→ 点「✅ 这次可以」→ 工具执行 → agent 汇报创建成功。permission.yaml 工具名前缀核查（agent.rs:98 + extension_manager.rs:1467）：MCP 工具全名 browser__browser_click 形态与清单一致，内置工具 write/shell/edit 直名匹配。
+- 收尾：permission-ui-test.txt 已清理。
