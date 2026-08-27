@@ -82,3 +82,9 @@
 - **洞察**：Manus 小白写定时任务不用 cron——自然语言（"每周一早8点做X"）+ 三步结构（任务/时间/产出）。s17 裁掉的是"暴露 cron"，不是定时任务本身。
 - **落地**（ADR-0010 复议）：①hints 增「定时任务」段教 agent 用 goose schedule add（用户说人话→agent 造 cron→复述人话）；②桥 /api/schedules GET（schedule.json + recipe title 人话名）/POST（goose CLI remove）；③设置面板「⏰ 定时任务」区块（cronHuman 转"每天 09:00"）+删除。hints 模板新增 __FORGE_ROOT__ 占位符支持。
 - GUI 验证：daily-mem 显示「每日记忆自检 · 每天 09:00 · 已暂停」+ 🗑。
+
+## s33（01:30 前）— 对标研究第二轮 + 开场快捷任务
+- Manus Projects（master instruction + knowledge base）→ 对应「工作区级项目指令」：判 backlog（首月低频，skill-sediment 可部分覆盖），不实现。
+- Manus Skills = agentskills.io 同构；管理页/商店维持裁剪。
+- **落地：开场快捷任务 chips**——新对话欢迎语下方 4 个按钮（做个体检/看看我的文件/你能干什么/分析一张图），点击填入输入框。GUI 验证通过。
+- 对标矩阵：定时任务✓ 记忆✓ 贴图✓ 通知（标题闪烁，够用）/ 项目指令（backlog）技能商店（裁剪）/ 多会话并行（backlog）。

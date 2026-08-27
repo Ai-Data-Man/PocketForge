@@ -176,6 +176,10 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 .permcard .pnote{padding:0 14px 10px;font-size:.72rem;color:var(--mut)}
 .permcard.settled{opacity:.75;border-style:dashed}
 .typing{align-self:flex-start;color:var(--mut);font-size:.78rem;padding:2px 16px}
+/* s33: 开场快捷任务 chips */
+.quickwrap{display:flex;flex-wrap:wrap;gap:8px;padding:4px 16px 8px;align-self:flex-start}
+.quickchip{padding:8px 14px;border:1.5px solid var(--acc);border-radius:18px;background:var(--acc-soft);color:var(--acc);font-size:.8rem;cursor:pointer;transition:all .12s}
+.quickchip:hover{background:var(--acc);color:var(--acc-contrast)}
 #inputbar{position:relative;display:flex;gap:10px;padding:14px 18px;background:var(--panel);border-top:1px solid var(--line)}
 #txt{flex:1;font-size:.95rem;padding:12px 14px;border:1.5px solid var(--line-strong);border-radius:var(--r-m);outline:none;background:var(--panel);color:var(--tx);transition:border-color .12s}
 #txt:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
@@ -551,7 +555,23 @@ function renderSessions(list){
     if(archOpen) for(const s of arc.slice(0,30)) box.appendChild(sessItem(s,true));
   }
 }
-function subscribe(sid){ wssend({type:'subscribe',sessionId:sid,model:lastKnownModel||undefined}); chat.innerHTML=''; toolCards.clear(); if(!sid) addMsg('你好！我是小 forge。想做什么直接打字告诉我。','agent'); }
+function subscribe(sid){ wssend({type:'subscribe',sessionId:sid,model:lastKnownModel||undefined}); chat.innerHTML=''; toolCards.clear(); if(!sid){ addMsg('你好！我是小 forge。想做什么直接打字告诉我。','agent'); addQuickPrompts(); } }
+// s33: 开场快捷任务——小白不用想"该说什么"，点一下就发
+const QUICK_PROMPTS=[
+  {label:'🩺 做个体检', text:'做个体检'},
+  {label:'📦 看看我的文件', text:'看看我的工作区里有什么文件'},
+  {label:'🧠 你能干什么？', text:'用大白话告诉我你能帮我做哪些事'},
+  {label:'🖼️ 分析一张图', text:'我刚截了张图（用粘贴或上传放到工作区），帮我看看里面是什么'},
+];
+function addQuickPrompts(){
+  const wrap=document.createElement('div'); wrap.className='quickwrap';
+  for(const q of QUICK_PROMPTS){
+    const b=document.createElement('button'); b.className='quickchip'; b.textContent=q.label;
+    b.onclick=()=>{ txt.value=q.text; txt.focus(); };
+    wrap.appendChild(b);
+  }
+  chat.appendChild(wrap); chat.scrollTop=chat.scrollHeight;
+}
 function openSession(sid){
   if(busy){ addErr('它正在干活，等一下或先停止。'); return; }
   // 先订阅再载入：load 的历史回放通知才能流进 UI
