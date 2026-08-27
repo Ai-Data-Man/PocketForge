@@ -116,3 +116,10 @@
 - 修复：yaml 多行 description 解析（> / |- 块）；本地 readSkillMeta 统一走 parseSkillMeta。
 - UI：可添加区合并本地+远程（🌐 标记），安装按钮带 remote 分支。
 - E2E：19 技能列表渲染 ✓；真装 canvas-design（含字体二进制+子目录，完整落盘）与 pdf（含 scripts/ 子目录）✓；测试安装已清理。
+
+## s46 完成（04:00 前）— MCP 市场最小形态
+- 目录制（非开放市场）：内置精选 catalog（sequential-thinking 深度思考 / memory-graph 关系图谱记忆，均 MIT、npm 纯 JS、vendored 安装零系统污染）。
+- 桥 /api/mcpstore：GET 列表（installed=config.yaml 有 mcp-* 块 + 后台安装状态）；POST 触发后台 npm i（bin/vendor/mcp-<id>/，走代理）→ 完成 mcpWriteExtension 写 config.yaml extensions 块（stdio node 入口）。
+- 修复三连：execFile('npm.cmd') EINVAL 崩桥（shell:true + 全回调 try 包裹 + 局部 require 遗漏）；bootstrap 保留正则匹配不到文件末尾最后一个扩展块（lookahead 加 \z）；npm 幂等。
+- UI：管理面板「🔌 官方 MCP」区（已启用标注/⬇ 安装/↻ 重试/5s 轮询安装状态）。GUI 验证：深度思考已启用渲染正确。
+- 备注：fetch server 为 Python uvx 实现（不符合便携硬约束）已排除；memory 知识图谱与 goose 内置 memory 定位差异化并存。

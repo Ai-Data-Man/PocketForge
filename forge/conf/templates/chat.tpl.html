@@ -344,6 +344,9 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
   <h3 style="margin:18px 0 8px">⏰ 定时任务</h3>
   <div class="fnote" style="margin-bottom:10px">想让它定时干活，直接在聊天里说，比如「每周五下午5点，把库存数据整理成表格发我」。这里能看到已定好的任务，不要的可以删。</div>
   <div id="sched-list" style="max-height:180px;overflow-y:auto"></div>
+  <h3 style="margin:18px 0 8px">🔌 官方 MCP（扩展插件）</h3>
+  <div class="fnote" style="margin-bottom:10px">这些是官方出品的增强插件，装好后重启数字员工生效。</div>
+  <div id="mcp-list" style="max-height:180px;overflow-y:auto"></div>
   <h3 style="margin:18px 0 8px">🛡 安全护栏</h3>
   <div class="fnote" style="margin-bottom:6px">顶栏的「工作模式」就是护栏档位：<b>重要操作问我</b>= 推荐；<b>自动干活</b>= 熟练后用；<b>每步都问我</b>= 最稳；<b>只聊天不动手</b>= 不碰文件网页。</div>
   <div class="fnote">在「重要操作问我」档下，这些动作会<b>先问您再动</b>：执行命令、改写/新建文件、删改数据库内容、打开或点击网页。<b>只读不写</b>的动作（看看文件、查查数据）不用问，直接做。</div>
@@ -906,7 +909,38 @@ $('mode').onchange=e=>{ localStorage.setItem('pf_mode',e.target.value);
   if(sessionId) rpc2('session/set_mode',{sessionId,modeId:e.target.value}).catch(()=>addErr('模式切换失败')); };
 $('open-settings').onclick=()=>{ $('modal').classList.add('on'); loadProvidersUI(); };
 // s43: 管理面板——本事/记忆/定时任务/护栏从设置迁出，一级入口
-$('open-manage').onclick=()=>{ $('manage-modal').classList.add('on'); loadExtUI(); loadMemUI(); loadSchedUI(); };
+$('open-manage').onclick=()=>{ $('manage-modal').classList.add('on'); loadExtUI(); loadMemUI(); loadSchedUI(); loadMcpUI(); };
+// s46: MCP 市场 UI（安装是后台异步，轮询状态直到 done/error）
+let mcpPollTimer=null;
+async function loadMcpUI(){
+  const box=$('mcp-list'); if(!box) return;
+  let list;
+  try { list = await apiJSON('/api/mcpstore'); } catch(e){ box.innerHTML='<div class="fnote">读取失败：'+esc(e.message)+'</div>'; return; }
+  box.innerHTML='';
+  let needPoll=false;
+  for(const m of list){
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line)';
+    row.innerHTML='<div style="flex:1"><div style="font-size:.85rem;font-weight:600">'+esc(m.name)+(m.installed?' <span class="fnote">已启用</span>':'')+'</div>'+
+      '<div class="fnote" style="margin-top:2px">'+esc(m.desc)+(m.license?' · '+esc(m.license):'')+'</div>'+
+      (m.install&&m.install.msg?'<div class="fnote" style="color:var(--warn-tx)">'+esc(m.install.msg)+'</div>':'')+'</div>';
+    if(!m.installed){
+      const st=(m.install||{}).stage;
+      const btn=document.createElement('button');
+      btn.className='mini';
+      if(st==='installing'){ btn.textContent='⏳ 安装中…'; btn.disabled=true; needPoll=true; }
+      else if(st==='error'){ btn.textContent='↻ 重试'; btn.onclick=()=>installMcp(m.id); }
+      else { btn.textContent='⬇ 安装'; btn.onclick=()=>installMcp(m.id); }
+      row.appendChild(btn);
+    }
+    box.appendChild(row);
+  }
+  if(needPoll){ clearTimeout(mcpPollTimer); mcpPollTimer=setTimeout(loadMcpUI, 5000); }
+}
+async function installMcp(id){
+  try{ await apiJSON('/api/mcpstore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id})}); }catch(e){}
+  loadMcpUI();
+}
 $('manage-modal').onclick=e=>{ if(e.target.id==='manage-modal') e.target.classList.remove('on'); };
 
 // ---- s32: 定时任务列表（只读+删除；设置由聊天对话完成） ----
