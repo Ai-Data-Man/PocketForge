@@ -29,3 +29,10 @@
 
 ## 待本机验证（P2 清单）
 GOOSE_PATH_ROOT 在 CLI+Desktop 双形态的收敛性；Desktop 免管理员运行 + 禁自动更新；`goose acp --enable-scheduler` Windows 常驻；custom provider 指向 9router 冒烟；MCP stdio 拉起 Windows 路径细节。
+
+## s19 补充取证（2026-08-27 深夜，VERIFIED-RUN 除标注外）
+1. **`goose mcp <SERVER>` 可独立启动的内置服务只有 `memory` 和 `tutorial`**；todo/summarize/chatrecall 等为 platform 型，内嵌 acp 进程内，不经过该子命令。
+2. **permission.yaml 真实语义**（源码 v1.46.0 crates/goose/src/config/permission.rs + permission_inspector.rs）：文件 = `HashMap<category, PermissionConfig>`，category 仅 `user`（用户显式配置）与 `smart_approve`（LLM judge 的缓存）两种。inspect 决策链（Approve/SmartApprove 模式）：①查 user → ②SmartApprove 查只读注解 → ③manage_extensions 必问 → ④SmartApprove 查 judge 缓存（None/AlwaysAllow 才走 LLM judge，AskBefore 缓存=必问）→ ⑤default RequireApproval（fail-closed）。**本仓库 permission.yaml 把 ask_before 清单写在 `smart_approve:` 键下 = 当作 judge 缓存被读取**：命中即必问，语义有效但机制是"缓存"而非"用户配置"；`browser__browser_click` 等带前缀名是否与 goose 内部工具名（tool_call.name）一致 UNVERIFIED（被 502 阻塞，见下）。
+3. **权限请求 ACP 形态**（VERIFIED-RUN 2026-08-27 之前 + 源码 acp/server.rs:1249）：`session/request_permission`，options = allow_always/allow_once/reject_once/reject_always 四项，toolCall 携带 title/rawInput；客户端回 `{outcome:{outcome:"selected",optionId}}`。
+4. **9router 大工具集缺陷**（外部依赖风险，非 goose bug）：curl 直连 router 同形状验证——单工具 + stream 正常；**40+ 工具 schema（goose 实际形态）→ 上游丢失 tool_calls（返回纯文本）或 502**。后果：agent 收不到工具调用机会 → 护栏/能力全部旁路。glm-5.2 与 deepseek-v4-flash 均复现。复现命令见 journal s19。待 9router 侧换上游/调参。
+5. **provider 解析优先级**（providers.rs:65）：GOOSE_PROVIDER env > config `active_provider` > config `GOOSE_PROVIDER`；openai provider 的 host 解析（openai_def.rs）OPENAI_HOST env 最高——但 acp 会话若被持久 active_provider（如 forge-router declarative）覆盖则 env 全部失效。诊断探针时注意 env.pop('GOOSE_PROVIDER') 后 yaml 兜底仍生效。

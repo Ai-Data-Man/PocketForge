@@ -20,3 +20,9 @@
 
 ## 实现
 （随提交补充）
+
+## s19 续作（同夜 23:00 前）
+- **权限请求小白面板落地**（conf/templates/chat.tpl.html）：`session/request_permission` 从"自动批第一项"改为对话流内确认卡（warn 底色、工具标题+参数摘要、四个大按钮：这次可以/以后都允许/这次不行/以后都别问、60s 超时自动选第一项防挂死）。选项 kind → 小白文案映射；回复走既有 acp_reply 通道。CSS 用三层令牌（warn-bg/warn-line/warn-tx/acc/danger），昼夜自适应。语法过；DOM 真验证因下述链路问题挂起。
+- **护栏实证调查（未完案）**：approve/smart_approve 模式探针"写文件零权限请求"——根因不是 goose 护栏失灵（源码证实 inspect 链 fail-closed），而是 **9router 上游对 goose 大工具集（40+ schema）请求丢失 tool_calls/返回 502**，agent 根本没机会调工具。curl 同形状复现：1 工具=正常 tool_calls；40 工具=纯文本/502。glm-5.2、deepseek-v4-flash 均现。→ 修在上游（9router 换上游/调参），PocketForge 侧记录风险。
+- research/04-goose.md 补 5 条 s19 取证（permission 语义/ACP 权限形态/router 缺陷/provider 优先级）。
+- 教训再录：heredoc f-string 的 `{}` 会被 python f-string 吃掉（用字符串拼接写测试脚本）；bytes stdout 记得 decode。
