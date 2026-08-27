@@ -1,6 +1,6 @@
 # PocketForge 状态（永远反映"现在"；每次工作会话结束必须更新）
 
-- 更新：2026-08-28 凌晨（自主长会话 s17–s31 完结：ADR-0010 能力中心+记忆可视化、HTTP CSRF 修复、e2e-chat 18 断言、权限确认卡端到端验证、.goosehints 603KB 污染重建+防护、聊天搜索+干完提醒+截图粘贴+报错大白话+新对话保持模型+空壳会话修剪。开放问题 #2/#3/#4/#7 关闭。工作树干净）
+- 更新：2026-08-28 凌晨（自主长会话 s17–s46 完结：ADR-0010 能力中心+记忆可视化、CSRF 修复、e2e-chat+fuzz 30 断言、权限确认卡 E2E、.goosehints 603KB 污染重建+防护、聊天搜索、干完/等确认提醒、截图粘贴、报错大白话、新对话保持模型、空壳会话修剪、IA 重构（🧠管理面板一级入口）、外部技能市场（anthropics/skills 拉取安装）、MCP 市场（精选目录+后台安装+写 extensions）、gen-xlsx 收编+健壮化、update-runner 回滚崩溃修复。开放问题 #2/#3/#4/#7 关闭。工作树干净）
 - 阶段：**P0–P30 全部完成**；产品可交付且具备自升级能力
 
 ## 已完成周期
@@ -24,6 +24,7 @@
 | s15 | bug实证修复(解释弹层被overflow:hidden裁剪→fixed定位挂body;ACP回放无stop事件→session/load完成补endStream)；三轮requesting-code-review loop:R1抓出CSWSH key外带/preview XSS等2C+8I+10M,R2验证12项+抓出/artifact同源绕过等5项,R3 Ready=Yes。落地:WS Origin校验/preview DOMPurify+iframe sandbox/artifact html-svg强制下载/atomicWrite六处/rpc按id结算/删会话解绑工作区/外链防环/遍历预算/目录删前快照/已删文件可恢复/shell注入封堵/innerHTML转义收敛 | s15 |
 | P30 (s16) | 自动升级(ADR-0009):VERSION真相源/detached升级器(下载校验差量备份回滚)/桥4端点+设置面板/schema迁移框架;正向v0.9.0→v0.9.1与回滚演练v0.9.2双验证 | s16 |
 | P30b/c (s16) | UI 视觉系统整体重写:三层设计令牌(色板→语义昼/夜→组件)/4皮肤(绿蓝紫石墨)/字号密度可调/顶栏◐+设置外观区块;修复:第一版CSS自引用坏变量/内联白底穿透夜间/浏览器缓存no-cache/panes flex丢失/空会话空工作区降级未关联+标题命名+活跃可删 | s16 |
+| s45/s46 | 外部技能市场（anthropics/skills 递归拉取安装+🌐UI）+ MCP 市场最小形态（精选目录/后台 npm vendor/写 extensions/bootstrap 保留 mcp-* 块）+ IA 重构 🧠 管理面板一级入口（s43）+ 项目须知.md（s44） | s43-s46 |
 | s17 (ADR-0010) | 能力中心+记忆可视化:设置面板新增「它会什么」扩展开关(数据库/浏览器/长期记忆)、「小forge记住的事」查看+删除(直读memory/*.txt,与MCP语义一致)、「安全护栏」大白话说明;/api/extensions+/api/memory;bootstrap保留用户开关值;审查轮:HTTP层Origin校验补齐(s15只修WS,恶意网页可跨站POST删记忆/触发升级)+空记忆分类过滤;GUI昼夜双主题断言通过 | s17 |
 
 ## 技术栈版本（全部 VERIFIED-RUN）
