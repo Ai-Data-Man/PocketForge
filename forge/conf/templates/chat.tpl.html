@@ -748,7 +748,7 @@ function onAgentEvent(p){
   }
   if(p.method==='session/request_permission'){
     // s19: 小白「问你」面板——替代旧的自动批第一项。展示工具+参数摘要，四个大按钮。
-    // 超时兜底：60 秒无操作自动选第一项（允许一次），避免 agent 卡死等待。
+    // 超时兜底：60 秒无操作自动选「这次可以」（allow_once），避免 agent 卡死等待
     const params=p.params||{};
     const opts=params.options||[];
     if(!opts.length){ wssend({type:'acp_reply',callId:p.id,option:undefined}); return; }
