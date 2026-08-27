@@ -56,6 +56,16 @@ assert isinstance(d,list) and len(d)>=0
 for w in d: assert {'id','files','bytes','mtime','sid','title','state'} <= set(w)
 print('workspaces-shape-ok')" | grep -q shape-ok; ck "workspaces list shape" $?
 
+# ---------- 7) 聊天记录搜索（s21） ----------
+curl -s "$B/api/search?q=perm-probe" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+assert d['ok'] and isinstance(d['hits'],list) and len(d['hits'])>=1
+h=d['hits'][0]
+assert {'sid','title','role','ts','frag'} <= set(h)
+print('search-ok')" | grep -q search-ok; ck "chat history search finds seeded text" $?
+curl -s "$B/api/search?q=x" | grep -q '"hits":\[\]'; ck "search short-query returns empty" $?
+
 rm -f /tmp/e2e-v1.md
 echo "=============================="
 echo "chat-link E2E: PASS=$PASS FAIL=$FAIL"
