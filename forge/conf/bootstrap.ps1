@@ -131,6 +131,11 @@ $bakTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\forge-bac
 $bridgeTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\chat-bridge.tpl.js'))
 [IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\chat-bridge.js'), $bridgeTpl)
 
+# 5e) s40: gen-xlsx 工具生成（真相源入库；此前只存在于 bin/ 被 ignore，丢失即永久丢失）
+$xlsxTpl = Join-Path $ForgeRoot 'conf\templates\gen-xlsx.tpl.js'
+$xlsxOut = Join-Path $ForgeRoot 'bin\gen-xlsx.js'
+if (Test-Path $xlsxTpl) { Copy-Item $xlsxTpl $xlsxOut -Force }
+
 # 5c) 首启欢迎页（仅首次：data/welcome.done 不存在时生成 html 并由启动器打开）
 $done = Join-Path $ForgeRoot 'data\welcome.done'
 if (-not (Test-Path $done)) {
