@@ -845,7 +845,8 @@ function submit(){
   if(busy){ addInfo('它还在干活（可以点「停止」打断它，或者等它做完）。'); return; }
   addMsg(t,'user'); txt.value=''; setBusy(true);
   // ponytail: 工作区路径随提示词注入（agent 不看 UI）；若将来提示词很长可改为桥接侧 system 注入
-  const hint=(curWs&&!/^[\s\S]*data\/artifacts\//.test(t))?(''+String.fromCharCode(10)+'（系统备注：本对话制品工作区目录是 data/artifacts/'+curWs+'/，新建或修改交付物默认放这里，覆盖前按版本管理技能先存一版）'):'';
+  // s44: 工作区须知——妻子说"记住这个项目的规矩"，agent 写进须知.md，之后每次任务自动带上
+  const hint=(curWs&&!/^[\s\S]*data\/artifacts\//.test(t))?(''+String.fromCharCode(10)+'（系统备注：本对话制品工作区目录是 data/artifacts/'+curWs+'/，新建或修改交付物默认放这里，覆盖前按版本管理技能先存一版。若该目录存在 须知.md，先读它并遵守其中的项目规矩）'):'';
   wssend({type:'prompt',text:t+hint});
 }
 send.onclick=submit;
