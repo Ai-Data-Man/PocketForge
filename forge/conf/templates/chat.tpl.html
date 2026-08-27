@@ -834,10 +834,25 @@ document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key==='/'){ e.preventDefault(); $('open-skills').click(); }
 });
 // 粘贴图片 -> 提示（ACP 支持图片 content，后续接）
-txt.addEventListener('paste',e=>{
-  for(const item of (e.clipboardData||{}).items||[]){
-    if(item.type.startsWith('image/')){ e.preventDefault(); addErr('暂不支持直接贴图，先把图片存成文件再告诉我路径'); break; }
+txt.addEventListener('paste',async e=>{
+  // s29: 截图直接粘贴上传（Win+Shift+S → Ctrl+V），不再拒绝
+  const imgs=[...(e.clipboardData||{}).items||[]].filter(it=>it.type.startsWith('image/'));
+  if(!imgs.length) return;
+  e.preventDefault();
+  if(!curWs){ addErr('工作区还没准备好，等状态灯变绿再贴图。'); return; }
+  let lastName='';
+  for(const item of imgs){
+    const f=item.getAsFile(); if(!f) continue;
+    const name='粘贴图片-'+new Date().toISOString().replace(/[:T]/g,'-').slice(0,19)+'.png';
+    try{
+      const buf=await f.arrayBuffer();
+      const r=await fetch('/api/upload?ws='+encodeURIComponent(curWs)+'&dir=&name='+encodeURIComponent(name),{method:'POST',body:buf});
+      const d=await r.json();
+      if(d.ok){ lastName=d.name; renderCurPane(); }
+      else addErr('贴图保存失败：'+(d.err||''));
+    }catch(err){ addErr('贴图保存失败：'+err.message); }
   }
+  if(lastName){ txt.value+=('@data/artifacts/'+curWs+'/'+lastName+' '); txt.focus(); addInfo('截图已放进本对话工作区，直接补充你想让我做什么，发送即可。'); }
 });
 $('refresh-sessions').onclick=loadSessions;
 $('burger').onclick=()=>$('side').classList.toggle('hidden');

@@ -50,3 +50,8 @@
 ## s27（00:00 前）— 端口冲突小白化（STATE #2 关闭）
 - chat-bridge listen 失败（EADDRINUSE）不再裸崩：GET /api/update/status 探测占用者——200 = 数字员工已在运行（带版本号），退出码 0；非 200/探测失败 = 端口被其他程序占用，提示重启电脑/找人帮。两分支均实测（双实例 + python http.server 占位）。
 - 副产品发现：goose 出网受 Windows IE 系统代理（127.0.0.1:7890）影响，探针/手工跑 goose 需 NO_PROXY=127.0.0.1,localhost；生产链 pc→chat-bridge→acp 已覆盖。
+
+## s28/s29（00:15 前）
+- **e2e-chat.sh 补搜索断言**（16→18）。
+- **终审轮产出**：EADDRINUSE 探测补 3s 超时；bootstrap hints 重建容错缺模板（老包升级路径）；权限卡超时注释修正。
+- **s29 截图粘贴上传（高频小白路径，替换原"暂不支持贴图"拒绝提示）**：paste 事件捕获 image items → getAsFile → 复用 /api/upload 通道 → 自动填 @ 引用 + 提示补话。系统剪贴板 Set-Clipboard + 真实 Ctrl+V 端到端验证：png 落盘（200x100 完整）+ .forge 元数据 + 输入框自动引用。
