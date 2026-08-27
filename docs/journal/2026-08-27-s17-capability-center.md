@@ -41,3 +41,8 @@
 - **502 双因定案**：①IE/WinINET 系统代理（127.0.0.1:7890，ProxyEnable=1）劫持 goose 进程出网——goose/reqwest 读系统代理，对 127.0.0.1:20128 的请求被 Clash 转发后 502；curl/python 不读 IE 代理故反复"复现失败"。NO_PROXY=127.0.0.1,localhost 即解。②叠加 glm-5.2 myopencode 线路 401/429 账号锁定。生产链路 pc 已给 chat-bridge 注入 NO_PROXY 并随 process.env 传给 acp 子进程，无暴露；仅手工探针环境缺此变量。
 - **权限确认卡端到端 VERIFIED-RUN**：approve 模式真会话 → agent 发起 write 工具调用 → 卡片渲染（标题 write · 路径 / rawInput JSON / 四按钮 / 护栏说明）→ 点「✅ 这次可以」→ 工具执行 → agent 汇报创建成功。permission.yaml 工具名前缀核查（agent.rs:98 + extension_manager.rs:1467）：MCP 工具全名 browser__browser_click 形态与清单一致，内置工具 write/shell/edit 直名匹配。
 - 收尾：permission-ui-test.txt 已清理。
+
+## s25/s26（23:50 前）
+- **真启动验证**：跑真实 bootstrap.ps1（EXIT=0）——hints 保持 4384B 干净版、config.yaml 幂等重建且用户 enabled 保留、占位符替换完整。
+- **报错大白话转译**：endStream 时检测上游故障模式（Ran into this error/Server error/rate limit/timeout），追加小白提示卡（等一两分钟重发/换模型）。
+- **新对话模型回落修复（STATE #4 关闭）**：前端 subscribe(null) 携带当前模型 → 桥在 session/new resolve 后自动 session/set_config_option(model)。GUI 验证：切 glm-5.1 → 新对话 → 保持 glm-5.1（修复前回落池首）。跨 provider 非法值时 set 失败降级为现状行为（安全）。
