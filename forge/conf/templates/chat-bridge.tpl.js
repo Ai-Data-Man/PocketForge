@@ -1385,4 +1385,30 @@ function handleClient(ws, msg) {
     }
 }
 
+server.on('error', e => {
+    // s27: 端口被占（STATE #2）——分清"已在运行"与"被别的程序占用"，给小白能懂的提示
+    if (e && e.code === 'EADDRINUSE') {
+        const probe = require('http').get('http://127.0.0.1:' + PORT + '/api/update/status', res => {
+            let b = '';
+            res.on('data', c => b += c);
+            res.on('end', () => {
+                if (res.statusCode !== 200) {
+                    console.log('[PocketForge] 聊天窗口需要的 ' + PORT + ' 端口被其他程序占用了。请重启电脑后再试；仍不行找懂电脑的人看一眼。');
+                    process.exit(1);
+                }
+                let ver = '';
+                try { ver = (JSON.parse(b) || {}).version || ''; } catch {}
+                console.log('[PocketForge] 数字员工已经在运行了' + (ver ? '（版本 ' + ver + '）' : '') + '。直接使用聊天窗口即可，不用重复启动。');
+                process.exit(0);
+            });
+        });
+        probe.on('error', () => {
+            console.log('[PocketForge] 聊天窗口需要的 ' + PORT + ' 端口被其他程序占用了。请重启电脑后再试；仍不行找懂电脑的人看一眼。');
+            process.exit(1);
+        });
+    } else {
+        console.error('bridge error:', e && e.message);
+        process.exit(1);
+    }
+});
 server.listen(PORT, '127.0.0.1', () => console.log('chat bridge v2 on http://127.0.0.1:' + PORT));

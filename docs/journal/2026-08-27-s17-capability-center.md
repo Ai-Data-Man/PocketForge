@@ -46,3 +46,7 @@
 - **真启动验证**：跑真实 bootstrap.ps1（EXIT=0）——hints 保持 4384B 干净版、config.yaml 幂等重建且用户 enabled 保留、占位符替换完整。
 - **报错大白话转译**：endStream 时检测上游故障模式（Ran into this error/Server error/rate limit/timeout），追加小白提示卡（等一两分钟重发/换模型）。
 - **新对话模型回落修复（STATE #4 关闭）**：前端 subscribe(null) 携带当前模型 → 桥在 session/new resolve 后自动 session/set_config_option(model)。GUI 验证：切 glm-5.1 → 新对话 → 保持 glm-5.1（修复前回落池首）。跨 provider 非法值时 set 失败降级为现状行为（安全）。
+
+## s27（00:00 前）— 端口冲突小白化（STATE #2 关闭）
+- chat-bridge listen 失败（EADDRINUSE）不再裸崩：GET /api/update/status 探测占用者——200 = 数字员工已在运行（带版本号），退出码 0；非 200/探测失败 = 端口被其他程序占用，提示重启电脑/找人帮。两分支均实测（双实例 + python http.server 占位）。
+- 副产品发现：goose 出网受 Windows IE 系统代理（127.0.0.1:7890）影响，探针/手工跑 goose 需 NO_PROXY=127.0.0.1,localhost；生产链 pc→chat-bridge→acp 已覆盖。
