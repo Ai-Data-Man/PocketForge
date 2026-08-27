@@ -28,6 +28,21 @@ $memTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\memory-mc
 $memCmd = $memTpl.Replace('__FORGE_ROOT__', $ForgeRoot)
 [IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\memory-mcp.cmd'), $memCmd)
 
+# 1b-2) s20: .goosehints 幂等重建（模板为唯一真相源）。
+# 事故背景：hints 曾被开发期脚本写坏成 600KB 重复段（P11-P24 期间入库未察觉），
+# 每轮 system prompt 被垃圾挤爆。hints = 只读手册，agent 不应写它；损坏则留档重建。
+$hintsTplPath = Join-Path $ForgeRoot 'conf\templates\goose-hints.tpl.md'
+$hintsPath    = Join-Path $gooseDir '.goosehints'
+if (Test-Path $hintsPath) {
+    $hLen = (Get-Item $hintsPath).Length
+    if ($hLen -gt 50KB -or $hLen -lt 1KB) {
+        $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+        Copy-Item $hintsPath (Join-Path $ForgeRoot "data\logs\hints-corrupt-$stamp.bak") -Force
+        Write-Host "[bootstrap] .goosehints 异常（$hLen 字节），已留档并从模板重建"
+    }
+}
+Copy-Item $hintsTplPath $hintsPath -Force
+
 # 1c) memory junction：goose-mcp 硬编码 %APPDATA%\Block\goose\config\memory（无视 GOOSE_PATH_ROOT，
 #     见 docs/research/04-goose.md）。NTFS junction 重定向到便携目录（免管理员；卸载=删 junction）。
 $memPort = Join-Path $ForgeRoot 'conf\goose\config\memory'
