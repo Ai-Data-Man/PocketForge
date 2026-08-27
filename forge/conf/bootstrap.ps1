@@ -12,13 +12,20 @@ $nodeDir  = Join-Path $ForgeRoot 'bin\node-v22\node-v22.21.1-win-x64'
 $tpl = [IO.File]::ReadAllText($tplPath)
 $cfg = $tpl.Replace('__FORGE_ROOT__', ($ForgeRoot -replace '\\','/')).Replace('__NODE_DIR__', ($nodeDir -replace '\\','/'))
 # s17: 用户在设置面板改过扩展开关 → 模板重写时保留其 enabled 值（ADR-0010）
+# s46: 模板里没有的扩展块（MCP 市场装的 mcp-*）整体保留追加
 if (Test-Path $cfgPath) {
     $old = [IO.File]::ReadAllText($cfgPath)
-    foreach ($m in [regex]::Matches($old, '(?ms)^ {2}([A-Za-z0-9_\-]+):\s*\r?\n(.*?)(?=^ {2}[A-Za-z0-9_\-]+:|^[^\s#])')) {
+    $extraBlocks = ''
+    foreach ($m in [regex]::Matches($old, '(?ms)^ {2}([A-Za-z0-9_\-]+):\s*\r?\n(.*?)(?=^ {2}[A-Za-z0-9_\-]+:|^[^\s#]|\z)')) {
+        $key = $m.Groups[1].Value
+        if ($key -like 'mcp-*') { $extraBlocks += $m.Value; continue }
         $en = [regex]::Match($m.Groups[2].Value, 'enabled:\s*(true|false)')
         if ($en.Success) {
-            $cfg = [regex]::Replace($cfg, "(?ms)(^ {2}$($m.Groups[1].Value):\s*\r?\n.*?)enabled:\s*(true|false)", "`$1enabled: $($en.Groups[1].Value)")
+            $cfg = [regex]::Replace($cfg, "(?ms)(^ {2}$($key):\s*\r?\n.*?)enabled:\s*(true|false)", "`$1enabled: $($en.Groups[1].Value)")
         }
+    }
+    if ($extraBlocks -ne '' -and $cfg -notmatch [regex]::Escape($extraBlocks)) {
+        $cfg = $cfg.TrimEnd() + "`n" + $extraBlocks.TrimEnd() + "`n"
     }
 }
 [IO.File]::WriteAllText($cfgPath, $cfg)

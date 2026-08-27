@@ -416,6 +416,36 @@ function installRemoteSkill(dirName, res) {
     }
 }
 
+// s46: MCP 市场（精选目录，npm vendored；安装=vendor 安装+写 config.yaml extensions，重启生效）
+const MCP_CATALOG = [
+    { id: 'sequential-thinking', name: '深度思考', desc: '复杂任务先拆步骤再动手，提升多步推理质量', pkg: '@modelcontextprotocol/server-sequential-thinking', entry: 'node_modules/@modelcontextprotocol/server-sequential-thinking/dist/index.js', license: 'MIT' },
+    { id: 'memory-graph', name: '关系图谱记忆', desc: '实体关系图谱（人物/设备台账类结构化记忆），与内置长期记忆互补', pkg: '@modelcontextprotocol/server-memory', entry: 'node_modules/@modelcontextprotocol/server-memory/dist/index.js', license: 'MIT' },
+];
+const mcpInstallState = {}; // id -> {stage:'installing'|'done'|'error', msg}
+function mcpExtensionId(id) { return 'mcp-' + id; }
+function mcpInstalled(id) {
+    try {
+        const raw = FSS.readFileSync(path.join(ROOT, 'conf', 'goose', 'config', 'config.yaml'), 'utf8');
+        return new RegExp('^ {2}' + mcpExtensionId(id) + ':', 'm').test(raw);
+    } catch { return false; }
+}
+function mcpWriteExtension(id, entry) {
+    // config.yaml extensions 块尾部追加（幂等：已存在不重复写）
+    const CFG = path.join(ROOT, 'conf', 'goose', 'config', 'config.yaml');
+    let raw = FSS.readFileSync(CFG, 'utf8');
+    if (new RegExp('^ {2}' + mcpExtensionId(id) + ':', 'm').test(raw)) return;
+    const vendorRel = 'bin/vendor/mcp-' + id;
+    const block = '\n' +
+        '  ' + mcpExtensionId(id) + ':\n' +
+        '    type: stdio\n' +
+        '    name: ' + mcpExtensionId(id) + '\n' +
+        '    enabled: true\n' +
+        "    cmd: '" + (ROOT.split(String.fromCharCode(92)).join('/')) + "/bin/node-v22/node-v22.21.1-win-x64/node.exe'\n" +
+        "    args: ['" + (ROOT.split(String.fromCharCode(92)).join('/')) + '/' + vendorRel + '/' + entry + "']\n" +
+        '    timeout: 300\n';
+    atomicWrite(CFG, raw.replace(/\n*$/, '\n') + block);
+}
+
 async function handleHttp(req, res) {
     const url = (req.url || '/').split('?')[0];
     // R2-C1b(审查s17): WS 层有 Origin 校验，HTTP 层没有——恶意网页可跨站 POST
@@ -751,6 +781,45 @@ const ext = path.extname(f).toLowerCase();
                     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ ok: code === 0, out: out.slice(0, 300) }));
                 });
+            });
+        } else { res.writeHead(405); res.end(); }
+    }
+    else if (url === '/api/mcpstore') {
+        // s46: MCP 市场最小形态——精选目录（npm vendored），安装=后台 npm i + 写 extensions，重启生效
+        if (req.method === 'GET') {
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify(MCP_CATALOG.map(m => ({
+                id: m.id, name: m.name, desc: m.desc, license: m.license,
+                installed: mcpInstalled(m.id),
+                install: mcpInstallState[m.id] || null,
+            }))));
+        } else if (req.method === 'POST') {
+            const chunks = [];
+            req.on('data', c => chunks.push(c));
+            req.on('end', () => {
+                let id = '';
+                try { id = String(JSON.parse(Buffer.concat(chunks).toString('utf8')).id || ''); } catch {}
+                const item = MCP_CATALOG.find(m => m.id === id);
+                res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                if (!item) { res.end(JSON.stringify({ ok: false, err: '目录里没有这个 MCP' })); return; }
+                if (mcpInstalled(id)) { res.end(JSON.stringify({ ok: true, already: true })); return; }
+                if (mcpInstallState[id] && mcpInstallState[id].stage === 'installing') { res.end(JSON.stringify({ ok: true, started: true })); return; }
+                mcpInstallState[id] = { stage: 'installing', msg: '正在下载安装（约 1 分钟）…' };
+                res.end(JSON.stringify({ ok: true, started: true }));
+                // 后台安装：npm i 到 bin/vendor/mcp-<id>/，完成后写 extensions
+                // s46: .cmd 必须走 shell（execFile 直接跑 .cmd 会 EINVAL，且异常未捕获会杀桥）
+                const vdir = path.join(ROOT, 'bin', 'vendor', 'mcp-' + id);
+                FSS.mkdirSync(vdir, { recursive: true });
+                try {
+                    const { execFile } = require('child_process');
+                    const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+                    const child = execFile(npm, ['install', '--omit=dev', item.pkg], { cwd: vdir, timeout: 300000, shell: process.platform === 'win32', env: { ...process.env, HTTP_PROXY: process.env.HTTP_PROXY || 'http://127.0.0.1:7890', HTTPS_PROXY: process.env.HTTPS_PROXY || 'http://127.0.0.1:7890' }, maxBuffer: 16 * 1024 * 1024 }, (err) => {
+                        if (err) { mcpInstallState[id] = { stage: 'error', msg: '安装失败：' + (err.message || '').slice(0, 200) }; return; }
+                        try { mcpWriteExtension(id, item.entry); mcpInstallState[id] = { stage: 'done', msg: '安装完成，重启数字员工后生效' }; }
+                        catch (e2) { mcpInstallState[id] = { stage: 'error', msg: '写入配置失败：' + e2.message }; }
+                    });
+                    child.on('error', () => {});
+                } catch (e3) { mcpInstallState[id] = { stage: 'error', msg: '安装启动失败：' + e3.message }; }
             });
         } else { res.writeHead(405); res.end(); }
     }

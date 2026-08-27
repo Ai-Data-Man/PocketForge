@@ -29,3 +29,10 @@ extensions:
     cmd: 'cmd'
     args: ['/c', 'C:/ZCodeWorks/PocketForge/forge/bin/memory-mcp.cmd']
     timeout: 120
+  mcp-sequential-thinking:
+    type: stdio
+    name: mcp-sequential-thinking
+    enabled: true
+    cmd: 'C:/ZCodeWorks/PocketForge/forge/bin/node-v22/node-v22.21.1-win-x64/node.exe'
+    args: ['C:/ZCodeWorks/PocketForge/forge/bin/vendor/mcp-sequential-thinking/node_modules/@modelcontextprotocol/server-sequential-thinking/dist/index.js']
+    timeout: 300
