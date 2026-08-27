@@ -66,7 +66,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 #newchat:hover{filter:brightness(1.08)}
 #newchat:active{filter:brightness(.92)}
 #sessions{flex:0 1 auto;overflow-y:auto;padding:0 8px 8px;max-height:42%}
-#chat-search{margin:2px 8px 4px;padding:8px 11px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;background:var(--panel);color:var(--tx);outline:none;box-sizing:border-box;width:calc(100% - 16px)}
+#chat-search{margin:2px 0 4px;padding:8px 26px 8px 11px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;background:var(--panel);color:var(--tx);outline:none;box-sizing:border-box;width:100%}
 #chat-search:focus{border-color:var(--acc)}
 #search-results{flex:1 1 auto;overflow-y:auto;padding:0 8px 8px;border-top:1px solid var(--line);margin-top:2px}
 #search-results .sh{padding:8px 6px;border-bottom:1px dashed var(--line);cursor:pointer}
@@ -246,7 +246,10 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
   <header><span class="dot" id="status"></span>小 forge</header>
   <button id="newchat">＋ 新对话</button>
   <div id="side-label-sess" style="padding:2px 14px;font-size:11px;color:var(--mut)">对话</div>
-  <input id="chat-search" placeholder="🔍 搜聊天记录…" autocomplete="off">
+  <div style="position:relative;margin:2px 8px 4px">
+    <input id="chat-search" placeholder="🔍 搜聊天记录…" autocomplete="off">
+    <button id="chat-search-clear" title="清除搜索" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);border:none;background:var(--hover);color:var(--mut);border-radius:50%;width:20px;height:20px;line-height:1;cursor:pointer;font-size:11px;display:none">✕</button>
+  </div>
   <div id="search-results" style="display:none"></div>
   <div id="sessions"></div>
   <footer>
@@ -934,10 +937,12 @@ async function loadSchedUI(){
 
 // ---- s21: 聊天记录搜索（左栏；>=2 字触发，防抖 300ms；点结果跳会话） ----
 let searchTimer=null;
+function closeSearch(){ $('search-results').style.display='none'; $('sessions').style.display=''; if($('chat-search').value){ $('chat-search').value=''; } }
 $('chat-search').oninput=e=>{
   const q=e.target.value.trim();
+  $('chat-search-clear').style.display=q?'block':'none';
   clearTimeout(searchTimer);
-  if(q.length<2){ $('search-results').style.display='none'; $('sessions').style.display=''; return; }
+  if(q.length<2){ closeSearch(); return; }
   searchTimer=setTimeout(async()=>{
     try{
       const r=await apiJSON('/api/search?q='+encodeURIComponent(q));
@@ -956,6 +961,8 @@ $('chat-search').oninput=e=>{
     }catch(e2){}
   },300);
 };
+$('chat-search-clear').onclick=()=>{ closeSearch(); };
+$('chat-search').onkeydown=e=>{ if(e.key==='Escape'){ e.stopPropagation(); closeSearch(); } };
 
 // ---- s17: 能力开关 + 记忆管理（小白视角；护栏=permission.yaml ask_before 的大白话） ----
 async function apiJSON(url, opt){
