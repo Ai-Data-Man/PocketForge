@@ -936,7 +936,7 @@ async function loadSchedUI(){
 }
 
 // ---- s21: 聊天记录搜索（左栏；>=2 字触发，防抖 300ms；点结果跳会话） ----
-let searchTimer=null;
+let searchTimer=null, searchSeq=0;
 function closeSearch(){ $('search-results').style.display='none'; $('sessions').style.display=''; if($('chat-search').value){ $('chat-search').value=''; } }
 $('chat-search').oninput=e=>{
   const q=e.target.value.trim();
@@ -944,8 +944,10 @@ $('chat-search').oninput=e=>{
   clearTimeout(searchTimer);
   if(q.length<2){ closeSearch(); return; }
   searchTimer=setTimeout(async()=>{
+    const seq=++searchSeq;
     try{
       const r=await apiJSON('/api/search?q='+encodeURIComponent(q));
+      if(seq!==searchSeq) return; // s35: 陈旧响应不覆盖新结果
       const box=$('search-results'); box.innerHTML='';
       if(!r.ok||!r.hits.length){ box.innerHTML='<div class="fnote" style="padding:8px 6px">没找到含「'+esc(q)+'」的聊天。</div>'; }
       else for(const h of r.hits){
