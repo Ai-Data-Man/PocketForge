@@ -25,3 +25,9 @@
 - 按 skill 执行闭环：任务指令引用 skill → agent 读取执行 → 6 行入库核对一致。
 
 来源：agentskills.io/specification · agentskills.io/skill-creation/best-practices · agentskills.io/skill-creation/optimizing-descriptions · github.com/anthropics/skills（pdf/docx/skill-creator 样例）· anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills · aaif-goose/goose documentation/docs/guides/context-engineering/using-skills.md
+
+## s42/s43 商店化落地（2026-08-28，VERIFIED-RUN）
+- 本地技能收集：`forge/skills-repo/<name>/SKILL.md`（与 .agents/skills 同构）→ 桥 `/api/skillstore` GET 列出未装 + POST 整目录复制安装到 `.agents/skills/`。UI = 技能弹窗「🛒 可添加的技能」（先看内容全文预览 → ⬇添加）。
+- 安全论证：SKILL.md 是纯文本指令，安装无执行面；预览步骤保证用户可见全部内容。与 MCP 安装（进程/命令行，有执行面）本质不同——后者维持裁剪，backlog 里的"预装目录"方案（fetch/sequential-thinking vendored）另行评审。
+- 验证：API 安装→目录复制一致→installed 翻转→goose skills list 发现→卸载清理，全链路 VERIFIED-RUN。
+- 远程化路径（backlog 已记）：skills-repo 与 GitHub repo 同构（clone/pull 即得远程源），无需新基础设施；拉取动作建议由用户手动触发（勾选"检查技能更新"按钮），不自动同步。
