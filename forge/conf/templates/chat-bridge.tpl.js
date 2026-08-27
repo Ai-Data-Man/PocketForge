@@ -330,6 +330,92 @@ function cmpVer(a, b) {
     }
     return 0;
 }
+// s45: 远程技能源——anthropics/skills（开源样例库，agentskills.io 同规范）
+const REMOTE_SKILLS = { repo: 'anthropics/skills', branch: 'main', subdir: 'skills' };
+function ghFetch(p) {
+    // GitHub API/raw 统一走代理（现场代理 127.0.0.1:7890；可用 data/proxy.env 覆盖）
+    let proxy = 'http://127.0.0.1:7890';
+    try { proxy = FSS.readFileSync(path.join(ROOT, 'data', 'proxy.env'), 'utf8').trim() || proxy; } catch {}
+    const { execFileSync } = require('child_process');
+    const out = execFileSync('curl', ['-sL', '-m', '30', '-x', proxy, p], { maxBuffer: 32 * 1024 * 1024, encoding: 'buffer' });
+    return out;
+}
+function ghJson(p) { try { return JSON.parse(ghFetch(p).toString('utf8')); } catch { return null; } }
+function ghText(p) { return ghFetch(p).toString('utf8'); }
+function parseSkillMeta(raw, fallbackName) {
+    const name = raw.match(/^name:\s*(.+)$/m);
+    const dm = raw.match(/^description:\s*(.*)$/m);
+    let desc = dm ? dm[1].trim() : '';
+    if (/^[>|][+-]?\s*$/.test(desc)) {
+        // yaml 多行块（> | |-）：抓后续缩进行拼接
+        const lines = raw.split(/\r?\n/);
+        const start = lines.findIndex(l => /^description:/.test(l));
+        const parts = [];
+        for (let i = start + 1; i < lines.length; i++) {
+            if (/^\s+\S/.test(lines[i])) parts.push(lines[i].trim());
+            else if (lines[i].trim() === '') continue;
+            else break;
+        }
+        desc = parts.join(' ');
+    }
+    desc = desc.replace(/^['"]|['"]$/g, '');
+    return {
+        name: name ? name[1].trim().replace(/^['"]|['"]$/g, '') : fallbackName,
+        description: desc || '(无说明)',
+        body: raw.length > 4000 ? raw.slice(0, 4000) : raw,
+    };
+}
+function listRemoteSkills(installedSet, res) {
+    try {
+        const listing = ghJson('https://api.github.com/repos/' + REMOTE_SKILLS.repo + '/contents/' + REMOTE_SKILLS.subdir + '?ref=' + REMOTE_SKILLS.branch);
+        if (!Array.isArray(listing)) throw new Error('技能源不可达');
+        const dirs = listing.filter(e => e.type === 'dir').map(e => e.name);
+        const out = [];
+        let done = 0;
+        const emit = () => {
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify(out));
+        };
+        if (!dirs.length) { emit(); return; }
+        for (const d of dirs) {
+            let meta = { name: d, description: '(远程技能)', body: '' };
+            try { meta = parseSkillMeta(ghText('https://raw.githubusercontent.com/' + REMOTE_SKILLS.repo + '/' + REMOTE_SKILLS.branch + '/' + REMOTE_SKILLS.subdir + '/' + d + '/SKILL.md'), d); } catch {}
+            out.push({ ...meta, dir: d, installed: installedSet.has(d), remote: true });
+            if (++done === dirs.length) emit();
+        }
+    } catch (e) {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, err: '技能源拉取失败: ' + e.message }));
+    }
+}
+function installRemoteSkill(dirName, res) {
+    // 递归拉取 skills/<dir> 全部文件（GitHub contents API；子目录递归）
+    function walkApi(relPath, destDir) {
+        const items = ghJson('https://api.github.com/repos/' + REMOTE_SKILLS.repo + '/contents/' + REMOTE_SKILLS.subdir + '/' + relPath + '?ref=' + REMOTE_SKILLS.branch);
+        if (!Array.isArray(items)) throw new Error('技能目录拉取失败: ' + relPath);
+        for (const it of items) {
+            const rel = REMOTE_SKILLS.subdir + '/' + relPath === '' ? it.name : relPath + '/' + it.name;
+            if (it.type === 'dir') {
+                walkApi(rel, path.join(destDir, it.name));
+            } else {
+                FSS.mkdirSync(destDir, { recursive: true });
+                FSS.writeFileSync(path.join(destDir, it.name), ghFetch(it.download_url || ('https://raw.githubusercontent.com/' + REMOTE_SKILLS.repo + '/' + REMOTE_SKILLS.branch + '/' + REMOTE_SKILLS.subdir + '/' + rel)));
+            }
+        }
+    }
+    try {
+        const dst = path.join(ROOT, '.agents', 'skills', dirName);
+        walkApi(dirName, dst);
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true }));
+    } catch (e) {
+        // 失败清理半成品目录
+        try { FSS.rmSync(path.join(ROOT, '.agents', 'skills', dirName), { recursive: true, force: true }); } catch {}
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, err: '安装失败: ' + e.message }));
+    }
+}
+
 async function handleHttp(req, res) {
     const url = (req.url || '/').split('?')[0];
     // R2-C1b(审查s17): WS 层有 Origin 校验，HTTP 层没有——恶意网页可跨站 POST
@@ -676,18 +762,18 @@ const ext = path.extname(f).toLowerCase();
         function readSkillMeta(dir) {
             try {
                 const raw = FSS.readFileSync(path.join(dir, 'SKILL.md'), 'utf8');
-                const name = raw.match(/^name:\s*(.+)$/m);
-                const desc = raw.match(/^description:\s*(.+)$/m);
-                return {
-                    name: name ? name[1].trim().replace(/^['"]|['"]$/g, '') : path.basename(dir),
-                    description: desc ? desc[1].trim().replace(/^['"]|['"]$/g, '') : '',
-                    body: raw.length > 4000 ? raw.slice(0, 4000) : raw,
-                };
+                return { dir: path.basename(dir), ...parseSkillMeta(raw, path.basename(dir)) };
             } catch { return null; }
         }
         if (req.method === 'GET') {
+            const isRemote = new URL(req.url, 'http://x').searchParams.get('remote') === '1';
             const installedSet = new Set();
             try { for (const e of FSS.readdirSync(INSTALLED, { withFileTypes: true })) if (e.isDirectory()) installedSet.add(e.name); } catch {}
+            // s45: 远程技能源（anthropics/skills，开源；经代理访问 GitHub API）
+            if (isRemote) {
+                listRemoteSkills(installedSet, res);
+                return;
+            }
             const out = [];
             try {
                 for (const ent of FSS.readdirSync(REPO, { withFileTypes: true })) {
@@ -706,6 +792,7 @@ const ext = path.extname(f).toLowerCase();
                 try {
                     const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
                     if (typeof b.name !== 'string' || !/^[\w\-]{1,64}$/.test(b.name)) throw new Error('参数不合法');
+                    if (b.remote) { installRemoteSkill(b.name, res); return; }
                     const src = path.join(REPO, b.name);
                     const dst = path.join(INSTALLED, b.name);
                     if (!FSS.existsSync(path.join(src, 'SKILL.md'))) throw new Error('商店里没有这个技能');

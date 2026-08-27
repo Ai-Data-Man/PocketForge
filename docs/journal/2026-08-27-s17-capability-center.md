@@ -110,3 +110,9 @@
 - 根因链：多次 Stop-Process chat-bridge（s42 部署）→ pc on_failure 重启的实例撞上手工实例的 8790 → s27 新代码对"自家实例在跑"exit(0) 正常退出 → pc 对正常退出不重启 → 桥从 pc 托管消失；随后 pc 守护整体退出（未定位到确切触发，疑与多次手工杀进程+pc 自愈交互有关）。
 - 恢复：conf/dev-stack-up.ps1（新增，开发会话用的无窗口等价启动器，聚合 apps + secrets 注入 + pc up）。
 - 教训：开发期手工起 bridge 应固定用 pc 托管口（pc process restart chat-bridge），不要 Stop+手起——绕过 pc 的进程编排必然制造双实例竞争。
+
+## s45 完成（03:45 前）— 外部技能市场接入
+- 源 = anthropics/skills GitHub 仓库（19 个官方开源技能，agentskills.io 同规范）。桥 ghFetch（curl 走代理，data/proxy.env 可覆盖）/listRemoteSkills（目录列表 + 逐个 SKILL.md frontmatter）/installRemoteSkill（contents API 递归拉取全目录，含二进制与子目录，失败清理半成品）。
+- 修复：yaml 多行 description 解析（> / |- 块）；本地 readSkillMeta 统一走 parseSkillMeta。
+- UI：可添加区合并本地+远程（🌐 标记），安装按钮带 remote 分支。
+- E2E：19 技能列表渲染 ✓；真装 canvas-design（含字体二进制+子目录，完整落盘）与 pdf（含 scripts/ 子目录）✓；测试安装已清理。

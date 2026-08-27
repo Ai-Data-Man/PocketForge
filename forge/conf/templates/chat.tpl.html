@@ -329,7 +329,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
   <div class="fnote" style="margin-bottom:10px">这些是它积累的操作手册。聊天时说相关的活儿它就会自动用；也可以点「让它现在用」。</div>
   <div id="skills-list"></div>
   <h3 style="margin:18px 0 8px">🛒 可添加的技能</h3>
-  <div class="fnote" style="margin-bottom:10px">装之前先点「先看内容」过一眼，确认没问题再添加。添加后立刻生效。</div>
+  <div class="fnote" style="margin-bottom:10px">来源：本机技能库 + 🌐 Anthropic 官方开源技能库。装之前先点「先看内容」过一眼，确认没问题再添加。添加后立刻生效。</div>
   <div id="store-list"></div>
 </div></div>
 <div id="manage-modal" class="modal-bg"><div class="panel-box">
@@ -1208,17 +1208,22 @@ $('open-skills').onclick=async()=>{
   }catch(e){ $('skills-list').innerHTML='<div class="fnote">读取失败：'+e.message+'</div>'; }
   loadSkillStore();
 };
-// s42: 技能商店（可添加区）——预览全文确认后安装
+// s42/s45: 技能商店（本地 skills-repo + 远程 anthropics/skills）
 async function loadSkillStore(){
   const box=$('store-list'); if(!box) return;
-  let list;
-  try { list = await apiJSON('/api/skillstore'); } catch(e){ box.innerHTML='<div class="fnote">读取失败：'+esc(e.message)+'</div>'; return; }
-  const avail=list.filter(s=>!s.installed);
+  box.innerHTML='<div class="fnote">正在从技能源获取…</div>';
+  let local=[], remote=[];
+  try { local = await apiJSON('/api/skillstore'); } catch(e){}
+  try {
+    const r = await apiJSON('/api/skillstore?remote=1');
+    if (Array.isArray(r)) remote = r;
+  } catch(e){}
+  const avail=[...local.filter(s=>!s.installed), ...remote.filter(s=>!s.installed)];
   if(!avail.length){ box.innerHTML='<div class="fnote">没有可添加的新技能了。</div>'; return; }
   box.innerHTML='';
   for(const sk of avail){
     const el=document.createElement('div'); el.className='skill';
-    el.innerHTML='<div class="nm">'+esc(sk.name)+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
+    el.innerHTML='<div class="nm">'+(sk.remote?'🌐 ':'')+esc(sk.name)+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
     const ops=document.createElement('div'); ops.className='ops';
     const view=document.createElement('button'); view.className='mini'; view.textContent='先看内容';
     view.onclick=()=>{
@@ -1231,7 +1236,8 @@ async function loadSkillStore(){
     inst.onclick=async()=>{
       inst.disabled=true;
       try{
-        const r=await apiJSON('/api/skillstore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:sk.dir||sk.name})});
+        const body={name:sk.dir||sk.name}; if(sk.remote) body.remote=true;
+        const r=await apiJSON('/api/skillstore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
         if(!r.ok) throw new Error(r.err||'失败');
         el.remove(); loadSkills2();
       }catch(e){ inst.disabled=false; alert('没装成：'+e.message); }
