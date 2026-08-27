@@ -133,11 +133,25 @@ function writeForgeMeta(ws, meta) { try { atomicWrite(forgeFile(ws), JSON.string
 const ARCH_FILE = path.join(ROOT, 'data', 'session-archive.json');
 function readArch() { try { return JSON.parse(FSS.readFileSync(ARCH_FILE, 'utf8')); } catch { return {}; } }
 function writeArch(m) { FSS.mkdirSync(path.dirname(ARCH_FILE), { recursive: true }); atomicWrite(ARCH_FILE, JSON.stringify(m, null, 2)); }
-function wsState(id, map, arch) {
-    const sid = (map[id] || {}).sid;
+function wsState(id, map, arch, sid, files, meta) {
     if (!sid) return 'orphan';
     if (arch[sid]) return 'archived';
+    // 空工作区+零消息会话 = 噪音（页面调试/废弃会话残留），归「未关联」，默认视图不出现
+    const mc = meta.msgCount.get(sid) || 0;
+    if (files === 0 && mc === 0) return 'orphan';
     return 'active';
+}
+// 每次列举时读一次会话库：拿到标题(命名=会话名)与消息数(活跃判定)
+function sessionMeta() {
+    const meta = { bySid: new Map(), msgCount: new Map() };
+    try {
+        const { DatabaseSync } = require('node:sqlite');
+        const db = new DatabaseSync(path.join(ROOT, 'conf', 'goose', 'data', 'sessions', 'sessions.db'));
+        for (const r of db.prepare('SELECT id, name FROM sessions').all()) meta.bySid.set(r.id, r.name || null);
+        for (const r of db.prepare('SELECT session_id, count(*) c FROM messages GROUP BY session_id').all()) meta.msgCount.set(r.session_id, Number(r.c) || 0);
+        db.close();
+    } catch {}
+    return meta;
 }
 
 let _git = null;
@@ -526,6 +540,7 @@ const ext = path.extname(f).toLowerCase();
         // 全局工作区视角：所有工作区 + 元信息 + 生命周期状态（active/archived/orphan）
         const map = readWsMap();
         const arch = readArch();
+        const meta = sessionMeta();
         const out = [];
         try {
             for (const ent of FSS.readdirSync(ART_DIR, { withFileTypes: true })) {
@@ -544,7 +559,10 @@ const ext = path.extname(f).toLowerCase();
                         }
                     } catch {}
                 })(path.join(ART_DIR, ent.name), { n: 2000 });
-                out.push({ id: ent.name, files, bytes, mtime, sid: (map[ent.name] || {}).sid || null, state: wsState(ent.name, map, arch) });
+                const sid = (map[ent.name] || {}).sid || null;
+                const title = sid ? meta.bySid.get(sid) || null : null;
+                const state = wsState(ent.name, map, arch, sid, files, meta);
+                out.push({ id: ent.name, files, bytes, mtime, sid, title, state });
             }
         } catch {}
         out.sort((a, b) => b.mtime - a.mtime);
@@ -654,8 +672,9 @@ const ext = path.extname(f).toLowerCase();
                 const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
                 if (!wsValidId(b.ws)) throw new Error('参数不完整');
                 const map = readWsMap(), arch = readArch();
-                const stt = wsState(b.ws, map, arch);
-                if (stt === 'active') throw new Error('该工作区还绑着活跃对话，请先归档那个对话');
+                const curSid = b.sid || null; // HTTP 端无 ws 句柄,当前会话 sid 由客户端带上
+                const bsid = (map[b.ws] || {}).sid || null;
+                if (bsid && curSid && bsid === curSid) throw new Error('这是当前对话正在用的工作区，不能删');
                 const tReal = FSS.realpathSync(wsDir(b.ws));
                 for (const ent of FSS.readdirSync(ART_DIR, { withFileTypes: true })) {
                     if (!ent.isDirectory() || !wsValidId(ent.name) || ent.name === b.ws) continue;

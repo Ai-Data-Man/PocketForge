@@ -285,7 +285,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
   <div id="pane-all" style="display:none">
     <div style="padding:6px 10px 4px;display:flex;gap:6px">
       <input id="all-q" placeholder="搜索名字…" style="flex:1;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:12.5px;outline:none">
-      <select id="all-sort" style="border:1px solid var(--line);border-radius:8px;font-size:12px;background:#fff">
+      <select id="all-sort" style="border:1px solid var(--line);border-radius:8px;font-size:12px;background:var(--panel);color:var(--tx)">
         <option value="mtime">最近活动</option><option value="name">名称</option><option value="bytes">体积</option>
       </select>
     </div>
@@ -294,7 +294,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
     <div id="all-pager" style="padding:6px 10px;text-align:center"></div>
   </div>
 </div>
-<div id="slash-menu" style="display:none;position:absolute;bottom:64px;left:18px;right:18px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.14);z-index:40;max-height:250px;overflow-y:auto"></div>
+<div id="slash-menu" style="display:none;position:absolute;bottom:64px;left:18px;right:18px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.14);z-index:40;max-height:250px;overflow-y:auto"></div>
 <div id="skills-modal" class="modal-bg"><div class="panel-box">
   <h3>🧩 小 forge 的技能（它学会的本领）</h3>
   <div class="fnote" style="margin-bottom:10px">这些是它积累的操作手册。聊天时说相关的活儿它就会自动用；也可以点「让它现在用」。</div>
@@ -320,7 +320,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
     <div id="model-pool" style="max-height:180px;overflow-y:auto;border:1px solid var(--line);border-radius:9px;padding:10px"></div>
     <div class="fnote" id="cfg-model-hint">拉取后勾选 3-5 个常用的就够；顶栏随时切换</div>
   </div>
-  <button id="save-cfg" style="width:100%;padding:11px;background:var(--g);color:#fff;border:none;border-radius:9px;font-size:15px;cursor:pointer">💾 保存这家服务商</button>
+  <button id="save-cfg" style="width:100%;padding:11px;background:var(--acc);color:var(--acc-contrast);border:none;border-radius:9px;font-size:15px;cursor:pointer">💾 保存这家服务商</button>
   <div class="fnote" id="save-note" style="margin-top:10px"></div>
     <h3 style="margin:18px 0 8px">🎨 外观</h3>
   <div class="frow"><label>夜间模式（顶栏 ◐ 可快速切换；"跟随系统"自动昼夜）</label>
@@ -332,10 +332,10 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
   <div class="frow"><label>信息密度（间距大小）</label>
     <div id="th-dens" style="display:flex;gap:6px"></div></div>
 <h3 style="margin:18px 0 8px">🩹 关于与升级</h3>
-  <div class="fnote" style="margin-bottom:8px">当前版本 <b id="upd-cur">…</b><span id="upd-warn" style="color:#a80"></span>。升级自动完成，你的对话和文件都不会动；万一失败会自动还原。</div>
+  <div class="fnote" style="margin-bottom:8px">当前版本 <b id="upd-cur">…</b><span id="upd-warn" style="color:var(--warn-tx)"></span>。升级自动完成，你的对话和文件都不会动；万一失败会自动还原。</div>
   <div style="display:flex;gap:6px">
     <button id="upd-check" class="mini" style="flex:1">检查更新</button>
-    <button id="upd-go" class="mini" style="flex:1;display:none;background:var(--g);color:#fff"></button>
+    <button id="upd-go" class="mini" style="flex:1;display:none;background:var(--acc);color:var(--acc-contrast)"></button>
     <button id="upd-manual-btn" class="mini" style="flex:1">离线升级</button>
     <input type="file" id="upd-file" accept=".zip" style="display:none">
   </div>
@@ -1105,7 +1105,8 @@ async function ensureWs(){
 }
 function sessionTitle(sid){ const s=lastSessions.find(x=>x.sessionId===sid); return s?(s.title||'未命名'):null; }
 function wsDisplayName(w){
-  if(w.sid===sessionId){ const t=sessionTitle(w.sid); if(t) return t; }
+  const t=w.title||(w.sid===sessionId?sessionTitle(w.sid):null);
+  if(t) return t;
   return w.id==='ws-imported'?'旧文件（导入）':('对话 '+w.id.slice(3));
 }
 function wsStateLabel(w){
@@ -1308,12 +1309,12 @@ function renderAllPane(){
       };
     }
     row.appendChild(intro);
-    if(w.state!=='active'){
+    if(w.id!==curWs){
       const del=document.createElement('button'); del.className='danger'; del.textContent='🗑 删除工作区';
       del.onclick=async()=>{
         if(!confirm('彻底删除工作区「'+w.id+'」连同里面全部文件？这一步真的找不回来了。')) return;
         if(!confirm('最后确认：连文件带版本历史一起删，确定？')) return;
-        const r=await fetch('/api/ws/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:w.id})});
+        const r=await fetch('/api/ws/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:w.id,sid:sessionId||''})});
         const d=await r.json();
         if(d.ok){ loadWorkspaces(); note('工作区已删除'); } else alert('删除失败: '+(d.err||''));
       };
