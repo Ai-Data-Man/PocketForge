@@ -88,3 +88,8 @@
 - Manus Skills = agentskills.io 同构；管理页/商店维持裁剪。
 - **落地：开场快捷任务 chips**——新对话欢迎语下方 4 个按钮（做个体检/看看我的文件/你能干什么/分析一张图），点击填入输入框。GUI 验证通过。
 - 对标矩阵：定时任务✓ 记忆✓ 贴图✓ 通知（标题闪烁，够用）/ 项目指令（backlog）技能商店（裁剪）/ 多会话并行（backlog）。
+
+## s35（01:45 前）— 模糊测试矩阵固化
+- tools/e2e/fuzz-chat.sh：12 项异常输入断言（空体/null/字符串体/类型混淆/遍历 id/正则元字符/内部路径泄漏检测），全部通过。
+- 当轮真实收获：修 3 个问题——①搜索结果态无恢复路径（✕ 按钮 + Escape + 空 query 恢复，残留状态类 bug）；②/memory 的 category 数字类型绕过正则致 ENOENT 内部路径泄漏（typeof 校验 + existsSync 前置）；③ws/new、ws/bind 的 sid 无格式校验（sidValid 白名单）。
+- 方法论：交互矩阵残留状态 + 类型混淆 fuzz 比肉眼 review 高效，后续每加端点应同步补 fuzz 断言。
