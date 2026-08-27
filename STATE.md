@@ -48,4 +48,5 @@ ADR-0001 记忆拓扑 / ADR-0002 五件套技术栈 / ADR-0003 交付树+注册�
 - 工作区级「项目指令」（对照 Manus Projects master instruction）：.forge 元数据扩展 + prompt 注入，首月低频故 backlog
 - 多会话并行任务（Manus Wide Research 式）：妻子场景低频，backlog
 - /api/search 升级 FTS5：消息量 >1 万条时
-- skill/mcp 商店：需外网源与审核机制，待真实使用反馈再评估
+- **MCP 商店最小形态**（s42 研究结论）：不做市场，做"预装目录"——候选 = modelcontextprotocol/servers 的 **fetch**（轻量网页抓取转文本，不开浏览器）与 **sequential-thinking**（复杂任务推理）；两者均 npm stdio 型，走 ADR-0007 vendored 先例（开发机装进 bin/vendor/ 打包带上），UI 复用 s17 能力开关区块。入口数据源 = tools/components.yaml 扩展一项 mcp_catalog。落地预计一个周期。
+- skill 商店远程化：skills-repo 与 GitHub repo 同构，sync 即得远程技能源（s42 已预留）

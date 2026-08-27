@@ -104,3 +104,9 @@
 - 落地：forge/skills-repo/（周报生成/工作区清理两个初始技能）+ 桥 /api/skillstore GET|POST install（复制到 .agents/skills/）+ 技能弹窗「🛒 可添加的技能」区（先看内容预览全文 → ⬇添加）。
 - 生命周期验证：API 安装 → 目录复制一致 → installed 标志翻转 → goose skills list 发现 → 卸载清理。GUI 渲染 + 点击安装闭环通过。
 - 远程化预留：skills-repo 目录与 GitHub repo 同构，将来 sync 即得"远程技能源"。
+
+## 事故复盘（02:55）— dev 栈全灭与恢复
+- 现象：02:19 前后 pc 守护 + 全部子进程消失（8790/8099 无监听），页面空响应。
+- 根因链：多次 Stop-Process chat-bridge（s42 部署）→ pc on_failure 重启的实例撞上手工实例的 8790 → s27 新代码对"自家实例在跑"exit(0) 正常退出 → pc 对正常退出不重启 → 桥从 pc 托管消失；随后 pc 守护整体退出（未定位到确切触发，疑与多次手工杀进程+pc 自愈交互有关）。
+- 恢复：conf/dev-stack-up.ps1（新增，开发会话用的无窗口等价启动器，聚合 apps + secrets 注入 + pc up）。
+- 教训：开发期手工起 bridge 应固定用 pc 托管口（pc process restart chat-bridge），不要 Stop+手起——绕过 pc 的进程编排必然制造双实例竞争。

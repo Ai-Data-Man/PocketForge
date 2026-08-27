@@ -255,7 +255,8 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
   <footer>
     <button class="icobtn" id="refresh-sessions" title="刷新会话列表">⟳</button>
     <button class="icobtn" id="open-skills" title="技能">🧩</button>
-    <button class="icobtn" id="open-settings" title="设置">⚙️</button>
+    <button class="icobtn" id="open-manage" title="管理：本事/记忆/定时任务">🧠</button>
+    <button class="icobtn" id="open-settings" title="设置：服务商/外观/升级">⚙️</button>
     <span style="font-size:11px;color:var(--mut);align-self:center" id="version"></span>
   </footer>
 </div>
@@ -331,6 +332,22 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
   <div class="fnote" style="margin-bottom:10px">装之前先点「先看内容」过一眼，确认没问题再添加。添加后立刻生效。</div>
   <div id="store-list"></div>
 </div></div>
+<div id="manage-modal" class="modal-bg"><div class="panel-box">
+  <h3>🧠 管理小 forge</h3>
+  <div class="fnote" style="margin-bottom:10px">它是什么样、会什么、记了什么、几点干活——都在这里。</div>
+    <h3 style="margin:18px 0 8px">🧠 它会什么（本事开关）</h3>
+  <div class="fnote" style="margin-bottom:10px">下面是您家数字员工自带的「本事」。关掉哪个，它就不会用那个本事（重启数字员工后生效）。拿不准就都开着。</div>
+  <div id="ext-list"></div>
+  <h3 style="margin:18px 0 8px">💭 小 forge 记住的事</h3>
+  <div class="fnote" style="margin-bottom:10px">它聊天时会自己记住您的偏好和做法，存在这个电脑里、不上网。点 ✕ 可以让它忘掉某一条；这些记忆只有它自己和您能看。</div>
+  <div id="mem-list" style="max-height:220px;overflow-y:auto"></div>
+  <h3 style="margin:18px 0 8px">⏰ 定时任务</h3>
+  <div class="fnote" style="margin-bottom:10px">想让它定时干活，直接在聊天里说，比如「每周五下午5点，把库存数据整理成表格发我」。这里能看到已定好的任务，不要的可以删。</div>
+  <div id="sched-list" style="max-height:180px;overflow-y:auto"></div>
+  <h3 style="margin:18px 0 8px">🛡 安全护栏</h3>
+  <div class="fnote" style="margin-bottom:6px">顶栏的「工作模式」就是护栏档位：<b>重要操作问我</b>= 推荐；<b>自动干活</b>= 熟练后用；<b>每步都问我</b>= 最稳；<b>只聊天不动手</b>= 不碰文件网页。</div>
+  <div class="fnote">在「重要操作问我」档下，这些动作会<b>先问您再动</b>：执行命令、改写/新建文件、删改数据库内容、打开或点击网页。<b>只读不写</b>的动作（看看文件、查查数据）不用问，直接做。</div>
+</div></div>
 <div id="modal"><div id="panel">
   <h3>⚙️ 服务商连接</h3>
   <div class="fnote" style="margin-bottom:10px">这里管"连到哪家大模型服务商"。每个档案 = 地址 + Key + 默认模型。顶栏可随时换模型（不用来这里）。</div>
@@ -353,18 +370,6 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
   </div>
   <button id="save-cfg" style="width:100%;padding:11px;background:var(--acc);color:var(--acc-contrast);border:none;border-radius:9px;font-size:15px;cursor:pointer">💾 保存这家服务商</button>
   <div class="fnote" id="save-note" style="margin-top:10px"></div>
-    <h3 style="margin:18px 0 8px">🧠 它会什么（本事开关）</h3>
-  <div class="fnote" style="margin-bottom:10px">下面是您家数字员工自带的「本事」。关掉哪个，它就不会用那个本事（重启数字员工后生效）。拿不准就都开着。</div>
-  <div id="ext-list"></div>
-  <h3 style="margin:18px 0 8px">💭 小 forge 记住的事</h3>
-  <div class="fnote" style="margin-bottom:10px">它聊天时会自己记住您的偏好和做法，存在这个电脑里、不上网。点 ✕ 可以让它忘掉某一条；这些记忆只有它自己和您能看。</div>
-  <div id="mem-list" style="max-height:220px;overflow-y:auto"></div>
-  <h3 style="margin:18px 0 8px">⏰ 定时任务</h3>
-  <div class="fnote" style="margin-bottom:10px">想让它定时干活，直接在聊天里说，比如「每周五下午5点，把库存数据整理成表格发我」。这里能看到已定好的任务，不要的可以删。</div>
-  <div id="sched-list" style="max-height:180px;overflow-y:auto"></div>
-  <h3 style="margin:18px 0 8px">🛡 安全护栏</h3>
-  <div class="fnote" style="margin-bottom:6px">顶栏的「工作模式」就是护栏档位：<b>重要操作问我</b>= 推荐；<b>自动干活</b>= 熟练后用；<b>每步都问我</b>= 最稳；<b>只聊天不动手</b>= 不碰文件网页。</div>
-  <div class="fnote">在「重要操作问我」档下，这些动作会<b>先问您再动</b>：执行命令、改写/新建文件、删改数据库内容、打开或点击网页。<b>只读不写</b>的动作（看看文件、查查数据）不用问，直接做。</div>
     <h3 style="margin:18px 0 8px">🎨 外观</h3>
   <div class="frow"><label>夜间模式（顶栏 ◐ 可快速切换；"跟随系统"自动昼夜）</label>
     <select id="th-mode"><option value="auto">跟随系统</option><option value="light">白天</option><option value="dark">夜间</option></select></div>
@@ -898,7 +903,10 @@ $('refresh-sessions').onclick=loadSessions;
 $('burger').onclick=()=>$('side').classList.toggle('hidden');
 $('mode').onchange=e=>{ localStorage.setItem('pf_mode',e.target.value);
   if(sessionId) rpc2('session/set_mode',{sessionId,modeId:e.target.value}).catch(()=>addErr('模式切换失败')); };
-$('open-settings').onclick=()=>{ $('modal').classList.add('on'); loadProvidersUI(); loadExtUI(); loadMemUI(); loadSchedUI(); };
+$('open-settings').onclick=()=>{ $('modal').classList.add('on'); loadProvidersUI(); };
+// s43: 管理面板——本事/记忆/定时任务/护栏从设置迁出，一级入口
+$('open-manage').onclick=()=>{ $('manage-modal').classList.add('on'); loadExtUI(); loadMemUI(); loadSchedUI(); };
+$('manage-modal').onclick=e=>{ if(e.target.id==='manage-modal') e.target.classList.remove('on'); };
 
 // ---- s32: 定时任务列表（只读+删除；设置由聊天对话完成） ----
 function cronHuman(cron){
@@ -1341,6 +1349,7 @@ const SLASH=[
   {cmd:'/技能', alias:['skills','jineng'], desc:'看它学会的本领', run:()=>$('open-skills').click()},
   {cmd:'/文件', alias:['files','wenjian','工作区'], desc:'打开工作区文件面板', run:()=>$('rside-toggle').click()},
   {cmd:'/设置', alias:['settings','shezhi','服务商','模型'], desc:'服务商连接与模型', run:()=>$('open-settings').click()},
+  {cmd:'/管理', alias:['manage','guanli','记忆','定时','本事'], desc:'本事开关/记忆/定时任务', run:()=>$('open-manage').click()},
   {cmd:'/体检', alias:['check','tijian','自检'], desc:'给它做全身检查', run:()=>{$('txt').value='做个体检'; submit();}},
   {cmd:'/导出', alias:['export','daochu','保存对话'], desc:'把这段对话存成文本', run:()=>exportChat()},
 ];
