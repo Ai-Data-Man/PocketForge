@@ -780,7 +780,10 @@ function onAgentEvent(p){
     }
     card.appendChild(btns);
     chat.appendChild(card); chat.scrollTop=chat.scrollHeight;
-    setTimeout(()=>settle(opts[0].optionId,'（超时自动：'+(KIND[opts[0].kind]||{t:opts[0].name}).t+'）'),60000);
+    // 超时兜底选「这次可以」（allow_once）而非列表第一项（可能是 allow_always，太激进）
+    const onceOpt = opts.find(o=>o.kind==='allow_once') || opts[0];
+    const onceMeta = KIND[onceOpt.kind] || {t:onceOpt.name||onceOpt.optionId};
+    setTimeout(()=>settle(onceOpt.optionId,'（等太久，自动选了 '+onceMeta.t+'）'),60000);
     return;
   }
   if(p.method==='stop'){ setBusy(false); endStream(); loadSessions(); }
@@ -806,7 +809,7 @@ txt.onkeydown=e=>{
   }
 };
 stopBtn.onclick=()=>{ wssend({type:'cancel'}); setBusy(false); };
-$('newchat').onclick=()=>subscribe(null);
+$('newchat').onclick=()=>{ subscribe(null); $('search-results').style.display='none'; $('sessions').style.display=''; $('chat-search').value=''; };
 // 导出当前对话（小白：存成 txt 给别人看）
 window.exportChat=()=>{
   const NL=String.fromCharCode(10);
