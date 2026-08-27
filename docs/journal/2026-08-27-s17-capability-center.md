@@ -55,3 +55,7 @@
 - **e2e-chat.sh 补搜索断言**（16→18）。
 - **终审轮产出**：EADDRINUSE 探测补 3s 超时；bootstrap hints 重建容错缺模板（老包升级路径）；权限卡超时注释修正。
 - **s29 截图粘贴上传（高频小白路径，替换原"暂不支持贴图"拒绝提示）**：paste 事件捕获 image items → getAsFile → 复用 /api/upload 通道 → 自动填 @ 引用 + 提示补话。系统剪贴板 Set-Clipboard + 真实 Ctrl+V 端到端验证：png 落盘（200x100 完整）+ .forge 元数据 + 输入框自动引用。
+
+## s30（00:20 前）— 空壳会话修剪
+- 观察：259 会话中 199 个「New Chat」空壳（探针/误开双击残留），污染左栏。
+- 修复：pruneScheduled 护栏扩展——无任何消息、name='New Chat'、存在超 1 天的 acp 会话启动时删除（先删 messages 引用完整性由 goose 自管；workspace-map 悬空由 P30c orphan 降级兜底）。实跑：102 条过期空壳已清，剩余 64 条明日到期自动清。

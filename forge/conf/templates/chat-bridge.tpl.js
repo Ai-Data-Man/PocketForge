@@ -70,6 +70,9 @@ function atomicWrite(file, data) {
         const db = new DatabaseSync(dbf);
         db.prepare("DELETE FROM messages WHERE session_id IN (SELECT id FROM sessions WHERE session_type='scheduled' AND id NOT IN (SELECT id FROM sessions WHERE session_type='scheduled' ORDER BY created_at DESC LIMIT 20))").run();
         db.prepare("DELETE FROM sessions WHERE session_type='scheduled' AND id NOT IN (SELECT id FROM sessions WHERE session_type='scheduled' ORDER BY created_at DESC LIMIT 20)").run();
+        // s30: 空壳 acp 会话修剪——无任何消息且存在超过 1 天的「New Chat」（探针/误开双击的残留），不进妻子列表
+        const empty = db.prepare("DELETE FROM sessions WHERE session_type='acp' AND name='New Chat' AND created_at < datetime('now','-1 day') AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.session_id = sessions.id)").run();
+        if (empty.changes > 0) console.log('pruned', empty.changes, 'empty acp sessions');
         db.close();
     } catch (e) { console.error('prune scheduled failed:', e.message); }
 })();
