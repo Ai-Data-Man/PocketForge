@@ -76,3 +76,9 @@
 12. welcome/使用说明覆盖新能力
 
 502 事件复盘：IE 系统代理劫持（NO_PROXY 已是生产链标配）+ glm-5.2 myopencode 线路 401/429 锁定，均非产品代码问题。
+
+## s32（01:00 前）— 对标研究第一轮：Manus 定时任务
+- 研究 manus.im/docs/llms.txt（Mintlify 站点可用 llms.txt 索引抓 md 原文；本机需走 7890 代理）。
+- **洞察**：Manus 小白写定时任务不用 cron——自然语言（"每周一早8点做X"）+ 三步结构（任务/时间/产出）。s17 裁掉的是"暴露 cron"，不是定时任务本身。
+- **落地**（ADR-0010 复议）：①hints 增「定时任务」段教 agent 用 goose schedule add（用户说人话→agent 造 cron→复述人话）；②桥 /api/schedules GET（schedule.json + recipe title 人话名）/POST（goose CLI remove）；③设置面板「⏰ 定时任务」区块（cronHuman 转"每天 09:00"）+删除。hints 模板新增 __FORGE_ROOT__ 占位符支持。
+- GUI 验证：daily-mem 显示「每日记忆自检 · 每天 09:00 · 已暂停」+ 🗑。
