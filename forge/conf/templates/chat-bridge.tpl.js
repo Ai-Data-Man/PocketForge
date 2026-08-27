@@ -116,6 +116,8 @@ function migrateJsonAt(f, key) {
 })();
 
 function wsValidId(id) { return /^ws-[0-9]{4}-[0-9]{6}[a-z]*$/.test(String(id || '')) || String(id || '') === 'ws-imported'; }
+// s34: sid 白名单——goose 原生 sid 形如 20260827_26；放行字母数字/_/-，杜绝任意串进 workspace-map
+function sidValid(sid) { return typeof sid === 'string' && /^[\w\-]{1,128}$/.test(sid); }
 function wsDir(id) { return path.join(ART_DIR, id); }
 function wsNewId() {
     const d = new Date(), p = n => String(n).padStart(2, '0');
@@ -768,9 +770,10 @@ const ext = path.extname(f).toLowerCase();
             req.on('end', () => {
                 try {
                     const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-                    const cat = String(b.category || '');
-                    if (!/^[A-Za-z0-9_\-]{1,64}$/.test(cat)) throw new Error('分类名不合法');
+                    if (typeof b.category !== 'string' || !/^[A-Za-z0-9_\-]{1,64}$/.test(b.category)) throw new Error('分类名不合法');
+                    const cat = b.category;
                     const f = path.join(MEM_DIR, cat + '.txt');
+                    if (!FSS.existsSync(f)) throw new Error('没有这个分类的记忆');
                     if (b.op === 'forget_all') {
                         atomicWrite(f, '');
                     } else if (b.op === 'forget_one') {
@@ -1007,7 +1010,7 @@ const ext = path.extname(f).toLowerCase();
         const qs = new URL(req.url, 'http://x').searchParams;
         const sid = qs.get('sid') || '';
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        if (!sid) { res.end(JSON.stringify({ ok: false, err: '缺 sid' })); return; }
+        if (!sidValid(sid)) { res.end(JSON.stringify({ ok: false, err: '缺 sid' })); return; }
         const map = readWsMap();
         const mine = Object.keys(map).find(w => map[w].sid === sid && FSS.existsSync(wsDir(w)));
         if (mine) { res.end(JSON.stringify({ ok: true, ws: mine, existed: true })); return; }
@@ -1025,9 +1028,9 @@ const ext = path.extname(f).toLowerCase();
         req.on('end', () => {
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             try {
-                const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-                if (!wsValidId(b.ws) || !FSS.existsSync(wsDir(b.ws))) throw new Error('工作区不存在');
-                if (!b.sid) throw new Error('缺 sid');
+                    const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                    if (!wsValidId(b.ws) || !FSS.existsSync(wsDir(b.ws))) throw new Error('工作区不存在');
+                    if (!sidValid(b.sid)) throw new Error('缺 sid');
                 const map = readWsMap();
                 map[b.ws] = { sid: b.sid, boundAt: Date.now(), introduced: true };
                 writeWsMap(map);
