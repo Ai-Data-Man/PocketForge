@@ -1402,6 +1402,7 @@ server.on('error', e => {
                 process.exit(0);
             });
         });
+        probe.setTimeout(3000, () => { probe.destroy(new Error('probe timeout')); });
         probe.on('error', () => {
             console.log('[PocketForge] 聊天窗口需要的 ' + PORT + ' 端口被其他程序占用了。请重启电脑后再试；仍不行找懂电脑的人看一眼。');
             process.exit(1);
