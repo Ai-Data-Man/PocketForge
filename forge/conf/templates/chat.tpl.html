@@ -786,6 +786,13 @@ function onAgentEvent(p){
     }
     card.appendChild(btns);
     chat.appendChild(card); chat.scrollTop=chat.scrollHeight;
+    // s31: 同一会话连续确认 ≥3 次时，提示模式权衡（一次性）
+    if(window.__permCount===undefined) window.__permCount=0;
+    window.__permCount++;
+    if(window.__permCount===3&&!window.__permTipShown){
+      window.__permTipShown=true;
+      addInfo('💡 这个任务要确认好几步。想让它一口气干完：把上方「工作模式」切到「自动干活」，或者遇到确认时点「✅ 以后都允许」。');
+    }
     // 超时兜底选「这次可以」（allow_once）而非列表第一项（可能是 allow_always，太激进）
     const onceOpt = opts.find(o=>o.kind==='allow_once') || opts[0];
     const onceMeta = KIND[onceOpt.kind] || {t:onceOpt.name||onceOpt.optionId};
