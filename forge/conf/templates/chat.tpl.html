@@ -646,10 +646,12 @@ function setBusy(b){ busy=b; typing.style.display=b?'block':'none'; send.disable
   // s21: 小白「干完了」提醒——后台标签页时标题闪烁，回来即停
   if(!b){ if(document.hidden){ notifyDone(); } else { stopNotify(); } } else { stopNotify(); } }
 let notifyTimer=null;
-function notifyDone(){
+let notifyMsg='';
+function notifyDone(msg){
+  notifyMsg=msg||'✅ 干完了';
   if(notifyTimer) return;
   let flip=false;
-  notifyTimer=setInterval(()=>{ flip=!flip; document.title=flip?'\u2705 干完了 — 小 forge':'小 forge · 数字员工'; },1200);
+  notifyTimer=setInterval(()=>{ flip=!flip; document.title=flip?(notifyMsg+' — 小 forge'):'小 forge · 数字员工'; },1200);
 }
 function stopNotify(){ if(notifyTimer){ clearInterval(notifyTimer); notifyTimer=null; document.title='小 forge · 数字员工'; } }
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden) stopNotify(); });
@@ -812,6 +814,8 @@ function onAgentEvent(p){
     }
     card.appendChild(btns);
     chat.appendChild(card); chat.scrollTop=chat.scrollHeight;
+    // s38: 卡片出现时页面在后台也要提醒——权限请求会挂起任务
+    if(document.hidden){ notifyDone('⚠️ 等你确认'); }
     // s31: 同一会话连续确认 ≥3 次时，提示模式权衡（一次性）
     if(window.__permCount===undefined) window.__permCount=0;
     window.__permCount++;

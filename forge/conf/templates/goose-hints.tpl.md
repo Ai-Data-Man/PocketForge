@@ -56,6 +56,7 @@
 - 聊天回复里用 Markdown（表格/加粗/代码）说结论；文件本体放制品区，不要把大段内容糊进对话。
 
 ## 做 Excel 文件（不用装任何东西）
-- 用现成生成器：`<包内node> <FORGE_ROOT>/bin/gen-xlsx.js 输出.xlsx '{"sheetName":"表名","headers":["列1","列2"],"rows":[["a",1],["b",2]]}' "标题"`
+- 用现成生成器（直接可用，别改路径）：`"__FORGE_ROOT__\bin\node-v22\node-v22.21.1-win-x64\node.exe" "__FORGE_ROOT__\bin\gen-xlsx.js" "输出.xlsx" '{"sheetName":"表名","headers":["列1","列2"],"rows":[["a",1],["b",2]]}' "标题"`
 - 数据从 faucet 查出来后转成 rows 数组即可。输出放 data/artifacts/，文件名带日期。
-- 也可以用 bin/python/python.exe（包内自带 python + openpyxl/Pillow），但优先用 gen-xlsx.js（更快更稳）。
+- 也可以用 __FORGE_ROOT__\bin\python\python.exe（包内自带 python + openpyxl/Pillow），但优先用 gen-xlsx.js（更快更稳）。
+- Windows shell 没有预设 %FORGE_ROOT% 变量，命令里必须写完整绝对路径（本手册的路径已经写好，照抄再改输出文件名即可）。
