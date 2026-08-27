@@ -322,6 +322,15 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
   </div>
   <button id="save-cfg" style="width:100%;padding:11px;background:var(--acc);color:var(--acc-contrast);border:none;border-radius:9px;font-size:15px;cursor:pointer">💾 保存这家服务商</button>
   <div class="fnote" id="save-note" style="margin-top:10px"></div>
+    <h3 style="margin:18px 0 8px">🧠 它会什么（本事开关）</h3>
+  <div class="fnote" style="margin-bottom:10px">下面是您家数字员工自带的「本事」。关掉哪个，它就不会用那个本事（重启数字员工后生效）。拿不准就都开着。</div>
+  <div id="ext-list"></div>
+  <h3 style="margin:18px 0 8px">💭 小 forge 记住的事</h3>
+  <div class="fnote" style="margin-bottom:10px">它聊天时会自己记住您的偏好和做法，存在这个电脑里、不上网。点 ✕ 可以让它忘掉某一条；这些记忆只有它自己和您能看。</div>
+  <div id="mem-list" style="max-height:220px;overflow-y:auto"></div>
+  <h3 style="margin:18px 0 8px">🛡 安全护栏</h3>
+  <div class="fnote" style="margin-bottom:6px">顶栏的「工作模式」就是护栏档位：<b>重要操作问我</b>= 推荐；<b>自动干活</b>= 熟练后用；<b>每步都问我</b>= 最稳；<b>只聊天不动手</b>= 不碰文件网页。</div>
+  <div class="fnote">在「重要操作问我」档下，这些动作会<b>先问您再动</b>：执行命令、改写/新建文件、删改数据库内容、打开或点击网页。<b>只读不写</b>的动作（看看文件、查查数据）不用问，直接做。</div>
     <h3 style="margin:18px 0 8px">🎨 外观</h3>
   <div class="frow"><label>夜间模式（顶栏 ◐ 可快速切换；"跟随系统"自动昼夜）</label>
     <select id="th-mode"><option value="auto">跟随系统</option><option value="light">白天</option><option value="dark">夜间</option></select></div>
@@ -757,7 +766,73 @@ $('refresh-sessions').onclick=loadSessions;
 $('burger').onclick=()=>$('side').classList.toggle('hidden');
 $('mode').onchange=e=>{ localStorage.setItem('pf_mode',e.target.value);
   if(sessionId) rpc2('session/set_mode',{sessionId,modeId:e.target.value}).catch(()=>addErr('模式切换失败')); };
-$('open-settings').onclick=()=>{ $('modal').classList.add('on'); loadProvidersUI(); };
+$('open-settings').onclick=()=>{ $('modal').classList.add('on'); loadProvidersUI(); loadExtUI(); loadMemUI(); };
+
+// ---- s17: 能力开关 + 记忆管理（小白视角；护栏=permission.yaml ask_before 的大白话） ----
+async function apiJSON(url, opt){
+  const r = await fetch(url, opt);
+  try { return await r.json(); } catch(e){ throw new Error('接口异常 '+r.status); }
+}
+function esc(s){ const d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML; }
+async function loadExtUI(){
+  const box=$('ext-list'); if(!box) return;
+  let list;
+  try { list = await apiJSON('/api/extensions'); } catch(e){ box.innerHTML='<div class="fnote">读取失败：'+esc(e.message)+'</div>'; return; }
+  box.innerHTML='';
+  for(const ext of list){
+    if(ext.visible===false) continue;
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line)';
+    row.innerHTML='<div style="flex:1"><div style="font-size:.85rem;font-weight:600">'+esc(ext.name)+'</div>'+
+      '<div class="fnote" style="margin-top:2px">'+esc(ext.desc)+'</div></div>';
+    const btn=document.createElement('button');
+    btn.className='mini'; btn.style.minWidth='84px';
+    const paint=()=>{ btn.textContent=ext.enabled?'✅ 开着':'⏸ 关着'; btn.style.borderColor=ext.enabled?'var(--acc)':'var(--line-strong)';
+      btn.style.color=ext.enabled?'var(--acc)':'var(--mut)'; };
+    paint();
+    btn.onclick=async()=>{
+      ext.enabled=!ext.enabled; paint();
+      try{
+        const res=await apiJSON('/api/extensions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:ext.id,enabled:ext.enabled})});
+        if(!res.ok) throw new Error(res.err||'失败');
+        if(!ext.enabled && ext.id==='memory') loadMemUI();
+      }catch(e){ ext.enabled=!ext.enabled; paint(); alert('没改成：'+e.message); }
+    };
+    row.appendChild(btn);
+    box.appendChild(row);
+  }
+}
+async function loadMemUI(){
+  const box=$('mem-list'); if(!box) return;
+  let cats;
+  try { cats = await apiJSON('/api/memory'); } catch(e){ box.innerHTML='<div class="fnote">读取失败：'+esc(e.message)+'</div>'; return; }
+  const total=cats.reduce((n,c)=>n+c.items.length,0);
+  if(!total){ box.innerHTML='<div class="fnote" id="mem-empty">它还没记住什么。聊得多了，这里会出现它记住的事。</div>'; return; }
+  box.innerHTML='';
+  for(const cat of cats){
+    for(const it of cat.items){
+      const row=document.createElement('div');
+      row.style.cssText='display:flex;align-items:flex-start;gap:8px;padding:7px 4px;border-bottom:1px dashed var(--line)';
+      const txt=document.createElement('div');
+      txt.style.cssText='flex:1;font-size:.82rem;line-height:1.5;word-break:break-all';
+      txt.innerHTML='<b style="color:var(--acc);font-size:.72rem;margin-right:6px">'+esc(cat.category)+'</b>'+esc(it.text)+
+        (it.tags&&it.tags.length?'<span class="fnote">　#'+esc(it.tags.join(' #'))+'</span>':'');
+      const del=document.createElement('button');
+      del.className='mini'; del.textContent='✕'; del.title='让它忘掉这条'; del.style.padding='3px 9px';
+      del.onclick=async()=>{
+        del.disabled=true;
+        try{
+          const res=await apiJSON('/api/memory',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op:'forget_one',category:cat.category,text:it.text})});
+          if(!res.ok) throw new Error(res.err||'失败');
+          loadMemUI();
+        }catch(e){ del.disabled=false; alert('没删成：'+e.message); }
+      };
+      row.appendChild(txt); row.appendChild(del);
+      box.appendChild(row);
+    }
+  }
+}
+
 $('modal').onclick=e=>{ if(e.target.id==='modal') $('modal').classList.remove('on'); };
 
 

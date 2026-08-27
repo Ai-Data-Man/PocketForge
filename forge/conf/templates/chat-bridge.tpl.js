@@ -321,6 +321,15 @@ function cmpVer(a, b) {
 }
 async function handleHttp(req, res) {
     const url = (req.url || '/').split('?')[0];
+    // R2-C1b(审查s17): WS 层有 Origin 校验，HTTP 层没有——恶意网页可跨站 POST
+    // （删记忆/关扩展/删工作区/触发升级）。非本源 Origin 的写请求一律拒绝；
+    // 无 Origin = 同源导航/curl/Edge --app 页面，放行。
+    const origin = req.headers.origin || '';
+    if (origin && origin !== 'http://127.0.0.1:' + PORT && req.method !== 'GET' && req.method !== 'HEAD') {
+        res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, err: '跨站请求被拒绝' }));
+        return;
+    }
     if (url === '/' ) {
         const html = require('fs').readFileSync(PAGE, 'utf8').replace('__FORGE_ROOT__', ROOT.split(String.fromCharCode(92)).join('/'));
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache, no-store, must-revalidate' });
@@ -568,6 +577,136 @@ const ext = path.extname(f).toLowerCase();
         out.sort((a, b) => b.mtime - a.mtime);
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(out));
+    }
+    else if (url === '/api/extensions') {
+        // 小白能力开关（s17 A）：改 conf/goose/config/config.yaml 各扩展 enabled。
+        // bootstrap 幂等重写会保留用户开关值（配套改动见 bootstrap.ps1 / ADR-0010）。
+        const CFG = path.join(ROOT, 'conf', 'goose', 'config', 'config.yaml');
+        // 对小白隐藏 chatrecall（纯增强，关掉无收益）；只暴露有感知差异的扩展
+        const LABELS = {
+            'faucet-db': { name: '数据库', desc: '存数据、查数据的本事（保留它基本功能都在）' },
+            'browser': { name: '浏览器自动化', desc: '让它能打开网页帮你抓表格、看内网系统' },
+            'memory': { name: '长期记忆', desc: '记住您的偏好和常用做法（可在下方「记住的事」里查看删除）' },
+            'chatrecall': { name: '会话回忆', desc: '能翻自己以前聊过的内容' },
+        };
+        function readExtState() {
+            try {
+                const raw = FSS.readFileSync(CFG, 'utf8');
+                const out = {};
+                let inExts = false, cur = null;
+                for (const line of raw.split(/\r?\n/)) {
+                    if (/^extensions:\s*$/.test(line)) { inExts = true; continue; }
+                    if (!inExts) continue;
+                    if (/^[^\s]/.test(line)) break; // 下一顶级键
+                    const extM = line.match(/^ {2}([A-Za-z0-9_\-]+):\s*$/);
+                    if (extM) { cur = extM[1]; out[cur] = true; continue; }
+                    if (cur) {
+                        const enM = line.match(/^ {4}enabled:\s*(true|false)/);
+                        if (enM) out[cur] = enM[1] === 'true';
+                    }
+                }
+                return out;
+            } catch { return {}; }
+        }
+        if (req.method === 'GET') {
+            const st = readExtState();
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify(Object.keys(LABELS).map(k => ({
+                id: k, name: LABELS[k].name, desc: LABELS[k].desc,
+                enabled: st[k] !== false,
+                visible: k !== 'chatrecall',
+                builtin: !(k in st),
+            }))));
+        } else if (req.method === 'POST') {
+            const chunks = [];
+            req.on('data', c => chunks.push(c));
+            req.on('end', () => {
+                try {
+                    const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                    if (!(b.id in LABELS) || typeof b.enabled !== 'boolean') throw new Error('参数不合法');
+                    let raw = FSS.readFileSync(CFG, 'utf8');
+                    let inExts = false, cur = null, done = false;
+                    raw = raw.split('\n').map(line => {
+                        if (/^extensions:\s*$/.test(line)) { inExts = true; return line; }
+                        if (!inExts) return line;
+                        if (/^[^\s]/.test(line)) { inExts = false; return line; }
+                        const extM = line.match(/^ {2}([A-Za-z0-9_\-]+):\s*$/);
+                        if (extM) { cur = extM[1]; return line; }
+                        if (cur === b.id && /^ {4}enabled:/.test(line)) { done = true; return line.replace(/enabled:.*/, 'enabled: ' + b.enabled); }
+                        return line;
+                    }).join('\n');
+                    if (!done) throw new Error('配置里没找到该扩展开关');
+                    atomicWrite(CFG, raw);
+                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: true, note: '重启数字员工后生效' }));
+                } catch (e) {
+                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: false, err: e.message }));
+                }
+            });
+        } else { res.writeHead(405); res.end(); }
+    }
+    else if (url === '/api/memory') {
+        // 小白记忆管理（s17）：直接读 conf/goose/config/memory/*.txt（junction 另一侧）。
+        // 格式（VERIFIED-RUN 2026-08-27）：# tags 行可选 + 内容行，空行分段；
+        // MCP retrieve 同样按空行分条（含\n\n的 data 存进去也切成多条），语义一致。
+        // 只读+删，不提供写入口：agent 自动记；人工代写易造成脏数据。
+        const MEM_DIR = path.join(ROOT, 'conf', 'goose', 'config', 'memory');
+        function parseMem(raw) {
+            const out = [];
+            for (const seg of raw.split(/\n\s*\n/)) {
+                const lines = seg.split('\n').map(s => s.replace(/\r$/, '')).filter(s => s.trim() !== '');
+                if (!lines.length) continue;
+                let tags = [];
+                if (lines[0].startsWith('# ')) { tags = lines[0].slice(2).split(',').map(t => t.trim()).filter(Boolean); lines.shift(); }
+                if (!lines.length) continue;
+                out.push({ text: lines.join('\n'), tags });
+            }
+            return out;
+        }
+        function serializeMem(items) {
+            return items.map(it => (it.tags && it.tags.length ? '# ' + it.tags.join(',') + '\n' : '') + it.text).join('\n\n') + '\n';
+        }
+        if (req.method === 'GET') {
+            const out = [];
+            try {
+                for (const ent of FSS.readdirSync(MEM_DIR, { withFileTypes: true })) {
+                    if (!ent.isFile() || !ent.name.endsWith('.txt')) continue;
+                    let items = [];
+                    try { items = parseMem(FSS.readFileSync(path.join(MEM_DIR, ent.name), 'utf8')); } catch {}
+                    if (!items.length) continue; // forget_all 后的空文件不渲染空分类
+                    out.push({ category: ent.name.slice(0, -4), items });
+                }
+            } catch {}
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify(out));
+        } else if (req.method === 'POST') {
+            const chunks = [];
+            req.on('data', c => chunks.push(c));
+            req.on('end', () => {
+                try {
+                    const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                    const cat = String(b.category || '');
+                    if (!/^[A-Za-z0-9_\-]{1,64}$/.test(cat)) throw new Error('分类名不合法');
+                    const f = path.join(MEM_DIR, cat + '.txt');
+                    if (b.op === 'forget_all') {
+                        atomicWrite(f, '');
+                    } else if (b.op === 'forget_one') {
+                        // 以全文精确匹配删除该条（同一文本多条时删第一条）
+                        const items = parseMem(FSS.readFileSync(f, 'utf8'));
+                        const i = items.findIndex(it => it.text === b.text);
+                        if (i < 0) throw new Error('没找到这条记录');
+                        items.splice(i, 1);
+                        atomicWrite(f, serializeMem(items));
+                    } else throw new Error('未知操作');
+                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: true }));
+                } catch (e) {
+                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: false, err: e.message }));
+                }
+            });
+        } else { res.writeHead(405); res.end(); }
     }
     else if (url === '/api/sessions/archive') {
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });

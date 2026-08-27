@@ -11,6 +11,16 @@ $cfgPath  = Join-Path $gooseDir 'config.yaml'
 $nodeDir  = Join-Path $ForgeRoot 'bin\node-v22\node-v22.21.1-win-x64'
 $tpl = [IO.File]::ReadAllText($tplPath)
 $cfg = $tpl.Replace('__FORGE_ROOT__', ($ForgeRoot -replace '\\','/')).Replace('__NODE_DIR__', ($nodeDir -replace '\\','/'))
+# s17: 用户在设置面板改过扩展开关 → 模板重写时保留其 enabled 值（ADR-0010）
+if (Test-Path $cfgPath) {
+    $old = [IO.File]::ReadAllText($cfgPath)
+    foreach ($m in [regex]::Matches($old, '(?ms)^ {2}([A-Za-z0-9_\-]+):\s*\r?\n(.*?)(?=^ {2}[A-Za-z0-9_\-]+:|^[^\s#])')) {
+        $en = [regex]::Match($m.Groups[2].Value, 'enabled:\s*(true|false)')
+        if ($en.Success) {
+            $cfg = [regex]::Replace($cfg, "(?ms)(^ {2}$($m.Groups[1].Value):\s*\r?\n.*?)enabled:\s*(true|false)", "`$1enabled: $($en.Groups[1].Value)")
+        }
+    }
+}
 [IO.File]::WriteAllText($cfgPath, $cfg)
 
 # 1b) memory MCP 包装脚本生成（goose spawn 扩展子进程时丢弃父 env → wrapper 内强制便携根）

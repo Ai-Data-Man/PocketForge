@@ -13,5 +13,6 @@ ADR（架构决策记录）= 持久的"为什么"。一经 Accepted 正文不可
 | 0007 | 制品工作区架构——每会话一区 + isomorphic-git 版本管理 | Accepted |
 | 0008 | 工作区信息架构——双栏分层、会话生命周期、.forge 元数据 | Accepted |
 | 0009 | 自动升级系统与状态 Schema 演进 | Accepted |
+| 0010 | 能力中心与记忆可视化（双视角暴露） | Accepted |
 
 模板见 `_template.md`。
