@@ -327,6 +327,9 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
   <h3>🧩 小 forge 的技能（它学会的本领）</h3>
   <div class="fnote" style="margin-bottom:10px">这些是它积累的操作手册。聊天时说相关的活儿它就会自动用；也可以点「让它现在用」。</div>
   <div id="skills-list"></div>
+  <h3 style="margin:18px 0 8px">🛒 可添加的技能</h3>
+  <div class="fnote" style="margin-bottom:10px">装之前先点「先看内容」过一眼，确认没问题再添加。添加后立刻生效。</div>
+  <div id="store-list"></div>
 </div></div>
 <div id="modal"><div id="panel">
   <h3>⚙️ 服务商连接</h3>
@@ -1194,7 +1197,48 @@ $('open-skills').onclick=async()=>{
       ops.appendChild(use); ops.appendChild(view); el.appendChild(ops); box.appendChild(el);
     }
   }catch(e){ $('skills-list').innerHTML='<div class="fnote">读取失败：'+e.message+'</div>'; }
+  loadSkillStore();
 };
+// s42: 技能商店（可添加区）——预览全文确认后安装
+async function loadSkillStore(){
+  const box=$('store-list'); if(!box) return;
+  let list;
+  try { list = await apiJSON('/api/skillstore'); } catch(e){ box.innerHTML='<div class="fnote">读取失败：'+esc(e.message)+'</div>'; return; }
+  const avail=list.filter(s=>!s.installed);
+  if(!avail.length){ box.innerHTML='<div class="fnote">没有可添加的新技能了。</div>'; return; }
+  box.innerHTML='';
+  for(const sk of avail){
+    const el=document.createElement('div'); el.className='skill';
+    el.innerHTML='<div class="nm">'+esc(sk.name)+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
+    const ops=document.createElement('div'); ops.className='ops';
+    const view=document.createElement('button'); view.className='mini'; view.textContent='先看内容';
+    view.onclick=()=>{
+      const pre=el.querySelector('pre');
+      if(pre) pre.remove();
+      else { const pre=document.createElement('pre'); pre.textContent=sk.body; el.appendChild(pre); }
+    };
+    const inst=document.createElement('button'); inst.className='mini'; inst.style.borderColor='var(--acc)'; inst.style.color='var(--acc)';
+    inst.textContent='⬇ 添加';
+    inst.onclick=async()=>{
+      inst.disabled=true;
+      try{
+        const r=await apiJSON('/api/skillstore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:sk.dir||sk.name})});
+        if(!r.ok) throw new Error(r.err||'失败');
+        el.remove(); loadSkills2();
+      }catch(e){ inst.disabled=false; alert('没装成：'+e.message); }
+    };
+    ops.appendChild(view); ops.appendChild(inst); el.appendChild(ops); box.appendChild(el);
+  }
+}
+async function loadSkills2(){
+  try{ const r=await fetch('/api/skills'); const list=await r.json(); const box=$('skills-list'); box.innerHTML='';
+    for(const sk of list){
+      const el=document.createElement('div'); el.className='skill';
+      el.innerHTML='<div class="nm">'+esc(sk.name)+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
+      box.appendChild(el);
+    }
+  }catch(e){}
+}
 $('skills-modal').onclick=e=>{ if(e.target.id==='skills-modal') e.target.classList.remove('on'); };
 
 // 消息操作：复制 / 重发

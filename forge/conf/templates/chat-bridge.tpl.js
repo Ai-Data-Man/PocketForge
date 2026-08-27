@@ -668,6 +668,57 @@ const ext = path.extname(f).toLowerCase();
             });
         } else { res.writeHead(405); res.end(); }
     }
+    else if (url === '/api/skillstore') {
+        // s42: 技能商店（本地优先）。可装技能放 skills-repo/<name>/SKILL.md；
+        // 安装 = 整目录复制到 .agents/skills/<name>/（纯文本复制，无执行面）。
+        const REPO = path.join(ROOT, 'skills-repo');
+        const INSTALLED = path.join(ROOT, '.agents', 'skills');
+        function readSkillMeta(dir) {
+            try {
+                const raw = FSS.readFileSync(path.join(dir, 'SKILL.md'), 'utf8');
+                const name = raw.match(/^name:\s*(.+)$/m);
+                const desc = raw.match(/^description:\s*(.+)$/m);
+                return {
+                    name: name ? name[1].trim().replace(/^['"]|['"]$/g, '') : path.basename(dir),
+                    description: desc ? desc[1].trim().replace(/^['"]|['"]$/g, '') : '',
+                    body: raw.length > 4000 ? raw.slice(0, 4000) : raw,
+                };
+            } catch { return null; }
+        }
+        if (req.method === 'GET') {
+            const installedSet = new Set();
+            try { for (const e of FSS.readdirSync(INSTALLED, { withFileTypes: true })) if (e.isDirectory()) installedSet.add(e.name); } catch {}
+            const out = [];
+            try {
+                for (const ent of FSS.readdirSync(REPO, { withFileTypes: true })) {
+                    if (!ent.isDirectory()) continue;
+                    const meta = readSkillMeta(path.join(REPO, ent.name));
+                    if (!meta) continue;
+                    out.push({ ...meta, dir: ent.name, installed: installedSet.has(ent.name) });
+                }
+            } catch {}
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify(out));
+        } else if (req.method === 'POST') {
+            const chunks = [];
+            req.on('data', c => chunks.push(c));
+            req.on('end', () => {
+                try {
+                    const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                    if (typeof b.name !== 'string' || !/^[\w\-]{1,64}$/.test(b.name)) throw new Error('参数不合法');
+                    const src = path.join(REPO, b.name);
+                    const dst = path.join(INSTALLED, b.name);
+                    if (!FSS.existsSync(path.join(src, 'SKILL.md'))) throw new Error('商店里没有这个技能');
+                    FSS.cpSync(src, dst, { recursive: true });
+                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: true }));
+                } catch (e) {
+                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: false, err: e.message }));
+                }
+            });
+        } else { res.writeHead(405); res.end(); }
+    }
     else if (url === '/api/extensions') {
         // 小白能力开关（s17 A）：改 conf/goose/config/config.yaml 各扩展 enabled。
         // bootstrap 幂等重写会保留用户开关值（配套改动见 bootstrap.ps1 / ADR-0010）。

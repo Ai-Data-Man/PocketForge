@@ -98,3 +98,9 @@
 - s36：搜索陈旧响应守卫（seq 序号，防慢响应覆盖新结果）。
 - s37（Windows 特有）：fs/new、fs/rename、upload 统一拒绝保留设备名 con/prn/aux/nul/com1-9/lpt1-9（含带扩展名形态 CON.txt）——这类文件资源管理器/cmd 均无法删除，会造成工作区永久污染。实测矩阵：con 拒/CON.txt 拒/connect.md 过/auxiliary.md 过。
 - fuzz-chat.sh 固化 12 断言 + e2e-chat 18 断言双回归通过。
+
+## s42（02:30 前）— 技能商店（本地优先）
+- 用户点名需求重新论证：ADR-0010 裁掉的是"商店基础设施"，不是"低摩擦能力扩展"。技能=纯文本 SKILL.md，安装=整目录复制，无执行面，天然安全 → 做成"技能收集"而非"市场"。
+- 落地：forge/skills-repo/（周报生成/工作区清理两个初始技能）+ 桥 /api/skillstore GET|POST install（复制到 .agents/skills/）+ 技能弹窗「🛒 可添加的技能」区（先看内容预览全文 → ⬇添加）。
+- 生命周期验证：API 安装 → 目录复制一致 → installed 标志翻转 → goose skills list 发现 → 卸载清理。GUI 渲染 + 点击安装闭环通过。
+- 远程化预留：skills-repo 目录与 GitHub repo 同构，将来 sync 即得"远程技能源"。
