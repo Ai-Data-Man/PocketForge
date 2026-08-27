@@ -1142,6 +1142,11 @@ function handleClient(ws, msg) {
                         if (!sessionClients.has(res.sessionId)) sessionClients.set(res.sessionId, new Set());
                         sessionClients.get(res.sessionId).add(ws);
                         ws.send({ sys: 'subscribed', sessionId: res.sessionId, newSession: true, modes: res.modes || [], configOptions: res.configOptions || [] });
+                        // s26: 新对话沿用顶栏当前模型——session/new 默认回落 env 首模型（STATE 开放问题#4）
+                        if (msg.model) {
+                            const mid = nextId++;
+                            acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: mid, method: 'session/set_config_option', params: { sessionId: res.sessionId, configId: 'model', value: msg.model } }) + '\n');
+                        }
                     }
                 }});
                 acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/new', params: { cwd: ROOT, mcpServers: [] } }) + '\n');
