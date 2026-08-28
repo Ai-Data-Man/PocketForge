@@ -5,6 +5,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FORGE="$ROOT/forge"
 VER=$(git -C "$ROOT" describe --tags --always 2>/dev/null || echo dev)
+# 记忆层（docs/DECISIONS/tools）只存在于仓库根；forge/ 下出现即路径事故产物，混入交付包 = 内部文档泄漏
+for junk in docs DECISIONS tools; do
+  [ -e "$FORGE/$junk" ] && { echo "forge/$junk 不应存在（路径事故产物），删除或查证后再打包"; exit 1; }
+done
 DATE=$(date +%Y%m%d)
 DIST="$ROOT/dist"
 OUT="$DIST/PocketForge-${DATE}-${VER}.zip"
