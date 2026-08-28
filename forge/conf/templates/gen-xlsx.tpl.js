@@ -1,5 +1,6 @@
 // Minimal zero-dependency .xlsx generator (OOXML zip with STORE compression)
-// Usage: node gen-xlsx.js <output.xlsx> '<json: {sheetName, headers:[...], rows:[[...],...]}>' [title]
+// Usage: node gen-xlsx.js <output.xlsx> '{"sheetName":...,"headers":[...],"rows":[[...]]}' [title]
+//        node gen-xlsx.js <output.xlsx> --json-file <path-to-json> [title]   (JSON in UTF-8 file, no cmd quoting needed)
 const fs = require('fs');
 const path = require('path');
 
@@ -247,10 +248,44 @@ function buildXlsx({ sheetName, title, headers, rows }) {
 module.exports = { buildXlsxBuf: buildXlsx };
 
 // --- main (direct execution) ---
+function parseJsonArg(s) {
+  let t = String(s).trim();
+  // 兼容被单引号包裹的 JSON（cmd 不认识单引号，会原样传进来）：剥掉首尾成对的 ' 再解析
+  if (t.length >= 2 && t[0] === "'" && t[t.length - 1] === "'") t = t.slice(1, -1);
+  try {
+    return JSON.parse(t);
+  } catch (e) {
+    console.error('JSON 参数格式不对（' + e.message + '）');
+    console.error('提示：请用双引号包住 JSON，内部的每个 " 写成 \\"；复杂 JSON 可先存成文件，用 --json-file 参数读取');
+    process.exit(1);
+  }
+}
+
 if (require.main === module) {
   const outPath = process.argv[2];
-  const jsonSpec = JSON.parse(process.argv[3]);
-  const buf = buildXlsx(jsonSpec);
+  let spec = null;
+  const args = process.argv.slice(3);
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--json-file') {
+      const f = args[++i];
+      if (!f) { console.error('--json-file 后面要跟 JSON 文件路径'); process.exit(1); }
+      try {
+        spec = JSON.parse(fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, ''));
+      } catch (e) {
+        console.error('读不了 JSON 文件 ' + f + '（' + e.message + '）');
+        process.exit(1);
+      }
+    } else if (spec === null) {
+      spec = parseJsonArg(args[i]);
+    }
+    // 其余多余参数（如末尾标题）与旧版一致，忽略
+  }
+  if (spec === null) {
+    console.error('缺少 JSON 数据。用法：node gen-xlsx.js 输出.xlsx "{\\"sheetName\\":\\"表名\\",\\"headers\\":[...],\\"rows\":[...]}" [标题]');
+    console.error('或：node gen-xlsx.js 输出.xlsx --json-file 数据.json [标题]');
+    process.exit(1);
+  }
+  const buf = buildXlsx(spec);
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, buf);
   console.log('OK ' + outPath + ' (' + buf.length + ' bytes)');

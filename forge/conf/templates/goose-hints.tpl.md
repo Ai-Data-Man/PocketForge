@@ -60,7 +60,17 @@
 - 系统会在每次任务时提醒你先读 须知.md——写的时候言简意赅，只写"这个项目特有"的规矩（格式约定、命名习惯、数据口径），通用常识不要写。
 
 ## 做 Excel 文件（不用装任何东西）
-- 用现成生成器（直接可用，别改路径）：`"__FORGE_ROOT__\bin\node-v22\node-v22.21.1-win-x64\node.exe" "__FORGE_ROOT__\bin\gen-xlsx.js" "输出.xlsx" '{"sheetName":"表名","headers":["列1","列2"],"rows":[["a",1],["b",2]]}' "标题"`
-- 数据从 faucet 查出来后转成 rows 数组即可。输出放 data/artifacts/，文件名带日期。
-- 也可以用 __FORGE_ROOT__\bin\python\python.exe（包内自带 python + openpyxl/Pillow），但优先用 gen-xlsx.js（更快更稳）。
-- Windows shell 没有预设 %FORGE_ROOT% 变量，命令里必须写完整绝对路径（本手册的路径已经写好，照抄再改输出文件名即可）。
+- 用现成生成器 gen-xlsx.js。先记两条命令铁律（报"文件名、目录名或卷标语法不正确"或"不是内部或外部命令"，多半是踩了第 1 条）：
+  1. 一条命令里引号别超过一对，也不要用 "引号路径" 开头——cmd 会把首尾引号剥掉，整条命令报废。行首用裸词起手（cd、mkdir 等）。
+  2. 给 node 传 JSON：外面用双引号包住，里面的每个 " 都写成 \"。禁止用单引号包 JSON——单引号会原样传进程序，必炸。
+- 照抄这条模板（只改工作区名、输出文件名和 JSON 内容）：
+```
+cd "__FORGE_ROOT__\data\artifacts\<工作区>" && "__FORGE_ROOT__\bin\node-v22\node-v22.21.1-win-x64\node.exe" "__FORGE_ROOT__\bin\gen-xlsx.js" "库存报表-2026-08-24.xlsx" "{\"sheetName\":\"表名\",\"headers\":[\"列1\",\"列2\"],\"rows\":[[\"a\",1],[\"b\",2]]}" "标题"
+```
+- JSON 很长、转义容易错时改走文件：先把 JSON 原样写进工作区的 data.json（不用任何转义），再执行：
+```
+cd "__FORGE_ROOT__\data\artifacts\<工作区>" && "__FORGE_ROOT__\bin\node-v22\node-v22.21.1-win-x64\node.exe" "__FORGE_ROOT__\bin\gen-xlsx.js" "输出.xlsx" --json-file "data.json"
+```
+- 数据从 faucet 查出来后转成 rows 数组即可。模板已 cd 进工作区，输出文件名直接写名字（带日期），文件就落在 data/artifacts/<工作区>/ 里。
+- 也可以用 __FORGE_ROOT__\bin\python\python.exe（包内自带 python + Pillow 图像库；没有 openpyxl），但优先用 gen-xlsx.js（更快更稳）。
+- 命令里没有 %FORGE_ROOT% 这类变量可用，手册里的完整绝对路径照抄即可；长命令必须写成一行，换行会截断。
