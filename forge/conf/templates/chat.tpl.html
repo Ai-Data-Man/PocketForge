@@ -535,11 +535,19 @@ function onRpc(d){
 function loadSessions(){ rpc2('session/list').then(d=>{ const s=(d.result&&d.result.sessions)||[]; lastSessions=s; renderSessions(s); }).catch(()=>{}); }
 let currentSid=null;
 let archOpen=false;
+function tsLocal(s){ // goose 两种时间串：ACP 带 +00:00 后缀、sessions.db 是无时区 UTC 裸串；统一转本地，失败回落原串
+  if(!s) return null;
+  let t=String(s).replace(' ','T');
+  if(!/[zZ]$|[+-]\d{2}:?\d{2}$/.test(t)) t+='Z';
+  const d=new Date(t);
+  return isNaN(d)?null:d;
+}
+function fmtMDHM(d){ if(!d) return ''; const p=n=>String(n).padStart(2,'0'); return (d.getMonth()+1)+'月'+d.getDate()+'日 '+p(d.getHours())+':'+p(d.getMinutes()); }
 function sessItem(s,archived){
   const el=document.createElement('div'); el.className='sitem'+(s.sessionId===currentSid?' active':'');
   el.dataset.sid=s.sessionId;
   const mark=archived?'🗂 ':'';
-  el.innerHTML=mark+esc((s.title||'未命名').slice(0,26))+'<br><span class="t">'+esc((s.updatedAt||'').slice(5,16).replace('T',' '))+'</span>';
+  el.innerHTML=mark+esc((s.title||'未命名').slice(0,26))+'<br><span class="t">'+esc(fmtMDHM(tsLocal(s.updatedAt))||(s.updatedAt||'').slice(5,16).replace('T',' '))+'</span>';
   el.onclick=()=>openSession(s.sessionId);
   if(!archived){
     const b=document.createElement('button'); b.className='sdel'; b.style.right='26px'; b.textContent='📥'; b.title='归档（移出日常列表，随时可回来）';
@@ -987,7 +995,7 @@ async function loadSchedUI(){
 
 // ---- s21: 聊天记录搜索（左栏；>=2 字触发，防抖 300ms；点结果跳会话） ----
 let searchTimer=null, searchSeq=0;
-function closeSearch(){ $('search-results').style.display='none'; $('sessions').style.display=''; if($('chat-search').value){ $('chat-search').value=''; } }
+function closeSearch(){ $('search-results').style.display='none'; $('sessions').style.display=''; $('chat-search-clear').style.display='none'; if($('chat-search').value){ $('chat-search').value=''; } }
 $('chat-search').oninput=e=>{
   const q=e.target.value.trim();
   $('chat-search-clear').style.display=q?'block':'none';
@@ -1002,8 +1010,7 @@ $('chat-search').oninput=e=>{
       if(!r.ok||!r.hits.length){ box.innerHTML='<div class="fnote" style="padding:8px 6px">没找到含「'+esc(q)+'」的聊天。</div>'; }
       else for(const h of r.hits){
         const el=document.createElement('div'); el.className='sh';
-        const m=String(h.ts||'').match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
-        const tstr=m?(+m[2])+'月'+(+m[3])+'日 '+m[4]+':'+m[5]:'';
+        const tstr=fmtMDHM(tsLocal(h.ts));
         const frag=(h.frag&&h.frag.trim())?h.frag:'（该条无文字内容）';
         el.innerHTML='<div class="t">'+esc((h.title||'未命名').slice(0,22))+(tstr?' · '+tstr:'')+'</div><div class="f">…'+esc(frag)+'…</div>';
         el.onclick=()=>{ openSession(h.sid); $('search-results').style.display='none'; $('sessions').style.display=''; $('chat-search').value=''; };
