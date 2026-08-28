@@ -180,6 +180,13 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 .quickwrap{display:flex;flex-wrap:wrap;gap:8px;padding:4px 16px 8px;align-self:flex-start}
 .quickchip{padding:8px 14px;border:1.5px solid var(--acc);border-radius:18px;background:var(--acc-soft);color:var(--acc);font-size:.8rem;cursor:pointer;transition:all .12s}
 .quickchip:hover{background:var(--acc);color:var(--acc-contrast)}
+/* s48: 「帮我做张报表」内联引导（挂在 quickwrap 上，两问封顶） */
+.reportbox{flex-basis:100%;background:var(--panel-2);border:1.5px solid var(--acc);border-radius:var(--r-m);padding:10px 14px;font-size:.8rem;display:flex;flex-direction:column;gap:8px;color:var(--tx)}
+.reportbox .rl{font-weight:600;color:var(--acc)}
+.reportbox select,.reportbox input{padding:8px 10px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);color:var(--tx);font-size:.82rem;outline:none}
+.reportbox select:focus,.reportbox input:focus{border-color:var(--acc)}
+.reportbox .rbtns{display:flex;gap:8px;flex-wrap:wrap}
+.reportbox .rsend{background:var(--acc);border-color:var(--acc);color:var(--acc-contrast);font-weight:600}
 #inputbar{position:relative;display:flex;gap:10px;padding:14px 18px;background:var(--panel);border-top:1px solid var(--line)}
 #txt{flex:1;font-size:.95rem;padding:12px 14px;border:1.5px solid var(--line-strong);border-radius:var(--r-m);outline:none;background:var(--panel);color:var(--tx);transition:border-color .12s}
 #txt:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
@@ -584,15 +591,75 @@ const QUICK_PROMPTS=[
   {label:'📦 看看我的文件', text:'看看我的工作区里有什么文件'},
   {label:'🧠 你能干什么？', text:'用大白话告诉我你能帮我做哪些事'},
   {label:'🖼️ 分析一张图', text:'我刚截了张图（用粘贴或上传放到工作区），帮我看看里面是什么'},
+  {label:'📊 帮我做张报表', report:true},
 ];
 function addQuickPrompts(){
   const wrap=document.createElement('div'); wrap.className='quickwrap';
   for(const q of QUICK_PROMPTS){
     const b=document.createElement('button'); b.className='quickchip'; b.textContent=q.label;
-    b.onclick=()=>{ txt.value=q.text; txt.focus(); };
+    b.onclick=()=>{ if(q.report){ toggleReportCard(wrap); } else { txt.value=q.text; txt.focus(); } };
     wrap.appendChild(b);
   }
   chat.appendChild(wrap); chat.scrollTop=chat.scrollHeight;
+}
+// s48: 「帮我做张报表」内联分步引导——两问（哪个表格/算什么）→ 组装提示词走现有发送链路
+function reportReady(file,want){ return !!(String(file||'').trim()&&String(want||'').trim()); }
+function reportPrompt(file,want){
+  return '请帮我做一张报表：\n用这个表格：'+file+'\n我想知道：'+want+'\n做完生成一个 Excel 文件给我预览。\n表格里没有的数据不要自己编，缺什么直接告诉我。';
+}
+function sheetFiles(){ // 数据源=右侧文件树同款（renderCurPane 缓存的 curTreeRoot），递归挑表格文件
+  const out=[];
+  const walk=n=>{ for(const c of (n.children||[])){
+    if(c.type==='file'){ if(/\.(xlsx|xls|csv)$/i.test(c.name)) out.push(c); } else walk(c);
+  } };
+  walk(curTreeRoot||{});
+  return out;
+}
+function toggleReportCard(wrap){
+  const old=wrap.querySelector('.reportbox');
+  if(old){ old.remove(); return; } // 再点卡=收起
+  const box=document.createElement('div'); box.className='reportbox';
+  const mkL=t=>{ const s=document.createElement('span'); s.className='rl'; s.textContent=t; return s; };
+  const sel=document.createElement('select');
+  const q1inp=document.createElement('input'); q1inp.type='text'; q1inp.placeholder='比如：进货表.xlsx'; q1inp.style.display='none';
+  const q2row=document.createElement('div'); q2row.style.cssText='display:flex;gap:6px;flex-wrap:wrap';
+  const q2inp=document.createElement('input'); q2inp.type='text'; q2inp.placeholder='也可以自己写，比如：哪个卖得最好';
+  const btns=document.createElement('div'); btns.className='rbtns';
+  const sendB=document.createElement('button'); sendB.className='mini rsend'; sendB.type='button'; sendB.textContent='发送'; sendB.disabled=true;
+  const cancelB=document.createElement('button'); cancelB.className='mini'; cancelB.type='button'; cancelB.textContent='取消';
+  const cur1=()=>sel.isConnected?sel.value:q1inp.value.trim();
+  function refresh(){ sendB.disabled=!reportReady(cur1(),q2inp.value.trim()); }
+  function paintSel(){
+    const files=sheetFiles();
+    if(!files.length){ if(sel.isConnected) sel.remove(); q1inp.style.display=''; refresh(); return; } // 空工作区/取数失败→降级手填
+    const prev=sel.value;
+    sel.innerHTML='';
+    const ph=document.createElement('option'); ph.value=''; ph.textContent='选一个表格文件'; sel.appendChild(ph);
+    for(const f of files){ const o=document.createElement('option'); o.value=f.path||f.name; o.textContent=f.path||f.name; sel.appendChild(o); }
+    if(prev&&files.some(f=>(f.path||f.name)===prev)) sel.value=prev;
+  }
+  for(const t of ['总共是多少','按种类分开各算各的','只挑最近一段时间的']){
+    const b=document.createElement('button'); b.className='mini'; b.type='button'; b.textContent=t;
+    b.onclick=()=>{ q2inp.value=t; [...q2row.children].forEach(x=>x.classList.toggle('on',x===b)); refresh(); };
+    q2row.appendChild(b);
+  }
+  q2inp.oninput=()=>{ [...q2row.children].forEach(x=>x.classList.remove('on')); refresh(); };
+  q1inp.oninput=refresh; sel.onchange=refresh;
+  sendB.onclick=()=>{
+    const f=cur1(), w=q2inp.value.trim();
+    if(!reportReady(f,w)) return;
+    box.remove();
+    txt.value=reportPrompt(f,w);
+    submit(); // 复用现有发送链路（含忙碌保护与工作区提示注入），非只填输入框
+  };
+  cancelB.onclick=()=>box.remove();
+  box.appendChild(mkL('用哪个表格？')); box.appendChild(sel); box.appendChild(q1inp);
+  box.appendChild(mkL('想算点什么？')); box.appendChild(q2row); box.appendChild(q2inp); box.appendChild(btns);
+  btns.appendChild(sendB); btns.appendChild(cancelB);
+  paintSel(); // 先用现有文件树缓存渲染
+  wrap.appendChild(box);
+  renderCurPane().then(()=>{ if(box.isConnected) paintSel(); }); // 展开瞬间借文件树的刷新函数同步一次
+  chat.scrollTop=chat.scrollHeight;
 }
 function openSession(sid){
   if(busy){ addErr('它正在干活，等一下或先停止。'); return; }
