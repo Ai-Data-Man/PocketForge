@@ -77,6 +77,52 @@ function atomicWrite(file, data) {
     } catch (e) { console.error('prune scheduled failed:', e.message); }
 })();
 function readJson(f, dft) { try { return JSON.parse(FSS.readFileSync(f, 'utf8')); } catch { return dft; } }
+// ---- P31-③ 匿名本地使用统计 v1：仅写本地 data/stats/usage-YYYYMMDD.json，无外传、无 UI ----
+// permissionCards.timeout v1 恒 0：前端 60s 超时兜底同样发 acp_reply(allow_once)，桥内与手动「这次可以」不可区分
+// artifactsGenerated v1 恒 0：gen-xlsx 走 goose 扩展不经过桥，无侵入的工作区 diff 扫描代价大，先只占位
+const STATS_DIR = path.join(ROOT, 'data', 'stats');
+const S26_ERR_RE = /Ran into this error|Server error|rate limit|timed? out|ECONN|fetch failed/i; // 与前端 endStream(s26) 同款上游故障正则
+const stats = { date: '', sessionsCreated: 0, messages: 0, errors: 0, errorsByType: { upstream: 0, websocket: 0, other: 0 }, permissionCards: { shown: 0, approved: 0, denied: 0, timeout: 0 }, artifactsGenerated: 0, updated: '' };
+const permKinds = new Map(); // request_permission callId -> (optionId -> kind)，供 acp_reply 分类
+const turnText = new Map();  // sessionId -> 当轮 agent 文本累计（s26 流内报错检测用）
+function statsDay() { const d = new Date(), p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
+function statsFlush() {
+    try {
+        FSS.mkdirSync(STATS_DIR, { recursive: true });
+        stats.updated = new Date().toISOString();
+        atomicWrite(path.join(STATS_DIR, 'usage-' + stats.date.replace(/-/g, '') + '.json'), JSON.stringify(stats, null, 2));
+    } catch {}
+}
+function statsBump(key) {
+    try {
+        const today = statsDay();
+        if (stats.date !== today) { // 跨天：计数器归零、写新文件
+            stats.date = today;
+            stats.sessionsCreated = 0; stats.messages = 0; stats.errors = 0;
+            stats.errorsByType = { upstream: 0, websocket: 0, other: 0 };
+            stats.permissionCards = { shown: 0, approved: 0, denied: 0, timeout: 0 };
+            stats.artifactsGenerated = 0;
+        }
+        const seg = key.split('.'); const last = seg.pop();
+        let o = stats; for (const s of seg) o = o[s];
+        o[last] = (o[last] || 0) + 1;
+        if (seg[0] === 'errorsByType') stats.errors++;
+        statsFlush();
+    } catch {}
+}
+(function statsRestore() { // 桥重启恢复当天计数；当天尚无文件则先落一个初始文件
+    try {
+        stats.date = statsDay();
+        const f = path.join(STATS_DIR, 'usage-' + stats.date.replace(/-/g, '') + '.json');
+        const saved = readJson(f, null);
+        if (saved && saved.date === stats.date) {
+            for (const k of ['sessionsCreated', 'messages', 'errors', 'errorsByType', 'permissionCards', 'artifactsGenerated']) {
+                if (saved[k] !== undefined) stats[k] = saved[k];
+            }
+            stats.updated = saved.updated || '';
+        } else statsFlush();
+    } catch {}
+})();
 // ---- 状态 schema 迁移管线（ADR-0009）：自描述 _schema + 顺序幂等步骤 + 迁移前留档 ----
 const stateWarnings = [];
 const STATE_SCHEMAS = {
@@ -274,6 +320,28 @@ function onAcpData(chunk) {
         }
         if (msg.method) {
             const sid = msg.params && msg.params.sessionId;
+            // P31-③: 权限卡出现即计，并记录 optionId->kind 供 acp_reply 归类
+            if (msg.method === 'session/request_permission') {
+                statsBump('permissionCards.shown');
+                try {
+                    const m = new Map();
+                    for (const o of ((msg.params && msg.params.options) || [])) m.set(o.optionId, o.kind);
+                    permKinds.set(msg.id, m);
+                    if (permKinds.size > 200) permKinds.clear();
+                } catch {}
+            }
+            // P31-③: s26 流内报错检测——累计 agent 文本，turn 结束(stop)时套用前端同款正则
+            try {
+                const upd = msg.params && msg.params.update;
+                if (upd && upd.sessionUpdate === 'agent_message_chunk' && upd.content && upd.content.text) {
+                    const acc = (turnText.get(sid) || '') + upd.content.text;
+                    turnText.set(sid, acc.length > 262144 ? acc.slice(-131072) : acc);
+                } else if (msg.method === 'stop') {
+                    const txt = turnText.get(sid) || '';
+                    turnText.delete(sid);
+                    if (S26_ERR_RE.test(txt)) statsBump('errorsByType.upstream');
+                }
+            } catch {}
             const set = sid ? sessionClients.get(sid) : null;
             const obj = { agent: msg };
             if (set && set.size) for (const ws of set) ws.send(obj);
@@ -1006,6 +1074,11 @@ const ext = path.extname(f).toLowerCase();
             });
         } else { res.writeHead(405); res.end(); }
     }
+    else if (url === '/api/stats') {
+        // P31-③: 当日匿名使用统计（只读；Origin 校验走 handleHttp 顶部全局规则，与 /api/memory 等同级）
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(stats));
+    }
     else if (url === '/api/sessions/archive') {
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         if (req.method === 'POST') {
@@ -1360,7 +1433,7 @@ server.on('upgrade', (req, socket) => {
             else if (op === 0x9) writeRaw(socket, 0x8a, payload);
         }
     });
-    socket.on('error', () => drop(ws));
+    socket.on('error', () => { statsBump('errorsByType.websocket'); drop(ws); }); // P31-③: 仅异常断连计数（页面刷新等正常 close 不算错误）
     socket.on('close', () => drop(ws));
     ws.send({ sys: 'hello', version: 2, app: APP_VERSION, caps: acpCaps ? { modes: true } : {} });
 });
@@ -1406,6 +1479,7 @@ function handleClient(ws, msg) {
                 const id = nextId++;
                 waiting.set(id, { ws: null, resolve: (res) => {
                     if (res && res.sessionId) {
+                        statsBump('sessionsCreated'); // P31-③
                         wsSession.set(ws, res.sessionId);
                         if (!sessionClients.has(res.sessionId)) sessionClients.set(res.sessionId, new Set());
                         sessionClients.get(res.sessionId).add(ws);
@@ -1431,8 +1505,14 @@ function handleClient(ws, msg) {
         if (msg.type === 'prompt') {
             const sid = wsSession.get(ws) || msg.sessionId;
             if (!sid) return ws.send({ sys: 'error', text: 'no active session' });
+            statsBump('messages'); // P31-③: 用户发出 prompt 计数（agent 回复不计）
             const id = nextId++;
-            waiting.set(id, { ws, resolve: () => ws.send({ agent: { method: 'stop', params: { sessionId: sid, reason: 'end' } } }), reject: (e) => ws.send({ sys: 'error', text: 'turn failed: ' + String(e.message || e) }) });
+            waiting.set(id, { ws, resolve: () => ws.send({ agent: { method: 'stop', params: { sessionId: sid, reason: 'end' } } }), reject: (e) => {
+                // P31-③: turn 失败按 s26 正则归类上游故障
+                if (S26_ERR_RE.test(String((e && e.message) || e))) statsBump('errorsByType.upstream');
+                else statsBump('errorsByType.other');
+                ws.send({ sys: 'error', text: 'turn failed: ' + String(e.message || e) });
+            } });
             acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/prompt', params: { sessionId: sid, prompt: [{ type: 'text', text: msg.text }] } }) + '\n');
             return;
         }
@@ -1504,6 +1584,13 @@ function handleClient(ws, msg) {
         }
 
         if (msg.type === 'acp_reply') {
+            // P31-③: 权限卡选择分类（kind 由 shown 时的映射还原；超时兜底与手动选择桥内不可区分，不计 timeout）
+            try {
+                const km = permKinds.get(msg.callId); permKinds.delete(msg.callId);
+                const kind = km && km.get(msg.option);
+                if (kind === 'allow_once' || kind === 'allow_always') statsBump('permissionCards.approved');
+                else if (kind === 'reject_once' || kind === 'reject_always') statsBump('permissionCards.denied');
+            } catch {}
             acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: msg.callId, result: { outcome: { outcome: 'selected', optionId: msg.option } } }) + '\n');
             return;
         }
@@ -1612,6 +1699,7 @@ function handleClient(ws, msg) {
                     const nid = nextId++;
                     waiting.set(nid, { ws, resolve: (res) => {
                         if (res && res.sessionId) {
+                            statsBump('sessionsCreated'); // P31-③
                             wsSession.set(ws, res.sessionId);
                             if (!sessionClients.has(res.sessionId)) sessionClients.set(res.sessionId, new Set());
                             sessionClients.get(res.sessionId).add(ws);

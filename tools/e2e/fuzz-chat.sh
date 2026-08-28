@@ -32,6 +32,8 @@ curl -s -X POST "$B/api/memory" -H 'content-type: application/json' -d '{"op":"f
 curl -s "$B/api/search?q=%25%5C_%27" | J; ck "search regex metachars" $?
 curl -s "$B/api/ws/tree?ws=../../../etc" >/dev/null; ck "ws/tree traversal rejected" $?
 curl -s "$B/api/vcs/log?ws=x&file=../../y" >/dev/null; ck "vcs traversal rejected" $?
+# P31-③: stats 端点形状（只读，JSON 可解析且含关键字段）
+curl -s "$B/api/stats" | python -c "import sys,json;d=json.load(sys.stdin);assert d['date'] and 'updated' in d and d['sessionsCreated'] >= 0"; ck "stats endpoint shape" $?
 echo "=============================="
 echo "fuzz: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" = "0" ]
