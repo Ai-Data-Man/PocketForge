@@ -796,7 +796,8 @@ async function handleHttp(req, res) {
         // 用系统默认程序打开本地文件（PowerShell Start-Process）
         const name = decodeURIComponent(url.slice('/open/'.length));
         // I5(审查s15): 黑名单保留（防御纵深）——拒绝引号/cmd 元字符/换行
-        if (name.includes('..') || ['"', "'", '%', '^', '&', '|', '<', '>', '!', '\n', '\r'].some(ch => name.includes(ch))) { res.writeHead(400); res.end(JSON.stringify({ok:false, err:'bad name'})); return; }
+        // s50h(FIND-1): fileNameSafe 不拒 '.'（归一化后变空串）——点号/隐藏名显式拒，防 spawn 打开 artifacts 目录本身
+        if (!name || name.startsWith('.') || !fileNameSafe(name) || name.includes('..') || ['"', "'", '%', '^', '&', '|', '<', '>', '!', '\n', '\r'].some(ch => name.includes(ch))) { res.writeHead(400); res.end(JSON.stringify({ok:false, err:'bad name'})); return; }
         const f = path.join(ROOT, 'data', 'artifacts', name);
         if (!require('fs').existsSync(f)) { res.writeHead(404); res.end(JSON.stringify({ok:false, err:'not found'})); return; }
         // s50c: 路径经 base64 进 PowerShell 再解码（照 copy_artifact 先例），彻底消除 shell 解释层；
@@ -1014,7 +1015,8 @@ const ext = path.extname(f).toLowerCase();
             req.on('end', () => {
                 try {
                     const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-                    if (typeof b.name !== 'string' || !/^[\w\-]{1,64}$/.test(b.name)) throw new Error('参数不合法');
+                    // s50h(FIND-3): 白名单外再过保留设备名（con 等），remote 与本地复制两分支同门
+                    if (typeof b.name !== 'string' || !/^[\w\-]{1,64}$/.test(b.name) || !fileNameSafe(b.name)) throw new Error('参数不合法');
                     if (b.remote) { installRemoteSkill(b.name, res); return; }
                     const src = path.join(REPO, b.name);
                     const dst = path.join(INSTALLED, b.name);
@@ -1573,6 +1575,8 @@ function handleClient(ws, msg) {
 
         if (msg.type === 'subscribe') {
             // start or attach to a session; msg.sessionId null = new session
+            // s50h(FIND-2): 显式给了 sid 就必须过白名单（null/缺省=新会话语义不拒），杜绝任意串进 sessionClients
+            if (msg.sessionId !== undefined && msg.sessionId !== null && !sidValid(String(msg.sessionId))) return ws.send({ sys: 'error', text: '会话标识不对，请从左侧列表重新选择对话。' });
             if (msg.sessionId) {
                 wsSession.set(ws, msg.sessionId);
                 if (!sessionClients.has(msg.sessionId)) sessionClients.set(msg.sessionId, new Set());
@@ -1606,8 +1610,11 @@ function handleClient(ws, msg) {
         }
 
         if (msg.type === 'prompt') {
-            const sid = wsSession.get(ws) || msg.sessionId;
-            if (!sid) return ws.send({ sys: 'error', text: '这场对话已经不在了（可能刚重启过）。点左侧「＋ 新对话」重新开始，把想做的事再说一遍就行。' });
+            // s50h(FIND-4): 只信 wsSession 绑定——删掉 msg.sessionId 回退（未订阅 sid 会拿到 goose 空 turn 假成功）；text 非空 + 256KB 上限（与 :348 turnText 截断同量级）
+            const sid = wsSession.get(ws);
+            if (!sid || (msg.sessionId != null && msg.sessionId !== sid)) return ws.send({ sys: 'error', text: '这场对话已经不在了（可能刚重启过）。点左侧「＋ 新对话」重新开始，把想做的事再说一遍就行。' });
+            if (typeof msg.text !== 'string' || !msg.text.trim()) return ws.send({ sys: 'error', text: '想让我做的事不能是空的。' });
+            if (msg.text.length > 262144) return ws.send({ sys: 'error', text: '这条消息太长了，拆成几条发吧。' });
             statsBump('messages'); // P31-③: 用户发出 prompt 计数（agent 回复不计）
             const id = nextId++;
             waiting.set(id, { ws, resolve: () => {

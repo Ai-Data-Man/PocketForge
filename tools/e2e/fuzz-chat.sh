@@ -45,6 +45,14 @@ if k is not None:
 # s50b: db/overview 不收参数——垃圾 query 不影响响应形状（端点无用户输入面）
 curl -s "$B/api/db/overview?ws=../../etc" | python -c "import sys,json;d=json.load(sys.stdin);assert 'services' in d"; ck "db overview traversal query ignored" $?
 curl -s "$B/api/db/overview?service=x%27" | python -c "import sys,json;d=json.load(sys.stdin);assert 'services' in d"; ck "db overview quote query ignored" $?
+# s50h(FIND-1): /open/ 打开 artifacts 目录本身必须 400（'.' 与 %2e 两种编码形态）
+[ "$(curl -s -o /dev/null -w '%{http_code}' "$B/open/.")" = "400" ]; ck "open dot refused 400" $?
+[ "$(curl -s -o /dev/null -w '%{http_code}' "$B/open/%2e")" = "400" ]; ck "open %2e refused 400" $?
+# s50h(FIND-3): skillstore 保留设备名（con）两分支都拒（本地复制/远程拉取同门）
+curl -s -X POST "$B/api/skillstore" -H 'content-type: application/json' -d '{"name":"con"}' | grep -q '参数不合法'; ck "skillstore reserved name con refused (local)" $?
+curl -s -X POST "$B/api/skillstore" -H 'content-type: application/json' -d '{"name":"con","remote":true}' | grep -q '参数不合法'; ck "skillstore reserved name con refused (remote)" $?
+# s50h(FIND-2/4): WS sid 白名单 + prompt 绑定/非空/长度上限（完整 11 断言矩阵见同目录 ws-fuzz-s50h.js；此处收编其单条冒烟——畸形 sid 拒绝）
+node "$(dirname "$0")/ws-fuzz-s50h.js" >/dev/null 2>&1; ck "ws s50h fuzz matrix (11 asserts)" $?
 echo "=============================="
 echo "fuzz: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" = "0" ]
