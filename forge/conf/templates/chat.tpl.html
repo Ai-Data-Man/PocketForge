@@ -1298,8 +1298,30 @@ $('prov-add').onclick=()=>{
   note('已新建「'+name+'」。填好地址和 Key 后点保存，再⟳拉取模型勾选。');
   setTimeout(loadProvidersUI,300);
 };
+// s51d: P31-② 配 Key 引导——所有档案都没 Key（含零档案）时聊天区顶部引导条；
+// 条件是客观状态（没 key），配好即消，零持久化。401 人话卡（下方错误转译）仍是第二道网。
+let keyGuideSeen=false;
+function keyGuideSync(list){
+  const bar=$('key-guide');
+  const need=!(list||[]).some(p=>p.hasKey);
+  if(!need){
+    if(bar){ bar.remove(); if(keyGuideSeen){ keyGuideSeen=false; addInfo('✅ 配好了！试试下面的任务'); addQuickPrompts(); } }
+    return;
+  }
+  keyGuideSeen=true;
+  if(bar) return;
+  const el=document.createElement('div');
+  el.id='key-guide'; el.className='msg agent info';
+  el.style.cssText='display:flex;align-items:center;gap:10px;flex-wrap:wrap';
+  const t=document.createElement('span'); t.textContent='还没连上大模型，发消息会失败。点这里 2 分钟配好 →';
+  const b=document.createElement('button'); b.className='msgbtn'; b.textContent='去配置';
+  b.onclick=()=>{ $('modal').classList.add('on'); loadProvidersUI(); setTimeout(()=>$('cfg-key').focus(),100); };
+  el.appendChild(t); el.appendChild(b);
+  chat.insertBefore(el, chat.firstChild);
+}
 function renderProviders(list){
   providerList=list;
+  keyGuideSync(list); // s51d: P31-② 配 Key 引导条（判定=客观状态，不持久化）
   const box=$('prov-list'); box.innerHTML='';
   if(!list.length){ box.innerHTML='<div class="fnote">还没有服务商。在下面填：名称+地址+Key，点「添加」。</div>'; }
   let selected=null;
