@@ -27,3 +27,11 @@
 - 坏 host 实验（providers.json 公司中转→127.0.0.1:9）：发「你好」→ 人话提示 + 「换备用线路再试」按钮出现（fced41e 正则修复生效）→ 点击 → 顶栏切「备用线路 · kimi-k2.7-code」+ hotRestart 新会话 → 重发「你好」真实落库（sessions.db 20260829_16，17:33，含工作区备注）→ providers.json 还原+桥重启 → e2e 21/21 + fuzz 16/16。
 - 行为注记：换线重发落在新会话（hotRestart 语义），原对话历史保留在旧会话；符合「切线路重试」预期。
 - s25 时代死代码根因（fced41e 取证）：goose ACP 从不发流内 stop 错误形态，prompt 正常 resolve、错误文本走 session/update——统计触发点改在 prompt resolve 处。
+
+## s50f：pf-qa 三面审查 → 3 项 🟡 修复（commit 469a6e9，+6/−2）
+- 审查结论：令牌面 PASS（今天 diff 零硬编码色，38 令牌全定义）、XSS 面 PASS（esc/textContent 纪律完好）、交互矩阵 3 项 🟡。总体「有条件」。
+- 🟡-1 @菜单 DB 分组竞态（faucet 停时 await 放大竞态窗口→双份分组/旧关键词条目）→ 代际令牌 atGen，两处 await 后守卫。
+- 🟡-2 pendingRetry 覆盖用户草稿 → busy+草稿双守卫：切换窗口内打了新草稿则放弃自动重发（保草稿摘按钮），空/同文才发。
+- 🟡-3 401 误报面（裸 /401/ 会把「共 401 条记录」误判成 Key 问题）→ 正则收窄：裸 401 须伴随 unauthorized/invalid/api key 上下文词；三组用例断言全过。
+- 断言 10/10（s50f-assert.js 留档）；e2e 21/21 + fuzz 16/16。
+- QA 家族隐患备忘（未修，下轮收敛）：esc() 双定义，1722 行版本不转义双引号，data-p 属性插值依赖它——含 " 的目录名可逃出属性（s14 时代既有）。
