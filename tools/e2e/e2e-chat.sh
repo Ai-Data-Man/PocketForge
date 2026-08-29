@@ -80,6 +80,22 @@ CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/db/overview")
 [ "$CODE" = "405" ]; ck "db/overview POST refused 405 (got $CODE)" $?
 curl -s "$B/api/db/overview" | grep -qviE 'apikey|X-API-Key'; ck "db/overview no apikey leak" $?
 
+# ---------- 9) 单表结构+样例（s51 /api/db/_schema） ----------
+curl -s "$B/api/db/_schema?svc=plm&tbl=parts" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+assert d['ok'] is True and d['columns'] and isinstance(d['samples'],list)
+cols={c['name']:c for c in d['columns']}
+assert 'id' in cols and cols['id']['pk'] is True
+assert cols['id']['raw_type']=='INTEGER'
+for c in d['columns']: assert set(c)>={'name','raw_type','pk'}
+print('dbschema-ok')" | grep -q dbschema-ok; ck "db/_schema returns columns+samples with pk" $?
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/db/_schema")
+[ "$CODE" = "405" ]; ck "db/_schema POST refused 405 (got $CODE)" $?
+curl -s "$B/api/db/_schema?svc=plm&tbl=no_such_tbl" | grep -q '"ok":false'; ck "db/_schema unknown table ok:false" $?
+curl -s --get "$B/api/db/_schema" --data-urlencode "svc=../etc" --data-urlencode "tbl=passwd" | grep -q '"ok":false'; ck "db/_schema rejects path-ish names" $?
+curl -s --get "$B/api/db/_schema" --data-urlencode "svc=plm" --data-urlencode "tbl=parts" | grep -qviE 'apikey|X-API-Key'; ck "db/_schema no apikey leak" $?
+
 rm -f /tmp/e2e-v1.md
 echo "=============================="
 echo "chat-link E2E: PASS=$PASS FAIL=$FAIL"

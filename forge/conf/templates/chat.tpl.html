@@ -342,24 +342,46 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 <div id="manage-modal" class="modal-bg"><div class="panel-box">
   <h3>🧠 管理小 forge</h3>
   <div class="fnote" style="margin-bottom:10px">它是什么样、会什么、记了什么、几点干活——都在这里。</div>
-    <h3 style="margin:18px 0 8px">🧠 它会什么（本事开关）</h3>
-  <div class="fnote" style="margin-bottom:10px">下面是您家数字员工自带的「本事」。关掉哪个，它就不会用那个本事（重启数字员工后生效）。拿不准就都开着。</div>
-  <div id="ext-list"></div>
-  <h3 style="margin:18px 0 8px">🗄️ 库里的数据</h3>
-  <div class="fnote" style="margin-bottom:10px">数据库里现在存着这些表。想让小 forge 用哪张，聊天里打 @ 选「库里的数据」就行。</div>
-  <div id="db-list" style="max-height:180px;overflow-y:auto"></div>
-  <h3 style="margin:18px 0 8px">💭 小 forge 记住的事</h3>
-  <div class="fnote" style="margin-bottom:10px">它聊天时会自己记住您的偏好和做法，存在这个电脑里、不上网。点 ✕ 可以让它忘掉某一条；这些记忆只有它自己和您能看。</div>
-  <div id="mem-list" style="max-height:220px;overflow-y:auto"></div>
-  <h3 style="margin:18px 0 8px">⏰ 定时任务</h3>
-  <div class="fnote" style="margin-bottom:10px">想让它定时干活，直接在聊天里说，比如「每周五下午5点，把库存数据整理成表格发我」。这里能看到已定好的任务，不要的可以删。</div>
-  <div id="sched-list" style="max-height:180px;overflow-y:auto"></div>
-  <h3 style="margin:18px 0 8px">🔌 官方 MCP（扩展插件）</h3>
-  <div class="fnote" style="margin-bottom:10px">这些是官方出品的增强插件，装好后重启数字员工生效。</div>
-  <div id="mcp-list" style="max-height:180px;overflow-y:auto"></div>
-  <h3 style="margin:18px 0 8px">🛡 安全护栏</h3>
-  <div class="fnote" style="margin-bottom:6px">顶栏的「工作模式」就是护栏档位：<b>重要操作问我</b>= 推荐；<b>自动干活</b>= 熟练后用；<b>每步都问我</b>= 最稳；<b>只聊天不动手</b>= 不碰文件网页。</div>
-  <div class="fnote">在「重要操作问我」档下，这些动作会<b>先问您再动</b>：执行命令、改写/新建文件、删改数据库内容、打开或点击网页。<b>只读不写</b>的动作（看看文件、查查数据）不用问，直接做。</div>
+  <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:8px">
+    <button class="rtab on mtab" data-pane="ext">🧠 本事</button>
+    <button class="rtab mtab" data-pane="db">🗄️ 数据</button>
+    <button class="rtab mtab" data-pane="mem">💭 记忆</button>
+    <button class="rtab mtab" data-pane="sched">⏰ 定时</button>
+    <button class="rtab mtab" data-pane="mcp">🔌 插件</button>
+    <button class="rtab mtab" data-pane="guard">🛡 护栏</button>
+  </div>
+  <div class="mpane" id="mpane-ext">
+    <h3 style="margin:0 0 8px">它会什么（本事开关）</h3>
+    <div class="fnote" style="margin-bottom:10px">下面是您家数字员工自带的「本事」。关掉哪个，它就不会用那个本事（重启数字员工后生效）。拿不准就都开着。</div>
+    <div id="ext-list"></div>
+  </div>
+  <div class="mpane" id="mpane-db" style="display:none">
+    <h3 style="margin:0 0 8px">库里的数据</h3>
+    <div class="fnote" style="margin-bottom:10px">数据库里现在存着这些表。点表名能看里面装了什么。想让小 forge 用哪张，聊天里打 @ 选「库里的数据」就行。</div>
+    <div id="db-list" style="max-height:340px;overflow-y:auto"></div>
+  </div>
+  <div class="mpane" id="mpane-mem" style="display:none">
+    <h3 style="margin:0 0 8px">小 forge 记住的事</h3>
+    <div class="fnote" style="margin-bottom:10px">它聊天时会自己记住您的偏好和做法，存在这个电脑里、不上网。点 ✕ 可以让它忘掉某一条。</div>
+    <input id="mem-q" placeholder="在这些记忆里找…" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:12.5px;outline:none;margin-bottom:6px">
+    <div id="mem-list" style="max-height:300px;overflow-y:auto"></div>
+    <div id="mem-more" style="text-align:center;padding:4px 0"></div>
+  </div>
+  <div class="mpane" id="mpane-sched" style="display:none">
+    <h3 style="margin:0 0 8px">定时任务</h3>
+    <div class="fnote" style="margin-bottom:10px">想让它定时干活，直接在聊天里说，比如「每周五下午5点，把库存数据整理成表格发我」。这里能看到已定好的任务，不要的可以删。</div>
+    <div id="sched-list" style="max-height:340px;overflow-y:auto"></div>
+  </div>
+  <div class="mpane" id="mpane-mcp" style="display:none">
+    <h3 style="margin:0 0 8px">官方 MCP（扩展插件）</h3>
+    <div class="fnote" style="margin-bottom:10px">这些是官方出品的增强插件，装好后重启数字员工生效。</div>
+    <div id="mcp-list" style="max-height:340px;overflow-y:auto"></div>
+  </div>
+  <div class="mpane" id="mpane-guard" style="display:none">
+    <h3 style="margin:0 0 8px">安全护栏</h3>
+    <div class="fnote" style="margin-bottom:6px">顶栏的「工作模式」就是护栏档位：<b>重要操作问我</b>= 推荐；<b>自动干活</b>= 熟练后用；<b>每步都问我</b>= 最稳；<b>只聊天不动手</b>= 不碰文件网页。</div>
+    <div class="fnote">在「重要操作问我」档下，这些动作会<b>先问您再动</b>：执行命令、改写/新建文件、删改数据库内容、打开或点击网页。<b>只读不写</b>的动作（看看文件、查查数据）不用问，直接做。</div>
+  </div>
 </div></div>
 <div id="modal"><div id="panel">
   <h3>⚙️ 服务商连接</h3>
@@ -1011,7 +1033,16 @@ $('mode').onchange=e=>{ localStorage.setItem('pf_mode',e.target.value);
   if(sessionId) rpc2('session/set_mode',{sessionId,modeId:e.target.value}).catch(()=>addErr('模式切换失败')); };
 $('open-settings').onclick=()=>{ $('modal').classList.add('on'); loadProvidersUI(); };
 // s43: 管理面板——本事/记忆/定时任务/护栏从设置迁出，一级入口
-$('open-manage').onclick=()=>{ $('manage-modal').classList.add('on'); loadExtUI(); loadMemUI(); loadSchedUI(); loadMcpUI(); loadDbUI(); };
+// s51: 六区块→标签页，懒加载（首次切到该 tab 才拉，拉过缓存不重复拉）
+const mtabs={ext:['loadExtUI',false],db:['loadDbUI',false],mem:['loadMemUI',false],sched:['loadSchedUI',false],mcp:['loadMcpUI',false]};
+function showMtab(name){
+  document.querySelectorAll('#manage-modal .mtab').forEach(b=>b.classList.toggle('on',b.dataset.pane===name));
+  document.querySelectorAll('#manage-modal .mpane').forEach(p=>p.style.display=p.id==='mpane-'+name?'':'none');
+  const t=mtabs[name];
+  if(t&&!t[1]){ t[1]=true; window[t[0]](); }
+}
+document.querySelectorAll('#manage-modal .mtab').forEach(b=>b.onclick=()=>showMtab(b.dataset.pane));
+$('open-manage').onclick=()=>{ $('manage-modal').classList.add('on'); for(const k in mtabs) mtabs[k][1]=false; showMtab('ext'); }; // s51: 重开即重拉，防陈旧清单
 // s46: MCP 市场 UI（安装是后台异步，轮询状态直到 done/error）
 let mcpPollTimer=null;
 async function loadMcpUI(){
@@ -1150,40 +1181,62 @@ async function loadExtUI(){
     box.appendChild(row);
   }
 }
+// s51: 记忆清单——搜索过滤 + 渲染上限 50 条 +「显示更多」（记忆是唯一无限增长清单）
+const MEM_PAGE=50;
+let memAll=null, memShown=MEM_PAGE;
+function memRow(cat,it){
+  const row=document.createElement('div');
+  row.style.cssText='display:flex;align-items:flex-start;gap:8px;padding:7px 4px;border-bottom:1px dashed var(--line)';
+  const txt=document.createElement('div');
+  txt.style.cssText='flex:1;font-size:.82rem;line-height:1.5;word-break:break-all';
+  txt.innerHTML='<b style="color:var(--acc);font-size:.72rem;margin-right:6px">'+esc(cat.category)+'</b>'+esc(it.text)+
+    (it.tags&&it.tags.length?'<span class="fnote">　#'+esc(it.tags.join(' #'))+'</span>':'');
+  const del=document.createElement('button');
+  del.className='mini'; del.textContent='✕'; del.title='让它忘掉这条'; del.style.padding='3px 9px';
+  del.onclick=async()=>{
+    del.disabled=true;
+    try{
+      const res=await apiJSON('/api/memory',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op:'forget_one',category:cat.category,text:it.text})});
+      if(!res.ok) throw new Error(res.err||'失败');
+      loadMemUI();
+    }catch(e){ del.disabled=false; alert('没删成：'+e.message); }
+  };
+  row.appendChild(txt); row.appendChild(del);
+  return row;
+}
+function memPaint(){
+  const box=$('mem-list'), more=$('mem-more');
+  const q=($('mem-q').value||'').trim().toLowerCase();
+  const flat=[];
+  for(const cat of memAll) for(const it of cat.items)
+    if(!q || cat.category.toLowerCase().includes(q) || it.text.toLowerCase().includes(q) || (it.tags||[]).some(t=>t.toLowerCase().includes(q)))
+      flat.push([cat,it]);
+  box.innerHTML='';
+  for(const [cat,it] of flat.slice(0,memShown)) box.appendChild(memRow(cat,it));
+  if(!flat.length){ box.innerHTML='<div class="fnote">'+(q?'没找到带「'+esc(q)+'」的记忆。':'它还没记住什么。聊得多了，这里会出现它记住的事。')+'</div>'; }
+  more.innerHTML='';
+  if(flat.length>memShown){
+    const b=document.createElement('button'); b.className='mini'; b.textContent='显示更多（还有 '+(flat.length-memShown)+' 条）';
+    b.onclick=()=>{ memShown+=MEM_PAGE; memPaint(); };
+    more.appendChild(b);
+  }
+}
 async function loadMemUI(){
   const box=$('mem-list'); if(!box) return;
   let cats;
-  try { cats = await apiJSON('/api/memory'); } catch(e){ box.innerHTML='<div class="fnote">读取失败：'+esc(e.message)+'</div>'; return; }
-  const total=cats.reduce((n,c)=>n+c.items.length,0);
-  if(!total){ box.innerHTML='<div class="fnote" id="mem-empty">它还没记住什么。聊得多了，这里会出现它记住的事。</div>'; return; }
-  box.innerHTML='';
-  for(const cat of cats){
-    for(const it of cat.items){
-      const row=document.createElement('div');
-      row.style.cssText='display:flex;align-items:flex-start;gap:8px;padding:7px 4px;border-bottom:1px dashed var(--line)';
-      const txt=document.createElement('div');
-      txt.style.cssText='flex:1;font-size:.82rem;line-height:1.5;word-break:break-all';
-      txt.innerHTML='<b style="color:var(--acc);font-size:.72rem;margin-right:6px">'+esc(cat.category)+'</b>'+esc(it.text)+
-        (it.tags&&it.tags.length?'<span class="fnote">　#'+esc(it.tags.join(' #'))+'</span>':'');
-      const del=document.createElement('button');
-      del.className='mini'; del.textContent='✕'; del.title='让它忘掉这条'; del.style.padding='3px 9px';
-      del.onclick=async()=>{
-        del.disabled=true;
-        try{
-          const res=await apiJSON('/api/memory',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op:'forget_one',category:cat.category,text:it.text})});
-          if(!res.ok) throw new Error(res.err||'失败');
-          loadMemUI();
-        }catch(e){ del.disabled=false; alert('没删成：'+e.message); }
-      };
-      row.appendChild(txt); row.appendChild(del);
-      box.appendChild(row);
-    }
-  }
+  try { cats = await apiJSON('/api/memory'); } catch(e){ memAll=[]; memPaint(); box.innerHTML='<div class="fnote">读取失败：'+esc(e.message)+'</div>'; return; }
+  memAll=cats; memShown=MEM_PAGE;
+  memPaint();
 }
+$('mem-q').oninput=()=>{ memShown=MEM_PAGE; memPaint(); };
 
 $('modal').onclick=e=>{ if(e.target.id==='modal') $('modal').classList.remove('on'); };
 
-// s50b: 管理面板「库里的数据」小节——面板打开时懒加载（随 open-manage 调用）
+// s50b: 管理面板「库里的数据」小节——首次切到「数据」标签时拉取
+// s51: 点表名就地展开列清单——人话类型+样例值（表名/列名保留原文，@ 引用靠原名）
+const TYPE_ZH=[[/^(INT|BIGINT|SMALLINT|TINYINT|INTEGER|SERIAL)/i,'整数'],[/^(REAL|FLOAT|DOUBLE|DEC)/i,'小数'],[/^(NUMERIC|NUMBER)/i,'数字'],[/^(BOOL|BIT)/i,'是/否'],[/^(DATE|TIME|DATETIME|TIMESTAMP)/i,'日期时间'],[/^(BLOB|BINARY)/i,'附件'],[/^(CHAR|TEXT|CLOB|VARCHAR|NVARCHAR)/i,'文字']];
+function typeZh(raw){ for(const [re,zh] of TYPE_ZH) if(re.test(raw)) return zh; return raw||'文字'; }
+function cutVal(v){ const s=(v==null)?'空':String(v); return s.length>40?s.slice(0,40)+'…':s; }
 async function loadDbUI(){
   const box=$('db-list'); if(!box) return;
   box.innerHTML='<div class="fnote">正在看数据库…</div>';
@@ -1194,8 +1247,35 @@ async function loadDbUI(){
   for(const s of ov.services) for(const t of s.tables){
     n++;
     const row=document.createElement('div');
-    row.style.cssText='display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px dashed var(--line);font-size:.82rem';
-    row.innerHTML='<b style="color:var(--acc);font-size:.72rem;margin-right:2px">'+esc(s.service)+'</b><span style="color:var(--mut)">·</span><span style="flex:1;word-break:break-all">'+esc(t.name)+'</span><span class="fnote">'+(t.rows==null?'－':t.rows+' 条')+'</span>';
+    row.style.cssText='border-bottom:1px dashed var(--line);font-size:.82rem';
+    const head=document.createElement('div');
+    head.style.cssText='display:flex;align-items:center;gap:8px;padding:7px 4px;cursor:pointer';
+    head.innerHTML='<b style="color:var(--acc);font-size:.72rem;margin-right:2px">'+esc(s.service)+'</b><span style="color:var(--mut)">·</span><span style="flex:1;word-break:break-all;text-decoration:underline dotted">'+esc(t.name)+'</span><span class="fnote">'+(t.rows==null?'－':t.rows+' 条')+'</span><span class="fnote">▾</span>';
+    const det=document.createElement('div');
+    det.style.display='none'; det.style.padding='2px 4px 8px 14px';
+    head.onclick=async()=>{
+      if(det.style.display==='none'){
+        det.style.display='';
+        if(!det.dataset.loaded){
+          det.dataset.loaded='1';
+          det.innerHTML='<div class="fnote">正在看这张表…</div>';
+          let d=null;
+          try{ d=await apiJSON('/api/db/_schema?svc='+encodeURIComponent(s.service)+'&tbl='+encodeURIComponent(t.name)); }catch(e){ d={ok:false,err:e.message}; }
+          if(det.dataset.loaded!=='1') return; // 行已被重渲染清掉
+          if(!d||!d.ok){ det.innerHTML='<div class="fnote">'+esc((d&&d.err)||'取不了表结构')+'</div>'; return; }
+          let h='<table class="mdtab" style="font-size:.78rem"><thead><tr><th>列</th><th>装什么</th><th>样子（实际数据举例）</th></tr></thead><tbody>';
+          const cols=d.columns||[];
+          for(const c of cols){
+            const ex=d.samples&&d.samples[0]?cutVal(d.samples[0][c.name]):'';
+            h+='<tr><td>'+esc(c.name)+(c.pk?' <span class="fnote">唯一</span>':'')+'</td><td>'+esc(typeZh(c.raw_type))+'</td><td class="fnote">'+esc(ex)+'</td></tr>';
+          }
+          h+='</tbody></table>';
+          det.innerHTML=cols.length?h:'<div class="fnote">这张表还没有列定义。</div>';
+          if(d.samples&&!d.samples.length){ const e2=document.createElement('div'); e2.className='fnote'; e2.textContent='（空表，还没存过数据）'; det.appendChild(e2); }
+        }
+      } else { det.style.display='none'; }
+    };
+    row.appendChild(head); row.appendChild(det);
     box.appendChild(row);
   }
   if(!n) box.innerHTML='<div class="fnote">还没存数据。让小 forge 抓数时说一声存进数据库就行。</div>';

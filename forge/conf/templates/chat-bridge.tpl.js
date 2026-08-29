@@ -582,6 +582,45 @@ async function dbOverview() {
     return out;
 }
 
+// ---- s51: 单表结构+样例（GET /api/db/_schema?svc=&tbl=）——小白点表名看「里面装了什么」 ----
+function faucetSchema(svc) {
+    return faucetCli(['db', 'schema', svc]).then(out => {
+        try { return ((JSON.parse(out || 'x') || {}).tables) || null; } catch { return null; }
+    });
+}
+function faucetSample(svc, tbl, port, key) {
+    return new Promise(resolve => {
+        let rq;
+        try {
+            rq = require('http').get({ hostname: '127.0.0.1', port, path: '/api/v1/' + svc + '/_table/' + tbl + '?max_results=3', headers: { 'X-API-Key': key }, timeout: 4000 }, r => {
+                let b = '';
+                r.on('data', c => b += c);
+                r.on('end', () => { try { resolve((JSON.parse(b).resource) || []); } catch { resolve(null); } });
+            });
+            rq.on('error', () => resolve(null));
+            rq.on('timeout', () => { rq.destroy(); resolve(null); });
+        } catch { resolve(null); }
+    });
+}
+async function dbTableSchema(svc, tbl) {
+    if (!DB_NAME_RE.test(svc) || !DB_NAME_RE.test(tbl)) return { ok: false, err: '表名不对，没有这张表。' };
+    const tables = await faucetSchema(svc);
+    if (!tables) return { ok: false, err: '数据库没在跑或没有这个库，看不了表结构。' };
+    const def = tables.find(t => t && t.name === tbl);
+    if (!def) return { ok: false, err: '库里没有叫「' + tbl.slice(0, 64) + '」的表。' };
+    const columns = (def.columns || []).map(c => ({
+        name: (c && c.name) || '',
+        raw_type: (c && c.db_type) || '',
+        pk: !!(c && c.is_primary_key),
+    }));
+    let port = 0, key = '';
+    try { port = parseInt(FSS.readFileSync(path.join(ROOT, 'data', 'faucet.port'), 'utf8').trim(), 10) || 0; } catch {}
+    try { key = FSS.readFileSync(path.join(ROOT, 'data', 'faucet', '.apikey'), 'utf8').trim(); } catch {}
+    let samples = null;
+    if (port && key) samples = await faucetSample(svc, tbl, port, key);
+    return { ok: true, columns, samples: Array.isArray(samples) ? samples : null };
+}
+
 async function handleHttp(req, res) {
     const url = (req.url || '/').split('?')[0];
     // R2-C1b(审查s17): WS 层有 Origin 校验，HTTP 层没有——恶意网页可跨站 POST
@@ -1174,6 +1213,15 @@ const ext = path.extname(f).toLowerCase();
         if (req.method !== 'GET') { res.writeHead(405); res.end(); return; }
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         dbOverview().then(out => res.end(JSON.stringify(out))).catch(() => res.end(JSON.stringify({ ok: false })));
+    }
+    else if (url === '/api/db/_schema') {
+        // s51: 单表结构+样例（只读 GET；参数白名单校验在 dbTableSchema 内）
+        if (req.method !== 'GET') { res.writeHead(405); res.end(); return; }
+        const qp = new URL('http://x' + req.url).searchParams;
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        dbTableSchema(qp.get('svc') || '', qp.get('tbl') || '')
+            .then(out => res.end(JSON.stringify(out)))
+            .catch(() => res.end(JSON.stringify({ ok: false, err: '取不了表结构，稍后再试。' })));
     }
     else if (url === '/api/sessions/archive') {
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });

@@ -45,6 +45,9 @@ if k is not None:
 # s50b: db/overview 不收参数——垃圾 query 不影响响应形状（端点无用户输入面）
 curl -s "$B/api/db/overview?ws=../../etc" | python -c "import sys,json;d=json.load(sys.stdin);assert 'services' in d"; ck "db overview traversal query ignored" $?
 curl -s "$B/api/db/overview?service=x%27" | python -c "import sys,json;d=json.load(sys.stdin);assert 'services' in d"; ck "db overview quote query ignored" $?
+# s51(FIND-3): _schema 白名单钉子——非法名必须命中 DB_NAME_RE 拒绝分支（区别于「表不存在」的 ok:false）
+curl -s --get "$B/api/db/_schema" --data-urlencode "svc=../etc" --data-urlencode "tbl=passwd" | grep -q '表名不对'; ck "db/_schema whitelist branch (bad name msg)" $?
+curl -s "$B/api/db/_schema?svc=x%27%20OR%201%3D1&tbl=t--" | grep -q '表名不对'; ck "db/_schema whitelist branch (injection-ish)" $?
 # s50h(FIND-1): /open/ 打开 artifacts 目录本身必须 400（'.' 与 %2e 两种编码形态）
 [ "$(curl -s -o /dev/null -w '%{http_code}' "$B/open/.")" = "400" ]; ck "open dot refused 400" $?
 [ "$(curl -s -o /dev/null -w '%{http_code}' "$B/open/%2e")" = "400" ]; ck "open %2e refused 400" $?
