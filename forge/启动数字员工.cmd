@@ -19,8 +19,10 @@ set "NO_PROXY=127.0.0.1,localhost"
 set "no_proxy=127.0.0.1,localhost"
 
 rem ---- first-run welcome page (data\welcome.html exists only on first run) ----
+rem s50: start 是异步的，立刻 ren 会让浏览器读到 404（沙盒冒烟实证）；等 3 秒让浏览器打开文件后再改名
 if exist "%FORGE_ROOT%\data\welcome.html" (
   start "" "%FORGE_ROOT%\data\welcome.html"
+  timeout /t 3 /nobreak >nul
   ren "%FORGE_ROOT%\data\welcome.html" welcome.shown 2>nul
 )
 
