@@ -31,6 +31,7 @@
 | s51 | 小白可用性三主线(用户主线):管理面板六区块→六标签页(懒加载+重开重拉)/记忆清单搜索+50条上限+显示更多/数据表人话化(/api/db/_schema+点表名展开:人话类型+样例值+pk唯一,表名列名保原文);pf-qa 4修复(懒加载缓存面板不刷新回归/memAll=null/fuzz白名单钉子/err截断);e2e 26/26+fuzz 23/23;业务AI翻译永久裁掉 | s51 |
 | s51b-d | s51b:e2e.sh收尾挂死修复(goose输出走文件+python脱管,EXIT=0双跑);s51c:qa二轮换线自动重发竞态P1(重发挂subscribed后800ms)+P3×3(注释吞addInfo/tab aria/mcp轮询泄漏);s51d:P31-②配Key引导条落地(无key→引导条→现有⚙️面板,配好即消+chips重现,GUI双态A1-A4实景全过,桥零改动);独立向导页/任务选择层裁掉冻结挂P32 | s51 |
 | s52-53 | s52:gen-xlsx位置参数标题修复(JSON内title优先,7d35690)+文件树任务完成自动刷新(ACP stop分支挂renderCurPane,0cc98c0);s53:**tag v0.9.8打包+沙盒全新部署首任务冒烟A1/A2/A3/A5/A7全实景通过——s50部署缺口(无key首任务401)正式关闭**;真401/双档案换线实景留护航 | s53 |
+| s54 | MCP商店补「网页抓取」fetch-mcp@0.0.5(MIT,官方server-fetch无npm包,选型实测后入目录);复用s46机制零新代码;GUI实景:安装→重启挂载→goose调fetch_url正确回答;许可证以标注来源声明落档(包无LICENSE文件);e2e 26/26+fuzz 23/23 | s54 |
 ## 技术栈版本（全部 VERIFIED-RUN）
 process-compose v1.122.0 / nats-server v2.14.5 / nats-cli v0.4.0 / faucet v0.1.12 / goose v1.46.0 (AAIF) / node v22.21.1 / python 3.12 embeddable (Pillow 12.3.0；openpyxl 不在包内——s47 实测，旧记录失实已修正) / isomorphic-git 1.41.9 (vendored MIT, ADR-0007) / DOMPurify 3.2.4 (vendored Apache-2.0, s15)
 
@@ -58,5 +59,5 @@ ADR-0001 记忆拓扑 / ADR-0002 五件套技术栈 / ADR-0003 交付树+注册�
 - 工作区级「项目指令」（对照 Manus Projects master instruction）：.forge 元数据扩展 + prompt 注入，首月低频故 backlog
 - 多会话并行任务（Manus Wide Research 式）：妻子场景低频，backlog
 - /api/search 升级 FTS5：消息量 >1 万条时
-- **MCP 商店最小形态**（s42 研究结论）：不做市场，做"预装目录"——候选 = modelcontextprotocol/servers 的 **fetch**（轻量网页抓取转文本，不开浏览器）与 **sequential-thinking**（复杂任务推理）；两者均 npm stdio 型，走 ADR-0007 vendored 先例（开发机装进 bin/vendor/ 打包带上），UI 复用 s17 能力开关区块。入口数据源 = tools/components.yaml 扩展一项 mcp_catalog。落地预计一个周期。
+- ~~MCP 商店最小形态~~ → **完成**：s46 落地商店机制（sequential-thinking/memory-graph），s54 补 fetch（fetch-mcp@0.0.5 MIT，官方 server-fetch 无 npm 包，选型实测后入目录；GUI 实景：安装→重启挂载→goose 调 fetch_url 抓页正确回答）。Backlog「入口数据源扩 components.yaml」未做——现目录硬编码于桥内（3 项），项数稳定无需求，按需再议。
 - skill 商店远程化：skills-repo 与 GitHub repo 同构，sync 即得远程技能源（s42 已预留）
