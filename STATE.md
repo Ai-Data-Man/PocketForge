@@ -1,6 +1,6 @@
 # PocketForge 状态（永远反映"现在"；每次工作会话结束必须更新）
 
-- 更新：2026-08-29 s47/s47b/s48/s49（P31-① 本机部分 ✅：v0.9.5 包+沙盒全流程+双真任务冒烟+3 问题修复——时区显示/搜索✕残留/goosehints 教坏 cmd 引号形态（取证 T1–T7c）；P31-② 收窄版实现：报表引导卡进 dev 树，**GUI 点击流验证待下次会话**（IAB 输入管线中途失效）；P31-③ ✅ 本地使用统计 v1（data/stats/ 日文件 + /api/stats，artifactsGenerated/timeout 为标注占位）；首个 git tag v0.9.3→0.9.5；openpyxl 失实声明修正。真机 POC 待用户。s48+ stats 未进 v0.9.5 包，GUI 复核后随 v0.9.6 打包）
+- 更新：2026-08-29 s47/s47b/s48/s49/s50（s50 本会话：用户主线①数据引用统一+数据库可见性/可引用性——报表卡对齐 @ 契约(2a8625d)、/api/db/overview+@菜单DB分组+管理面板清单+hints三条(17657e9/a1098af)、GUI+真会话行为验证全过、降级态验证；主线②桥审查修复——事件循环冻结//open/注入面/POST上限/会话泄漏/剪贴板静默失败五项(70159b1/8296798)、重发人话文案(f21a006)、首启welcome 404(6c545a8)；**v0.9.6 打包+沙盒全新部署冒烟通过**（报表全链路 VERIFIED-RUN，数据吻合）；s48 报表卡 GUI 点击流挂起项闭环。部署缺口：全新包无 API key 首任务 401，护航时预填/引导配置）
 - 阶段：**P31 内测护航进行中**（①本机部分 ✅，真机 POC 待用户；②③④未开工）
 
 ## 已完成周期
@@ -27,6 +27,7 @@
 | s45/s46 | 外部技能市场（anthropics/skills 递归拉取安装+🌐UI）+ MCP 市场最小形态（精选目录/后台 npm vendor/写 extensions/bootstrap 保留 mcp-* 块）+ IA 重构 🧠 管理面板一级入口（s43）+ 项目须知.md（s44） | s43-s46 |
 | s17 (ADR-0010) | 能力中心+记忆可视化:设置面板新增「它会什么」扩展开关(数据库/浏览器/长期记忆)、「小forge记住的事」查看+删除(直读memory/*.txt,与MCP语义一致)、「安全护栏」大白话说明;/api/extensions+/api/memory;bootstrap保留用户开关值;审查轮:HTTP层Origin校验补齐(s15只修WS,恶意网页可跨站POST删记忆/触发升级)+空记忆分类过滤;GUI昼夜双主题断言通过 | s17 |
 | s47 | P31-①本机部分:package.sh记忆层守卫+清路径事故空目录;tag v0.9.3→打包→沙盒(C:\\PocketForge-Test)重部署→真实Edge全流程冒烟(体检任务:权限卡/超时放行/手动批准/大白话结论;报表任务:自愈生成xlsx→文件树→预览页→下载)→抓出修复时区显示+搜索✕残留2bug→tag v0.9.4 重打包,沙盒同步;沙盒栈停/dev栈起/回归全绿 | s47 |
+| s50 | 数据引用统一+DB可见性/可引用性(P31附加,用户主线):报表卡@形态(2a8625d)+/api/db/overview+@菜单DB分组+管理面板清单+hints三条(17657e9/a1098af,pm裁决书收窄版);桥五bug修复(70159b1/8296798:事件循环冻结//open/注入/POST上限/剪贴板detached)+重发人话(f21a006)+welcome 404(6c545a8);**v0.9.6打包+沙盒全新冒烟通过**(报表全链路,s48 GUI挂起项闭环) | s50 |
 
 ## 技术栈版本（全部 VERIFIED-RUN）
 process-compose v1.122.0 / nats-server v2.14.5 / nats-cli v0.4.0 / faucet v0.1.12 / goose v1.46.0 (AAIF) / node v22.21.1 / python 3.12 embeddable (Pillow 12.3.0；openpyxl 不在包内——s47 实测，旧记录失实已修正) / isomorphic-git 1.41.9 (vendored MIT, ADR-0007) / DOMPurify 3.2.4 (vendored Apache-2.0, s15)
