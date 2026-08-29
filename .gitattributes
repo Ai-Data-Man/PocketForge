@@ -1,0 +1,2 @@
+# s53: goose config.yaml 内残留混合 CRLF，autocrlf=true 每次翻出噪声 diff——钉死 LF
+forge/conf/goose/config/config.yaml text eol=lf
