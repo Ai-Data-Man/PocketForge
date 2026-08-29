@@ -514,6 +514,62 @@ function mcpWriteExtension(id, entry) {
     atomicWrite(CFG, raw.replace(/\n*$/, '\n') + block);
 }
 
+// ---- s50b: 库里有什么（GET /api/db/overview）——faucet CLI 发现实 + REST 数行数；端点不收任何用户参数 ----
+const FAUCET_EXE = path.join(ROOT, 'bin', 'faucet', 'faucet.exe');
+const DB_NAME_RE = /^[A-Za-z0-9_\-]+$/; // 服务/表名白名单：来自 faucet 输出，拼 CLI 参数/REST 路径前强制过一遍
+function faucetCli(args) {
+    return new Promise(resolve => {
+        const { execFile } = require('child_process');
+        execFile(FAUCET_EXE, args.concat(['--data-dir', path.join(ROOT, 'data', 'faucet')]),
+            { timeout: 5000, windowsHide: true, maxBuffer: 4 * 1024 * 1024 },
+            (e, stdout) => resolve(e ? null : String(stdout || '')));
+    });
+}
+function faucetRows(svc, tbl, port, key) {
+    return new Promise(resolve => {
+        let rq;
+        try {
+            rq = require('http').get({ hostname: '127.0.0.1', port, path: '/api/v1/' + svc + '/_table/' + tbl + '?fields=id', headers: { 'X-API-Key': key }, timeout: 4000 }, r => {
+                let b = '';
+                r.on('data', c => b += c);
+                r.on('end', () => { try { const j = JSON.parse(b); resolve(j.meta && typeof j.meta.count === 'number' ? j.meta.count : null); } catch { resolve(null); } });
+            });
+            rq.on('error', () => resolve(null));
+            rq.on('timeout', () => { rq.destroy(); resolve(null); });
+        } catch { resolve(null); }
+    });
+}
+async function dbOverview() {
+    let list;
+    try { list = JSON.parse(await faucetCli(['db', 'list', '--json']) || 'x'); } catch { return { ok: false }; }
+    if (!Array.isArray(list)) return { ok: false };
+    let port = 0, key = '';
+    try { port = parseInt(FSS.readFileSync(path.join(ROOT, 'data', 'faucet.port'), 'utf8').trim(), 10) || 0; } catch {}
+    try { key = FSS.readFileSync(path.join(ROOT, 'data', 'faucet', '.apikey'), 'utf8').trim(); } catch {}
+    const services = [];
+    let n = 0, truncated = 0;
+    for (const s of list) {
+        const svc = (s && s.name) || '';
+        if (!DB_NAME_RE.test(svc)) continue;
+        const entry = { service: svc, tables: [] };
+        services.push(entry);
+        let names = [];
+        try { names = ((JSON.parse(await faucetCli(['db', 'schema', svc]) || 'x') || {}).tables || []).map(t => (t && t.name) || '').filter(x => DB_NAME_RE.test(x)); } catch {}
+        for (const nm of names) {
+            if (n >= 50) { truncated++; continue; }
+            entry.tables.push({ name: nm, rows: null }); n++;
+        }
+    }
+    if (port && key) {
+        const jobs = [];
+        for (const en of services) for (const t of en.tables) jobs.push(faucetRows(en.service, t.name, port, key).then(c => { t.rows = c; }));
+        await Promise.all(jobs);
+    }
+    const out = { ok: true, services };
+    if (truncated) out.truncated = truncated;
+    return out;
+}
+
 async function handleHttp(req, res) {
     const url = (req.url || '/').split('?')[0];
     // R2-C1b(审查s17): WS 层有 Origin 校验，HTTP 层没有——恶意网页可跨站 POST
@@ -1078,6 +1134,12 @@ const ext = path.extname(f).toLowerCase();
         // P31-③: 当日匿名使用统计（只读；Origin 校验走 handleHttp 顶部全局规则，与 /api/memory 等同级）
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(stats));
+    }
+    else if (url === '/api/db/overview') {
+        // s50b: 数据库总览（只读；Origin 校验走 handleHttp 顶部全局规则）；仅 GET
+        if (req.method !== 'GET') { res.writeHead(405); res.end(); return; }
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        dbOverview().then(out => res.end(JSON.stringify(out))).catch(() => res.end(JSON.stringify({ ok: false })));
     }
     else if (url === '/api/sessions/archive') {
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });

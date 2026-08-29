@@ -345,6 +345,9 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
     <h3 style="margin:18px 0 8px">🧠 它会什么（本事开关）</h3>
   <div class="fnote" style="margin-bottom:10px">下面是您家数字员工自带的「本事」。关掉哪个，它就不会用那个本事（重启数字员工后生效）。拿不准就都开着。</div>
   <div id="ext-list"></div>
+  <h3 style="margin:18px 0 8px">🗄️ 库里的数据</h3>
+  <div class="fnote" style="margin-bottom:10px">数据库里现在存着这些表。想让小 forge 用哪张，聊天里打 @ 选「库里的数据」就行。</div>
+  <div id="db-list" style="max-height:180px;overflow-y:auto"></div>
   <h3 style="margin:18px 0 8px">💭 小 forge 记住的事</h3>
   <div class="fnote" style="margin-bottom:10px">它聊天时会自己记住您的偏好和做法，存在这个电脑里、不上网。点 ✕ 可以让它忘掉某一条；这些记忆只有它自己和您能看。</div>
   <div id="mem-list" style="max-height:220px;overflow-y:auto"></div>
@@ -990,7 +993,7 @@ $('mode').onchange=e=>{ localStorage.setItem('pf_mode',e.target.value);
   if(sessionId) rpc2('session/set_mode',{sessionId,modeId:e.target.value}).catch(()=>addErr('模式切换失败')); };
 $('open-settings').onclick=()=>{ $('modal').classList.add('on'); loadProvidersUI(); };
 // s43: 管理面板——本事/记忆/定时任务/护栏从设置迁出，一级入口
-$('open-manage').onclick=()=>{ $('manage-modal').classList.add('on'); loadExtUI(); loadMemUI(); loadSchedUI(); loadMcpUI(); };
+$('open-manage').onclick=()=>{ $('manage-modal').classList.add('on'); loadExtUI(); loadMemUI(); loadSchedUI(); loadMcpUI(); loadDbUI(); };
 // s46: MCP 市场 UI（安装是后台异步，轮询状态直到 done/error）
 let mcpPollTimer=null;
 async function loadMcpUI(){
@@ -1163,6 +1166,24 @@ async function loadMemUI(){
 
 $('modal').onclick=e=>{ if(e.target.id==='modal') $('modal').classList.remove('on'); };
 
+// s50b: 管理面板「库里的数据」小节——面板打开时懒加载（随 open-manage 调用）
+async function loadDbUI(){
+  const box=$('db-list'); if(!box) return;
+  box.innerHTML='<div class="fnote">正在看数据库…</div>';
+  const ov=await dbOverview();
+  if(!ov){ box.innerHTML='<div class="fnote">数据库没在跑，看不到明细。</div>'; return; }
+  box.innerHTML='';
+  let n=0;
+  for(const s of ov.services) for(const t of s.tables){
+    n++;
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px dashed var(--line);font-size:.82rem';
+    row.innerHTML='<b style="color:var(--acc);font-size:.72rem;margin-right:2px">'+esc(s.service)+'</b><span style="color:var(--mut)">·</span><span style="flex:1;word-break:break-all">'+esc(t.name)+'</span><span class="fnote">'+(t.rows==null?'－':t.rows+' 条')+'</span>';
+    box.appendChild(row);
+  }
+  if(!n) box.innerHTML='<div class="fnote">还没存数据。让小 forge 抓数时说一声存进数据库就行。</div>';
+}
+
 
 $('prov-add').onclick=()=>{
   const name=$('prov-name').value.trim(); if(!name)return note('先填一个名字，比如 公司中转');
@@ -1281,9 +1302,17 @@ $('save-cfg').onclick=()=>{
 };
 function note(t){ $('save-note').textContent=t; }
 let atItems=[];
+let dbOvCache={t:0,d:null}; // s50b: /api/db/overview 模块级 60s 内存缓存
+async function dbOverview(){
+  if(dbOvCache.d && Date.now()-dbOvCache.t<60000) return dbOvCache.d;
+  let d=null;
+  try{ const r=await apiJSON('/api/db/overview'); if(r&&r.ok) d=r; }catch(e){}
+  dbOvCache={t:Date.now(),d};
+  return d;
+}
 function renderAtMenu(q){
   if(!curWs) return;
-  fetch('/api/artifacts?ws='+encodeURIComponent(curWs)).then(r=>r.json()).then(list=>{
+  fetch('/api/artifacts?ws='+encodeURIComponent(curWs)).then(r=>r.json()).then(async list=>{
     atItems=list;
     const hits=list.filter(f=>f.name.toLowerCase().includes(q)).slice(0,12);
     const menu=$('at-menu');
@@ -1295,7 +1324,27 @@ function renderAtMenu(q){
         el.onclick=()=>{ txt.value=txt.value.replace(/@[^@\s]*$/,'data/artifacts/'+curWs+'/'+f.name.replace(/\/$/,'')+' '); $('at-menu').style.display='none'; txt.focus(); };
         menu.appendChild(el);
       }
-      menu.style.display=hits.length?'block':'none';
+      // s50b: 「库里的数据」——@ 也能引用数据库表（插入「数据库表 服务.表 」，goose 侧按 .goosehints 识别）
+      const ov=await dbOverview();
+      if(ov){
+        const tbls=[];
+        for(const s of ov.services) for(const t of s.tables){
+          if(!q || s.service.toLowerCase().includes(q) || t.name.toLowerCase().includes(q)) tbls.push({s:s.service,n:t.name,r:t.rows});
+        }
+        if(tbls.length){
+          const hd=document.createElement('div');
+          hd.style.cssText='padding:6px 14px 3px;font-size:11px;color:var(--mut);border-top:1px solid var(--line);margin-top:3px';
+          hd.textContent='库里的数据（点一下引用表名）';
+          menu.appendChild(hd);
+          for(const t of tbls.slice(0,12)){
+            const el=document.createElement('div'); el.className='mi';
+            el.innerHTML='<span>🗄️</span><b>'+esc(t.s+'.'+t.n)+'</b><span style="color:var(--mut);font-size:11px;margin-left:auto">'+(t.r==null?'－':t.r+' 条')+'</span>';
+            el.onclick=()=>{ txt.value=txt.value.replace(/@[^@\s]*$/,'数据库表 '+t.s+'.'+t.n+' '); $('at-menu').style.display='none'; txt.focus(); };
+            menu.appendChild(el);
+          }
+        }
+      }
+      menu.style.display=menu.children.length?'block':'none';
     }
   });
 }

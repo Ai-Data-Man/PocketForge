@@ -66,6 +66,20 @@ assert {'sid','title','role','ts','frag'} <= set(h)
 print('search-ok')" | grep -q search-ok; ck "chat history search finds seeded text" $?
 curl -s "$B/api/search?q=x" | grep -q '"hits":\[\]'; ck "search short-query returns empty" $?
 
+# ---------- 8) 数据库总览（s50b /api/db/overview） ----------
+curl -s "$B/api/db/overview" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+assert d['ok'] is True
+svcs={s['service']:s for s in d['services']}
+assert 'plm' in svcs and len(svcs['plm']['tables'])>=1
+for s in d['services']:
+    for t in s['tables']: assert t['rows'] is None or isinstance(t['rows'],int)
+print('db-overview-ok')" | grep -q db-overview-ok; ck "db/overview 200 ok:true with plm+tables" $?
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/db/overview")
+[ "$CODE" = "405" ]; ck "db/overview POST refused 405 (got $CODE)" $?
+curl -s "$B/api/db/overview" | grep -qviE 'apikey|X-API-Key'; ck "db/overview no apikey leak" $?
+
 rm -f /tmp/e2e-v1.md
 echo "=============================="
 echo "chat-link E2E: PASS=$PASS FAIL=$FAIL"

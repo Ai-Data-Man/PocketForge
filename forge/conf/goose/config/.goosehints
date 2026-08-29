@@ -9,6 +9,9 @@
 - 数据库网关 faucet：REST http://127.0.0.1:8091 ，MCP 工具 faucet_* 已挂载。
   - 建新库：先建 SQLite 文件 data/sqlite/<名>.db，再 `faucet db add --name <名> --driver sqlite --dsn <绝对路径> --data-dir data/faucet`，然后重启 faucet 进程（pc process restart faucet）。
   - 日常读写用 faucet_query / faucet_insert / faucet_update / faucet_describe_table。
+  - 数据发现纪律：用户提到数据/表/报表但没给文件时，先用 faucet_list_services + faucet_list_tables 看库里有什么，用一两句人话（哪个服务哪张表、大概多少行、内容是什么）向用户确认后再动手。
+  - 引用识别：消息里出现「数据库表 <服务>.<表>」就是 faucet 里的确定表名，直接用 faucet_query 等工具操作它，不猜、不改名、不要求用户澄清。
+  - 入库汇报：抓数入库后，必须用一两句人话告诉用户数据存进了哪个服务哪张表、大概多少条。
 - 浏览器：MCP 工具 browser_*（Playwright + 系统 Edge）。登录内网系统时提示用户在弹出的 Edge 窗口里人工登录一次，之后 profile 记住。
 - 消息/暂存：NATS CLI `"C:\ZCodeWorks\PocketForge\forge\bin\nats-cli\...\nats.exe" -s 127.0.0.1:4222 kv ...`（少用）。
 
