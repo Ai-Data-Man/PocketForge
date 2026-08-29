@@ -84,7 +84,14 @@ function readJson(f, dft) { try { return JSON.parse(FSS.readFileSync(f, 'utf8'))
 // artifactsGenerated v1 恒 0：gen-xlsx 走 goose 扩展不经过桥，无侵入的工作区 diff 扫描代价大，先只占位
 const STATS_DIR = path.join(ROOT, 'data', 'stats');
 const S26_ERR_RE = /Ran into this error|Server error|rate limit|timed? out|ECONN|fetch failed/i; // 与前端 endStream(s26) 同款上游故障正则
-const stats = { date: '', sessionsCreated: 0, messages: 0, errors: 0, errorsByType: { upstream: 0, websocket: 0, other: 0 }, permissionCards: { shown: 0, approved: 0, denied: 0, timeout: 0 }, artifactsGenerated: 0, updated: '' };
+const stats = { date: '', sessionsCreated: 0, messages: 0, errors: 0, errorsByType: { upstream: 0, websocket: 0, other: 0, upstreamByKind: { unauthorized: 0, rate: 0, timeout: 0, server: 0 } }, permissionCards: { shown: 0, approved: 0, denied: 0, timeout: 0 }, artifactsGenerated: 0, updated: '' };
+function classifyUpstream(txt) { // s50e: 上游错误细分（401=Key 没配好，429=限流，超时，其余=服务端）；取第一个命中
+    const s = String(txt || '');
+    if (/401|api key|unauthorized/i.test(s)) return 'unauthorized';
+    if (/rate limit|429/i.test(s)) return 'rate';
+    if (/timed out|timeout/i.test(s)) return 'timeout';
+    return 'server';
+}
 const permKinds = new Map(); // request_permission callId -> (optionId -> kind)，供 acp_reply 分类
 const turnText = new Map();  // sessionId -> 当轮 agent 文本累计（s26 流内报错检测用）
 function statsDay() { const d = new Date(), p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
@@ -101,7 +108,7 @@ function statsBump(key) {
         if (stats.date !== today) { // 跨天：计数器归零、写新文件
             stats.date = today;
             stats.sessionsCreated = 0; stats.messages = 0; stats.errors = 0;
-            stats.errorsByType = { upstream: 0, websocket: 0, other: 0 };
+            stats.errorsByType = { upstream: 0, websocket: 0, other: 0, upstreamByKind: { unauthorized: 0, rate: 0, timeout: 0, server: 0 } };
             stats.permissionCards = { shown: 0, approved: 0, denied: 0, timeout: 0 };
             stats.artifactsGenerated = 0;
         }
@@ -121,6 +128,7 @@ function statsBump(key) {
             for (const k of ['sessionsCreated', 'messages', 'errors', 'errorsByType', 'permissionCards', 'artifactsGenerated']) {
                 if (saved[k] !== undefined) stats[k] = saved[k];
             }
+            if (!stats.errorsByType.upstreamByKind) stats.errorsByType.upstreamByKind = { unauthorized: 0, rate: 0, timeout: 0, server: 0 }; // s50e: 旧格式当天文件补默认
             stats.updated = saved.updated || '';
         } else statsFlush();
     } catch {}
@@ -341,7 +349,7 @@ function onAcpData(chunk) {
                 } else if (msg.method === 'stop') {
                     const txt = turnText.get(sid) || '';
                     turnText.delete(sid);
-                    if (S26_ERR_RE.test(txt)) statsBump('errorsByType.upstream');
+                    if (S26_ERR_RE.test(txt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(txt)); }
                 }
             } catch {}
             const set = sid ? sessionClients.get(sid) : null;
@@ -1604,7 +1612,8 @@ function handleClient(ws, msg) {
             const id = nextId++;
             waiting.set(id, { ws, resolve: () => ws.send({ agent: { method: 'stop', params: { sessionId: sid, reason: 'end' } } }), reject: (e) => {
                 // P31-③: turn 失败按 s26 正则归类上游故障
-                if (S26_ERR_RE.test(String((e && e.message) || e))) statsBump('errorsByType.upstream');
+                const etxt = String((e && e.message) || e);
+                if (S26_ERR_RE.test(etxt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(etxt)); }
                 else statsBump('errorsByType.other');
                 ws.send({ sys: 'error', text: 'turn failed: ' + String(e.message || e) });
             } });

@@ -34,6 +34,14 @@ curl -s "$B/api/ws/tree?ws=../../../etc" >/dev/null; ck "ws/tree traversal rejec
 curl -s "$B/api/vcs/log?ws=x&file=../../y" >/dev/null; ck "vcs traversal rejected" $?
 # P31-③: stats 端点形状（只读，JSON 可解析且含关键字段）
 curl -s "$B/api/stats" | python -c "import sys,json;d=json.load(sys.stdin);assert d['date'] and 'updated' in d and d['sessionsCreated'] >= 0"; ck "stats endpoint shape" $?
+# s50e: stats 若含 upstreamByKind 则必须为对象且四键为数字（结构验证，不逼真实上游错）
+curl -s "$B/api/stats" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+k=d.get('errorsByType',{}).get('upstreamByKind')
+if k is not None:
+    assert isinstance(k,dict) and all(isinstance(k.get(x),(int,float)) for x in ('unauthorized','rate','timeout','server')), k
+"; ck "stats upstreamByKind shape" $?
 # s50b: db/overview 不收参数——垃圾 query 不影响响应形状（端点无用户输入面）
 curl -s "$B/api/db/overview?ws=../../etc" | python -c "import sys,json;d=json.load(sys.stdin);assert 'services' in d"; ck "db overview traversal query ignored" $?
 curl -s "$B/api/db/overview?service=x%27" | python -c "import sys,json;d=json.load(sys.stdin);assert 'services' in d"; ck "db overview quote query ignored" $?
