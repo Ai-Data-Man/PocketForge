@@ -33,3 +33,10 @@
 - 修复（双防御）：①goose 输出改写 /tmp/e2e-goose.out 再 tail；②fake-plm python 加 `</dev/null` 三向脱管。
 - 连带事故：e2e 第 5 步 down/重启后孤儿 nats(3856)/faucet(13632) 抢端口（父已死），pc 的 nats Restarting 循环——按既有坑记录 taskkill 清理+pc restart chat-bridge 后恢复。终态：e2e.sh 8/8 + e2e-chat 26/26 + fuzz 23/23 全绿。
 - UNVERIFIED（环境层，不阻断）：MSYS bash 偶发无子进程仍挂死（幻影 ps 条目）——dev 环境特性，目标机交付树不含 e2e 脚本，不再深挖。
+
+## s51c：pf-qa 二轮 → 换线自动重发竞态修复（P1）+ P3×3
+- 二审结论：s51b 挂死修复机制成立；s50e 401 人话文案静态复测成立（裸 401 须上下文词，10 组样本无误报）；_schema 注入/XSS/二次解码/duplicate 参数（get 取首个，方向安全）/8KB URL 全过。
+- **FIND-1（P1）**：provider_switched 里 `subscribe(null); f()` 同步执行——sessionId 要等 subscribed 回包才更新，自动重发打到旧死会话（桥 hotRestart 不清 wsSession WeakMap → session not found）。修复：对齐同文件 pendingSwitch 范式——switched 时仅 subscribe(null)，重发挂 subscribed 分支 setTimeout 800ms。桥侧零改动。
+- P3-1 换线确认提示 addInfo 被行尾注释吞掉 → 救回独立成行；P3-2 六 tab 补 role=tablist/tab + aria-selected 同步；P3-5 关管理弹窗 clearTimeout(mcpPollTimer)。
+- 备忘（未修，低频）：裸 401 无闸词时静默（P3-3）；错误文本含用户自己说过的「api key」回声会误路由 401 分支（P3-4）；e2e.sh 结束不回收 8124 fake-plm（P3-6，残留进程家族另一成员）。
+- 回归：e2e 26/26 + fuzz 23/23。真 401/双档案实景留护航（dev 中转不校验 key 制造不出来）。

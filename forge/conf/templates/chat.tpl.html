@@ -342,13 +342,13 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 <div id="manage-modal" class="modal-bg"><div class="panel-box">
   <h3>🧠 管理小 forge</h3>
   <div class="fnote" style="margin-bottom:10px">它是什么样、会什么、记了什么、几点干活——都在这里。</div>
-  <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:8px">
-    <button class="rtab on mtab" data-pane="ext">🧠 本事</button>
-    <button class="rtab mtab" data-pane="db">🗄️ 数据</button>
-    <button class="rtab mtab" data-pane="mem">💭 记忆</button>
-    <button class="rtab mtab" data-pane="sched">⏰ 定时</button>
-    <button class="rtab mtab" data-pane="mcp">🔌 插件</button>
-    <button class="rtab mtab" data-pane="guard">🛡 护栏</button>
+  <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:8px" role="tablist">
+    <button class="rtab on mtab" data-pane="ext" role="tab" aria-selected="true">🧠 本事</button>
+    <button class="rtab mtab" data-pane="db" role="tab" aria-selected="false">🗄️ 数据</button>
+    <button class="rtab mtab" data-pane="mem" role="tab" aria-selected="false">💭 记忆</button>
+    <button class="rtab mtab" data-pane="sched" role="tab" aria-selected="false">⏰ 定时</button>
+    <button class="rtab mtab" data-pane="mcp" role="tab" aria-selected="false">🔌 插件</button>
+    <button class="rtab mtab" data-pane="guard" role="tab" aria-selected="false">🛡 护栏</button>
   </div>
   <div class="mpane" id="mpane-ext">
     <h3 style="margin:0 0 8px">它会什么（本事开关）</h3>
@@ -494,6 +494,7 @@ function connect(){
     if(m.sys==='subscribed'){
       sessionId=m.sessionId; currentSid=m.sessionId;
       if(pendingSwitch){ const v=pendingSwitch; pendingSwitch=null; setTimeout(()=>wssend({type:'switch_model',model:v}),800); }
+      if(pendingRetry){ const f=pendingRetry; pendingRetry=null; setTimeout(f,800); } // s51c: hotRestart 新会话 ready 后再自动重发（原先同步发打到旧死会话）
       document.querySelectorAll('.sitem').forEach(el=>el.classList.toggle('active', el.dataset.sid===m.sessionId));
       modes=(m.modes&&m.modes.availableModes)||[]; configOptions=m.configOptions||[];
     let cur=(m.modes&&m.modes.currentModeId); const saved=localStorage.getItem('pf_mode');
@@ -522,7 +523,7 @@ function connect(){
       return;
     }
     if(m.sys==='provider_switching'){ addInfo('正在切换到「'+m.to+'」…大约 5 秒，稍等提示。'); return; }
-    if(m.sys==='provider_switched'){ addInfo('✅ 已切到 '+m.provider+'（默认模型 '+m.model+'）。'); loadSessions(); if(pendingRetry){ const f=pendingRetry; pendingRetry=null; subscribe(null); f(); } return; }
+    if(m.sys==='provider_switched'){ addInfo('✅ 已切到 '+m.provider+'（默认模型 '+m.model+'）。'); loadSessions(); if(pendingRetry){ subscribe(null); return; } return; } // s51c: 重发挂到 subscribed（新会话 ready 后才发，见下方消费点）
     if(m.sys==='saved_config'){ note('已保存'); return; }
     if(m.sys==='tool_explanation'){
       const card=toolCards.get(m.id); if(!card) return;
@@ -830,7 +831,8 @@ function endStream(){ if(streamEl){
         const b=document.createElement('button'); b.className='msgbtn'; b.textContent='换备用线路再试';
         b.onclick=()=>{
           b.disabled=true; b.textContent='正在换线路…';
-          pendingRetry=()=>{ if(busy) return; if(txt.value.trim()&&txt.value.trim()!==orig){ el.remove(); return; } txt.value=orig; submit(); el.remove(); }; // s50f: 用户已打新草稿则放弃自动重发（保留草稿、摘掉按钮）          addInfo('已换到「'+spare.name+'」再试一次。');
+          pendingRetry=()=>{ if(busy) return; if(txt.value.trim()&&txt.value.trim()!==orig){ el.remove(); return; } txt.value=orig; submit(); el.remove(); }; // s50f: 用户已打新草稿则放弃自动重发（保留草稿、摘掉按钮）
+          addInfo('已换到「'+spare.name+'」再试一次。'); // s51c: 从行尾注释里救回（原被注释吞掉永不执行）
           wssend({type:'providers',save:true,activate:spare.name});
         };
         el.appendChild(b);
@@ -1036,7 +1038,7 @@ $('open-settings').onclick=()=>{ $('modal').classList.add('on'); loadProvidersUI
 // s51: 六区块→标签页，懒加载（首次切到该 tab 才拉，拉过缓存不重复拉）
 const mtabs={ext:['loadExtUI',false],db:['loadDbUI',false],mem:['loadMemUI',false],sched:['loadSchedUI',false],mcp:['loadMcpUI',false]};
 function showMtab(name){
-  document.querySelectorAll('#manage-modal .mtab').forEach(b=>b.classList.toggle('on',b.dataset.pane===name));
+  document.querySelectorAll('#manage-modal .mtab').forEach(b=>{const on=b.dataset.pane===name;b.classList.toggle('on',on);b.setAttribute('aria-selected',on);});
   document.querySelectorAll('#manage-modal .mpane').forEach(p=>p.style.display=p.id==='mpane-'+name?'':'none');
   const t=mtabs[name];
   if(t&&!t[1]){ t[1]=true; window[t[0]](); }
@@ -1074,7 +1076,7 @@ async function installMcp(id){
   try{ await apiJSON('/api/mcpstore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id})}); }catch(e){}
   loadMcpUI();
 }
-$('manage-modal').onclick=e=>{ if(e.target.id==='manage-modal') e.target.classList.remove('on'); };
+$('manage-modal').onclick=e=>{ if(e.target.id==='manage-modal'){ e.target.classList.remove('on'); clearTimeout(mcpPollTimer); } }; // s51c: 关弹窗停安装轮询
 
 // ---- s32: 定时任务列表（只读+删除；设置由聊天对话完成） ----
 function cronHuman(cron){
