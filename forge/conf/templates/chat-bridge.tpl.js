@@ -84,7 +84,7 @@ function readJson(f, dft) { try { return JSON.parse(FSS.readFileSync(f, 'utf8').
 // permissionCards.timeout v1 恒 0：前端 60s 超时兜底同样发 acp_reply(allow_once)，桥内与手动「这次可以」不可区分
 // artifactsGenerated v1 恒 0：gen-xlsx 走 goose 扩展不经过桥，无侵入的工作区 diff 扫描代价大，先只占位
 const STATS_DIR = path.join(ROOT, 'data', 'stats');
-const S26_ERR_RE = /Ran into this error|Server error|rate limit|timed? out|ECONN|fetch failed/i; // 与前端 endStream(s26) 同款上游故障正则
+const S26_ERR_RE = /Ran into this error|Server error|rate limit|timed? out|ECONN|fetch failed|could not connect|network error/i; // 与前端 endStream(s26) 同款上游故障正则
 const stats = { date: '', sessionsCreated: 0, messages: 0, errors: 0, errorsByType: { upstream: 0, websocket: 0, other: 0, upstreamByKind: { unauthorized: 0, rate: 0, timeout: 0, server: 0 } }, permissionCards: { shown: 0, approved: 0, denied: 0, timeout: 0 }, artifactsGenerated: 0, updated: '' };
 function classifyUpstream(txt) { // s50e: 上游错误细分（401=Key 没配好，429=限流，超时，其余=服务端）；取第一个命中
     const s = String(txt || '');
@@ -1610,7 +1610,14 @@ function handleClient(ws, msg) {
             if (!sid) return ws.send({ sys: 'error', text: '这场对话已经不在了（可能刚重启过）。点左侧「＋ 新对话」重新开始，把想做的事再说一遍就行。' });
             statsBump('messages'); // P31-③: 用户发出 prompt 计数（agent 回复不计）
             const id = nextId++;
-            waiting.set(id, { ws, resolve: () => ws.send({ agent: { method: 'stop', params: { sessionId: sid, reason: 'end' } } }), reject: (e) => {
+            waiting.set(id, { ws, resolve: () => {
+                // s50e 修复：goose 上游故障以 agent_message_chunk 文本随正常 turn 结束返回（session/prompt 正常 resolve，非 reject），
+                // 故在 turn 结束处对当轮累计文本跑 s26 正则（:349 的 stop 通知分支 goose ACP 模式从不发，为死代码）
+                const txt = turnText.get(sid) || '';
+                turnText.delete(sid);
+                if (S26_ERR_RE.test(txt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(txt)); }
+                ws.send({ agent: { method: 'stop', params: { sessionId: sid, reason: 'end' } } });
+            }, reject: (e) => {
                 // P31-③: turn 失败按 s26 正则归类上游故障
                 const etxt = String((e && e.message) || e);
                 if (S26_ERR_RE.test(etxt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(etxt)); }

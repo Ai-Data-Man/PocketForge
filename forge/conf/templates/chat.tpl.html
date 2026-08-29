@@ -795,7 +795,7 @@ function endStream(){ if(streamEl){
   streamEl.innerHTML = mdRender(txt);
   if(!streamEl.querySelector('.mbar')) streamEl.appendChild(msgButtons());
   // s25: 大白话报错转译——上游/服务商故障时给小白一句能懂的提示；s50e: 401=Key 没配好，指引去设置；其余给「换备用线路」一键
-  if(/Ran into this error|Server error|rate limit|timed? out|ECONN|fetch failed/i.test(txt)){
+  if(/Ran into this error|Server error|rate limit|timed? out|ECONN|fetch failed|could not connect|network error/i.test(txt)){
     const orig=streamEl.dataset.orig||txt; // s50e: 重发原文（提示词注入前的用户输入）
     const el=document.createElement('div'); el.className='msg agent info';
     if(/401|api key|unauthorized/i.test(txt)){
