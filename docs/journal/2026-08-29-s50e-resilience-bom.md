@@ -54,3 +54,11 @@
 - **根因（三样本一致，机制链 VERIFIED-RUN）**：dev-stack-up.ps1 前台 `&` 拉起 pc → pc 挂在调用者（ZCode 子代理后台任务）进程树下 → 任务被收割时 pc 被沿树硬杀（无 shutdown 日志=外部 TerminateProcess，事件日志排除崩溃/RDP 断连）。收割单位是「宿主 background bash 任务」而非会话。**目标机形态天然免疫**（用户双击=explorer 链）——开发会话特有缺陷，不阻断交付。
 - 修复：dev-stack-up.ps1 改 Start-Process detached 拉起+30s 就绪等待返回；实测 pc 父进程死亡仍存活。附带发现：PS 5.1 解析含中文注释的 ps1 必须 UTF-8 BOM（bootstrap.ps1 有故从未踩中；Edit 工具写文件无 BOM 触发）。
 - 回归：e2e 21/21 + fuzz 21/21（新 detached 栈上）。
+
+## v0.9.7 打包与沙盒冒烟（护航候选包）
+- 决策：v0.9.6 后又积 7 个 fix（s50e/f/g/h，含 WS 协议面 P1×2）——真机护航必须用最新代码，否则护航发现会与已修问题混淆 → tag v0.9.7（tag=f55b1b3）。
+- 包验证：WS sid 校验文案、/open/. 400、upstreamByKind 结构均在包内；sha256 就位。
+- 沙盒（C:\PocketForge-Test）全新部署：桥上 8790、stats 含 upstreamByKind、db/overview 空态、Origin 403、/open/. bad name、faucet 8091 ready、nats 4222 功能探活（kv ls 应答）全绿。pc 面板 nats 显示 Not Ready 但功能正常=探活滞后显示问题（记录，不修）。
+- 环境注意（复述既有约束）：沙盒与 dev 栈端口互斥（4222/8790 不可并存），沙盒冒烟须先 down dev 栈；沙盒反复重启会留孤儿 nats 抢 4222，需清理后才恢复。
+- secrets 预填 FORGE_AGENT_API_KEY 后首任务不再 401（s50 缺口的临时对策，长期解=P31-② 向导配 Key 步）。
+- 冒烟完成后 dev 栈以 detached 方式拉回（66c2c5e 修复后首次实战拉起）。
