@@ -1199,6 +1199,12 @@ async function loadDbUI(){
     box.appendChild(row);
   }
   if(!n) box.innerHTML='<div class="fnote">还没存数据。让小 forge 抓数时说一声存进数据库就行。</div>';
+  if(ov.truncated){
+    const tr=document.createElement('div');
+    tr.className='fnote'; tr.style.marginTop='6px';
+    tr.textContent='表太多了，还有 '+ov.truncated+' 张没列出来（不影响小 forge 使用它们）。';
+    box.appendChild(tr);
+  }
 }
 
 
@@ -1362,6 +1368,12 @@ function renderAtMenu(q){
             el.innerHTML='<span>🗄️</span><b>'+esc(t.s+'.'+t.n)+'</b><span style="color:var(--mut);font-size:11px;margin-left:auto">'+(t.r==null?'－':t.r+' 条')+'</span>';
             el.onclick=()=>{ txt.value=txt.value.replace(/@[^@\s]*$/,'数据库表 '+t.s+'.'+t.n+' '); $('at-menu').style.display='none'; txt.focus(); };
             menu.appendChild(el);
+          }
+          if(tbls.length>12){
+            const more=document.createElement('div');
+            more.style.cssText='padding:3px 14px 6px;font-size:11px;color:var(--mut)';
+            more.textContent='还有 '+(tbls.length-12)+' 张表没列出来，多打几个字缩小范围。';
+            menu.appendChild(more);
           }
         }
       }
