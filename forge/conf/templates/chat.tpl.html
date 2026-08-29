@@ -960,7 +960,7 @@ function onAgentEvent(p){
     setTimeout(()=>settle(onceOpt.optionId,'（等太久，自动选了 '+onceMeta.t+'）'),60000);
     return;
   }
-  if(p.method==='stop'){ setBusy(false); endStream(); loadSessions(); }
+  if(p.method==='stop'){ setBusy(false); endStream(); loadSessions(); renderCurPane(); } // s52b: 任务完成自动刷新文件树（小白不用手动刷新找文件）
 }
 function submit(){
   const t=txt.value.trim(); if(!t)return;
