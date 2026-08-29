@@ -23,7 +23,16 @@ curl -s --max-time 3 http://127.0.0.1:8124/fake-plm.html | grep -q 零件库存�
 export GOOSE_PATH_ROOT="$(cygpath -w "$FORGE/conf/goose")"
 export GOOSE_DISABLE_KEYRING=1 GOOSE_TELEMETRY_ENABLED=false GOOSE_MODE=auto
 export NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost
-# OPENAI_* 已在环境（runbook 说明）
+# s50: OPENAI_* 自包含——从 secrets.env 注入（旧法依赖调用者 shell 预先 export，后台任务跑必 401）
+if [ -f "$FORGE/data/secrets.env" ]; then
+  while IFS='=' read -r k v; do
+    case "$k" in
+      FORGE_AGENT_HOST) export OPENAI_HOST="$v"; export GOOSE_PROVIDER=openai ;;
+      FORGE_AGENT_API_KEY) [ -n "$v" ] && export OPENAI_API_KEY="$v" ;;
+      GOOSE_MODEL_NAME) [ -n "$v" ] && export GOOSE_MODEL="$v" ;;
+    esac
+  done < <(grep -v '^#' "$FORGE/data/secrets.env")
+fi
 cd "$FORGE"
 OUT=$(timeout -k 5 600 bin/goose/goose-package/goose.exe run -t "任务：1) 用 browser 工具打开 http://127.0.0.1:8124/fake-plm.html 等表格加载完成，读出全部零件行；2) 若 plm 服务无 parts_e2e 表则用 faucet_raw_sql 创建(id INTEGER PRIMARY KEY, code TEXT, name TEXT, qty INTEGER, updated TEXT)；3) 把抓到的行全部 faucet_insert 进 parts_e2e（先 DELETE 旧数据）；4) 最后 faucet_query 该表并输出行数。不要做别的。" 2>&1 | tail -30 || true)
 echo "--- goose output tail ---"; echo "$OUT" | tail -8; echo "--- end ---"
