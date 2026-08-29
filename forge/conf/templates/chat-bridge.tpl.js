@@ -78,7 +78,8 @@ function atomicWrite(file, data) {
         db.close();
     } catch (e) { console.error('prune scheduled failed:', e.message); }
 })();
-function readJson(f, dft) { try { return JSON.parse(FSS.readFileSync(f, 'utf8')); } catch { return dft; } }
+// s50e: strip UTF-8 BOM——记事本默认带 BOM 保存，不剥则 JSON.parse 抛错、配置"消失"
+function readJson(f, dft) { try { return JSON.parse(FSS.readFileSync(f, 'utf8').replace(/^\uFEFF/, '')); } catch { return dft; } }
 // ---- P31-③ 匿名本地使用统计 v1：仅写本地 data/stats/usage-YYYYMMDD.json，无外传、无 UI ----
 // permissionCards.timeout v1 恒 0：前端 60s 超时兜底同样发 acp_reply(allow_once)，桥内与手动「这次可以」不可区分
 // artifactsGenerated v1 恒 0：gen-xlsx 走 goose 扩展不经过桥，无侵入的工作区 diff 扫描代价大，先只占位
@@ -143,7 +144,7 @@ const STATE_SCHEMAS = {
 function migrateJsonAt(f, key) {
     const meta = STATE_SCHEMAS[key];
     if (!meta) return;
-    let j; try { j = JSON.parse(FSS.readFileSync(f, 'utf8')); } catch { return; }
+    const j = readJson(f, undefined); if (j === undefined) return;
     let v = (typeof j._schema === 'number') ? j._schema : 0;
     if (v > meta.latest) { stateWarnings.push(key + ' 由更新版本创建(schema ' + v + ' > ' + meta.latest + ')，已保持原样'); return; }
     if (v === meta.latest) return;
@@ -188,17 +189,17 @@ function wsNewId() {
     return id;
 }
 const WSMAP_FILE = path.join(ROOT, 'data', 'workspace-map.json');
-function readWsMap() { try { return JSON.parse(FSS.readFileSync(WSMAP_FILE, 'utf8')); } catch { return {}; } }
+function readWsMap() { return readJson(WSMAP_FILE, {}); }
 function writeWsMap(m) { FSS.mkdirSync(path.dirname(WSMAP_FILE), { recursive: true }); atomicWrite(WSMAP_FILE, JSON.stringify(m, null, 2)); }
 
 // ---- 工作区元数据(.forge,ADR-0008):附件身份等语义信息与存放路径解耦 ----
 function forgeFile(ws) { return path.join(wsDir(ws), '.forge'); }
-function readForgeMeta(ws) { try { return JSON.parse(FSS.readFileSync(forgeFile(ws), 'utf8')); } catch { return {}; } }
+function readForgeMeta(ws) { return readJson(forgeFile(ws), {}); }
 function writeForgeMeta(ws, meta) { try { atomicWrite(forgeFile(ws), JSON.stringify(meta, null, 2)); } catch {} }
 
 // ---- 会话归档(data/session-archive.json):纯 UI 生命周期态 ----
 const ARCH_FILE = path.join(ROOT, 'data', 'session-archive.json');
-function readArch() { try { return JSON.parse(FSS.readFileSync(ARCH_FILE, 'utf8')); } catch { return {}; } }
+function readArch() { return readJson(ARCH_FILE, {}); }
 function writeArch(m) { FSS.mkdirSync(path.dirname(ARCH_FILE), { recursive: true }); atomicWrite(ARCH_FILE, JSON.stringify(m, null, 2)); }
 function wsState(id, map, arch, sid, files, meta) {
     if (!sid) return 'orphan';
@@ -261,8 +262,7 @@ function vcsTime(ts) {
 // ---- provider profiles (data/providers.json v2): [{name,host,key,models[],active}] ----
 const PROV_FILE = path.join(ROOT, 'data', 'providers.json');
 function readProviders() {
-    let list = [];
-    try { list = JSON.parse(require('fs').readFileSync(PROV_FILE, 'utf8')); } catch { return []; }
+    const list = readJson(PROV_FILE, []);
     // v1->v2 迁移：model(单值) -> models(数组)
     for (const p of list) {
         if (!Array.isArray(p.models)) p.models = p.model ? [p.model] : [];
