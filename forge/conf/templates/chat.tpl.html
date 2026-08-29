@@ -1122,7 +1122,6 @@ async function apiJSON(url, opt){
   const r = await fetch(url, opt);
   try { return await r.json(); } catch(e){ throw new Error('接口异常 '+r.status); }
 }
-function esc(s){ const d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML; }
 async function loadExtUI(){
   const box=$('ext-list'); if(!box) return;
   let list;
@@ -1723,7 +1722,7 @@ function tactBtn(txt,title,fn){
   b.onclick=(ev)=>{ ev.stopPropagation(); ev.preventDefault(); fn(ev); };
   return b;
 }
-function esc(s){ return String(s).split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;'); }
+function esc(s){ return String(s==null?'':s).split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;').split('"').join('&quot;').split("'").join('&#39;'); }
 function markSel(){
   document.querySelectorAll('#rtree .tdir>summary').forEach(s2=>s2.classList.toggle('sel',s2.dataset.dir===selDir));
   const h=$('cur-head'); if(!h||!curWs) return;
