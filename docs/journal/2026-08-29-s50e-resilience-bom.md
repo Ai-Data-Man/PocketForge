@@ -22,3 +22,8 @@
 
 ## 遗留状态
 - v0.9.6 包（tag=fbc6031）不含 s50e/73a3fda——两改动待护航数据/GUI 复核后随 v0.9.7。STATE 路线区 P31-④ 条目主控已按裁决改写。
+
+## GUI 全链路终验（主控，fced41e 后）
+- 坏 host 实验（providers.json 公司中转→127.0.0.1:9）：发「你好」→ 人话提示 + 「换备用线路再试」按钮出现（fced41e 正则修复生效）→ 点击 → 顶栏切「备用线路 · kimi-k2.7-code」+ hotRestart 新会话 → 重发「你好」真实落库（sessions.db 20260829_16，17:33，含工作区备注）→ providers.json 还原+桥重启 → e2e 21/21 + fuzz 16/16。
+- 行为注记：换线重发落在新会话（hotRestart 语义），原对话历史保留在旧会话；符合「切线路重试」预期。
+- s25 时代死代码根因（fced41e 取证）：goose ACP 从不发流内 stop 错误形态，prompt 正常 resolve、错误文本走 session/update——统计触发点改在 prompt resolve 处。
