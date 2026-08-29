@@ -798,7 +798,7 @@ function endStream(){ if(streamEl){
   if(/Ran into this error|Server error|rate limit|timed? out|ECONN|fetch failed|could not connect|network error/i.test(txt)){
     const orig=streamEl.dataset.orig||txt; // s50e: 重发原文（提示词注入前的用户输入）
     const el=document.createElement('div'); el.className='msg agent info';
-    if(/401|api key|unauthorized/i.test(txt)){
+    if(/401\s*(unauthorized|invalid|forbidden)?[^\n]{0,40}(unauthorized|invalid|api[ _-]?key)|api[ _-]?key|unauthorized/i.test(txt)){ // s50f: 裸 401 须伴随上下文词，避免「共 401 条记录」误报
       el.textContent='💡 这家服务商的 Key 没配上或不对。到 ⚙️ 设置 → 服务商档案，填好 Key 再回来点重发。';
       chat.appendChild(el);
     } else {
@@ -808,7 +808,7 @@ function endStream(){ if(streamEl){
         const b=document.createElement('button'); b.className='msgbtn'; b.textContent='换备用线路再试';
         b.onclick=()=>{
           b.disabled=true; b.textContent='正在换线路…';
-          pendingRetry=()=>{ txt.value=orig; submit(); el.remove(); };          addInfo('已换到「'+spare.name+'」再试一次。');
+          pendingRetry=()=>{ if(busy) return; if(txt.value.trim()&&txt.value.trim()!==orig){ el.remove(); return; } txt.value=orig; submit(); el.remove(); }; // s50f: 用户已打新草稿则放弃自动重发（保留草稿、摘掉按钮）          addInfo('已换到「'+spare.name+'」再试一次。');
           wssend({type:'providers',save:true,activate:spare.name});
         };
         el.appendChild(b);
@@ -1328,9 +1328,12 @@ async function dbOverview(){
   dbOvCache={t:Date.now(),d};
   return d;
 }
+let atGen=0; // s50f: 竞态守卫——连续输入 @a→@ab 时旧轮迟到响应不得写进新菜单
 function renderAtMenu(q){
   if(!curWs) return;
+  const gen=++atGen;
   fetch('/api/artifacts?ws='+encodeURIComponent(curWs)).then(r=>r.json()).then(async list=>{
+    if(gen!==atGen) return;
     atItems=list;
     const hits=list.filter(f=>f.name.toLowerCase().includes(q)).slice(0,12);
     const menu=$('at-menu');
@@ -1344,6 +1347,7 @@ function renderAtMenu(q){
       }
       // s50b: 「库里的数据」——@ 也能引用数据库表（插入「数据库表 服务.表 」，goose 侧按 .goosehints 识别）
       const ov=await dbOverview();
+      if(gen!==atGen) return;
       if(ov){
         const tbls=[];
         for(const s of ov.services) for(const t of s.tables){
