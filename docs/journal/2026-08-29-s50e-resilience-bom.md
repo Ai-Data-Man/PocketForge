@@ -40,3 +40,12 @@
 - 取证修正：两版都不转义 " '（"强版本"只是 innerHTML 法伪强），同 script 提升后后者覆盖前者，29 个调用点全走弱版。
 - 收敛为唯一标准版（& < > " ' 五字符 + null 安全），data-p 属性逃逸面封死；调用点零改动；断言含属性逃逸模拟。
 - e2e 21/21 + fuzz 16/16。跟进项：其他模板（index 等）同类双定义未审计。
+
+## s50h：第二轮 fuzz 猎捕 → WS 协议面 4 缺陷修复（commit 30e4f9d，+15/−4 + fuzz 5 断言）
+- pf-qa 模糊测试新向量（对今日全部新端点/逻辑）：4 FIND + 环境异常 FIND-0。
+- FIND-2（P1）：WS subscribe 无 sid 校验（HTTP 面有 sidValid 白名单，WS 面裸奔）→ 入口校验+人话 error。
+- FIND-4（P1）：prompt 假成功（ghost sid 空 turn 正常 resolve）+ text 无上限 → wsSession 一致性校验 + 空/256KB 上限人话拒。根因修复：删掉 `|| msg.sessionId` 回退。
+- FIND-1（P2）：/open/. 与 %2e 打开 artifacts 目录 → 显式拒点号开头+fileNameSafe。
+- FIND-3（P2）：skillstore 不过保留名（con 可装出不可删目录）→ fileNameSafe 双分支补齐。
+- 探针 11/11（ws-fuzz-s50h.js 收编）；fuzz-chat 16→21；e2e 21/21（裸桥+pc 托管双绿）。
+- FIND-0 环境真相：restart 策略本就配置齐全（availability.restart=on_failure），但 **pc 进程本身退出**（8099 无监听）→ 桥成孤儿无人管。今日第二次观测到 pc 退出（17:01 一次、本轮一次）。**跟进项：pc 为何退出（可疑指向 启动数字员工.cmd/调度链），真机护航前必须归因**——pf-researcher 待派。
