@@ -277,8 +277,9 @@ if (require.main === module) {
       }
     } else if (spec === null) {
       spec = parseJsonArg(args[i]);
+    } else if (spec.title === undefined && typeof args[i] === 'string' && args[i]) {
+      spec.title = args[i]; // s52: usage 文档承诺的末尾位置参数标题（此前被静默忽略）；JSON 内已带 title 时以 JSON 为准
     }
-    // 其余多余参数（如末尾标题）与旧版一致，忽略
   }
   if (spec === null) {
     console.error('缺少 JSON 数据。用法：node gen-xlsx.js 输出.xlsx "{\\"sheetName\\":\\"表名\\",\\"headers\\":[...],\\"rows\":[...]}" [标题]');
