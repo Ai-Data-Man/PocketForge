@@ -22,6 +22,14 @@
 - 行为注记：浏览器缓存旧模板导致首验误判——F5 后新页面生效（交付树有 no-cache 头，仅已开页面需刷新）。
 
 ## 遗留 / 记录
-- samples 只展示第 1 行；BLOB 列渲染为空串而非 [object Object]（cutVal 已 String() 兜底）；展开无并发节流（单用户本地可接受，QA 记录在案）。
+- samples 只展示第 1 行（符合 PM 裁决「每列列名+人话类型+样例值」单样例形态）；BLOB 列 cutVal String() 兜底为空串；展开无并发节流（单用户本地可接受，QA 记录在案）。
 - 业务别名表（parts→零件）等真机 POC 出现固定业务库后再议（PM：人工维护，不做 AI 猜测）。
 - v0.9.7 护航候选包不含本改动；随下版打包。
+- **流程坑（本轮险情）**：chat-bridge.js 真相源是 conf/templates/chat-bridge.tpl.js，bin/ 产物是 cp 同步且被 gitignore——直接改 bin 会静默脱同步（本轮 commit 前 diff 抓回，已移植 tpl+重同步+复验）。后续改桥必须先改 tpl。
+
+## s51b：e2e.sh 收尾挂死修复（EXIT=0 验证）
+- 症状：全量 e2e.sh 逻辑 8/8 PASS 但 bash 永不退出，连续 4 代僵尸树各挂一只 python http.server 8124；后台任务模式输出 log 0 字节（tail 缓冲不刷）。
+- 归因（单变量隔离）：stdout 走管道（`| tail`）时，goose run 拉起的残留子进程握住管道写端 → `$(... | tail -30)` 等 EOF 永久挂死；`>文件` 重定向无此问题。EXIT=0 前台复跑两次确认修复。
+- 修复（双防御）：①goose 输出改写 /tmp/e2e-goose.out 再 tail；②fake-plm python 加 `</dev/null` 三向脱管。
+- 连带事故：e2e 第 5 步 down/重启后孤儿 nats(3856)/faucet(13632) 抢端口（父已死），pc 的 nats Restarting 循环——按既有坑记录 taskkill 清理+pc restart chat-bridge 后恢复。终态：e2e.sh 8/8 + e2e-chat 26/26 + fuzz 23/23 全绿。
+- UNVERIFIED（环境层，不阻断）：MSYS bash 偶发无子进程仍挂死（幻影 ps 条目）——dev 环境特性，目标机交付树不含 e2e 脚本，不再深挖。

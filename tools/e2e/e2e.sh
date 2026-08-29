@@ -14,8 +14,8 @@ PC_PORT=$(cat "$FORGE/data/pc.port" 2>/dev/null || echo 8099)
 FAUCET_PORT=$(cat "$FORGE/data/faucet.port" 2>/dev/null || echo 8091)
 curl -s --max-time 3 "http://127.0.0.1:$FAUCET_PORT/healthz" >/dev/null; ck "stack up (faucet healthz)" $?
 
-# ---------- 1) fake PLM 起服务 ----------
-(cd "$ROOT/tools/e2e" && python -m http.server 8124 >/dev/null 2>&1 &)
+# ---------- 1) fake PLM 起服务（三向脱管：MSYS 下继承的 stdout/stdin 会握住调用方管道致脚本收尾挂死，s51 实证 4 代同死法） ----------
+(cd "$ROOT/tools/e2e" && python -m http.server 8124 >/dev/null 2>&1 </dev/null &)
 sleep 2
 curl -s --max-time 3 http://127.0.0.1:8124/fake-plm.html | grep -q 零件库存查询; ck "fake PLM serving" $?
 
@@ -34,7 +34,10 @@ if [ -f "$FORGE/data/secrets.env" ]; then
   done < <(grep -v '^#' "$FORGE/data/secrets.env")
 fi
 cd "$FORGE"
-OUT=$(timeout -k 5 600 bin/goose/goose-package/goose.exe run -t "任务：1) 用 browser 工具打开 http://127.0.0.1:8124/fake-plm.html 等表格加载完成，读出全部零件行；2) 若 plm 服务无 parts_e2e 表则用 faucet_raw_sql 创建(id INTEGER PRIMARY KEY, code TEXT, name TEXT, qty INTEGER, updated TEXT)；3) 把抓到的行全部 faucet_insert 进 parts_e2e（先 DELETE 旧数据）；4) 最后 faucet_query 该表并输出行数。不要做别的。" 2>&1 | tail -30 || true)
+# s51: goose 输出走文件而非命令替换管道——goose 子进程（browser MCP 等）持有管道写端时
+# $(...|tail) 等 EOF 会永久挂死（实测 8/8 PASS 后脚本仍不退出）。文件法 timeout 兜底即返回。
+timeout -k 5 600 bin/goose/goose-package/goose.exe run -t "任务：1) 用 browser 工具打开 http://127.0.0.1:8124/fake-plm.html 等表格加载完成，读出全部零件行；2) 若 plm 服务无 parts_e2e 表则用 faucet_raw_sql 创建(id INTEGER PRIMARY KEY, code TEXT, name TEXT, qty INTEGER, updated TEXT)；3) 把抓到的行全部 faucet_insert 进 parts_e2e（先 DELETE 旧数据）；4) 最后 faucet_query 该表并输出行数。不要做别的。" >/tmp/e2e-goose.out 2>&1 </dev/null || true
+OUT=$(tail -30 /tmp/e2e-goose.out)
 echo "--- goose output tail ---"; echo "$OUT" | tail -8; echo "--- end ---"
 echo "$OUT" | grep -qE "6 行|6行|行数.*6|count.*6|\"6\"|共 6"; ck "agent scraped+inserted (expects 6 rows)" $?
 
