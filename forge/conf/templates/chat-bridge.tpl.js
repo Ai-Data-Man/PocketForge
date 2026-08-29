@@ -1649,7 +1649,8 @@ function handleClient(ws, msg) {
             if (rel.includes('..') || !require('fs').existsSync(f)) return ws.send({ sys: 'error', text: '文件不存在' });
             // I5(审查s15): 路径经 base64 进 PowerShell 再解码，引号/反引号无法逃逸
             const b64 = Buffer.from(f, 'utf8').toString('base64');
-            require('child_process').spawn('powershell', ['-NoProfile', '-Command', '$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("' + b64 + '"));Set-Clipboard -LiteralPath $p'], { detached: true, stdio: 'ignore' }).unref();
+            // s50c: 与 /open/ 同根因——detached+stdio:ignore 下 Set-Clipboard 静默失败（VERIFIED-RUN 2026-08-29）
+            require('child_process').spawn('powershell', ['-NoProfile', '-Command', '$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("' + b64 + '"));Set-Clipboard -LiteralPath $p'], { stdio: 'ignore', windowsHide: true }).unref();
             ws.send({ sys: 'copied', name: msg.name });
             return;
         }
