@@ -49,3 +49,8 @@
 - FIND-3（P2）：skillstore 不过保留名（con 可装出不可删目录）→ fileNameSafe 双分支补齐。
 - 探针 11/11（ws-fuzz-s50h.js 收编）；fuzz-chat 16→21；e2e 21/21（裸桥+pc 托管双绿）。
 - FIND-0 环境真相：restart 策略本就配置齐全（availability.restart=on_failure），但 **pc 进程本身退出**（8099 无监听）→ 桥成孤儿无人管。今日第二次观测到 pc 退出（17:01 一次、本轮一次）。**跟进项：pc 为何退出（可疑指向 启动数字员工.cmd/调度链），真机护航前必须归因**——pf-researcher 待派。
+
+## FIND-0 归因收口（pf-researcher 报告 + 修复 66c2c5e）
+- **根因（三样本一致，机制链 VERIFIED-RUN）**：dev-stack-up.ps1 前台 `&` 拉起 pc → pc 挂在调用者（ZCode 子代理后台任务）进程树下 → 任务被收割时 pc 被沿树硬杀（无 shutdown 日志=外部 TerminateProcess，事件日志排除崩溃/RDP 断连）。收割单位是「宿主 background bash 任务」而非会话。**目标机形态天然免疫**（用户双击=explorer 链）——开发会话特有缺陷，不阻断交付。
+- 修复：dev-stack-up.ps1 改 Start-Process detached 拉起+30s 就绪等待返回；实测 pc 父进程死亡仍存活。附带发现：PS 5.1 解析含中文注释的 ps1 必须 UTF-8 BOM（bootstrap.ps1 有故从未踩中；Edit 工具写文件无 BOM 触发）。
+- 回归：e2e 21/21 + fuzz 21/21（新 detached 栈上）。
