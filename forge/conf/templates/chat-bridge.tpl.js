@@ -9,6 +9,8 @@ const crypto = require('crypto');
 
 const ROOT = process.env.FORGE_ROOT || path.resolve(__dirname, '..');
 const PORT = Number(process.env.PORT || 8790);
+// s50c: POST body 统一预算（照片/表格上传绰绰有余；防超大 body 撑爆内存）
+const POST_MAX_BYTES = 50 * 1024 * 1024;
 const GOOSE = path.join(ROOT, 'bin', 'goose', 'goose-package', 'goose.exe');
 const PAGE = path.join(ROOT, 'conf', 'templates', 'chat.tpl.html');
 
@@ -404,12 +406,14 @@ function ghFetch(p) {
     // GitHub API/raw 统一走代理（现场代理 127.0.0.1:7890；可用 data/proxy.env 覆盖）
     let proxy = 'http://127.0.0.1:7890';
     try { proxy = FSS.readFileSync(path.join(ROOT, 'data', 'proxy.env'), 'utf8').trim() || proxy; } catch {}
-    const { execFileSync } = require('child_process');
-    const out = execFileSync('curl', ['-sL', '-m', '30', '-x', proxy, p], { maxBuffer: 32 * 1024 * 1024, encoding: 'buffer' });
-    return out;
+    // s50c: 异步 execFile（原 execFileSync 会冻住整个桥的事件循环）——照 faucetCli 的 Promise 模式
+    return new Promise((resolve, reject) => {
+        const { execFile } = require('child_process');
+        execFile('curl', ['-sL', '-m', '30', '-x', proxy, p], { maxBuffer: 32 * 1024 * 1024, encoding: 'buffer', windowsHide: true }, (e, stdout) => e ? reject(e) : resolve(stdout));
+    });
 }
-function ghJson(p) { try { return JSON.parse(ghFetch(p).toString('utf8')); } catch { return null; } }
-function ghText(p) { return ghFetch(p).toString('utf8'); }
+function ghJson(p) { return ghFetch(p).then(out => JSON.parse(out.toString('utf8'))).catch(() => null); }
+function ghText(p) { return ghFetch(p).then(out => out.toString('utf8')); }
 function parseSkillMeta(raw, fallbackName) {
     const name = raw.match(/^name:\s*(.+)$/m);
     const dm = raw.match(/^description:\s*(.*)$/m);
@@ -433,9 +437,9 @@ function parseSkillMeta(raw, fallbackName) {
         body: raw.length > 4000 ? raw.slice(0, 4000) : raw,
     };
 }
-function listRemoteSkills(installedSet, res) {
+async function listRemoteSkills(installedSet, res) {
     try {
-        const listing = ghJson('https://api.github.com/repos/' + REMOTE_SKILLS.repo + '/contents/' + REMOTE_SKILLS.subdir + '?ref=' + REMOTE_SKILLS.branch);
+        const listing = await ghJson('https://api.github.com/repos/' + REMOTE_SKILLS.repo + '/contents/' + REMOTE_SKILLS.subdir + '?ref=' + REMOTE_SKILLS.branch);
         if (!Array.isArray(listing)) throw new Error('技能源不可达');
         const dirs = listing.filter(e => e.type === 'dir').map(e => e.name);
         const out = [];
@@ -447,7 +451,7 @@ function listRemoteSkills(installedSet, res) {
         if (!dirs.length) { emit(); return; }
         for (const d of dirs) {
             let meta = { name: d, description: '(远程技能)', body: '' };
-            try { meta = parseSkillMeta(ghText('https://raw.githubusercontent.com/' + REMOTE_SKILLS.repo + '/' + REMOTE_SKILLS.branch + '/' + REMOTE_SKILLS.subdir + '/' + d + '/SKILL.md'), d); } catch {}
+            try { meta = parseSkillMeta(await ghText('https://raw.githubusercontent.com/' + REMOTE_SKILLS.repo + '/' + REMOTE_SKILLS.branch + '/' + REMOTE_SKILLS.subdir + '/' + d + '/SKILL.md'), d); } catch {}
             out.push({ ...meta, dir: d, installed: installedSet.has(d), remote: true });
             if (++done === dirs.length) emit();
         }
@@ -456,24 +460,24 @@ function listRemoteSkills(installedSet, res) {
         res.end(JSON.stringify({ ok: false, err: '技能源拉取失败: ' + e.message }));
     }
 }
-function installRemoteSkill(dirName, res) {
+async function installRemoteSkill(dirName, res) {
     // 递归拉取 skills/<dir> 全部文件（GitHub contents API；子目录递归）
-    function walkApi(relPath, destDir) {
-        const items = ghJson('https://api.github.com/repos/' + REMOTE_SKILLS.repo + '/contents/' + REMOTE_SKILLS.subdir + '/' + relPath + '?ref=' + REMOTE_SKILLS.branch);
+    async function walkApi(relPath, destDir) {
+        const items = await ghJson('https://api.github.com/repos/' + REMOTE_SKILLS.repo + '/contents/' + REMOTE_SKILLS.subdir + '/' + relPath + '?ref=' + REMOTE_SKILLS.branch);
         if (!Array.isArray(items)) throw new Error('技能目录拉取失败: ' + relPath);
         for (const it of items) {
             const rel = REMOTE_SKILLS.subdir + '/' + relPath === '' ? it.name : relPath + '/' + it.name;
             if (it.type === 'dir') {
-                walkApi(rel, path.join(destDir, it.name));
+                await walkApi(rel, path.join(destDir, it.name));
             } else {
                 FSS.mkdirSync(destDir, { recursive: true });
-                FSS.writeFileSync(path.join(destDir, it.name), ghFetch(it.download_url || ('https://raw.githubusercontent.com/' + REMOTE_SKILLS.repo + '/' + REMOTE_SKILLS.branch + '/' + REMOTE_SKILLS.subdir + '/' + rel)));
+                FSS.writeFileSync(path.join(destDir, it.name), await ghFetch(it.download_url || ('https://raw.githubusercontent.com/' + REMOTE_SKILLS.repo + '/' + REMOTE_SKILLS.branch + '/' + REMOTE_SKILLS.subdir + '/' + rel)));
             }
         }
     }
     try {
         const dst = path.join(ROOT, '.agents', 'skills', dirName);
-        walkApi(dirName, dst);
+        await walkApi(dirName, dst);
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: true }));
     } catch (e) {
@@ -581,6 +585,16 @@ async function handleHttp(req, res) {
         res.end(JSON.stringify({ ok: false, err: '跨站请求被拒绝' }));
         return;
     }
+    // s50c: POST 预检——声明超预算的直接 413，不收 body（防内存被撑爆）
+    if (req.method === 'POST') {
+        const cl = parseInt(req.headers['content-length'] || '0', 10) || 0;
+        if (cl > POST_MAX_BYTES) {
+            res.writeHead(413, { 'content-type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: false, err: '文件太大（上限 50MB）' }));
+            req.destroy();
+            return;
+        }
+    }
     if (url === '/' ) {
         const html = require('fs').readFileSync(PAGE, 'utf8').replace('__FORGE_ROOT__', ROOT.split(String.fromCharCode(92)).join('/'));
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache, no-store, must-revalidate' });
@@ -677,7 +691,8 @@ async function handleHttp(req, res) {
     }
     else if (url === '/api/update/start' && req.method === 'POST') {
         const chunks = [];
-        req.on('data', c => chunks.push(c));
+        let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
+        req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
         req.on('end', () => {
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             try {
@@ -746,7 +761,8 @@ async function handleHttp(req, res) {
     }
     else if (url === '/api/vcs/restore' && req.method === 'POST') {
         const chunks = [];
-        req.on('data', c => chunks.push(c));
+        let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
+        req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
         req.on('end', async () => {
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             try {
@@ -769,13 +785,16 @@ async function handleHttp(req, res) {
         });
     }
     else if (url.startsWith('/open/')) {
-        // 用系统默认程序打开本地文件（cmd start）
+        // 用系统默认程序打开本地文件（PowerShell Start-Process）
         const name = decodeURIComponent(url.slice('/open/'.length));
-        // I5(审查s15): 名字进 cmd shell 前先过黑名单——拒绝引号与 cmd 元字符，杜绝注入
-        if (name.includes('..') || ['"', '%', '^', '&', '|', '<', '>', '!'].some(ch => name.includes(ch))) { res.writeHead(400); res.end(JSON.stringify({ok:false, err:'bad name'})); return; }
+        // I5(审查s15): 黑名单保留（防御纵深）——拒绝引号/cmd 元字符/换行
+        if (name.includes('..') || ['"', "'", '%', '^', '&', '|', '<', '>', '!', '\n', '\r'].some(ch => name.includes(ch))) { res.writeHead(400); res.end(JSON.stringify({ok:false, err:'bad name'})); return; }
         const f = path.join(ROOT, 'data', 'artifacts', name);
         if (!require('fs').existsSync(f)) { res.writeHead(404); res.end(JSON.stringify({ok:false, err:'not found'})); return; }
-        require('child_process').exec('start "" "' + f + '"', { shell: 'cmd.exe' }, () => {});
+        // s50c: 路径经 base64 进 PowerShell 再解码（照 copy_artifact 先例），彻底消除 shell 解释层；
+        // 不用 detached——VERIFIED-RUN 2026-08-29：detached+stdio:ignore 下 Start-Process 静默失败打不开文件
+        const b64 = Buffer.from(f, 'utf8').toString('base64');
+        require('child_process').spawn('powershell', ['-NoProfile', '-Command', '$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("' + b64 + '"));Start-Process -FilePath $p'], { stdio: 'ignore', windowsHide: true }).unref();
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ok:true}));
     }
@@ -886,7 +905,8 @@ const ext = path.extname(f).toLowerCase();
         } else if (req.method === 'POST') {
             // 删除经 goose CLI（比手改 json 安全：会同步清 store 里的 recipe）
             const chunks = [];
-            req.on('data', c => chunks.push(c));
+            let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
+            req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
             req.on('end', () => {
                 let id = '';
                 try { id = String(JSON.parse(Buffer.concat(chunks).toString('utf8')).id || ''); } catch {}
@@ -919,7 +939,8 @@ const ext = path.extname(f).toLowerCase();
             }))));
         } else if (req.method === 'POST') {
             const chunks = [];
-            req.on('data', c => chunks.push(c));
+            let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
+            req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
             req.on('end', () => {
                 let id = '';
                 try { id = String(JSON.parse(Buffer.concat(chunks).toString('utf8')).id || ''); } catch {}
@@ -980,7 +1001,8 @@ const ext = path.extname(f).toLowerCase();
             res.end(JSON.stringify(out));
         } else if (req.method === 'POST') {
             const chunks = [];
-            req.on('data', c => chunks.push(c));
+            let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
+            req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
             req.on('end', () => {
                 try {
                     const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -1040,7 +1062,8 @@ const ext = path.extname(f).toLowerCase();
             }))));
         } else if (req.method === 'POST') {
             const chunks = [];
-            req.on('data', c => chunks.push(c));
+            let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
+            req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
             req.on('end', () => {
                 try {
                     const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -1103,7 +1126,8 @@ const ext = path.extname(f).toLowerCase();
             res.end(JSON.stringify(out));
         } else if (req.method === 'POST') {
             const chunks = [];
-            req.on('data', c => chunks.push(c));
+            let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
+            req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
             req.on('end', () => {
                 try {
                     const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -1145,7 +1169,8 @@ const ext = path.extname(f).toLowerCase();
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         if (req.method === 'POST') {
             const chunks = [];
-            req.on('data', c => chunks.push(c));
+            let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
+            req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
             req.on('end', () => {
                 try {
                     const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -1195,7 +1220,8 @@ const ext = path.extname(f).toLowerCase();
     else if (url === '/api/ws/link' && req.method === 'POST') {
         // 把另一个工作区以 junction 形式引入当前工作区（相对引用语义，物理为绝对路径）
         const chunks = [];
-        req.on('data', c => chunks.push(c));
+        let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
+        req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
         req.on('end', () => {
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             try {
@@ -1218,7 +1244,8 @@ const ext = path.extname(f).toLowerCase();
     }
     else if (url === '/api/ws/unlink' && req.method === 'POST') {
         const chunks = [];
-        req.on('data', c => chunks.push(c));
+        let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
+        req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
         req.on('end', () => {
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             try {
@@ -1237,7 +1264,8 @@ const ext = path.extname(f).toLowerCase();
     else if (url === '/api/ws/delete' && req.method === 'POST') {
         // 删除整个工作区：仅孤儿或绑定归档会话的区允许；被任何活跃区链接引用时拒绝
         const chunks = [];
-        req.on('data', c => chunks.push(c));
+        let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
+        req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
         req.on('end', async () => {
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             try {
@@ -1268,7 +1296,8 @@ const ext = path.extname(f).toLowerCase();
     else if (url === '/api/fs/new' && req.method === 'POST') {
         // 轻量文件管理：新建文件/目录（IDE 能力的最小集）
         const chunks = [];
-        req.on('data', c => chunks.push(c));
+        let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
+        req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
         req.on('end', () => {
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             try {
@@ -1290,7 +1319,8 @@ const ext = path.extname(f).toLowerCase();
     }
     else if (url === '/api/fs/rename' && req.method === 'POST') {
         const chunks = [];
-        req.on('data', c => chunks.push(c));
+        let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
+        req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
         req.on('end', async () => {
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             try {
@@ -1320,7 +1350,8 @@ const ext = path.extname(f).toLowerCase();
     }
     else if (url === '/api/fs/delete' && req.method === 'POST') {
         const chunks = [];
-        req.on('data', c => chunks.push(c));
+        let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
+        req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
         req.on('end', async () => {
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             try {
@@ -1376,7 +1407,8 @@ const ext = path.extname(f).toLowerCase();
     else if (url === '/api/ws/bind') {
         // 「引入」：把一个已有工作区绑到当前会话（强保证 = 之后 @ 引用的完整路径 agent 一定能读）
         const chunks = [];
-        req.on('data', c => chunks.push(c));
+        let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
+        req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
         req.on('end', () => {
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             try {
@@ -1431,7 +1463,8 @@ const ext = path.extname(f).toLowerCase();
         const fname = (qs.get('name') || ('upload-' + Date.now())).replace(/[\\/:*?"<>|]/g, '_');
         if (!fileNameSafe(fname)) { res.writeHead(400); res.end(JSON.stringify({ ok: false, err: '名字是 Windows 保留的，换一个吧' })); return; }
         const chunks = [];
-        req.on('data', c => chunks.push(c));
+        let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
+        req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
         req.on('end', () => {
             try {
                 const tdir = path.join(wsDir(ws), dir.split('/').join(path.sep));
@@ -1598,6 +1631,12 @@ function handleClient(ws, msg) {
                 let unbound = false;
                 for (const k of Object.keys(wsm)) if (wsm[k].sid === msg.sessionId) { delete wsm[k]; unbound = true; }
                 if (unbound) writeWsMap(wsm);
+                // s50c: 清空该会话的订阅者（还连着的 WS 直接断开），不留空 Set 残留
+                const subs = sessionClients.get(msg.sessionId);
+                if (subs) {
+                    sessionClients.delete(msg.sessionId);
+                    for (const c of subs) { try { c.socket.destroy(); } catch {} }
+                }
                 console.log('session deleted', msg.sessionId, 'messages:', m.changes, 'row:', r.changes, 'unbound:', unbound);
                 ws.send({ sys: 'session_deleted', sessionId: msg.sessionId, ok: r.changes > 0 });
             } catch (e) { ws.send({ sys: 'error', text: '删除失败: ' + e.message }); }
