@@ -1599,7 +1599,7 @@ function handleClient(ws, msg) {
 
         if (msg.type === 'prompt') {
             const sid = wsSession.get(ws) || msg.sessionId;
-            if (!sid) return ws.send({ sys: 'error', text: 'no active session' });
+            if (!sid) return ws.send({ sys: 'error', text: '这场对话已经不在了（可能刚重启过）。点左侧「＋ 新对话」重新开始，把想做的事再说一遍就行。' });
             statsBump('messages'); // P31-③: 用户发出 prompt 计数（agent 回复不计）
             const id = nextId++;
             waiting.set(id, { ws, resolve: () => ws.send({ agent: { method: 'stop', params: { sessionId: sid, reason: 'end' } } }), reject: (e) => {
