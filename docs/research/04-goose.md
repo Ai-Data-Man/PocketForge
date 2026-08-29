@@ -36,3 +36,13 @@ GOOSE_PATH_ROOT 在 CLI+Desktop 双形态的收敛性；Desktop 免管理员运�
 3. **权限请求 ACP 形态**（VERIFIED-RUN 2026-08-27 之前 + 源码 acp/server.rs:1249）：`session/request_permission`，options = allow_always/allow_once/reject_once/reject_always 四项，toolCall 携带 title/rawInput；客户端回 `{outcome:{outcome:"selected",optionId}}`。
 4. **9router 大工具集缺陷**（外部依赖风险，非 goose bug）：curl 直连 router 同形状验证——单工具 + stream 正常；**40+ 工具 schema（goose 实际形态）→ 上游丢失 tool_calls（返回纯文本）或 502**。后果：agent 收不到工具调用机会 → 护栏/能力全部旁路。glm-5.2 与 deepseek-v4-flash 均复现。复现命令见 journal s19。待 9router 侧换上游/调参。
 5. **provider 解析优先级**（providers.rs:65）：GOOSE_PROVIDER env > config `active_provider` > config `GOOSE_PROVIDER`；openai provider 的 host 解析（openai_def.rs）OPENAI_HOST env 最高——但 acp 会话若被持久 active_provider（如 forge-router declarative）覆盖则 env 全部失效。诊断探针时注意 env.pop('GOOSE_PROVIDER') 后 yaml 兜底仍生效。
+
+## s50 上游情报（2026-08-29，VERIFIED-DOC：GitHub API releases/tags 核对，未本机跑新版）
+- latest = **v1.48.0**（2026-08-27）；在用 v1.46.0；2.0 RC 在途（v2.0.0-rc-04-27-0，内测期不碰）。
+- 与本项目相关的上游变化：
+  1. ACP `Title new sessions from _meta.sessionTitle`（#10712）——桥侧自实现的会话自动命名有了原生通道，BACKLOG 挂「下次动 ACP 层时顺路」。
+  2. ACP `Derive and forward thinking effort`（#10949）——深度思考可会话级控制，观察（等护航反馈再启用）。
+  3. Security 三连：`Permission denies take precedence`（#11477）/`Fail closed on malformed tool visibility`（#11474）/`Recognize Windows package runners`（#11466）——升级时重点回归权限卡链路 + .goosehints cmd 铁律。
+  4. CLI `/new` 免重启新会话（#10767）——s50d 体验问题的参考解，已由人话文案覆盖。
+  5. Z.ai GLM-5.2→GLM-5.3（#11226）——不动，内测期 pinned 栈。
+- 升级预案与不升级依据见 docs/research/goose-upstream-v1.48.md（同日，含四步沙盒升级流程）。
