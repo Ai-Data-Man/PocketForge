@@ -43,3 +43,12 @@
 - 定时任务改期：P32+ 走聊天自然语言，UI 不暴露 cron（ADR-0010 精神）。
 - 守护盲区清账：删除按钮同样依赖「落盘+守护重启」才对守护生效——历史行为，需一轮补齐（删除后也 restart goose-scheduler）。
 - guard：pf-researcher 建议明早 9 点观察 daily-mem（paused）是否被跳过 = 守护 paused 语义实机自然验证。
+
+## 追加：s57 — S3 片落地（MCP/技能停用+卸载，commit 4ba7c4d）
+- /api/extensions GET 动态并入已装 mcp-*（能力开关面板盲区修复——此前已装 MCP 不可见不可停）；POST id 校验改 LABELS∪动态。
+- /api/mcpstore POST {id,op:'uninstall'}：删 config.yaml `  mcp-<id>:` 块 + bin/vendor/mcp-<id> + mcpInstallState；installing 中拒卸（qa P2）。/api/skillstore POST {name,op:'uninstall'}：白名单与安装同门。
+- UI：MCP 已装项「已启用/已停用」+ 卸载 confirm；技能行 ✕ 卸载；卸载后商店面板同步（qa P3）。
+- qa 审查抓 P2：mcpEnabled 自写正则跨块吞下一块 enabled 行——改块界扫描（逐行 + 块头状态机）。教训：yaml 行级处理统一走 readExtState 同门模式，别写一次性正则。
+- fetch-mcp 真卸载+重装闭环（npm 源可达 65s）；最终 installed+enabled true 原状；sequential-thinking 块完好。
+- 回归：fuzz 39/39（+8）+ e2e-chat 26/26；GUI IAB 实证：卸载按钮×2 + 已启用状态渲染。
+- 新发现 backlog：vendor 目录名漂移（mcp-memory/mcp-seqthink vs memory-graph/sequential-thinking，s46 时代命名），卸载 memory-graph 会删错路径致真目录孤儿。

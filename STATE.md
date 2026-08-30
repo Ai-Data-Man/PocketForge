@@ -1,6 +1,6 @@
 # PocketForge 状态（永远反映"现在"；每次工作会话结束必须更新）
 
-- 更新：2026-08-30 s55→s56（2 commits）：①**用户两类断根问题设计裁决落地**（pf-pm 裁决书）：外部资源接入域管道（sync→本地缓存→中文人话化→检索，缓存=data/cache/ 文件+STATE_SCHEMAS 管线，翻译=桥直调 completion，安装收敛读缓存）+ 实体生命周期底线算子集（建/查/停/删/改期，允许裁掉但必须裁决；全盘盘点 14 项，6 项实锤）；②S1 定时任务暂停/恢复：goose 源码级取证否证「直接改 schedule.json」（守护读内存副本+persist 回滚），唯一正路=短命 `goose acp --enable-scheduler` 发 ACP custom request 落盘 + `pc restart goose-scheduler` 守护重载闭环（restart 失败降级 warn 不欺骗）；UI ⏸/▶；③S2 技能市场：data/cache/skills manifest 缓存（<24h 秒回，后台惰性重拉）+ desc_zh 批量翻译（10条/批截150，实测防超时）+ 搜索框（name/desc/desc_zh 过滤）+ ?preview 读缓存原文；④pf-qa 联审 5 修复（P1 done 双调崩溃/P2 GitHub 名白名单同门/P2 fuzz 8 断言/P3×2）+ fuzz 实跑新抓类型混淆（String([v]) 静默字符串化，改 typeof 收 string）；⑤GUI IAB 实景：⏸/▶ resume→goose IDLE+守护重启→pause 复原，技能市场 21 条秒开+搜「画画」命中中文描述。终态 e2e-chat 26/26 + fuzz 31/31（净增8）。遗留：S3（MCP/技能停+卸载）已排片未做；删除按钮同款守护盲区待补；daily-mem 保持 paused:true 原状
+- 更新：2026-08-30 s55→s57（3 commits）：①**用户两类断根问题设计裁决落地**（pf-pm 裁决书）：外部资源接入域管道（sync→本地缓存→中文人话化→检索，缓存=data/cache/ 文件+STATE_SCHEMAS 管线，翻译=桥直调 completion，安装收敛读缓存）+ 实体生命周期底线算子集（建/查/停/删/改期，允许裁掉但必须裁决；全盘盘点 14 项，6 项实锤）；②S1 定时任务暂停/恢复：goose 源码级取证否证「直接改 schedule.json」（守护读内存副本+persist 回滚），唯一正路=短命 `goose acp --enable-scheduler` 发 ACP custom request 落盘 + `pc restart goose-scheduler` 守护重载闭环（restart 失败降级 warn 不欺骗）；UI ⏸/▶；③S2 技能市场：data/cache/skills manifest 缓存（<24h 秒回，后台惰性重拉）+ desc_zh 批量翻译（10条/批截150，实测防超时）+ 搜索框（name/desc/desc_zh 过滤）+ ?preview 读缓存原文；④S3 MCP/技能停用+卸载：/api/extensions 动态并入已装 mcp-*（能力开关面板盲区修复）+ mcpstore/skillstore op=uninstall（安装中拒卸）；⑤审查线：s55/s56 联审 5 修复+类型混淆（String([v])）、s57 审查 3 修复（mcpEnabled 跨块吞 enabled 改块界扫描等）；GUI IAB 实景全过（⏸/▶ 闭环、搜「画画」命中中文、卸载按钮+已启用渲染）。终态 e2e-chat 26/26 + fuzz 39/39（净增16）。遗留：删除按钮同款守护盲区待补；vendor 目录名漂移（mcp-memory/mcp-seqthink vs memory-graph/sequential-thinking，s46 时代）backlog；daily-mem 保持 paused:true 原状
 - 阶段：**P31 内测护航进行中**（①本机部分 ✅（v0.9.8 护航候选包就绪），真机 POC 待用户；②收窄完成 ✅；③已就位；④收窄完成 ✅）
 
 ## 已完成周期
@@ -32,7 +32,8 @@
 | s51b-d | s51b:e2e.sh收尾挂死修复(goose输出走文件+python脱管,EXIT=0双跑);s51c:qa二轮换线自动重发竞态P1(重发挂subscribed后800ms)+P3×3(注释吞addInfo/tab aria/mcp轮询泄漏);s51d:P31-②配Key引导条落地(无key→引导条→现有⚙️面板,配好即消+chips重现,GUI双态A1-A4实景全过,桥零改动);独立向导页/任务选择层裁掉冻结挂P32 | s51 |
 | s52-53 | s52:gen-xlsx位置参数标题修复(JSON内title优先,7d35690)+文件树任务完成自动刷新(ACP stop分支挂renderCurPane,0cc98c0);s53:**tag v0.9.8打包+沙盒全新部署首任务冒烟A1/A2/A3/A5/A7全实景通过——s50部署缺口(无key首任务401)正式关闭**;真401/双档案换线实景留护航 | s53 |
 | s54 | MCP商店补「网页抓取」fetch-mcp@0.0.5(MIT,官方server-fetch无npm包,选型实测后入目录);复用s46机制零新代码;GUI实景:安装→重启挂载→goose调fetch_url正确回答;许可证以标注来源声明落档(包无LICENSE文件);e2e 26/26+fuzz 23/23 | s54 |
-| s55-56 | **用户两类断根问题裁决+落地**(pf-pm裁决书:外部资源接入域管道+实体生命周期底线算子集,全盘盘点14项6实锤):S1定时任务暂停/恢复(goose源码取证否证直改schedule.json——守护读内存副本+persist回滚;短命acp --enable-scheduler发ACP custom request落盘+pc restart goose-scheduler守护重载闭环,失败降级warn;UI ⏸/▶,GUI实景resume→IDLE→pause复原,7b3aa24);S2技能市场缓存+搜索+中文(data/cache/skills manifest<24h秒回+后台惰性重拉,desc_zh批量翻译10条/批截150防超时,搜索框过滤,?preview读缓存原文,21条秒开+搜「画画」命中中文描述);qa联审5修复+fuzz实跑抓String([v])类型混淆(typeof收string);e2e 26/26+fuzz 31/31 | s55-56 |
+| s55-56 | **用户两类断根问题裁决+落地**(pf-pm裁决书:外部资源接入域管道+实体生命周期底线算子集,全盘盘点14项6实锤):S1定时任务暂停/恢复(goose源码取证否证直改schedule.json——守护读内存副本+persist回滚;短命acp --enable-scheduler发ACP custom request落盘+pc restart goose-scheduler守护重载闭环,失败降级warn;UI ⏸/▶,GUI实景resume→IDLE→pause复原,7b3aa24);S2技能市场缓存+搜索+中文(data/cache/skills manifest<24h秒回+后台惰性重拉,desc_zh批量翻译10条/批截150防超时,搜索框过滤,?preview读缓存原文,21条秒开+搜「画画」命中中文描述,24cf23b);s55/s56联审5修复+fuzz实跑抓String([v])类型混淆(typeof收string) | s55-56 |
+| s57 | S3实体生命周期补全:MCP/技能停用+卸载(/api/extensions动态并入已装mcp-*修能力开关面板盲区;mcpstore/skillstore op=uninstall,安装中拒卸,白名单与安装同门);qa审查3修复(mcpEnabled跨块吞enabled改块界扫描/installing拒卸/卸载后刷商店);fetch-mcp真卸载+重装闭环(npm 65s);fuzz 39/39(+8)+e2e 26/26;GUI实证卸载按钮+已启用渲染(4ba7c4d) | s55-56 |
 ## 技术栈版本（全部 VERIFIED-RUN）
 process-compose v1.122.0 / nats-server v2.14.5 / nats-cli v0.4.0 / faucet v0.1.12 / goose v1.46.0 (AAIF) / node v22.21.1 / python 3.12 embeddable (Pillow 12.3.0；openpyxl 不在包内——s47 实测，旧记录失实已修正) / isomorphic-git 1.41.9 (vendored MIT, ADR-0007) / DOMPurify 3.2.4 (vendored Apache-2.0, s15)
 
@@ -57,7 +58,7 @@ ADR-0001 记忆拓扑 / ADR-0002 五件套技术栈 / ADR-0003 交付树+注册�
 - **P32 数据驱动**：据使用统计决定（候选：真机 PLM 适配、工作流模板、日程提醒）
 - **裁减原则**：商店/插件类扩张挂起至真机验证后；内测用户反馈是第一输入源，路线裁决权在团队
 ## Backlog（对标研究提炼，ADR-0010 复核条件）
-- **s56 断根裁决排片**：S3 = MCP/技能停+卸载（/api/extensions 动态并入已装 mcp-*、/api/mcpstore+skillstore 加 uninstall）——裁决书已切片，下轮首选；定时任务删除按钮同款守护盲区（删除后也需 restart goose-scheduler）；定时任务改期挂 P32+ 走聊天自然语言
+- **s55-57 断根裁决遗留**：定时任务删除按钮同款守护盲区（删除后也需 restart goose-scheduler 才对守护生效，历史行为待补）；定时任务改期挂 P32+ 走聊天自然语言；vendor 目录名漂移（mcp-memory/mcp-seqthink vs 目录 id memory-graph/sequential-thinking，s46 时代命名，卸载 memory-graph 时真目录成孤儿）需一轮对齐
 - 工作区级「项目指令」（对照 Manus Projects master instruction）：.forge 元数据扩展 + prompt 注入，首月低频故 backlog
 - 多会话并行任务（Manus Wide Research 式）：妻子场景低频，backlog
 - /api/search 升级 FTS5：消息量 >1 万条时
