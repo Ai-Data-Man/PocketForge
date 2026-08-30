@@ -1130,6 +1130,7 @@ async function loadSchedUI(){
       try{
         const res=await apiJSON('/api/schedules',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:j.id})});
         if(!res.ok) throw new Error(res.err||res.out||'失败');
+        if(res.warn) alert(res.warn);
         loadSchedUI();
       }catch(e){ del.disabled=false; alert('没删成：'+e.message); }
     };

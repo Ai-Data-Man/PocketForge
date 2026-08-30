@@ -1183,14 +1183,14 @@ const ext = path.extname(f).toLowerCase();
             req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
             req.on('end', () => {
                 let id = '', op = '';
-                try { const b = JSON.parse(Buffer.concat(chunks).toString('utf8')); if (typeof b.id !== 'string' || typeof b.op !== 'string') throw 0; id = b.id; op = b.op; } catch {}
+                try { const b = JSON.parse(Buffer.concat(chunks).toString('utf8')); if (typeof b.id !== 'string' || (b.op !== undefined && typeof b.op !== 'string')) throw 0; id = b.id; op = b.op || ''; } catch {} // s58 修正：op 缺省=删除（UI 删除按钮不传 op），只拒非字符串的 op
                 // fuzz 发现：String([v])==='v'，数组/原始值会被静默字符串化绕过类型面——只收 string
                 if (!/^[\w\-\.]{1,64}$/.test(id) || (op && !['pause', 'resume'].includes(op))) {
                     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ ok: false, err: '参数不合法' })); return;
                 }
                 if (op) return schedToggle(id, op, res);
-                const { spawn } = require('child_process');
+                const { spawn, execFile } = require('child_process');
                 const p = spawn(GOOSE, ['schedule', 'remove', '--schedule-id', id], {
                     env: { ...process.env, GOOSE_PATH_ROOT: path.join(ROOT, 'conf', 'goose'), GOOSE_DISABLE_KEYRING: '1', NO_PROXY: (process.env.NO_PROXY || '127.0.0.1,localhost') },
                 });
@@ -1198,8 +1198,17 @@ const ext = path.extname(f).toLowerCase();
                 p.stdout.on('data', c => out += c);
                 p.stderr.on('data', c => out += c);
                 p.on('close', code => {
-                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ ok: code === 0, out: out.slice(0, 300) }));
+                    if (code !== 0) { res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: false, out: out.slice(0, 300) })); return; }
+                    // s58: 删除同款守护盲区——守护内存条目不随盘清，重启重载（失败降级 warn 不欺骗）
+                    let pcPort = '8099';
+                    try { pcPort = FSS.readFileSync(path.join(ROOT, 'data', 'pc.port'), 'utf8').trim() || pcPort; } catch {}
+                    execFile(path.join(ROOT, 'bin', 'pc', 'process-compose.exe'),
+                        ['-p', pcPort, 'process', 'restart', 'goose-scheduler'],
+                        { timeout: 30000, windowsHide: true }, (e) => {
+                            if (res.writableEnded) return;
+                            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                            res.end(JSON.stringify(e ? { ok: true, warn: '已删除，但后台调度器重启失败，任务可能仍会执行一次' } : { ok: true, out: out.slice(0, 300) }));
+                        });
                 });
             });
         } else { res.writeHead(405); res.end(); }
