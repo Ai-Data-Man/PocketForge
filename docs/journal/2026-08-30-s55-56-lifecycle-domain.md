@@ -52,3 +52,9 @@
 - fetch-mcp 真卸载+重装闭环（npm 源可达 65s）；最终 installed+enabled true 原状；sequential-thinking 块完好。
 - 回归：fuzz 39/39（+8）+ e2e-chat 26/26；GUI IAB 实证：卸载按钮×2 + 已启用状态渲染。
 - 新发现 backlog：vendor 目录名漂移（mcp-memory/mcp-seqthink vs memory-graph/sequential-thinking，s46 时代命名），卸载 memory-graph 会删错路径致真目录孤儿。
+
+## 追加：s58+s59（用户中途回线「要利用基础设施做缓存+定时预热」）
+- 用户确认方向：缓存域照做（s56 已落地），补「定时预热」触发；不采纳 goose agent 执行（触发价值在时机，执行者该是最稳的管道调用）。
+- s58（97d04ea）：定时任务删除同款守护盲区补齐——删除成功后 pc restart goose-scheduler（与 s55 同门），失败降级 warn；UI 删除按钮接 warn。顺修 s55 引入回归：typeof b.op!=='string' 把 UI 删除请求（不传 op）全拒——op 缺省容许 undefined。教训：收紧类型时必须枚举全部调用方请求形态（fuzz 有数组 id 断言但没断言「合法删除仍通」，e2e 也不删任务——盲区在两边测试的缝里，靠实景删除才暴露）。
+- s59（06b7ece）：技能市场定时预热——桥启动 15s 后 syncRemoteSkills() 一次 + setInterval 24h。实证 fetched_at 自动刷新、19/19 中文、remote GET 6ms。
+- 验证环境纪律：探针任务/临时文件即用即清；daily-mem 终态 paused:true 原状。
