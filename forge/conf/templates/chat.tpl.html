@@ -1115,6 +1115,18 @@ async function loadSchedUI(){
         loadSchedUI();
       }catch(e){ del.disabled=false; alert('没删成：'+e.message); }
     };
+    const tog=document.createElement('button');
+    tog.className='mini'; tog.textContent=j.paused?'▶':'⏸'; tog.title=j.paused?'恢复这个定时任务':'暂停这个定时任务';
+    tog.onclick=async()=>{
+      tog.disabled=true;
+      try{
+        const res=await apiJSON('/api/schedules',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:j.id,op:j.paused?'resume':'pause'})});
+        if(!res.ok) throw new Error(res.err||'失败');
+        if(res.warn) alert(res.warn);
+        loadSchedUI();
+      }catch(e){ tog.disabled=false; alert(j.paused?'没恢复成：':'没暂停成：'+e.message); }
+    };
+    row.appendChild(tog);
     row.appendChild(del);
     box.appendChild(row);
   }

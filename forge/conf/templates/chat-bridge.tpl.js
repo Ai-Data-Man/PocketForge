@@ -943,6 +943,59 @@ const ext = path.extname(f).toLowerCase();
                 return m ? m[1].trim() : null;
             } catch { return null; }
         }
+        // s55: 暂停/恢复——短命 `goose acp --enable-scheduler` 发 ACP custom request（改内存+persist 落盘）。
+        // 进程即用即弃，不与 cron 守护共存；运行中 pause 会报 "Cannot pause running schedule"，原样回传。
+        // 落盘后须重启 goose-scheduler 守护重载（守护 sync 只增删 id 不读 paused）；重启失败降级 warn 不欺骗。
+        function schedToggle(id, op, res) {
+            const { spawn, execFile } = require('child_process');
+            const child = spawn(GOOSE, ['acp', '--enable-scheduler'], {
+                env: { ...process.env, GOOSE_PATH_ROOT: path.join(ROOT, 'conf', 'goose'), GOOSE_DISABLE_KEYRING: '1', NO_PROXY: (process.env.NO_PROXY || '127.0.0.1,localhost') },
+                stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true,
+            });
+            const done = (payload, code) => {
+                try { child.kill(); } catch {}
+                res.writeHead(code || 200, { 'content-type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify(payload));
+            };
+            let buf = '', errOut = '';
+            child.stdout.on('data', d => {
+                buf += d.toString('utf8');
+                let i;
+                while ((i = buf.indexOf('\n')) !== -1) {
+                    const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+                    if (!line) continue;
+                    let m; try { m = JSON.parse(line); } catch { continue; }
+                    if (m.id === undefined || (m.result === undefined && m.error === undefined)) continue;
+                    if (m.id === 1) { // initialize 回包 → 发 initialized + custom request
+                        try {
+                            child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'initialized' }) + '\n');
+                            child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: '_goose/unstable/schedules/' + (op === 'resume' ? 'unpause' : 'pause'), params: { scheduleId: id } }) + '\n');
+                        } catch (e) { done({ ok: false, err: '暂停操作失败' }); }
+                    } else if (m.id === 2) {
+                        if (m.error) {
+                            const msg = String((m.error.data && (typeof m.error.data === 'string' ? m.error.data : m.error.data.message)) || m.error.message || '');
+                            done({ ok: false, err: msg.includes('running schedule') ? '任务正在运行，等它跑完再暂停' : (msg.slice(0, 200) || '操作失败') });
+                        } else {
+                            // 落盘成功 → 重启守护重载盘面值；失败降级 warn（ok 仍 true）
+                            let pcPort = '8099';
+                            try { pcPort = FSS.readFileSync(path.join(ROOT, 'data', 'pc.port'), 'utf8').trim() || pcPort; } catch {}
+                            execFile(path.join(ROOT, 'bin', 'pc', 'process-compose.exe'),
+                                ['-p', pcPort, 'process', 'restart', 'goose-scheduler'],
+                                { timeout: 30000, windowsHide: true }, (e) => {
+                                    done(e ? { ok: true, warn: '任务已' + (op === 'resume' ? '恢复' : '暂停') + '，但后台调度器重启失败，下次到点可能仍会' + (op === 'resume' ? '跳过' : '执行') } : { ok: true });
+                                });
+                        }
+                    }
+                }
+            });
+            child.stderr.on('data', d => { errOut += d; if (errOut.length > 4000) errOut = errOut.slice(-2000); });
+            child.on('error', () => done({ ok: false, err: '暂停服务启动失败' }));
+            child.on('close', () => { if (!res.writableEnded) done({ ok: false, err: '暂停服务异常退出' }); });
+            try {
+                child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false } } }) + '\n');
+            } catch (e) { done({ ok: false, err: '暂停服务启动失败' }); }
+            setTimeout(() => { if (!res.writableEnded) done({ ok: false, err: '操作超时，请重试' }); }, 25000).unref();
+        }
         if (req.method === 'GET') {
             let list = [];
             try { list = JSON.parse(FSS.readFileSync(SCHED, 'utf8')); } catch {}
@@ -954,16 +1007,20 @@ const ext = path.extname(f).toLowerCase();
             }))));
         } else if (req.method === 'POST') {
             // 删除经 goose CLI（比手改 json 安全：会同步清 store 里的 recipe）
+            // op=pause/resume 经短命 `goose acp --enable-scheduler` 子进程发 ACP custom request
+            // （_goose/unstable/schedules/pause|unpause）：桥自己的 acp 没开 scheduler（method_not_found），
+            // CLI 无 pause 子命令，手改 schedule.json 会被守护回滚——唯一落盘路径就是这条（s55 实证）。
             const chunks = [];
             let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
             req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
             req.on('end', () => {
-                let id = '';
-                try { id = String(JSON.parse(Buffer.concat(chunks).toString('utf8')).id || ''); } catch {}
-                if (!/^[\w\-\.]{1,64}$/.test(id)) {
+                let id = '', op = '';
+                try { const b = JSON.parse(Buffer.concat(chunks).toString('utf8')); id = String(b.id || ''); op = String(b.op || ''); } catch {}
+                if (!/^[\w\-\.]{1,64}$/.test(id) || (op && !['pause', 'resume'].includes(op))) {
                     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ ok: false, err: '参数不合法' })); return;
                 }
+                if (op) return schedToggle(id, op, res);
                 const { spawn } = require('child_process');
                 const p = spawn(GOOSE, ['schedule', 'remove', '--schedule-id', id], {
                     env: { ...process.env, GOOSE_PATH_ROOT: path.join(ROOT, 'conf', 'goose'), GOOSE_DISABLE_KEYRING: '1', NO_PROXY: (process.env.NO_PROXY || '127.0.0.1,localhost') },
