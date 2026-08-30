@@ -58,3 +58,7 @@
 - s58（97d04ea）：定时任务删除同款守护盲区补齐——删除成功后 pc restart goose-scheduler（与 s55 同门），失败降级 warn；UI 删除按钮接 warn。顺修 s55 引入回归：typeof b.op!=='string' 把 UI 删除请求（不传 op）全拒——op 缺省容许 undefined。教训：收紧类型时必须枚举全部调用方请求形态（fuzz 有数组 id 断言但没断言「合法删除仍通」，e2e 也不删任务——盲区在两边测试的缝里，靠实景删除才暴露）。
 - s59（06b7ece）：技能市场定时预热——桥启动 15s 后 syncRemoteSkills() 一次 + setInterval 24h。实证 fetched_at 自动刷新、19/19 中文、remote GET 6ms。
 - 验证环境纪律：探针任务/临时文件即用即清；daily-mem 终态 paused:true 原状。
+
+## 追加：vendor 目录名漂移清账（不入 git，bin/ 不入库）
+- 核实 mcp-memory/(23M)、mcp-seqthink/(24M) 为 s46 时代孤儿目录：config.yaml、桥代码、bootstrap、tools 全无引用（现役=mcp-<目录id>）。直接删除，零代码 diff。现役 vendor：artifact-vcs / mcp-fetch / mcp-sequential-thinking。
+- 卸载路径随之自愈：memory-graph 将来安装走 bin/vendor/mcp-memory-graph，卸载删同一路径，不再有错删/孤儿面。
