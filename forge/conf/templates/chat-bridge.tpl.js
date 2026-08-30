@@ -556,6 +556,11 @@ async function syncRemoteSkills() {
     skillSyncBusy = false;
 }
 function skillCacheFresh(m) { return m && Array.isArray(m.skills) && m.fetched_at && (Date.now() - Date.parse(m.fetched_at)) < 24 * 3600 * 1000; }
+// s59: 定时预热（用户主线：agent/基础设施预取数据预先翻译，用户零等待）——启动即后台 sync 一次，此后每 24h 主动重拉。
+// 触发在桥、执行是管道调用（非 agent）：确定性爬取+纯文本翻译不需要 agent loop（s56 裁决）。失败静默，下次窗口再试。
+(function skillWarmup() {
+    setTimeout(() => { syncRemoteSkills(); setInterval(syncRemoteSkills, 24 * 3600 * 1000); }, 15 * 1000).unref();
+})();
 // qa-P3: translating 崩溃残留自愈——标记超 10 分钟视为孤儿（桥重启于翻译中），当 false 读
 function translatingNow(m) { return !!m.translating && (Date.now() - Date.parse(m.fetched_at)) < 10 * 60 * 1000; }
 async function listRemoteSkills(installedSet, res) {
