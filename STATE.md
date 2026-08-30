@@ -1,6 +1,6 @@
 # PocketForge 状态（永远反映"现在"；每次工作会话结束必须更新）
 
-- 更新：2026-08-30 s51→s54 系列（本会话 18 commits）：①小白可用性三主线落地并 GUI VERIFIED-RUN——管理面板六区块→六标签页（懒加载+重开重拉+aria）/ 记忆清单搜索框+50条上限+显示更多 / 数据表人话化（/api/db/_schema 端点+点表名展开列清单：人话类型+真实样例值+pk「唯一」，表名列名保留原文护 @ 引用链路）；②P31-②收窄落地：配 Key 引导条（独立向导页与任务选择层裁掉/冻结挂 P32，桥零改动）；③pf-qa 两轮审查共 8 修复（懒加载缓存面板不刷新回归 / memAll=null / fuzz白名单钉子 / err回显截断 / **换线自动重发竞态P1：重发挂subscribed后800ms** / 注释吞addInfo / tab aria / mcp弹窗轮询泄漏）；④e2e.sh 收尾挂死修复（goose 输出走文件+python 脱管，EXIT=0 双跑确认）；⑤s52 两项：gen-xlsx 位置参数标题修复 + 文件树任务完成自动刷新；⑥**s53：tag v0.9.8 打包（护航候选）+ 沙盒全新部署首任务冒烟 A1/A2/A3/A5/A7 全实景通过——s50 部署缺口「全新包无 key 首任务 401」正式关闭**（引导条事前 + 401人话事中 + 配好即用事后三层闭环）；⑦s54：MCP 商店补「网页抓取」fetch-mcp（GUI 实景：安装→重启挂载→goose 调 fetch_url 正确回答；官方 server-fetch 无 npm 包，选型实测后入目录）；⑧护航清单更新至 v0.9.8 为活文档（含 v0.9.8 解压基线 555.9s、C0 无 key 首屏新验证点）。业务含义 AI 翻译永久裁掉。终态 e2e.sh 8/8 + e2e-chat 26/26 + fuzz 23/23。真 401/双档案换线实景留护航
+- 更新：2026-08-30 s55→s56（2 commits）：①**用户两类断根问题设计裁决落地**（pf-pm 裁决书）：外部资源接入域管道（sync→本地缓存→中文人话化→检索，缓存=data/cache/ 文件+STATE_SCHEMAS 管线，翻译=桥直调 completion，安装收敛读缓存）+ 实体生命周期底线算子集（建/查/停/删/改期，允许裁掉但必须裁决；全盘盘点 14 项，6 项实锤）；②S1 定时任务暂停/恢复：goose 源码级取证否证「直接改 schedule.json」（守护读内存副本+persist 回滚），唯一正路=短命 `goose acp --enable-scheduler` 发 ACP custom request 落盘 + `pc restart goose-scheduler` 守护重载闭环（restart 失败降级 warn 不欺骗）；UI ⏸/▶；③S2 技能市场：data/cache/skills manifest 缓存（<24h 秒回，后台惰性重拉）+ desc_zh 批量翻译（10条/批截150，实测防超时）+ 搜索框（name/desc/desc_zh 过滤）+ ?preview 读缓存原文；④pf-qa 联审 5 修复（P1 done 双调崩溃/P2 GitHub 名白名单同门/P2 fuzz 8 断言/P3×2）+ fuzz 实跑新抓类型混淆（String([v]) 静默字符串化，改 typeof 收 string）；⑤GUI IAB 实景：⏸/▶ resume→goose IDLE+守护重启→pause 复原，技能市场 21 条秒开+搜「画画」命中中文描述。终态 e2e-chat 26/26 + fuzz 31/31（净增8）。遗留：S3（MCP/技能停+卸载）已排片未做；删除按钮同款守护盲区待补；daily-mem 保持 paused:true 原状
 - 阶段：**P31 内测护航进行中**（①本机部分 ✅（v0.9.8 护航候选包就绪），真机 POC 待用户；②收窄完成 ✅；③已就位；④收窄完成 ✅）
 
 ## 已完成周期
@@ -32,6 +32,7 @@
 | s51b-d | s51b:e2e.sh收尾挂死修复(goose输出走文件+python脱管,EXIT=0双跑);s51c:qa二轮换线自动重发竞态P1(重发挂subscribed后800ms)+P3×3(注释吞addInfo/tab aria/mcp轮询泄漏);s51d:P31-②配Key引导条落地(无key→引导条→现有⚙️面板,配好即消+chips重现,GUI双态A1-A4实景全过,桥零改动);独立向导页/任务选择层裁掉冻结挂P32 | s51 |
 | s52-53 | s52:gen-xlsx位置参数标题修复(JSON内title优先,7d35690)+文件树任务完成自动刷新(ACP stop分支挂renderCurPane,0cc98c0);s53:**tag v0.9.8打包+沙盒全新部署首任务冒烟A1/A2/A3/A5/A7全实景通过——s50部署缺口(无key首任务401)正式关闭**;真401/双档案换线实景留护航 | s53 |
 | s54 | MCP商店补「网页抓取」fetch-mcp@0.0.5(MIT,官方server-fetch无npm包,选型实测后入目录);复用s46机制零新代码;GUI实景:安装→重启挂载→goose调fetch_url正确回答;许可证以标注来源声明落档(包无LICENSE文件);e2e 26/26+fuzz 23/23 | s54 |
+| s55-56 | **用户两类断根问题裁决+落地**(pf-pm裁决书:外部资源接入域管道+实体生命周期底线算子集,全盘盘点14项6实锤):S1定时任务暂停/恢复(goose源码取证否证直改schedule.json——守护读内存副本+persist回滚;短命acp --enable-scheduler发ACP custom request落盘+pc restart goose-scheduler守护重载闭环,失败降级warn;UI ⏸/▶,GUI实景resume→IDLE→pause复原,7b3aa24);S2技能市场缓存+搜索+中文(data/cache/skills manifest<24h秒回+后台惰性重拉,desc_zh批量翻译10条/批截150防超时,搜索框过滤,?preview读缓存原文,21条秒开+搜「画画」命中中文描述);qa联审5修复+fuzz实跑抓String([v])类型混淆(typeof收string);e2e 26/26+fuzz 31/31 | s55-56 |
 ## 技术栈版本（全部 VERIFIED-RUN）
 process-compose v1.122.0 / nats-server v2.14.5 / nats-cli v0.4.0 / faucet v0.1.12 / goose v1.46.0 (AAIF) / node v22.21.1 / python 3.12 embeddable (Pillow 12.3.0；openpyxl 不在包内——s47 实测，旧记录失实已修正) / isomorphic-git 1.41.9 (vendored MIT, ADR-0007) / DOMPurify 3.2.4 (vendored Apache-2.0, s15)
 
@@ -56,6 +57,7 @@ ADR-0001 记忆拓扑 / ADR-0002 五件套技术栈 / ADR-0003 交付树+注册�
 - **P32 数据驱动**：据使用统计决定（候选：真机 PLM 适配、工作流模板、日程提醒）
 - **裁减原则**：商店/插件类扩张挂起至真机验证后；内测用户反馈是第一输入源，路线裁决权在团队
 ## Backlog（对标研究提炼，ADR-0010 复核条件）
+- **s56 断根裁决排片**：S3 = MCP/技能停+卸载（/api/extensions 动态并入已装 mcp-*、/api/mcpstore+skillstore 加 uninstall）——裁决书已切片，下轮首选；定时任务删除按钮同款守护盲区（删除后也需 restart goose-scheduler）；定时任务改期挂 P32+ 走聊天自然语言
 - 工作区级「项目指令」（对照 Manus Projects master instruction）：.forge 元数据扩展 + prompt 注入，首月低频故 backlog
 - 多会话并行任务（Manus Wide Research 式）：妻子场景低频，backlog
 - /api/search 升级 FTS5：消息量 >1 万条时

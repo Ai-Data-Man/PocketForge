@@ -140,6 +140,7 @@ const STATE_SCHEMAS = {
     'workspace-map.json': { latest: 1, steps: {} },
     'session-archive.json': { latest: 1, steps: {} },
     '.forge': { latest: 1, steps: {} },
+    'cache/skills/manifest.json': { latest: 1, steps: {} }, // s56: 技能市场缓存（path.join 与正斜杠键在 Windows 等价，已验）
 };
 function migrateJsonAt(f, key) {
     const meta = STATE_SCHEMAS[key];
@@ -468,12 +469,144 @@ async function listRemoteSkills(installedSet, res) {
         res.end(JSON.stringify({ ok: false, err: '技能源拉取失败: ' + e.message }));
     }
 }
+// s56: 技能市场缓存优先管道：sync（拉源→写缓存→异步补中文）→ GET 秒回缓存 → 安装/预览走本地缓存
+const SKILL_CACHE = path.join(ROOT, 'data', 'cache', 'skills');
+function readSkillManifest() { return readJson(path.join(SKILL_CACHE, 'manifest.json'), null); }
+function writeSkillManifest(m) { FSS.mkdirSync(SKILL_CACHE, { recursive: true }); atomicWrite(path.join(SKILL_CACHE, 'manifest.json'), JSON.stringify(m, null, 2)); }
+let skillSyncBusy = false; // 后台重拉/翻译防抖标志
+async function fetchAllRemoteSkills() {
+    // 拉源：目录列表 + 逐技能 SKILL.md（body 落盘，不进 manifest）
+    const listing = await ghJson('https://api.github.com/repos/' + REMOTE_SKILLS.repo + '/contents/' + REMOTE_SKILLS.subdir + '?ref=' + REMOTE_SKILLS.branch);
+    if (!Array.isArray(listing)) throw new Error('技能源不可达');
+    const skills = [];
+    for (const e of listing.filter(x => x.type === 'dir')) {
+        // qa-P2: 上游 GitHub 返回的目录名与用户输入同门——白名单外跳过（防源被攻破写出缓存树之外）
+        if (!/^[\w\-]{1,64}$/.test(e.name) || !fileNameSafe(e.name)) continue;
+        let meta = { name: e.name, description: '(远程技能)' };
+        try { meta = parseSkillMeta(await ghText('https://raw.githubusercontent.com/' + REMOTE_SKILLS.repo + '/' + REMOTE_SKILLS.branch + '/' + REMOTE_SKILLS.subdir + '/' + e.name + '/SKILL.md'), e.name); } catch {}
+        const body = meta.body; delete meta.body;
+        const ddir = path.join(SKILL_CACHE, e.name);
+        FSS.mkdirSync(ddir, { recursive: true });
+        atomicWrite(path.join(ddir, 'SKILL.md'), body);
+        skills.push({ dir: e.name, name: meta.name, description: meta.description, desc_zh: null });
+    }
+    return skills;
+}
+function mergeSkillManifest(oldM, skills) {
+    // 条目 diff：新增补入；旧有新无保留；同 dir 覆盖 name/description（desc_zh 沿用旧翻译），body 文件已在 fetch 时覆盖
+    const prev = new Map((oldM && Array.isArray(oldM.skills) ? oldM.skills : []).map(s => [s.dir, s]));
+    for (const s of skills) {
+        const o = prev.get(s.dir);
+        if (o) { s.desc_zh = o.desc_zh !== undefined ? o.desc_zh : null; if (!s.description || s.description === '(无说明)') s.description = o.description; }
+    }
+    return { _schema: 1, fetched_at: new Date().toISOString(), translating: false, skills };
+}
+async function translateSkillManifest(manifest) {
+    // 异步惰性中文补齐：≤30 条/请求，一次批量直调；失败不重试不阻塞（下次 sync 再补）
+    const act = activeProvider();
+    const host = ((act && act.host) || secrets.FORGE_AGENT_HOST || '').replace(/\/$/, '');
+    const key = (act && act.key) || secrets.FORGE_AGENT_API_KEY || '';
+    const model = (act && act.models && act.models[0]) || secrets.GOOSE_MODEL_NAME || '';
+    const pending = manifest.skills.filter(s => !s.desc_zh);
+    if (!pending.length || !host || !model) { manifest.translating = false; writeSkillManifest(manifest); return; }
+    manifest.translating = true; writeSkillManifest(manifest);
+    try {
+        // 实测（s56）：批量 19 条全量说明 >60s 超时；截断到 150 字符 + 拆 10 条/请求串行补，单批约 30-57s
+        let left = pending.slice();
+        while (left.length) {
+            const batch = left.splice(0, 10).map(s => ({ dir: s.dir, text: s.description.slice(0, 150) }));
+            const body = JSON.stringify({ model, max_tokens: 4096, messages: [
+                { role: 'system', content: '把每条技能说明翻译成小白能懂的中文大白话。只返回 JSON 数组，每项 {"dir":"...","zh":"..."}，不额外解释。' },
+                { role: 'user', content: JSON.stringify(batch) },
+            ]});
+            const txt = await new Promise((resolve, reject) => {
+                const u = new URL(host + '/chat/completions');
+                const reqMod = require(u.protocol === 'https:' ? 'https' : 'http');
+                const rq = reqMod.request(u, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, timeout: 60000 }, r2 => {
+                    let b = ''; r2.on('data', c => b += c);
+                    r2.on('end', () => {
+                        try { const j = JSON.parse(b.replace(/data:\s*\[DONE\][\s\S]*$/, '').trim()); const c0 = j.choices && j.choices[0]; const m0 = c0 && c0.message; resolve(String((m0 && (m0.content || m0.reasoning_content)) || '')); }
+                        catch (e) { reject(e); }
+                    });
+                });
+                rq.on('error', reject);
+                rq.on('timeout', () => { rq.destroy(); reject(new Error('翻译超时')); });
+                rq.write(body); rq.end();
+            });
+            const arr = JSON.parse((txt.match(/\[[\s\S]*\]/) || [txt])[0]);
+            const byDir = new Map(arr.map(x => [String(x.dir), String(x.zh || '')]));
+            for (const s of pending) { const zh = byDir.get(s.dir); if (zh) s.desc_zh = zh.slice(0, 500); }
+            writeSkillManifest(manifest); // 每批落盘，中途重启不丢已完成部分
+        }
+    } catch {}
+    manifest.translating = false;
+    writeSkillManifest(manifest);
+}
+async function syncRemoteSkills() {
+    if (skillSyncBusy) return;
+    skillSyncBusy = true;
+    try {
+        const merged = mergeSkillManifest(readSkillManifest(), await fetchAllRemoteSkills());
+        writeSkillManifest(merged);
+        await translateSkillManifest(merged).catch(() => {});
+        // 补翻完成（或失败）后盖 fetched_at：下次 GET 走 fresh 路径，不再重复触发重拉
+        merged.fetched_at = new Date().toISOString();
+        writeSkillManifest(merged);
+    } catch {} // 拉取失败静默保留旧缓存
+    skillSyncBusy = false;
+}
+function skillCacheFresh(m) { return m && Array.isArray(m.skills) && m.fetched_at && (Date.now() - Date.parse(m.fetched_at)) < 24 * 3600 * 1000; }
+// qa-P3: translating 崩溃残留自愈——标记超 10 分钟视为孤儿（桥重启于翻译中），当 false 读
+function translatingNow(m) { return !!m.translating && (Date.now() - Date.parse(m.fetched_at)) < 10 * 60 * 1000; }
+async function listRemoteSkills(installedSet, res) {
+    const m = readSkillManifest();
+    if (skillCacheFresh(m)) {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, fetched_at: m.fetched_at, translating: translatingNow(m), skills: m.skills.map(s => ({ ...s, remote: true, installed: installedSet.has(s.dir) })) }));
+        return;
+    }
+    if (m) { // 缓存过期：立即回旧缓存，后台重拉
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, fetched_at: m.fetched_at, translating: true, skills: m.skills.map(s => ({ ...s, remote: true, installed: installedSet.has(s.dir) })) }));
+        syncRemoteSkills();
+        return;
+    }    try { // 首次无缓存：同步拉一次
+        const merged = mergeSkillManifest(null, await fetchAllRemoteSkills());
+        writeSkillManifest(merged);
+        translateSkillManifest(merged).catch(() => {});
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, fetched_at: merged.fetched_at, translating: merged.translating, skills: merged.skills.map(s => ({ ...s, remote: true, installed: installedSet.has(s.dir) })) }));
+    } catch (e) {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, err: '技能源拉取失败: ' + e.message }));
+    }
+}
 async function installRemoteSkill(dirName, res) {
-    // 递归拉取 skills/<dir> 全部文件（GitHub contents API；子目录递归）
+    const dst = path.join(ROOT, '.agents', 'skills', dirName);
+    const finish = () => {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true }));
+    };
+    // s56: 优先从本地缓存复制（出网面收敛到 sync 一处）
+    try {
+        if (FSS.existsSync(path.join(SKILL_CACHE, dirName, 'SKILL.md'))) {
+            FSS.cpSync(path.join(SKILL_CACHE, dirName), dst, { recursive: true });
+            finish();
+            return;
+        }
+    } catch (e) {
+        try { FSS.rmSync(dst, { recursive: true, force: true }); } catch {}
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, err: '安装失败: ' + e.message }));
+        return;
+    }
+    // 缓存缺该目录：递归拉取 skills/<dir> 全部文件（GitHub contents API；子目录递归），拉完写缓存
     async function walkApi(relPath, destDir) {
         const items = await ghJson('https://api.github.com/repos/' + REMOTE_SKILLS.repo + '/contents/' + REMOTE_SKILLS.subdir + '/' + relPath + '?ref=' + REMOTE_SKILLS.branch);
         if (!Array.isArray(items)) throw new Error('技能目录拉取失败: ' + relPath);
         for (const it of items) {
+            // qa-P2: 上游文件/子目录名过同一白名单（递归写盘面与用户输入同门）
+            if (!/^[\w\-\.]{1,64}$/.test(it.name) || !fileNameSafe(it.name)) continue;
             const rel = REMOTE_SKILLS.subdir + '/' + relPath === '' ? it.name : relPath + '/' + it.name;
             if (it.type === 'dir') {
                 await walkApi(rel, path.join(destDir, it.name));
@@ -484,13 +617,13 @@ async function installRemoteSkill(dirName, res) {
         }
     }
     try {
-        const dst = path.join(ROOT, '.agents', 'skills', dirName);
         await walkApi(dirName, dst);
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: true }));
+        finish();
+        // 顺手把整个技能目录写进缓存（安装路径与缓存路径同构，纯复制即可）
+        try { FSS.cpSync(dst, path.join(SKILL_CACHE, dirName), { recursive: true }); } catch {}
     } catch (e) {
         // 失败清理半成品目录
-        try { FSS.rmSync(path.join(ROOT, '.agents', 'skills', dirName), { recursive: true, force: true }); } catch {}
+        try { FSS.rmSync(dst, { recursive: true, force: true }); } catch {}
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, err: '安装失败: ' + e.message }));
     }
@@ -953,6 +1086,7 @@ const ext = path.extname(f).toLowerCase();
                 stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true,
             });
             const done = (payload, code) => {
+                if (res.writableEnded) return; // qa-P1: 25s 超时先回包后，pc restart(30s) 迟到回调再写已结束响应会抛 uncaughtException
                 try { child.kill(); } catch {}
                 res.writeHead(code || 200, { 'content-type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify(payload));
@@ -1015,7 +1149,8 @@ const ext = path.extname(f).toLowerCase();
             req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
             req.on('end', () => {
                 let id = '', op = '';
-                try { const b = JSON.parse(Buffer.concat(chunks).toString('utf8')); id = String(b.id || ''); op = String(b.op || ''); } catch {}
+                try { const b = JSON.parse(Buffer.concat(chunks).toString('utf8')); if (typeof b.id !== 'string' || typeof b.op !== 'string') throw 0; id = b.id; op = b.op; } catch {}
+                // fuzz 发现：String([v])==='v'，数组/原始值会被静默字符串化绕过类型面——只收 string
                 if (!/^[\w\-\.]{1,64}$/.test(id) || (op && !['pause', 'resume'].includes(op))) {
                     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ ok: false, err: '参数不合法' })); return;
@@ -1087,7 +1222,19 @@ const ext = path.extname(f).toLowerCase();
             } catch { return null; }
         }
         if (req.method === 'GET') {
-            const isRemote = new URL(req.url, 'http://x').searchParams.get('remote') === '1';
+            const qp = new URL(req.url, 'http://x').searchParams;
+            const isRemote = qp.get('remote') === '1';
+            // s56: 预览走缓存原文（dir 白名单 + 保留设备名过滤；不存在回落 err 人话）
+            const preview = qp.get('preview');
+            if (preview !== null) {
+                res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                if (!/^[\w\-]{1,64}$/.test(preview) || !fileNameSafe(preview)) { res.end(JSON.stringify({ ok: false, err: '参数不合法' })); return; }
+                try {
+                    const body = FSS.readFileSync(path.join(SKILL_CACHE, preview, 'SKILL.md'), 'utf8');
+                    res.end(JSON.stringify({ ok: true, body: body.slice(0, 4000) }));
+                } catch { res.end(JSON.stringify({ ok: false, err: '内容还没缓存，安装后可见' })); }
+                return;
+            }
             const installedSet = new Set();
             try { for (const e of FSS.readdirSync(INSTALLED, { withFileTypes: true })) if (e.isDirectory()) installedSet.add(e.name); } catch {}
             // s45: 远程技能源（anthropics/skills，开源；经代理访问 GitHub API）

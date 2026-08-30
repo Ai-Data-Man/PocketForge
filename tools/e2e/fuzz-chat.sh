@@ -56,6 +56,22 @@ curl -s -X POST "$B/api/skillstore" -H 'content-type: application/json' -d '{"na
 curl -s -X POST "$B/api/skillstore" -H 'content-type: application/json' -d '{"name":"con","remote":true}' | grep -q '参数不合法'; ck "skillstore reserved name con refused (remote)" $?
 # s50h(FIND-2/4): WS sid 白名单 + prompt 绑定/非空/长度上限（完整 11 断言矩阵见同目录 ws-fuzz-s50h.js；此处收编其单条冒烟——畸形 sid 拒绝）
 node "$(dirname "$0")/ws-fuzz-s50h.js" >/dev/null 2>&1; ck "ws s50h fuzz matrix (11 asserts)" $?
+# s55: schedules op 白名单矩阵（pause/resume 合法但不实景执行——daily-mem 保持 paused:true 原状）
+# 合法 op + 非法 id 必须拒绝（校验先于 spawn）；非法 op 拒绝；缺 id 拒绝
+curl -s -X POST "$B/api/schedules" -H 'content-type: application/json' -d '{"id":"../x","op":"pause"}' | grep -q '参数不合法'; ck "schedules traversal id with op rejected" $?
+curl -s -X POST "$B/api/schedules" -H 'content-type: application/json' -d '{"id":"daily-mem","op":"fly"}' | grep -q '参数不合法'; ck "schedules bad op rejected" $?
+curl -s -X POST "$B/api/schedules" -H 'content-type: application/json' -d '{"op":"pause"}' | grep -q '参数不合法'; ck "schedules missing id rejected" $?
+curl -s -X POST "$B/api/schedules" -H 'content-type: application/json' -d '{"id":["daily-mem"],"op":"pause"}' | grep -q '参数不合法'; ck "schedules array id rejected" $?
+# s56: preview 白名单矩阵（读缓存原文端点）
+curl -s "$B/api/skillstore?preview=../secrets" | grep -q '参数不合法'; ck "skillstore preview traversal rejected" $?
+curl -s "$B/api/skillstore?preview=con" | grep -q '参数不合法'; ck "skillstore preview reserved name rejected" $?
+curl -s --get "$B/api/skillstore" --data-urlencode "preview=$(printf 'x%.0s' {1..70})" | grep -q '参数不合法'; ck "skillstore preview overlong rejected" $?
+# s56: remote=1 新响应形状（缓存优先：ok+skills 数组，fetched_at 存在）
+curl -s "$B/api/skillstore?remote=1" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+assert d.get('ok') is True and isinstance(d.get('skills'),list) and d.get('fetched_at'), d.keys()
+"; ck "skillstore remote response shape (s56)" $?
 echo "=============================="
 echo "fuzz: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" = "0" ]

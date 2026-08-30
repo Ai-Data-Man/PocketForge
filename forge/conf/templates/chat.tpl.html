@@ -337,7 +337,9 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
   <div id="skills-list"></div>
   <h3 style="margin:18px 0 8px">🛒 可添加的技能</h3>
   <div class="fnote" style="margin-bottom:10px">来源：本机技能库 + 🌐 Anthropic 官方开源技能库。装之前先点「先看内容」过一眼，确认没问题再添加。添加后立刻生效。</div>
+  <input id="store-q" placeholder="搜技能…" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:12.5px;outline:none;margin-bottom:6px">
   <div id="store-list"></div>
+  <div class="fnote" id="store-note" style="display:none">中文说明整理中，稍后重开可见。</div>
 </div></div>
 <div id="manage-modal" class="modal-bg"><div class="panel-box">
   <h3>🧠 管理小 forge</h3>
@@ -1124,7 +1126,7 @@ async function loadSchedUI(){
         if(!res.ok) throw new Error(res.err||'失败');
         if(res.warn) alert(res.warn);
         loadSchedUI();
-      }catch(e){ tog.disabled=false; alert(j.paused?'没恢复成：':'没暂停成：'+e.message); }
+      }catch(e){ tog.disabled=false; alert((j.paused?'没恢复成：':'没暂停成：')+e.message); }
     };
     row.appendChild(tog);
     row.appendChild(del);
@@ -1520,28 +1522,30 @@ $('open-skills').onclick=async()=>{
   }catch(e){ $('skills-list').innerHTML='<div class="fnote">读取失败：'+e.message+'</div>'; }
   loadSkillStore();
 };
-// s42/s45: 技能商店（本地 skills-repo + 远程 anthropics/skills）
-async function loadSkillStore(){
+// s42/s45/s56: 技能商店（本地 skills-repo + 远程缓存；搜索过滤；中文说明优先）
+let storeAll=[]; // 当前可装列表（avail），供搜索过滤
+function skillDesc(sk){ return sk.desc_zh || sk.description || '（无说明）'; }
+function storePaint(){
   const box=$('store-list'); if(!box) return;
-  box.innerHTML='<div class="fnote">正在从技能源获取…</div>';
-  let local=[], remote=[];
-  try { local = await apiJSON('/api/skillstore'); } catch(e){}
-  try {
-    const r = await apiJSON('/api/skillstore?remote=1');
-    if (Array.isArray(r)) remote = r;
-  } catch(e){}
-  const avail=[...local.filter(s=>!s.installed), ...remote.filter(s=>!s.installed)];
-  if(!avail.length){ box.innerHTML='<div class="fnote">没有可添加的新技能了。</div>'; return; }
+  const q=(($('store-q')||{}).value||'').trim().toLowerCase();
+  const avail=storeAll.filter(s=>!q || (s.name||'').toLowerCase().includes(q) || (s.description||'').toLowerCase().includes(q) || (s.desc_zh||'').toLowerCase().includes(q));
   box.innerHTML='';
+  if(!avail.length){ box.innerHTML='<div class="fnote">'+(q?'没找到带「'+esc(q)+'」的技能。':'没有可添加的新技能了。')+'</div>'; return; }
   for(const sk of avail){
     const el=document.createElement('div'); el.className='skill';
-    el.innerHTML='<div class="nm">'+(sk.remote?'🌐 ':'')+esc(sk.name)+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
+    el.innerHTML='<div class="nm">'+(sk.remote?'🌐 ':'')+esc(sk.name)+'</div><div class="ds">'+esc(skillDesc(sk))+'</div>';
     const ops=document.createElement('div'); ops.className='ops';
     const view=document.createElement('button'); view.className='mini'; view.textContent='先看内容';
-    view.onclick=()=>{
+    view.onclick=async()=>{
       const pre=el.querySelector('pre');
       if(pre) pre.remove();
-      else { const pre=document.createElement('pre'); pre.textContent=sk.body; el.appendChild(pre); }
+      else {
+        const pre=document.createElement('pre'); pre.textContent='正在读取…'; el.appendChild(pre);
+        let body=sk.body||'';
+        try{ if(sk.remote){ const r=await apiJSON('/api/skillstore?preview='+encodeURIComponent(sk.dir||sk.name)); if(r.ok) body=r.body; else body='内容还没缓存，安装后可见。'; } }
+        catch(e){ body='内容还没缓存，安装后可见。'; }
+        pre.textContent=body||'（无内容）';
+      }
     };
     const inst=document.createElement('button'); inst.className='mini'; inst.style.borderColor='var(--acc)'; inst.style.color='var(--acc)';
     inst.textContent='⬇ 添加';
@@ -1551,11 +1555,25 @@ async function loadSkillStore(){
         const body={name:sk.dir||sk.name}; if(sk.remote) body.remote=true;
         const r=await apiJSON('/api/skillstore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
         if(!r.ok) throw new Error(r.err||'失败');
-        el.remove(); loadSkills2();
+        storeAll=storeAll.filter(s=>s!==sk); el.remove(); loadSkills2();
       }catch(e){ inst.disabled=false; alert('没装成：'+e.message); }
     };
     ops.appendChild(view); ops.appendChild(inst); el.appendChild(ops); box.appendChild(el);
   }
+}
+let storeQT=null;
+async function loadSkillStore(){
+  const box=$('store-list'); if(!box) return;
+  box.innerHTML='<div class="fnote">正在从技能源获取…</div>';
+  let local=[], remote=[], translating=false;
+  try { local = await apiJSON('/api/skillstore'); } catch(e){}
+  try {
+    const r = await apiJSON('/api/skillstore?remote=1');
+    if (r && Array.isArray(r.skills)) { remote = r.skills; translating = !!r.translating; }
+  } catch(e){}
+  storeAll=[...local.filter(s=>!s.installed), ...remote.filter(s=>!s.installed)];
+  $('store-note').style.display = (translating && remote.some(s=>!s.installed)) ? '' : 'none';
+  storePaint();
 }
 async function loadSkills2(){
   try{ const r=await fetch('/api/skills'); const list=await r.json(); const box=$('skills-list'); box.innerHTML='';
@@ -1567,6 +1585,8 @@ async function loadSkills2(){
   }catch(e){}
 }
 $('skills-modal').onclick=e=>{ if(e.target.id==='skills-modal') e.target.classList.remove('on'); };
+// s56: 技能商店搜索（防抖 200ms，过滤 name/description/desc_zh）
+$('store-q').oninput=()=>{ clearTimeout(storeQT); storeQT=setTimeout(storePaint,200); };
 
 // 消息操作：复制 / 重发
 document.getElementById('chat').addEventListener('click', async e=>{
