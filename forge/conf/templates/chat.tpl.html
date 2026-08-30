@@ -1058,9 +1058,25 @@ async function loadMcpUI(){
   for(const m of list){
     const row=document.createElement('div');
     row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line)';
-    row.innerHTML='<div style="flex:1"><div style="font-size:.85rem;font-weight:600">'+esc(m.name)+(m.installed?' <span class="fnote">已启用</span>':'')+'</div>'+
+    row.innerHTML='<div style="flex:1"><div style="font-size:.85rem;font-weight:600">'+esc(m.name)+(m.installed?' <span class="fnote">'+(m.enabled===false?'已停用':'已启用')+'</span>':'')+'</div>'+
       '<div class="fnote" style="margin-top:2px">'+esc(m.desc)+(m.license?' · '+esc(m.license):'')+'</div>'+
       (m.install&&m.install.msg?'<div class="fnote" style="color:var(--warn-tx)">'+esc(m.install.msg)+'</div>':'')+'</div>';
+    if(m.installed){
+      // s57: 卸载（删 config 块 + vendor 目录）；开关在「它会什么」面板，停用不改这里
+      const un=document.createElement('button');
+      un.className='mini'; un.textContent='卸载';
+      un.onclick=async()=>{
+        if(!confirm('卸载「'+m.name+'」？卸载后要重新安装才能再用。')) return;
+        un.disabled=true;
+        try{
+          const r=await apiJSON('/api/mcpstore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:m.id,op:'uninstall'})});
+          if(!r.ok) throw new Error(r.err||'失败');
+          alert('已卸载。重启数字员工后彻底生效。');
+        }catch(e){ alert('没卸成：'+e.message); }
+        loadMcpUI();
+      };
+      row.appendChild(un);
+    }
     if(!m.installed){
       const st=(m.install||{}).stage;
       const btn=document.createElement('button');
@@ -1580,7 +1596,19 @@ async function loadSkills2(){
     for(const sk of list){
       const el=document.createElement('div'); el.className='skill';
       el.innerHTML='<div class="nm">'+esc(sk.name)+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
-      box.appendChild(el);
+      // s57: 卸载已装技能（删 .agents/skills/<dir>）
+      const ops=document.createElement('div'); ops.className='ops';
+      const del=document.createElement('button'); del.className='mini'; del.textContent='✕'; del.title='卸载这个技能';
+      del.onclick=async()=>{
+        if(!confirm('卸载技能「'+sk.name+'」？')) return;
+        del.disabled=true;
+        try{
+          const res=await apiJSON('/api/skillstore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:sk.name,op:'uninstall'})});
+          if(!res.ok) throw new Error(res.err||'失败');
+          el.remove(); loadSkillStore(); // qa-s57(P3): 已装列表与商店面板同步（卸载后该技能回到可装列表）
+        }catch(e){ del.disabled=false; alert('没卸成：'+e.message); }
+      };
+      ops.appendChild(del); el.appendChild(ops); box.appendChild(el);
     }
   }catch(e){}
 }

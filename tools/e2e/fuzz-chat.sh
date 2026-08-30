@@ -72,6 +72,22 @@ import sys,json
 d=json.load(sys.stdin)
 assert d.get('ok') is True and isinstance(d.get('skills'),list) and d.get('fetched_at'), d.keys()
 "; ck "skillstore remote response shape (s56)" $?
+# s57: 卸载输入白名单——路径穿越/保留名/类型混淆在删除分支之前必须拒（安装同门）
+curl -s -X POST "$B/api/skillstore" -H 'content-type: application/json' -d '{"name":"../x","op":"uninstall"}' | grep -q '参数不合法'; ck "skillstore uninstall traversal rejected" $?
+curl -s -X POST "$B/api/skillstore" -H 'content-type: application/json' -d '{"name":"con","op":"uninstall"}' | grep -q '参数不合法'; ck "skillstore uninstall reserved name rejected" $?
+curl -s -X POST "$B/api/mcpstore" -H 'content-type: application/json' -d '{"id":"../../x","op":"uninstall"}' | grep -q '没有安装这个 MCP'; ck "mcpstore uninstall foreign id rejected" $?
+curl -s -X POST "$B/api/mcpstore" -H 'content-type: application/json' -d '{"id":["fetch"],"op":"uninstall"}' | grep -q '目录里没有这个 MCP'; ck "mcpstore uninstall array id rejected" $?
+curl -s -X POST "$B/api/mcpstore" -H 'content-type: application/json' -d '{"id":"ghost-mcp","op":"uninstall"}' | grep -q '没有安装这个 MCP'; ck "mcpstore uninstall unknown id friendly" $?
+curl -s -X POST "$B/api/skillstore" -H 'content-type: application/json' -d '{"name":"ghost-skill-zzz","op":"uninstall"}' | grep -q '没有安装这个技能'; ck "skillstore uninstall unknown name friendly" $?
+# s57: extensions 动态并入——GET 含已装 mcp-*（visible:true, builtin:false；fetch 已装回）
+curl -s "$B/api/extensions" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+mcp=[x for x in d if x['id'].startswith('mcp-')]
+assert mcp and all(x['builtin'] is False and x['visible'] is True for x in mcp), mcp
+assert any(x['id']=='mcp-fetch' for x in mcp), mcp
+"; ck "extensions dynamic mcp merged (s57)" $?
+curl -s -X POST "$B/api/extensions" -H 'content-type: application/json' -d '{"id":"mcp-ghost-zzz","enabled":false}' | grep -q '参数不合法'; ck "extensions dynamic id whitelist enforced" $?
 echo "=============================="
 echo "fuzz: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" = "0" ]

@@ -660,6 +660,40 @@ function mcpWriteExtension(id, entry) {
         '    timeout: 300\n';
     atomicWrite(CFG, raw.replace(/\n*$/, '\n') + block);
 }
+// s57: 读 mcp-* 块的 enabled（无块视为 true；商店列表显示已启用/已停用）
+// qa-s57(P2): 块界扫描（自写正则会跨块吞下一块的 enabled 行）
+function mcpEnabled(id) {
+    try {
+        const raw = FSS.readFileSync(path.join(ROOT, 'conf', 'goose', 'config', 'config.yaml'), 'utf8');
+        let inBlock = false, val = null;
+        for (const line of raw.split('\n')) {
+            if (/^[^\s#]/.test(line)) break; // 下一顶级键，extensions 区结束
+            const blk = line.match(/^ {2}([A-Za-z0-9_\-]+):\s*$/);
+            if (blk) { inBlock = blk[1] === mcpExtensionId(id); continue; }
+            if (inBlock) {
+                const en = line.match(/^ {4}enabled:\s*(true|false)/);
+                if (en) { val = en[1] === 'true'; break; }
+            }
+        }
+        return val === null ? true : val;
+    } catch { return true; }
+}
+// s57: 行级删除 `  mcp-<id>:` 块（到下一个同缩进键或文件尾）；卸载 MCP 用
+function mcpRemoveExtension(id) {
+    const CFG = path.join(ROOT, 'conf', 'goose', 'config', 'config.yaml');
+    const lines = FSS.readFileSync(CFG, 'utf8').split('\n');
+    const out = [];
+    let skip = false, found = false;
+    for (const line of lines) {
+        if (/^ {2}[A-Za-z0-9_\-]+:\s*$/.test(line)) {
+            if (new RegExp('^ {2}' + mcpExtensionId(id) + ':\\s*$').test(line)) { skip = true; found = true; continue; }
+            skip = false;
+        }
+        if (!skip) out.push(line);
+    }
+    if (!found) throw new Error('配置里没找到该扩展');
+    atomicWrite(CFG, out.join('\n').replace(/\n*$/, '\n'));
+}
 
 // ---- s50b: 库里有什么（GET /api/db/overview）——faucet CLI 发现实 + REST 数行数；端点不收任何用户参数 ----
 const FAUCET_EXE = path.join(ROOT, 'bin', 'faucet', 'faucet.exe');
@@ -1177,6 +1211,7 @@ const ext = path.extname(f).toLowerCase();
             res.end(JSON.stringify(MCP_CATALOG.map(m => ({
                 id: m.id, name: m.name, desc: m.desc, license: m.license,
                 installed: mcpInstalled(m.id),
+                enabled: mcpEnabled(m.id),
                 install: mcpInstallState[m.id] || null,
             }))));
         } else if (req.method === 'POST') {
@@ -1184,10 +1219,22 @@ const ext = path.extname(f).toLowerCase();
             let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
             req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
             req.on('end', () => {
-                let id = '';
-                try { id = String(JSON.parse(Buffer.concat(chunks).toString('utf8')).id || ''); } catch {}
+                let id = '', op = '';
+                try { const b = JSON.parse(Buffer.concat(chunks).toString('utf8')); if (typeof b.id !== 'string') throw 0; id = b.id; op = b.op === 'uninstall' ? 'uninstall' : ''; } catch {}
                 const item = MCP_CATALOG.find(m => m.id === id);
                 res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                // s57: op=uninstall 删 config.yaml 块 + vendor 目录（停用走 /api/extensions，这里是删）
+                if (op === 'uninstall') {
+                    if ((mcpInstallState[id] || {}).stage === 'installing') { res.end(JSON.stringify({ ok: false, err: '正在安装，等装完再卸' })); return; }
+                    if (!item || !mcpInstalled(id)) { res.end(JSON.stringify({ ok: false, err: '没有安装这个 MCP，不用卸载' })); return; }
+                    try {
+                        mcpRemoveExtension(id);
+                        delete mcpInstallState[id];
+                        FSS.rmSync(path.join(ROOT, 'bin', 'vendor', 'mcp-' + id), { recursive: true, force: true });
+                        res.end(JSON.stringify({ ok: true, note: '已卸载' }));
+                    } catch (e) { res.end(JSON.stringify({ ok: false, err: '卸载失败: ' + e.message })); }
+                    return;
+                }
                 if (!item) { res.end(JSON.stringify({ ok: false, err: '目录里没有这个 MCP' })); return; }
                 if (mcpInstalled(id)) { res.end(JSON.stringify({ ok: true, already: true })); return; }
                 if (mcpInstallState[id] && mcpInstallState[id].stage === 'installing') { res.end(JSON.stringify({ ok: true, started: true })); return; }
@@ -1262,6 +1309,15 @@ const ext = path.extname(f).toLowerCase();
                     const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
                     // s50h(FIND-3): 白名单外再过保留设备名（con 等），remote 与本地复制两分支同门
                     if (typeof b.name !== 'string' || !/^[\w\-]{1,64}$/.test(b.name) || !fileNameSafe(b.name)) throw new Error('参数不合法');
+                    // s57: op=uninstall 删 .agents/skills/<dir>（白名单与安装同门）
+                    if (b.op === 'uninstall') {
+                        const dst = path.join(INSTALLED, b.name);
+                        if (!FSS.existsSync(path.join(dst, 'SKILL.md'))) throw new Error('没有安装这个技能，不用卸载');
+                        FSS.rmSync(dst, { recursive: true, force: true });
+                        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                        res.end(JSON.stringify({ ok: true, note: '已卸载' }));
+                        return;
+                    }
                     if (b.remote) { installRemoteSkill(b.name, res); return; }
                     const src = path.join(REPO, b.name);
                     const dst = path.join(INSTALLED, b.name);
@@ -1308,13 +1364,19 @@ const ext = path.extname(f).toLowerCase();
         }
         if (req.method === 'GET') {
             const st = readExtState();
-            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify(Object.keys(LABELS).map(k => ({
+            const rows = Object.keys(LABELS).map(k => ({
                 id: k, name: LABELS[k].name, desc: LABELS[k].desc,
                 enabled: st[k] !== false,
                 visible: k !== 'chatrecall',
                 builtin: !(k in st),
-            }))));
+            }));
+            // s57: 已装 MCP 动态并入（能力开关面板盲区修复）——mcpEnabled 返回 true 时算「开着」
+            for (const m of MCP_CATALOG) {
+                if (!mcpInstalled(m.id)) continue;
+                rows.push({ id: mcpExtensionId(m.id), name: m.name, desc: m.desc, enabled: mcpEnabled(m.id), visible: true, builtin: false });
+            }
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify(rows));
         } else if (req.method === 'POST') {
             const chunks = [];
             let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
@@ -1322,7 +1384,10 @@ const ext = path.extname(f).toLowerCase();
             req.on('end', () => {
                 try {
                     const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-                    if (!(b.id in LABELS) || typeof b.enabled !== 'boolean') throw new Error('参数不合法');
+                    // s57: id 合法面 = 内置 LABELS ∪ 已装 MCP（mcp-*）；enabled 行级替换两态同门
+                    const dyn = MCP_CATALOG.some(m => mcpInstalled(m.id) && mcpExtensionId(m.id) === b.id);
+                    if (!(b.id in LABELS) && !dyn) throw new Error('参数不合法');
+                    if (typeof b.enabled !== 'boolean') throw new Error('参数不合法');
                     let raw = FSS.readFileSync(CFG, 'utf8');
                     let inExts = false, cur = null, done = false;
                     raw = raw.split('\n').map(line => {

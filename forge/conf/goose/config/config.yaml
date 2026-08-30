@@ -36,3 +36,11 @@ extensions:
     cmd: 'C:/ZCodeWorks/PocketForge/forge/bin/node-v22/node-v22.21.1-win-x64/node.exe'
     args: ['C:/ZCodeWorks/PocketForge/forge/bin/vendor/mcp-sequential-thinking/node_modules/@modelcontextprotocol/server-sequential-thinking/dist/index.js']
     timeout: 300
+
+  mcp-fetch:
+    type: stdio
+    name: mcp-fetch
+    enabled: true
+    cmd: 'C:/ZCodeWorks/PocketForge/forge/bin/node-v22/node-v22.21.1-win-x64/node.exe'
+    args: ['C:/ZCodeWorks/PocketForge/forge/bin/vendor/mcp-fetch/node_modules/fetch-mcp/cli.js']
+    timeout: 300
