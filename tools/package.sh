@@ -4,7 +4,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FORGE="$ROOT/forge"
-VER=$(git -C "$ROOT" describe --tags --always 2>/dev/null || echo dev)
+# 显式 TAG 参数时用精确版本（describe 在 tag 后有commit 数时输出 v0.9.8-19-g77ca5d9，不适合成品名）
+VER=${RELEASE_TAG:-$(git -C "$ROOT" describe --tags --abbrev=0 --always 2>/dev/null || echo dev)}
 # 记忆层（docs/DECISIONS/tools）只存在于仓库根；forge/ 下出现即路径事故产物，混入交付包 = 内部文档泄漏
 for junk in docs DECISIONS tools; do
   [ -e "$FORGE/$junk" ] && { echo "forge/$junk 不应存在（路径事故产物），删除或查证后再打包"; exit 1; }
