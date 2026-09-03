@@ -630,7 +630,7 @@ function renderSessions(list){
     if(archOpen) for(const s of arc.slice(0,30)) box.appendChild(sessItem(s,true));
   }
 }
-function subscribe(sid){ pendingForNew=!sid; wssend({type:'subscribe',sessionId:sid,model:lastKnownModel||undefined}); chat.innerHTML=''; toolCards.clear(); if(!sid){ addMsg('你好！我是小 forge。想做什么直接打字告诉我。','agent'); addQuickPrompts(); } }
+function subscribe(sid){ pendingForNew=!sid; lastOrig=null; wssend({type:'subscribe',sessionId:sid,model:lastKnownModel||undefined}); chat.innerHTML=''; toolCards.clear(); if(!sid){ addMsg('你好！我是小 forge。想做什么直接打字告诉我。','agent'); addQuickPrompts(); } }
 // s33: 开场快捷任务——小白不用想"该说什么"，点一下就发
 const QUICK_PROMPTS=[
   {label:'🩺 做个体检', text:'做个体检'},
@@ -710,7 +710,7 @@ function toggleReportCard(wrap){
 }
 function openSession(sid){
   if(busy){ addErr('它正在干活，等一下或先停止。'); return; }
-  pendingForNew=false; // C3: 切旧会话不补发队列
+  pendingForNew=false; lastOrig=null; // C3: 切旧会话不补发队列；s50e: 清重发原文，防上一会话原文串进本会话（回放末尾 endStream 可能读它）
   if(pendingQueue.length){ rollbackQueue('你切到了别的对话，刚才排队没发出去的话已放回，稍后再发一次。'); } // C3: 用户改主意切走，别替他发
   // 先订阅再载入：load 的历史回放通知才能流进 UI
   wssend({type:'subscribe',sessionId:sid});
@@ -767,9 +767,9 @@ function switchModel(v){
   addInfo('正在切换到 '+v+' …');
   wssend({type:'switch_model',model:v});
 }
-let pendingSwitch=null; let pendingRetry=null; // s50e: 换备用线路后自动重发的一次性回调（provider_switched 时消费）
+let pendingSwitch=null; let pendingRetry=null; let lastOrig=null; // s50e: 换备用线路后自动重发的一次性回调（provider_switched 时消费）；lastOrig=最近一次实际发送的原文，会话切换时清空
 let pendingQueue=[]; let pendingForNew=false; // #3: 对话还没开好时先记下用户消息，subscribed 后自动补发（替代原先直接拒发）；C3: 仅新对话补发
-function rollbackQueue(tip){ if(!pendingQueue.length) return; if(txt.value.trim()) addInfo('输入框里你正在打的字被换成了记下的第一条，需要的话请重新输入。'); txt.value=pendingQueue.shift(); for(const q of pendingQueue) addInfo('你刚输入的：'+q); pendingQueue=[]; addInfo(tip); } // B1/C3: 队列倒回——第一条回输入框，其余上墙展示
+function rollbackQueue(tip){ if(!pendingQueue.length) return; if(txt.value.trim()) addInfo('你正在打的字（已让位给排队的话，怕你找不到，先放这儿）：'+txt.value); txt.value=pendingQueue.shift(); for(const q of pendingQueue) addInfo('你刚输入的：'+q); pendingQueue=[]; addInfo(tip); } // B1/C3: 队列倒回——第一条回输入框，其余上墙展示；s62: 被让位的草稿也上墙，不再无声丢失
 function flushPendingQueue(){ while(pendingQueue.length){ if(busy||!sessionId) return; submit(pendingQueue.shift()); } } // B2: 直发不经输入框，不碰用户正在打的草稿
 function loadProvidersUI(){ wssend({type:'providers'}); }
 $('model-pick').onclick=e=>{
@@ -839,14 +839,14 @@ function addMsg(text,who){
 }
 function endStream(){ if(streamEl){
   streamEl.dataset.live='0';
-  const txt = streamEl.textContent;
-  streamEl.innerHTML = mdRender(txt);
+  const txtRaw = streamEl.textContent; // 改名避免遮蔽全局输入框 txt（s50e 重发闭包要读 txt.value）
+  streamEl.innerHTML = mdRender(txtRaw);
   if(!streamEl.querySelector('.mbar')) streamEl.appendChild(msgButtons());
   // s25: 大白话报错转译——上游/服务商故障时给小白一句能懂的提示；s50e: 401=Key 没配好，指引去设置；其余给「换备用线路」一键
-  if(/Ran into this error|Server error|rate limit|timed? out|ECONN|fetch failed|could not connect|network error/i.test(txt)){
-    const orig=streamEl.dataset.orig||txt; // s50e: 重发原文（提示词注入前的用户输入）
+  if(/Ran into this error|Server error|rate limit|timed? out|ECONN|fetch failed|could not connect|network error/i.test(txtRaw)){
+    const orig=lastOrig||txtRaw; // s50e: 重发原文（提示词注入前的用户输入；原 dataset.orig 写在 addMsg 之后恒为死代码，改用模块级 lastOrig）
     const el=document.createElement('div'); el.className='msg agent info';
-    if(/401\s*(unauthorized|invalid|forbidden)?[^\n]{0,40}(unauthorized|invalid|api[ _-]?key)|api[ _-]?key|unauthorized/i.test(txt)){ // s50f: 裸 401 须伴随上下文词，避免「共 401 条记录」误报
+    if(/401\s*(unauthorized|invalid|forbidden)?[^\n]{0,40}(unauthorized|invalid|api[ _-]?key)|api[ _-]?key|unauthorized/i.test(txtRaw)){ // s50f: 裸 401 须伴随上下文词，避免「共 401 条记录」误报
       el.textContent='💡 这家服务商的 Key 没配上或不对。到 ⚙️ 设置 → 服务商档案，填好 Key 再回来点重发。';
       chat.appendChild(el);
     } else {
@@ -1002,7 +1002,7 @@ function submit(forced){
   }
   if(!wssend({type:'prompt',text:t+hint})) return; // C6: 未连上直接返回（wssend 已提示自动重连），消息留在输入框，不上墙不置 busy
   addMsg(t,'user'); if(fromBox) txt.value=''; setBusy(true); // B2: 清空输入框仅在值来自输入框时发生
-  if(streamEl) streamEl.dataset.orig=t; // s50e: 记录用户原文，上游失败时「换备用线路再试」用它重发
+  lastOrig=t; // s50e: 记录用户原文（原写 streamEl.dataset.orig 在 addMsg user 分支置 null 之后，恒不执行），上游失败时「换备用线路再试」用它重发
 }
 send.onclick=()=>submit();
 txt.onkeydown=e=>{
@@ -1662,7 +1662,7 @@ document.getElementById('chat').addEventListener('click', async e=>{
   const btn=e.target.closest('.msgbtn'); if(!btn) return;
   const msg=btn.closest('.msg');
   if(btn.dataset.act==='copy'){ await navigator.clipboard.writeText(msg.textContent); btn.textContent='已复制✓'; setTimeout(()=>btn.textContent='复制',1200); }
-  if(btn.dataset.act==='retry'){ $('txt').value=msg.textContent; submit(); }
+  if(btn.dataset.act==='retry'){ $('txt').value=msg.textContent.replace(/((复制|重发)\s*)+$/,''); submit(); } // 按钮文字清理，对齐 exportChat
 });
 function msgButtons(){
   const bar=document.createElement('div'); bar.className='mbar';

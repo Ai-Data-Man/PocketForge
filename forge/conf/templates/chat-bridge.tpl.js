@@ -2060,15 +2060,15 @@ function drop(ws) {
     allClients.delete(ws);
     for (const set of sessionClients.values()) set.delete(ws);
 }
-function writeRaw(socket, op, payload) {
+function writeRaw(socket, op, payload, cb) {
     const len = payload.length;
     let header;
     if (len < 126) header = Buffer.from([0x80 | op, len]);
     else if (len < 65536) { header = Buffer.alloc(4); header[0] = 0x80 | op; header[1] = 126; header.writeUInt16BE(len, 2); }
     else { header = Buffer.alloc(10); header[0] = 0x80 | op; header[1] = 127; header.writeBigUInt64BE(BigInt(len), 2); }
-    socket.write(Buffer.concat([header, payload]));
+    socket.write(Buffer.concat([header, payload]), cb);
 }
-function writeFrame(socket, obj) { try { writeRaw(socket, 0x1, Buffer.from(JSON.stringify(obj), 'utf8')); } catch {} }
+function writeFrame(socket, obj, cb) { try { writeRaw(socket, 0x1, Buffer.from(JSON.stringify(obj), 'utf8'), cb); } catch (e) { if (cb) { try { cb(e); } catch {} } } } // s62: 可选 flush 回调——同步 write 抛错时也必须回调，否则依赖回调的 destroy 永不触发
 
 function handleClient(ws, msg) {
     try {
@@ -2172,12 +2172,13 @@ function handleClient(ws, msg) {
                 for (const k of Object.keys(wsm)) if (wsm[k].sid === msg.sessionId) { delete wsm[k]; unbound = true; }
                 if (unbound) writeWsMap(wsm);
                 // C2: 回执先发再断订阅者——请求者自己也在 subs 里，先 destroy 后 send 回执必被吞
-                ws.send({ sys: 'session_deleted', sessionId: msg.sessionId, ok: r.changes > 0 });
-                // s50c: 清空该会话的订阅者（还连着的 WS 直接断开），不留空 Set 残留
+                // s62: 请求者 socket 改为回执 flush 回调里 destroy——同 tick destroy 会丢弃尚未冲刷到内核的写队列，小概率丢回执
+                writeFrame(ws.socket, { sys: 'session_deleted', sessionId: msg.sessionId, ok: r.changes > 0 }, () => { try { ws.socket.destroy(); } catch {} });
+                // s50c: 清空该会话的订阅者（还连着的 WS 直接断开），不留空 Set 残留；请求者已在回执回调里断开，此处跳过
                 const subs = sessionClients.get(msg.sessionId);
                 if (subs) {
                     sessionClients.delete(msg.sessionId);
-                    for (const c of subs) { try { c.socket.destroy(); } catch {} }
+                    for (const c of subs) { if (c !== ws) { try { c.socket.destroy(); } catch {} } }
                 }
                 console.log('session deleted', msg.sessionId, 'messages:', m.changes, 'row:', r.changes, 'unbound:', unbound);
             } catch (e) { ws.send({ sys: 'error', text: '删除失败: ' + e.message }); }

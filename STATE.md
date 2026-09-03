@@ -1,6 +1,6 @@
 # PocketForge 状态（永远反映"现在"；每次工作会话结束必须更新）
 
-- 更新：2026-09-03 s61（用户三主线落地）：①**UI 慢半拍断根**（pf-researcher 取证排除 API/WS/DOM/网络四嫌疑，真凶=感知层+硬延迟；修复 #1-#7：typing 动画/换线 800ms 改 subscribed 直发(时序论证 s51c 不回归)/新对话消息入队自动补发/删会话回执驱动/断线指数退避/@ 防抖/statsBump 异步化，底稿 docs/research/09-ui-responsiveness.md）；②**一键问题上报**（pf-pm 裁决：本地诊断报告单级，直发 issue 挂 P32+报告尾预置 issue 模板；桥 GET /api/report 9 段采集+隐私黑名单(providers key→<已配置>/memory/会话正文绝不进报告)+双门安全(Origin GET 不豁免+X-PF-Report 头)；侧栏 📮 三态+explorer /select+剪贴板）；③**布局细测**（qa 20 条矩阵+主控 GUI 10 项全 PASS，qa 预判 2 溢出未复现——视觉模型幻觉实证，GUI 断言须 a11y 特写核实）。审查线：qa 两轮（初审判返工 P2×3：S1 跨站副作用/B1 队列搁浅丢字/B2 flush 覆写输入→返工 12 项全 PASS 终裁通过）。终态 e2e 32/32(+6)+fuzz 44/44(+5)。遗留：rollbackQueue 草稿展示/同 tick destroy 丢回执(双兜底)/streamEl.dataset.orig 死代码(s50e 重发原文疑似失效待专项)/explorer 不抢焦点/reduced-motion/矩阵 5 条未执行
+- 更新：2026-09-04 s62：**s50e「换备用线路再试」完全失效取证并修复（P1，v0.9.8 带病）**——双重缺陷（dataset.orig 死代码+endStream 局部 txt 遮蔽全局致 pendingRetry TypeError，重发一步不执行且中断换线后续）；归属 s50f 草稿守卫引入，漏测机制=探针对象桩绕开真实词法作用域（接口同构≠词法同构教训）；修复=txtRaw 解遮蔽+模块级 lastOrig（会话切换清空防串发）+消息级重发按钮文字清理，探针 27/27。qa 建议级两项落地（rollback 草稿展示/delete_session 回执 write 回调 destroy——旧形态丢 98.5% 数据实证）。矩阵补跑 3 PASS 3 跳过（有理由）。qa 快审通过 P1/P2 清零，4 条 P3 留档（destroy 超时兜底/retry 正则误裁正文/草稿截断/WS delete 断言缺口）。e2e 32/32+fuzz 44/44。前情 s61（2026-09-03 用户三主线）：UI 响应性断根 #1-#7（research/09 底稿）+一键上报（/api/report+📮+双门安全+隐私黑名单）+布局细测（qa 20 条矩阵+GUI 10 项 PASS）；qa 两轮 P2×3 返工 12 项全过
 - 阶段：**P31 内测护航进行中**（①本机部分 ✅（v0.9.8 护航候选包就绪），真机 POC 待用户；②收窄完成 ✅；③已就位；④收窄完成 ✅）
 
 ## 已完成周期
@@ -36,6 +36,7 @@
 | s57 | S3实体生命周期补全:MCP/技能停用+卸载(/api/extensions动态并入已装mcp-*修能力开关面板盲区;mcpstore/skillstore op=uninstall,安装中拒卸,白名单与安装同门);qa审查3修复(mcpEnabled跨块吞enabled改块界扫描/installing拒卸/卸载后刷商店);fetch-mcp真卸载+重装闭环(npm 65s);fuzz 39/39(+8)+e2e 26/26;GUI实证卸载按钮+已启用渲染(4ba7c4d) | s55-56 |
 | s58-59 | s58:删除同款守护盲区补齐(删除成功后pc restart goose-scheduler,失败降级warn)+顺修op缺省解析回归(typeof b.op全string拒掉了UI删除请求,缺省容许undefined;教训:收紧类型必须枚举全部调用方请求形态)(97d04ea);s59:**定时预热(用户回线确认方向)**——桥启动15s后sync一次+每24h重拉,基础设施预取预翻译用户零等待,触发在桥执行是管道调用非agent;实证fetched_at自动刷新19/19中文remote GET 6ms(06b7ece) | s55-56 |
 | s61 | **用户三主线**:①UI慢半拍断根(取证→修复#1-#7,底稿research/09);②一键上报(裁决→/api/report+📮→qa两轮P2×3返工12项全过);③布局细测(qa 20条矩阵+GUI 10项PASS);e2e 32/32+fuzz 44/44 | s61 |
+| s62 | s50e换线重发完全失效取证修复(P1,v0.9.8带病;双重缺陷+探针桩词法作用域教训)+qa建议级两项+矩阵补跑;e2e 32/32+fuzz 44/44 | s62 |
 ## 技术栈版本（全部 VERIFIED-RUN）
 process-compose v1.122.0 / nats-server v2.14.5 / nats-cli v0.4.0 / faucet v0.1.12 / goose v1.46.0 (AAIF) / node v22.21.1 / python 3.12 embeddable (Pillow 12.3.0；openpyxl 不在包内——s47 实测，旧记录失实已修正) / isomorphic-git 1.41.9 (vendored MIT, ADR-0007) / DOMPurify 3.2.4 (vendored Apache-2.0, s15)
 
@@ -60,7 +61,8 @@ ADR-0001 记忆拓扑 / ADR-0002 五件套技术栈 / ADR-0003 交付树+注册�
 - **P32 数据驱动**：据使用统计决定（候选：真机 PLM 适配、工作流模板、日程提醒）
 - **裁减原则**：商店/插件类扩张挂起至真机验证后；内测用户反馈是第一输入源，路线裁决权在团队
 ## Backlog（对标研究提炼，ADR-0010 复核条件）
-- **s61 遗留**：submit 内 streamEl.dataset.orig 死代码（user 分支恒置 null，s50e「换备用线路重发」原文记录疑似失效）待专项取证；rollbackQueue 覆盖非空草稿时原草稿不展示；同 tick writeFrame+destroy 小概率丢删除回执（双兜底已覆盖）；explorer /select 不抢前台焦点；typing 动画无 prefers-reduced-motion；qa 布局矩阵未执行 5 条（超长 URL/全归档/无 key 态/confirm 窄窗/极矮窗）按需补跑
+- **s62 qa P3 留档**：delete_session 请求者 destroy 无超时兜底（挂死对端 socket 滞留至 close，建议 setTimeout 5s unref）；retry/exportChat 正则 `/((复制|重发)\s*)+$/` 误裁正文尾字样（两处同缺陷，建议改剥离 .mbar 取正文）；让位草稿 addInfo 无截断；WS delete_session 回执无专项 e2e 断言；消息级「复制」按钮文字混入（:1664）
+- **s61 遗留**：explorer /select 不抢前台焦点；typing 动画无 prefers-reduced-motion；qa 布局矩阵跳过 3 条（全归档/无 key 态/confirm 窄窗）按需补跑
 - **s55-57 断根裁决遗留**：定时任务删除按钮同款守护盲区（删除后也需 restart goose-scheduler 才对守护生效，历史行为待补）；定时任务改期挂 P32+ 走聊天自然语言；vendor 目录名漂移（mcp-memory/mcp-seqthink vs 目录 id memory-graph/sequential-thinking，s46 时代命名，卸载 memory-graph 时真目录成孤儿）需一轮对齐
 - 工作区级「项目指令」（对照 Manus Projects master instruction）：.forge 元数据扩展 + prompt 注入，首月低频故 backlog
 - 多会话并行任务（Manus Wide Research 式）：妻子场景低频，backlog
