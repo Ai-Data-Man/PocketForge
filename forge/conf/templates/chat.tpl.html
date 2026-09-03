@@ -83,8 +83,9 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 .sitem:hover .sdel,.sitem.active .sdel{opacity:.9}
 .sdel:hover{color:var(--danger);opacity:1}
 #side footer{border-top:1px solid var(--line);padding:8px 12px;display:flex;gap:4px}
-.icobtn{background:none;border:none;cursor:pointer;font-size:15px;padding:7px;border-radius:var(--r-s);color:var(--tx-2);transition:background .12s}
+.icobtn{background:none;border:none;cursor:pointer;font-size:15px;padding:7px;border-radius:var(--r-s);color:var(--tx-2);transition:background .12s,transform .08s}
 .icobtn:hover{background:var(--hover)}
+.icobtn:active{transform:scale(.9)}
 
 /* ---------- 主区 ---------- */
 #main{flex:1;display:flex;flex-direction:column;min-width:0}
@@ -176,6 +177,12 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 .permcard .pnote{padding:0 14px 10px;font-size:.72rem;color:var(--mut)}
 .permcard.settled{opacity:.75;border-style:dashed}
 .typing{align-self:flex-start;color:var(--mut);font-size:.78rem;padding:2px 16px}
+/* #1: 等待期三点跳动——静态文字的最大感知问题 */
+.typing .tdots{display:inline-flex;gap:4px;margin-left:8px;height:9px;vertical-align:middle}
+.typing .tdots i{width:6px;height:6px;border-radius:50%;background:var(--mut);animation:tdot 1.2s infinite ease-in-out}
+.typing .tdots i:nth-child(2){animation-delay:.15s}
+.typing .tdots i:nth-child(3){animation-delay:.3s}
+@keyframes tdot{0%,60%,100%{transform:translateY(0);opacity:.35}30%{transform:translateY(-4px);opacity:1}}
 /* s33: 开场快捷任务 chips */
 .quickwrap{display:flex;flex-wrap:wrap;gap:8px;padding:4px 16px 8px;align-self:flex-start}
 .quickchip{padding:8px 14px;border:1.5px solid var(--acc);border-radius:18px;background:var(--acc-soft);color:var(--acc);font-size:.8rem;cursor:pointer;transition:all .12s}
@@ -192,6 +199,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 #txt:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
 #send{font-size:.92rem;padding:12px 24px;background:var(--acc);color:var(--acc-contrast);border:none;border-radius:var(--r-m);cursor:pointer;font-weight:600;box-shadow:var(--shadow-1);transition:filter .15s}
 #send:hover{filter:brightness(1.08)}
+#send:active{filter:brightness(.92)}
 #send:disabled{background:var(--mut-2);cursor:default}
 #stop{display:none;font-size:.85rem;padding:12px 16px;background:var(--danger);color:#fff;border:none;border-radius:var(--r-m);cursor:pointer;font-weight:600}
 .mbar{margin-top:8px;display:flex;gap:6px;opacity:0;transition:opacity .15s}
@@ -227,6 +235,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 .mini:hover{border-color:var(--acc);color:var(--acc)}
 .mini.on{background:var(--acc);color:var(--acc-contrast);border-color:var(--acc);font-weight:600}
 .mini:disabled{opacity:.45;cursor:default}
+.mini:active:not(:disabled){transform:scale(.96)}
 .prov{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--line);border-radius:var(--r-m);margin-bottom:6px;font-size:.8rem;cursor:pointer;transition:border-color .12s}
 .prov:hover{border-color:var(--line-strong)}
 .prov.active{border-color:var(--acc);background:var(--acc-softer);border-width:2px}
@@ -264,6 +273,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
     <button class="icobtn" id="open-skills" title="技能">🧩</button>
     <button class="icobtn" id="open-manage" title="管理：本事/记忆/定时任务">🧠</button>
     <button class="icobtn" id="open-settings" title="设置：服务商/外观/升级">⚙️</button>
+    <button class="icobtn" id="report-issue" title="反馈问题" aria-label="反馈问题">📮</button>
     <span style="font-size:11px;color:var(--mut);align-self:center" id="version"></span>
   </footer>
 </div>
@@ -286,7 +296,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
     <button class="icobtn" id="rside-toggle" title="工作区文件">📁</button>
   </div>
   <div id="chat"></div>
-  <div class="typing" id="typing" style="display:none">小 forge 正在干活……</div>
+  <div class="typing" id="typing" style="display:none">小 forge 正在干活<span class="tdots"><i></i><i></i><i></i></span></div>
   <div id="inputbar">
     <input id="txt" placeholder="想让我做什么？输入 @ 引用文件" autocomplete="off">
     <button id="send">发送</button>
@@ -487,16 +497,23 @@ renderThemeUI();
 
 connect(); // WebSocket 先建立：后面的初始化代码崩了也不影响通信主链路
 
+let wsRetryT=null, wsRetryDelay=300; // #5: 断线指数退避——300ms 起，逐次×2，封顶 5s；连上即复位
 function connect(){
   ws=new WebSocket('ws://'+location.host);
-  ws.onopen=()=>{status.classList.add('ok'); loadArch().then(loadSessions); loadProvidersUI(); loadWorkspaces(); if(!sessionId) subscribe(null); else ensureWs();};
-  ws.onclose=()=>{status.classList.remove('ok'); setTimeout(connect,2000);};
+  ws.onopen=()=>{clearTimeout(wsRetryT); wsRetryDelay=300; status.classList.add('ok'); loadArch().then(loadSessions); loadProvidersUI(); loadWorkspaces(); if(!sessionId) subscribe(null); else ensureWs();};
+  ws.onclose=()=>{status.classList.remove('ok'); clearTimeout(wsRetryT); wsRetryT=setTimeout(connect,wsRetryDelay); wsRetryDelay=Math.min(wsRetryDelay*2,5000);};
   ws.onmessage=e=>{
     const m=JSON.parse(e.data);
     if(m.sys==='subscribed'){
       sessionId=m.sessionId; currentSid=m.sessionId;
-      if(pendingSwitch){ const v=pendingSwitch; pendingSwitch=null; setTimeout(()=>wssend({type:'switch_model',model:v}),800); }
-      if(pendingRetry){ const f=pendingRetry; pendingRetry=null; setTimeout(f,800); } // s51c: hotRestart 新会话 ready 后再自动重发（原先同步发打到旧死会话）
+      // #2: subscribed 到达即直发，省掉 800ms——桥在 session/new 回包回调里先 wsSession.set 再发 subscribed，
+      // 而 prompt 路由只信 wsSession.get，故收到本帧时桥侧绑定必已指向新活会话。
+      // s51c 的竞态根因是「subscribe(null) 后同步重发」（subscribed 未回，wsSession 仍是 hotRestart 未清的旧死绑定）；
+      // 当时的修复关键=挂到 subscribed，800ms 只是对齐 pendingSwitch 旧范式的防御余量，非正确性需求。
+      if(pendingSwitch){ const v=pendingSwitch; pendingSwitch=null; wssend({type:'switch_model',model:v}); }
+      if(pendingRetry){ const f=pendingRetry; pendingRetry=null; f(); } // s51c: hotRestart 新会话 ready 后自动重发（原先同步发打到旧死会话）
+      if(pendingQueue.length&&pendingForNew){ flushPendingQueue(); } // C3: 队列只在新对话建立成功时补发，切旧会话不误发
+      pendingForNew=false;
       document.querySelectorAll('.sitem').forEach(el=>el.classList.toggle('active', el.dataset.sid===m.sessionId));
       modes=(m.modes&&m.modes.availableModes)||[]; configOptions=m.configOptions||[];
     let cur=(m.modes&&m.modes.currentModeId); const saved=localStorage.getItem('pf_mode');
@@ -506,7 +523,7 @@ function connect(){
       ensureWs();
       return;
     }
-    if(m.sys==='error'){ addErr(m.text+(m.text.includes('可选池')?'。到 ⚙️ 设置里勾选它，或换顶栏列表里有的模型。':'')); setBusy(false); return; }
+    if(m.sys==='error'){ if(pendingQueue.length){ rollbackQueue('对话没开好，刚才记下的话已放回，稍后再发一次。'); pendingForNew=false; } addErr(m.text+(m.text.includes('可选池')?'。到 ⚙️ 设置里勾选它，或换顶栏列表里有的模型。':'')); setBusy(false); return; } // B1: 开新对话失败时队列倒回（仅队列非空时，不影响其他 error 路径）
     if(m.sys==='hello'){ $('version').textContent='v'+m.version; return; }
     if(m.sys==='models'){
       fetchedModels=m.models||[];
@@ -525,7 +542,8 @@ function connect(){
       return;
     }
     if(m.sys==='provider_switching'){ addInfo('正在切换到「'+m.to+'」…大约 5 秒，稍等提示。'); return; }
-    if(m.sys==='provider_switched'){ addInfo('✅ 已切到 '+m.provider+'（默认模型 '+m.model+'）。'); loadSessions(); if(pendingRetry){ subscribe(null); return; } return; } // s51c: 重发挂到 subscribed（新会话 ready 后才发，见下方消费点）
+    if(m.sys==='provider_switched'){ addInfo('✅ 已切到 '+m.provider+'（默认模型 '+m.model+'）。'); loadSessions(); if(pendingRetry){ subscribe(null); return; } return; } // s51c: 重发挂到 subscribed（新会话 ready 后才发，见上方消费点）
+    if(m.sys==='session_deleted'){ clearTimeout(delRefreshT); delRefreshT=null; loadSessions(); return; } // #4: 删除回执（桥已发 session_deleted）驱动列表刷新，替代盲等 800ms
     if(m.sys==='saved_config'){ note('已保存'); return; }
     if(m.sys==='tool_explanation'){
       const card=toolCards.get(m.id); if(!card) return;
@@ -612,7 +630,7 @@ function renderSessions(list){
     if(archOpen) for(const s of arc.slice(0,30)) box.appendChild(sessItem(s,true));
   }
 }
-function subscribe(sid){ wssend({type:'subscribe',sessionId:sid,model:lastKnownModel||undefined}); chat.innerHTML=''; toolCards.clear(); if(!sid){ addMsg('你好！我是小 forge。想做什么直接打字告诉我。','agent'); addQuickPrompts(); } }
+function subscribe(sid){ pendingForNew=!sid; wssend({type:'subscribe',sessionId:sid,model:lastKnownModel||undefined}); chat.innerHTML=''; toolCards.clear(); if(!sid){ addMsg('你好！我是小 forge。想做什么直接打字告诉我。','agent'); addQuickPrompts(); } }
 // s33: 开场快捷任务——小白不用想"该说什么"，点一下就发
 const QUICK_PROMPTS=[
   {label:'🩺 做个体检', text:'做个体检'},
@@ -692,6 +710,8 @@ function toggleReportCard(wrap){
 }
 function openSession(sid){
   if(busy){ addErr('它正在干活，等一下或先停止。'); return; }
+  pendingForNew=false; // C3: 切旧会话不补发队列
+  if(pendingQueue.length){ rollbackQueue('你切到了别的对话，刚才排队没发出去的话已放回，稍后再发一次。'); } // C3: 用户改主意切走，别替他发
   // 先订阅再载入：load 的历史回放通知才能流进 UI
   wssend({type:'subscribe',sessionId:sid});
   chat.innerHTML=''; toolCards.clear();
@@ -748,6 +768,9 @@ function switchModel(v){
   wssend({type:'switch_model',model:v});
 }
 let pendingSwitch=null; let pendingRetry=null; // s50e: 换备用线路后自动重发的一次性回调（provider_switched 时消费）
+let pendingQueue=[]; let pendingForNew=false; // #3: 对话还没开好时先记下用户消息，subscribed 后自动补发（替代原先直接拒发）；C3: 仅新对话补发
+function rollbackQueue(tip){ if(!pendingQueue.length) return; if(txt.value.trim()) addInfo('输入框里你正在打的字被换成了记下的第一条，需要的话请重新输入。'); txt.value=pendingQueue.shift(); for(const q of pendingQueue) addInfo('你刚输入的：'+q); pendingQueue=[]; addInfo(tip); } // B1/C3: 队列倒回——第一条回输入框，其余上墙展示
+function flushPendingQueue(){ while(pendingQueue.length){ if(busy||!sessionId) return; submit(pendingQueue.shift()); } } // B2: 直发不经输入框，不碰用户正在打的草稿
 function loadProvidersUI(){ wssend({type:'providers'}); }
 $('model-pick').onclick=e=>{
   const pk=$('model-pick');
@@ -962,14 +985,13 @@ function onAgentEvent(p){
     setTimeout(()=>settle(onceOpt.optionId,'（等太久，自动选了 '+onceMeta.t+'）'),60000);
     return;
   }
-  if(p.method==='stop'){ setBusy(false); endStream(); loadSessions(); renderCurPane(); } // s52b: 任务完成自动刷新文件树（小白不用手动刷新找文件）
+  if(p.method==='stop'){ setBusy(false); endStream(); loadSessions(); renderCurPane(); flushPendingQueue(); } // s52b: 任务完成自动刷新文件树（小白不用手动刷新找文件）；#3: 干完活补发排队中的消息
 }
-function submit(){
-  const t=txt.value.trim(); if(!t)return;
-  if(!sessionId){ addInfo('对话还没开好，1 秒后再发一次。'); return; }
+function submit(forced){
+  const fromBox=(forced===undefined||forced===null); // B2: forced=队列补发值，直发不经输入框
+  const t=fromBox?txt.value.trim():String(forced).trim(); if(!t)return;
+  if(!sessionId){ if(fromBox){ pendingQueue.push(t); txt.value=''; addInfo('对话马上就开好，这条先记下了，开好会自动发出去（不用再点一次）。'); } return; } // #3: 入队等 subscribed 补发（forced 值本就来自队列，不再入队）
   if(busy){ addInfo('它还在干活（可以点「停止」打断它，或者等它做完）。'); return; }
-  addMsg(t,'user'); txt.value=''; setBusy(true);
-  if(streamEl) streamEl.dataset.orig=t; // s50e: 记录用户原文，上游失败时「换备用线路再试」用它重发
   // ponytail: 工作区路径随提示词注入（agent 不看 UI）；若将来提示词很长可改为桥接侧 system 注入
   // s44: 工作区须知——妻子说"记住这个项目的规矩"，agent 写进须知.md，之后每次任务自动带上
   // s50: hint 拆两段——位置段仅当消息未含 data/artifacts/（原条件语义）；须知/版本规矩段只要有工作区就带上，否则 @ 引用/报表卡消息会静默丢掉这两条（s28e 起的缺口）
@@ -978,9 +1000,11 @@ function submit(){
     const loc=(!/^[\s\S]*data\/artifacts\//.test(t))?('本对话制品工作区目录是 data/artifacts/'+curWs+'/，新建或修改交付物默认放这里，'):'';
     hint=String.fromCharCode(10)+'（系统备注：'+loc+'覆盖前按版本管理技能先存一版。若该目录存在 须知.md，先读它并遵守其中的项目规矩）';
   }
-  wssend({type:'prompt',text:t+hint});
+  if(!wssend({type:'prompt',text:t+hint})) return; // C6: 未连上直接返回（wssend 已提示自动重连），消息留在输入框，不上墙不置 busy
+  addMsg(t,'user'); if(fromBox) txt.value=''; setBusy(true); // B2: 清空输入框仅在值来自输入框时发生
+  if(streamEl) streamEl.dataset.orig=t; // s50e: 记录用户原文，上游失败时「换备用线路再试」用它重发
 }
-send.onclick=submit;
+send.onclick=()=>submit();
 txt.onkeydown=e=>{
   if(e.key==='Enter'&&!e.isComposing){
     // slash 菜单开着时，Enter = 执行第一个匹配项，而不是把 "/xx" 发给员工
@@ -1032,6 +1056,22 @@ txt.addEventListener('paste',async e=>{
   if(lastName){ txt.value+=('@data/artifacts/'+curWs+'/'+lastName+' '); txt.focus(); addInfo('截图已放进本对话工作区，直接补充你想让我做什么，发送即可。'); }
 });
 $('refresh-sessions').onclick=loadSessions;
+// 附加: 📮 反馈问题——一键生成问题报告（后端 GET /api/report → {ok,path}），路径自动复制进剪贴板
+$('report-issue').onclick=async()=>{
+  const btn=$('report-issue'); btn.disabled=true; // B5: 防双击
+  try{
+    addInfo('📮 正在整理问题报告…');
+    let d=null;
+    try{ d=await (await fetch('/api/report',{headers:{'X-PF-Report':'1'}})).json(); }catch(e){} // S1: 桥侧要求此头，缺则 403
+    if(d&&d.ok&&d.path){
+      let copied=false;
+      try{ await navigator.clipboard.writeText(d.path); copied=true; }catch(e){} // B5: 剪贴板失败不说"已复制"（路径已在文案里展示）
+      addInfo(copied?('📮 报告已生成：文件位置已复制（'+d.path+'），请把这个文件发给帮你的人。'):('📮 报告已生成：'+d.path+'，请把这个文件发给帮你的人。'));
+    }else{
+      addInfo('📮 报告没生成成功。可以手动找一下：打开文件夹 forge/data/reports/，把里面最新的文件发给帮你的人。');
+    }
+  }finally{ btn.disabled=false; }
+};
 $('burger').onclick=()=>$('side').classList.toggle('hidden');
 $('mode').onchange=e=>{ localStorage.setItem('pf_mode',e.target.value);
   if(sessionId) rpc2('session/set_mode',{sessionId,modeId:e.target.value}).catch(()=>addErr('模式切换失败')); };
@@ -1730,10 +1770,12 @@ function slashHits(q){
     return hay.split(/[\s\/·]+/).some(t=>t.startsWith(q)) || hay.includes(q);
   });
 }
+let atQT=null; // #6: @ 菜单取数防抖（连续键入 180ms 内只发最后一次请求；写法对齐 search 框 300ms 防抖先例）
 txt.addEventListener('input',()=>{
   const v=txt.value;
   const atM=v.match(/@([^@\s]*)$/);
-  if(atM){ renderAtMenu(atM[1].toLowerCase()); return; }
+  if(atM){ clearTimeout(atQT); const q=atM[1].toLowerCase(); atQT=setTimeout(()=>renderAtMenu(q),180); return; }
+  clearTimeout(atQT); $('at-menu').style.display='none'; // 离开 @ 输入态：撤销挂起的取数并收起菜单，防陈旧弹层
   const menu=$('slash-menu');
   if(v.startsWith('/')){
     slashCur=slashHits(v.slice(1));
@@ -1764,7 +1806,7 @@ function fileIcon(n){
   return'📦';
 }
 // ---- 工作区（ADR-0007/0008）：本对话文件树始终跟随会话；「浏览全部」检索其他工作区 ----
-let lastSessions=[]; let archSet={}; let delWarned=false;
+let lastSessions=[]; let archSet={}; let delWarned=false; let delRefreshT=null; // #4: 删除回执的 1.5s 兜底刷新定时器（收到 session_deleted 回执即撤销）
 let allFilter={q:'',sort:'mtime',chip:'active',page:1};
 const PAGE_N=30;
 
@@ -1785,7 +1827,7 @@ function askDeleteSession(s){
   } else if(!confirm('删除对话「'+(s.title||'未命名')+'」？记录不可恢复。')) return;
   wssend({type:'delete_session',sessionId:s.sessionId});
   if(currentSid===s.sessionId){ currentSid=null; sessionId=null; chat.innerHTML=''; }
-  setTimeout(loadSessions,800);
+  clearTimeout(delRefreshT); delRefreshT=setTimeout(loadSessions,1500); // #4: 正常由 session_deleted 回执驱动刷新；1.5s 未收到回执则兜底刷一次
 }
 
 async function loadWorkspaces(){ try{ const r=await fetch('/api/workspaces'); wsList=(await r.json())||[]; renderAllPane(); }catch{} }

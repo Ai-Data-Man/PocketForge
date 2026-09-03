@@ -96,6 +96,32 @@ curl -s "$B/api/db/_schema?svc=plm&tbl=no_such_tbl" | grep -q '"ok":false'; ck "
 curl -s --get "$B/api/db/_schema" --data-urlencode "svc=../etc" --data-urlencode "tbl=passwd" | grep -q '"ok":false'; ck "db/_schema rejects path-ish names" $?
 curl -s --get "$B/api/db/_schema" --data-urlencode "svc=plm" --data-urlencode "tbl=parts" | grep -qviE 'apikey|X-API-Key'; ck "db/_schema no apikey leak" $?
 
+# ---------- 10) 诊断报告（/api/report） ----------
+# S1: 端点要求自定义头 X-PF-Report: 1（缺失→403），本节所有 curl 必须带头
+R=$(curl -s --max-time 30 -H 'X-PF-Report: 1' "$B/api/report")
+echo "$R" | grep -q '"ok":true'; ck "api/report ok:true" $?
+RP=$(echo "$R" | python -c "import sys,json;print(json.load(sys.stdin).get('path',''))" 2>/dev/null)
+RPU=${RP//\\//}
+[ -n "$RPU" ] && [ -f "$RPU" ]; ck "api/report file exists on disk ($RP)" $?
+grep -q 'VERSION' "$RPU"; ck "report contains version section" $?
+if grep -qE '\bsk-[A-Za-z0-9][A-Za-z0-9_-]{3,}' "$RPU"; then ck "report sanitized: no sk- keys" 1; else ck "report sanitized: no sk- keys" 0; fi
+# memory 内容特征：memory/ 目录绝不读取（目录有内容则 grep 其特征；空目录退化为路径特征）
+MEMFEAT=$(ls "$FORGE/conf/goose/config/memory/"*.txt 2>/dev/null | head -1 | xargs -r grep -h -m1 -v -e '^\s*#' -e '^\s*$' 2>/dev/null | head -c 30 || true)
+if [ -n "$MEMFEAT" ]; then
+  if grep -qF "$MEMFEAT" "$RPU"; then ck "report has no memory content" 1; else ck "report has no memory content" 0; fi
+else
+  if grep -qi 'config.memory' "$RPU"; then ck "report has no memory content" 1; else ck "report has no memory content" 0; fi
+fi
+# S2 脱敏断言：喂入含 GH_TOKEN 明文的素材（未来日期 stats 文件必进报告「最近7天」窗口），生成文件里明文必须被整行替换
+FAKE="$FORGE/data/stats/usage-20990101.json"
+mkdir -p "$FORGE/data/stats"
+printf '{\n  "note": "GH_TOKEN=ghp_e2esanitizerprobe000000"\n}\n' > "$FAKE"
+R2=$(curl -s --max-time 30 -H 'X-PF-Report: 1' "$B/api/report")
+RP2=$(echo "$R2" | python -c "import sys,json;print(json.load(sys.stdin).get('path',''))" 2>/dev/null)
+RPU2=${RP2//\\//}
+if [ -f "$RPU2" ] && ! grep -q 'ghp_e2esanitizerprobe000000' "$RPU2" && grep -q '<已脱敏>' "$RPU2"; then ck "report sanitized: GH_TOKEN plaintext dropped" 0; else ck "report sanitized: GH_TOKEN plaintext dropped" 1; fi
+rm -f "$FAKE"
+
 rm -f /tmp/e2e-v1.md
 echo "=============================="
 echo "chat-link E2E: PASS=$PASS FAIL=$FAIL"

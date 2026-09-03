@@ -1,6 +1,6 @@
 # PocketForge 状态（永远反映"现在"；每次工作会话结束必须更新）
 
-- 更新：2026-08-30 s55→s59（6 commits）：①**用户两类断根问题设计裁决落地**（pf-pm 裁决书）：外部资源接入域管道（sync→本地缓存→中文人话化→检索，缓存=data/cache/ 文件+STATE_SCHEMAS 管线，翻译=桥直调 completion，安装收敛读缓存）+ 实体生命周期底线算子集（建/查/停/删/改期，允许裁掉但必须裁决；全盘盘点 14 项，6 项实锤）；②S1 定时任务暂停/恢复：goose 源码级取证否证「直接改 schedule.json」（守护读内存副本+persist 回滚），唯一正路=短命 `goose acp --enable-scheduler` 发 ACP custom request 落盘 + `pc restart goose-scheduler` 守护重载闭环（restart 失败降级 warn 不欺骗）；UI ⏸/▶；③S2 技能市场：data/cache/skills manifest 缓存（<24h 秒回，后台惰性重拉）+ desc_zh 批量翻译（10条/批截150防超时）+ 搜索框（name/desc/desc_zh 过滤）+ ?preview 读缓存原文；④S3 MCP/技能停用+卸载：/api/extensions 动态并入已装 mcp-*（能力开关面板盲区修复）+ mcpstore/skillstore op=uninstall（安装中拒卸）；⑤s58 删除同款守护盲区补齐（删除后也 restart 守护）+ 顺修 op 缺省解析回归；⑥**s59 定时预热（用户中途回线确认方向）：桥启动 15s 后 sync 一次+每 24h 主动重拉——基础设施预取预翻译，用户零等待；触发在桥、执行是管道调用非 agent**。审查线：s55/s56 联审 5 修复+类型混淆（String([v])）、s57 审查 3 修复（mcpEnabled 跨块吞 enabled 改块界扫描）、s58 op 缺省回归（教训：收紧类型必须枚举全部调用方请求形态）；GUI IAB 实景全过。终态 e2e-chat 26/26 + fuzz 39/39（净增16）。遗留：vendor 目录名漂移 backlog；daily-mem 保持 paused:true 原状
+- 更新：2026-09-03 s61（用户三主线落地）：①**UI 慢半拍断根**（pf-researcher 取证排除 API/WS/DOM/网络四嫌疑，真凶=感知层+硬延迟；修复 #1-#7：typing 动画/换线 800ms 改 subscribed 直发(时序论证 s51c 不回归)/新对话消息入队自动补发/删会话回执驱动/断线指数退避/@ 防抖/statsBump 异步化，底稿 docs/research/09-ui-responsiveness.md）；②**一键问题上报**（pf-pm 裁决：本地诊断报告单级，直发 issue 挂 P32+报告尾预置 issue 模板；桥 GET /api/report 9 段采集+隐私黑名单(providers key→<已配置>/memory/会话正文绝不进报告)+双门安全(Origin GET 不豁免+X-PF-Report 头)；侧栏 📮 三态+explorer /select+剪贴板）；③**布局细测**（qa 20 条矩阵+主控 GUI 10 项全 PASS，qa 预判 2 溢出未复现——视觉模型幻觉实证，GUI 断言须 a11y 特写核实）。审查线：qa 两轮（初审判返工 P2×3：S1 跨站副作用/B1 队列搁浅丢字/B2 flush 覆写输入→返工 12 项全 PASS 终裁通过）。终态 e2e 32/32(+6)+fuzz 44/44(+5)。遗留：rollbackQueue 草稿展示/同 tick destroy 丢回执(双兜底)/streamEl.dataset.orig 死代码(s50e 重发原文疑似失效待专项)/explorer 不抢焦点/reduced-motion/矩阵 5 条未执行
 - 阶段：**P31 内测护航进行中**（①本机部分 ✅（v0.9.8 护航候选包就绪），真机 POC 待用户；②收窄完成 ✅；③已就位；④收窄完成 ✅）
 
 ## 已完成周期
@@ -35,6 +35,7 @@
 | s55-56 | **用户两类断根问题裁决+落地**(pf-pm裁决书:外部资源接入域管道+实体生命周期底线算子集,全盘盘点14项6实锤):S1定时任务暂停/恢复(goose源码取证否证直改schedule.json——守护读内存副本+persist回滚;短命acp --enable-scheduler发ACP custom request落盘+pc restart goose-scheduler守护重载闭环,失败降级warn;UI ⏸/▶,GUI实景resume→IDLE→pause复原,7b3aa24);S2技能市场缓存+搜索+中文(data/cache/skills manifest<24h秒回+后台惰性重拉,desc_zh批量翻译10条/批截150防超时,搜索框过滤,?preview读缓存原文,21条秒开+搜「画画」命中中文描述,24cf23b);s55/s56联审5修复+fuzz实跑抓String([v])类型混淆(typeof收string) | s55-56 |
 | s57 | S3实体生命周期补全:MCP/技能停用+卸载(/api/extensions动态并入已装mcp-*修能力开关面板盲区;mcpstore/skillstore op=uninstall,安装中拒卸,白名单与安装同门);qa审查3修复(mcpEnabled跨块吞enabled改块界扫描/installing拒卸/卸载后刷商店);fetch-mcp真卸载+重装闭环(npm 65s);fuzz 39/39(+8)+e2e 26/26;GUI实证卸载按钮+已启用渲染(4ba7c4d) | s55-56 |
 | s58-59 | s58:删除同款守护盲区补齐(删除成功后pc restart goose-scheduler,失败降级warn)+顺修op缺省解析回归(typeof b.op全string拒掉了UI删除请求,缺省容许undefined;教训:收紧类型必须枚举全部调用方请求形态)(97d04ea);s59:**定时预热(用户回线确认方向)**——桥启动15s后sync一次+每24h重拉,基础设施预取预翻译用户零等待,触发在桥执行是管道调用非agent;实证fetched_at自动刷新19/19中文remote GET 6ms(06b7ece) | s55-56 |
+| s61 | **用户三主线**:①UI慢半拍断根(取证→修复#1-#7,底稿research/09);②一键上报(裁决→/api/report+📮→qa两轮P2×3返工12项全过);③布局细测(qa 20条矩阵+GUI 10项PASS);e2e 32/32+fuzz 44/44 | s61 |
 ## 技术栈版本（全部 VERIFIED-RUN）
 process-compose v1.122.0 / nats-server v2.14.5 / nats-cli v0.4.0 / faucet v0.1.12 / goose v1.46.0 (AAIF) / node v22.21.1 / python 3.12 embeddable (Pillow 12.3.0；openpyxl 不在包内——s47 实测，旧记录失实已修正) / isomorphic-git 1.41.9 (vendored MIT, ADR-0007) / DOMPurify 3.2.4 (vendored Apache-2.0, s15)
 
@@ -59,6 +60,7 @@ ADR-0001 记忆拓扑 / ADR-0002 五件套技术栈 / ADR-0003 交付树+注册�
 - **P32 数据驱动**：据使用统计决定（候选：真机 PLM 适配、工作流模板、日程提醒）
 - **裁减原则**：商店/插件类扩张挂起至真机验证后；内测用户反馈是第一输入源，路线裁决权在团队
 ## Backlog（对标研究提炼，ADR-0010 复核条件）
+- **s61 遗留**：submit 内 streamEl.dataset.orig 死代码（user 分支恒置 null，s50e「换备用线路重发」原文记录疑似失效）待专项取证；rollbackQueue 覆盖非空草稿时原草稿不展示；同 tick writeFrame+destroy 小概率丢删除回执（双兜底已覆盖）；explorer /select 不抢前台焦点；typing 动画无 prefers-reduced-motion；qa 布局矩阵未执行 5 条（超长 URL/全归档/无 key 态/confirm 窄窗/极矮窗）按需补跑
 - **s55-57 断根裁决遗留**：定时任务删除按钮同款守护盲区（删除后也需 restart goose-scheduler 才对守护生效，历史行为待补）；定时任务改期挂 P32+ 走聊天自然语言；vendor 目录名漂移（mcp-memory/mcp-seqthink vs 目录 id memory-graph/sequential-thinking，s46 时代命名，卸载 memory-graph 时真目录成孤儿）需一轮对齐
 - 工作区级「项目指令」（对照 Manus Projects master instruction）：.forge 元数据扩展 + prompt 注入，首月低频故 backlog
 - 多会话并行任务（Manus Wide Research 式）：妻子场景低频，backlog

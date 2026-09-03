@@ -88,6 +88,12 @@ assert mcp and all(x['builtin'] is False and x['visible'] is True for x in mcp),
 assert any(x['id']=='mcp-fetch' for x in mcp), mcp
 "; ck "extensions dynamic mcp merged (s57)" $?
 curl -s -X POST "$B/api/extensions" -H 'content-type: application/json' -d '{"id":"mcp-ghost-zzz","enabled":false}' | grep -q '参数不合法'; ck "extensions dynamic id whitelist enforced" $?
+# S1: /api/report 门禁矩阵——POST/HEAD 405；GET 走端点级 Origin 门（不豁免 GET）+ 自定义头 X-PF-Report: 1（img/no-cors 发不出）
+[ "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/report")" = "405" ]; ck "report POST refused 405" $?
+[ "$(curl -s -o /dev/null -w '%{http_code}' -I "$B/api/report")" = "405" ]; ck "report HEAD refused 405" $?
+[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'X-PF-Report: 1' -H 'Origin: http://evil.example' "$B/api/report")" = "403" ]; ck "report evil origin + header refused 403" $?
+[ "$(curl -s -o /dev/null -w '%{http_code}' "$B/api/report")" = "403" ]; ck "report missing X-PF-Report refused 403" $?
+[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'X-PF-Report: 0' "$B/api/report")" = "403" ]; ck "report wrong X-PF-Report value refused 403" $?
 echo "=============================="
 echo "fuzz: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" = "0" ]

@@ -117,8 +117,25 @@ function statsBump(key) {
         let o = stats; for (const s of seg) o = o[s];
         o[last] = (o[last] || 0) + 1;
         if (seg[0] === 'errorsByType') stats.errors++;
-        statsFlush();
+        statsFlushDebounced();
     } catch {}
+}
+// 响应性#7：statsBump 在 WS 消息路径上，原同步 writeFileSync+renameSync 磁盘抖动会冻住首帧——
+// 改 2s 防抖合并 + fs.promises 异步写（统计非关键数据，丢一次 bump 可接受；内存计数即时、文件最终一致）
+let statsFlushT = null;
+function statsFlushDebounced() {
+    if (statsFlushT) return;
+    statsFlushT = setTimeout(() => {
+        statsFlushT = null;
+        stats.updated = new Date().toISOString();
+        const file = path.join(STATS_DIR, 'usage-' + stats.date.replace(/-/g, '') + '.json');
+        const tmp = file + '.tmp-' + process.pid + '-' + Date.now();
+        fsp.mkdir(STATS_DIR, { recursive: true })
+            .then(() => fsp.writeFile(tmp, JSON.stringify(stats, null, 2)))
+            .then(() => fsp.rename(tmp, file))
+            .catch(() => { try { fsp.unlink(tmp).catch(() => {}); } catch {} });
+    }, 2000);
+    if (statsFlushT.unref) statsFlushT.unref();
 }
 (function statsRestore() { // 桥重启恢复当天计数；当天尚无文件则先落一个初始文件
     try {
@@ -264,6 +281,7 @@ function vcsTime(ts) {
 const PROV_FILE = path.join(ROOT, 'data', 'providers.json');
 function readProviders() {
     const list = readJson(PROV_FILE, []);
+    if (!Array.isArray(list)) return []; // B4: 合法 JSON 但非数组（如 {}）——for..of 会崩整份报告，兜底空表
     // v1->v2 迁移：model(单值) -> models(数组)
     for (const p of list) {
         if (!Array.isArray(p.models)) p.models = p.model ? [p.model] : [];
@@ -793,6 +811,140 @@ async function dbTableSchema(svc, tbl) {
     let samples = null;
     if (port && key) samples = await faucetSample(svc, tbl, port, key);
     return { ok: true, columns, samples: Array.isArray(samples) ? samples : null };
+}
+
+// ---- GET /api/report：本地诊断报告（小白发给帮忙的人看）----
+// 隐私黑名单（硬约束）：secrets.env、conf/goose/config/memory/、会话消息正文——绝不读取。
+// 写盘前兜底：含 sk- 形态 key 或 GH_TOKEN 的行整行替换为 <已脱敏>（providers.json 明文 key 已实证存在）。
+const REPORTS_DIR = path.join(ROOT, 'data', 'reports');
+function reportSanitize(text) {
+    // S2: 黑名单扩充——sk-/ghp_/gho_/github_pat_/AIza…/glpat-/xox[bap]-/GH_TOKEN，命中整行 <已脱敏>
+    return String(text).split('\n').map(l => (/\bsk-[A-Za-z0-9][A-Za-z0-9_\-]{3,}|ghp_|gho_|github_pat_|AIza[\w\-]{10,}|glpat\-|xox[bap]\-|GH_TOKEN/i.test(l) ? '<已脱敏>' : l)).join('\n');
+}
+function reportTail(file, want, skipRe) { // 从尾往前取 want 行，跳过 skipRe 命中行（healthz 噪音），攒够即止
+    try {
+        // B3: pc.log 无轮转——超 256KB 只定位读尾部 256KB（起点半行丢弃），避免长跑后整读造成内存尖峰+事件循环阻塞
+        const MAX = 256 * 1024;
+        const st = FSS.statSync(file);
+        let all;
+        if (st.size > MAX) {
+            const fd = FSS.openSync(file, 'r');
+            try {
+                const buf = Buffer.alloc(MAX);
+                FSS.readSync(fd, buf, 0, MAX, st.size - MAX);
+                all = buf.toString('utf8').split('\n');
+                all[0] = ''; // 起点前被截断的半行不作数
+            } finally { FSS.closeSync(fd); }
+        } else all = FSS.readFileSync(file, 'utf8').split('\n');
+        const out = [];
+        for (let i = all.length - 1; i >= 0 && out.length < want; i--) {
+            const l = all[i].replace(/\r$/, '');
+            if (skipRe && skipRe.test(l)) continue;
+            out.push(l);
+        }
+        return out.reverse();
+    } catch { return []; }
+}
+function reportReadPort(name) {
+    try {
+        const p = parseInt(FSS.readFileSync(path.join(ROOT, 'data', name), 'utf8').trim(), 10);
+        return Number.isFinite(p) && p > 0 ? p : null;
+    } catch { return null; }
+}
+function reportProbe(port) {
+    return new Promise(resolve => {
+        try {
+            const s = require('net').connect({ host: '127.0.0.1', port, timeout: 1500 });
+            s.on('connect', () => { s.destroy(); resolve(true); });
+            s.on('error', () => resolve(false));
+            s.on('timeout', () => { s.destroy(); resolve(false); });
+        } catch { resolve(false); }
+    });
+}
+function reportOsVer() {
+    // cmd /c ver 在中文 Windows 输出 GBK：取 buffer 按 gbk 解（full-icu），失败回落 utf8
+    return new Promise(resolve => {
+        try {
+            require('child_process').execFile('cmd', ['/c', 'ver'], { timeout: 3000, windowsHide: true, encoding: 'buffer' }, (e, out) => {
+                if (e) return resolve('未取到');
+                let s = '';
+                try { s = new TextDecoder('gbk').decode(out); } catch { s = out.toString('utf8'); }
+                resolve(String(s || '').replace(/\uFFFD/g, '').trim() || '未取到');
+            });
+        } catch { resolve('未取到'); }
+    });
+}
+async function buildReport() {
+    const p2 = n => String(n).padStart(2, '0');
+    const now = new Date();
+    // 环境采集（并行，全部只读）
+    const pcPort = reportReadPort('pc.port'), faucetPort = reportReadPort('faucet.port');
+    const [osVer, pcAlive, faucetAlive] = await Promise.all([
+        reportOsVer(),
+        pcPort ? reportProbe(pcPort) : Promise.resolve(null),
+        faucetPort ? reportProbe(faucetPort) : Promise.resolve(null),
+    ]);
+    let upd = '无（data/updates/status.json 不存在）';
+    try { upd = FSS.readFileSync(path.join(ROOT, 'data', 'updates', 'status.json'), 'utf8').trim() || upd; } catch {}
+    let usageFiles = [];
+    try { usageFiles = FSS.readdirSync(STATS_DIR).filter(n => /^usage-\d{8}\.json$/.test(n)).sort().slice(-7); } catch {}
+    // providers 脱敏：key/apiKey 一律替换，其余字段保留
+    const provs = readProviders().map(pr => {
+        const q = { ...pr };
+        if (q.key !== undefined) q.key = pr.key ? '<已配置>' : '<未配置>';
+        if (q.apiKey !== undefined) q.apiKey = pr.apiKey ? '<已配置>' : '<未配置>';
+        return q;
+    });
+    // 会话元数据：只读 sessions 表（计数+最近一条），绝不读 messages 正文
+    let sessLine = '未取到（会话库不可读）';
+    try {
+        const { DatabaseSync } = require('node:sqlite');
+        const db = new DatabaseSync(path.join(ROOT, 'conf', 'goose', 'data', 'sessions', 'sessions.db'));
+        const total = db.prepare('SELECT count(*) c FROM sessions').get().c;
+        const q = db.prepare('SELECT count(*) c FROM sessions WHERE id = ?');
+        let archN = 0;
+        for (const sid of Object.keys(readArch())) archN += q.get(sid).c;
+        const last = db.prepare('SELECT name, provider_name, model_config_json, updated_at FROM sessions ORDER BY updated_at DESC LIMIT 1').get();
+        db.close();
+        let model = '';
+        try { model = JSON.parse((last && last.model_config_json) || '{}').model_name || ''; } catch {}
+        sessLine = '总会话 ' + total + '｜归档 ' + archN + '｜活跃 ' + (total - archN) +
+            '；最近会话：名称「' + ((last && last.name) || '未命名') + '」｜模型 ' + (model || '未知') +
+            '｜接口 ' + ((last && last.provider_name) || '未知') + '｜最后活动 ' + ((last && last.updated_at) || '未知');
+    } catch {}
+    const alive = v => v === null ? '未探测' : (v ? '存活' : '未响应');
+    let md = '# PocketForge 诊断报告\n\n';
+    md += '- 生成时间：' + now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate()) + ' ' + p2(now.getHours()) + ':' + p2(now.getMinutes()) + ':' + p2(now.getSeconds()) + '\n';
+    md += '- 版本（VERSION 文件）：' + APP_VERSION + '\n';
+    md += '- 升级状态：' + upd + '\n';
+    md += '- 提示：这份报告里可能带少量聊天痕迹（比如日志里的一句话），发给别人之前可以自己翻一遍，不放心就先删改再发。\n\n';
+    md += '## 环境\n\n';
+    md += '- 操作系统：' + osVer + '\n- Node：' + process.version + '\n';
+    md += '- 进程：\n  - chat-bridge（本服务，端口 ' + PORT + '）：运行中\n';
+    md += '  - pc（进程管理器，端口 ' + (pcPort || '未知') + '）：' + alive(pcAlive) + '\n';
+    md += '  - faucet（数据库服务，端口 ' + (faucetPort || '未知') + '）：' + alive(faucetAlive) + '\n\n';
+    const pcTail = reportTail(path.join(ROOT, 'data', 'logs', 'pc.log'), 300, /healthz/);
+    md += '## 日志（pc.log 尾部 ' + pcTail.length + ' 行，已过滤 faucet healthz 探活噪音）\n\n```\n' + pcTail.join('\n') + '\n```\n\n';
+    const bakTail = reportTail(path.join(ROOT, 'data', 'logs', 'backup.log'), 30, null);
+    md += '## 备份日志（backup.log 尾部 ' + (bakTail.length ? bakTail.length + ' 行' : '无') + '）\n\n' + (bakTail.length ? '```\n' + bakTail.join('\n') + '\n```\n\n' : '无\n\n');
+    md += '## 使用统计（最近 ' + usageFiles.length + ' 天，data/stats 原文）\n\n';
+    for (const f of usageFiles) {
+        let raw = '(读不到)';
+        try { raw = FSS.readFileSync(path.join(STATS_DIR, f), 'utf8').trim(); } catch {}
+        md += '### ' + f + '\n\n```json\n' + raw + '\n```\n\n';
+    }
+    if (!usageFiles.length) md += '无\n\n';
+    md += '## 模型接口配置（key 已脱敏）\n\n```json\n' + JSON.stringify(provs, null, 2) + '\n```\n\n';
+    md += '## 会话概况（只含元数据，不含聊天内容）\n\n' + sessLine + '\n\n';
+    md += '---\n\n## 请补充说明（填好再发出去）\n\n1. 什么时候出的问题：\n2. 当时做了什么操作：\n3. 期望的结果是什么：\n\n';
+    md += '## GitHub issue 模板（复制即贴）\n\n标题：问题：\n\n正文：\n- 环境：（把本报告「环境」一节粘贴在这里）\n- 复现步骤：\n  1.\n  2.\n- 实际结果：\n- 期望结果：\n';
+    // 落盘（原子写）+ 返回绝对路径
+    FSS.mkdirSync(REPORTS_DIR, { recursive: true });
+    const stamp = '' + now.getFullYear() + p2(now.getMonth() + 1) + p2(now.getDate()) + '-' + p2(now.getHours()) + p2(now.getMinutes());
+    const file = path.join(REPORTS_DIR, 'report-' + stamp + '.md');
+    atomicWrite(file, reportSanitize(md));
+    console.log('report generated:', file);
+    return { ok: true, path: file };
 }
 
 async function handleHttp(req, res) {
@@ -1493,6 +1645,34 @@ const ext = path.extname(f).toLowerCase();
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(stats));
     }
+    else if (url === '/api/report') {
+        // 只读诊断报告（GET）：采集→脱敏→atomicWrite 到 data/reports/；失败回人话错误
+        if (req.method !== 'GET') { res.writeHead(405); res.end(); return; }
+        // S1: 本端点有写盘+弹资源管理器副作用，GET 不豁免 Origin 门（顶部全局门只拦非 GET）；
+        // 再要求自定义头 X-PF-Report: 1——img/no-cors 发不出自定义头，跨域 fetch 带自定义头先挂预检（OPTIONS）被 Origin 门拦
+        if (origin && origin !== 'http://127.0.0.1:' + PORT) {
+            res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: false, err: '跨站请求被拒绝' }));
+            return;
+        }
+        if (req.headers['x-pf-report'] !== '1') {
+            res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: false, err: '缺少报告请求标识' }));
+            return;
+        }
+        try {
+            const out = await buildReport();
+            // pm 裁决：生成后自动弹资源管理器并选中报告文件（explorer 失败仅静默降级，ok:true 与 path 不受影响）
+            try {
+                spawn('explorer.exe', ['/select,' + out.path], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
+            } catch {}
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify(out));
+        } catch (e) {
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: false, error: '报告生成失败：' + String((e && e.message) || e) }));
+        }
+    }
     else if (url === '/api/db/overview') {
         // s50b: 数据库总览（只读；Origin 校验走 handleHttp 顶部全局规则）；仅 GET
         if (req.method !== 'GET') { res.writeHead(405); res.end(); return; }
@@ -1929,6 +2109,10 @@ function handleClient(ws, msg) {
                             const mid = nextId++;
                             acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: mid, method: 'session/set_config_option', params: { sessionId: res.sessionId, configId: 'model', value: msg.model } }) + '\n');
                         }
+                    } else {
+                        // B1: session/new 失败——resolve 收到的是整条 error 帧；无此分支前端等不到 subscribed，pendingQueue 永久搁浅
+                        const why = (res && res.error && (res.error.message || res.error)) || '原因未知';
+                        ws.send({ sys: 'error', text: '开新对话没成功：' + String(why) });
                     }
                 }});
                 acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/new', params: { cwd: ROOT, mcpServers: [] } }) + '\n');
@@ -1987,6 +2171,8 @@ function handleClient(ws, msg) {
                 let unbound = false;
                 for (const k of Object.keys(wsm)) if (wsm[k].sid === msg.sessionId) { delete wsm[k]; unbound = true; }
                 if (unbound) writeWsMap(wsm);
+                // C2: 回执先发再断订阅者——请求者自己也在 subs 里，先 destroy 后 send 回执必被吞
+                ws.send({ sys: 'session_deleted', sessionId: msg.sessionId, ok: r.changes > 0 });
                 // s50c: 清空该会话的订阅者（还连着的 WS 直接断开），不留空 Set 残留
                 const subs = sessionClients.get(msg.sessionId);
                 if (subs) {
@@ -1994,7 +2180,6 @@ function handleClient(ws, msg) {
                     for (const c of subs) { try { c.socket.destroy(); } catch {} }
                 }
                 console.log('session deleted', msg.sessionId, 'messages:', m.changes, 'row:', r.changes, 'unbound:', unbound);
-                ws.send({ sys: 'session_deleted', sessionId: msg.sessionId, ok: r.changes > 0 });
             } catch (e) { ws.send({ sys: 'error', text: '删除失败: ' + e.message }); }
             return;
         }
