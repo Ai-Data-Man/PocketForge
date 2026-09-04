@@ -123,7 +123,10 @@ if [ -f "$RPU2" ] && ! grep -q 'ghp_e2esanitizerprobe000000' "$RPU2" && grep -q 
 rm -f "$FAKE"
 
 # ---------- 11) WS delete_session 回执（s62/P3: 请求者收到回执且连接随后被服务端关闭） ----------
-node "$ROOT/tools/e2e/ws-delete-receipt.js" | grep -q "PASS"; ck "ws delete_session receipt delivered before close" $?
+# 输出先落地 tmp 文件再 grep：grep -q 提前退出关管道会让 node 偶发 EPIPE，pipefail 下中止全量
+node "$ROOT/tools/e2e/ws-delete-receipt.js" > /tmp/ws-delete-receipt.log 2>&1
+grep -q "PASS" /tmp/ws-delete-receipt.log; ck "ws delete_session receipt delivered before close" $?
+rm -f /tmp/ws-delete-receipt.log
 
 # ---------- 12) 报告 v2 探针（s65 转正自 s64 tmp 探针；详见 tools/e2e/report-probe.sh） ----------
 # static=39 ck 秒级；sandbox=29 ck 自建沙箱真桥（端口 18790/18799，不碰 dev 栈 8790），实测增量约 31-47s < 90s 门槛 → 挂进全量
