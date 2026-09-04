@@ -2174,6 +2174,9 @@ function handleClient(ws, msg) {
                 // C2: 回执先发再断订阅者——请求者自己也在 subs 里，先 destroy 后 send 回执必被吞
                 // s62: 请求者 socket 改为回执 flush 回调里 destroy——同 tick destroy 会丢弃尚未冲刷到内核的写队列，小概率丢回执
                 writeFrame(ws.socket, { sys: 'session_deleted', sessionId: msg.sessionId, ok: r.changes > 0 }, () => { try { ws.socket.destroy(); } catch {} });
+                // s62/P3: 挂死对端不读时 flush 回调永不触发——5s 兜底 destroy，socket 不滞留 allClients 到进程级；
+                // 正常路径回调已 destroy 后此 timer 再触发是幂等的（二次 destroy 不抛，'close' 只发一次→drop 只清一次）
+                setTimeout(() => { try { ws.socket.destroy(); } catch {} }, 5000).unref();
                 // s50c: 清空该会话的订阅者（还连着的 WS 直接断开），不留空 Set 残留；请求者已在回执回调里断开，此处跳过
                 const subs = sessionClients.get(msg.sessionId);
                 if (subs) {

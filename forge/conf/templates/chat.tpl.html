@@ -769,7 +769,7 @@ function switchModel(v){
 }
 let pendingSwitch=null; let pendingRetry=null; let lastOrig=null; // s50e: 换备用线路后自动重发的一次性回调（provider_switched 时消费）；lastOrig=最近一次实际发送的原文，会话切换时清空
 let pendingQueue=[]; let pendingForNew=false; // #3: 对话还没开好时先记下用户消息，subscribed 后自动补发（替代原先直接拒发）；C3: 仅新对话补发
-function rollbackQueue(tip){ if(!pendingQueue.length) return; if(txt.value.trim()) addInfo('你正在打的字（已让位给排队的话，怕你找不到，先放这儿）：'+txt.value); txt.value=pendingQueue.shift(); for(const q of pendingQueue) addInfo('你刚输入的：'+q); pendingQueue=[]; addInfo(tip); } // B1/C3: 队列倒回——第一条回输入框，其余上墙展示；s62: 被让位的草稿也上墙，不再无声丢失
+function rollbackQueue(tip){ if(!pendingQueue.length) return; if(txt.value.trim()) addInfo('你正在打的字（已让位给排队的话，怕你找不到，先放这儿）：'+(txt.value.length>200?txt.value.slice(0,200)+'…（太长，只显示前 200 字）':txt.value)); txt.value=pendingQueue.shift(); for(const q of pendingQueue) addInfo('你刚输入的：'+q); pendingQueue=[]; addInfo(tip); } // B1/C3: 队列倒回——第一条回输入框，其余上墙展示；s62: 被让位的草稿也上墙，不再无声丢失；s62/P3: 草稿超长截断 200 字，防撑爆消息墙
 function flushPendingQueue(){ while(pendingQueue.length){ if(busy||!sessionId) return; submit(pendingQueue.shift()); } } // B2: 直发不经输入框，不碰用户正在打的草稿
 function loadProvidersUI(){ wssend({type:'providers'}); }
 $('model-pick').onclick=e=>{
@@ -1022,7 +1022,7 @@ window.exportChat=()=>{
   const NL=String.fromCharCode(10);
   const msgs=[...document.querySelectorAll('.msg')].filter(m=>!m.classList.contains('info'))
     .map(m=>{
-      let t=m.textContent.replace(/((复制|重发)\s*)+$/,'');
+      let t=msgText(m); // s62/P3: 元素级剥操作条，替代正则（正则会误裁以「重发/复制」结尾的正文）
       return (m.classList.contains('user')?'我：':'小 forge：')+NL+t.trimEnd();
     }).join(NL+NL);
   const tools=[...document.querySelectorAll('.card .ttl')].map(t=>'🔧 '+t.textContent).join(NL);
@@ -1661,8 +1661,8 @@ $('store-q').oninput=()=>{ clearTimeout(storeQT); storeQT=setTimeout(storePaint,
 document.getElementById('chat').addEventListener('click', async e=>{
   const btn=e.target.closest('.msgbtn'); if(!btn) return;
   const msg=btn.closest('.msg');
-  if(btn.dataset.act==='copy'){ await navigator.clipboard.writeText(msg.textContent); btn.textContent='已复制✓'; setTimeout(()=>btn.textContent='复制',1200); }
-  if(btn.dataset.act==='retry'){ $('txt').value=msg.textContent.replace(/((复制|重发)\s*)+$/,''); submit(); } // 按钮文字清理，对齐 exportChat
+  if(btn.dataset.act==='copy'){ await navigator.clipboard.writeText(msgText(msg)); btn.textContent='已复制✓'; setTimeout(()=>btn.textContent='复制',1200); }
+  if(btn.dataset.act==='retry'){ $('txt').value=msgText(msg); submit(); } // s62/P3: 元素级剥操作条取正文，替代正则（正则会误裁以「重发/复制」结尾的正文）
 });
 function msgButtons(){
   const bar=document.createElement('div'); bar.className='mbar';
@@ -1671,6 +1671,7 @@ function msgButtons(){
   }
   return bar;
 }
+function msgText(m){ const c=m.cloneNode(true); c.querySelectorAll('.mbar').forEach(b=>b.remove()); return c.textContent; } // s62/P3: 正文提取唯一入口——剥 .mbar 操作条后再取 textContent，复制/重发/导出共用
 
 
 

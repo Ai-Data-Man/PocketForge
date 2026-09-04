@@ -122,6 +122,9 @@ RPU2=${RP2//\\//}
 if [ -f "$RPU2" ] && ! grep -q 'ghp_e2esanitizerprobe000000' "$RPU2" && grep -q '<已脱敏>' "$RPU2"; then ck "report sanitized: GH_TOKEN plaintext dropped" 0; else ck "report sanitized: GH_TOKEN plaintext dropped" 1; fi
 rm -f "$FAKE"
 
+# ---------- 11) WS delete_session 回执（s62/P3: 请求者收到回执且连接随后被服务端关闭） ----------
+node "$ROOT/tools/e2e/ws-delete-receipt.js" | grep -q "PASS"; ck "ws delete_session receipt delivered before close" $?
+
 rm -f /tmp/e2e-v1.md
 echo "=============================="
 echo "chat-link E2E: PASS=$PASS FAIL=$FAIL"
