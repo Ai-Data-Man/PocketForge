@@ -1,7 +1,7 @@
 # PocketForge 状态（永远反映"现在"；每次工作会话结束必须更新）
 
-- 更新：2026-09-04 s63（收尾）：qa P3 留档批量清零——destroy 5s 超时兜底/retry 正则误裁改 msgText() 元素级剥离（导出·复制·重发三处统一）/让位草稿 200 字截断/WS delete_session 断言转正（e2e 33/33）/复制按钮同修。冷启动竞态第二次复现（栈冷启首跑 fuzz 偶发 1 红热跑稳定，观察项）。前情：s62（P1 换线重发失效修复，v0.9.8 带病，探针桩词法作用域教训）；s61（用户三主线：UI 响应性 #1-#7 + 一键上报 /api/report+📮 + 布局细测）
-- 阶段：**P31 内测护航进行中**（①本机部分 ✅（v0.9.8 护航候选包就绪），真机 POC 待用户；②收窄完成 ✅；③已就位；④收窄完成 ✅）
+- 更新：2026-09-05 s64（收尾）：用户四主线一轮——①一键上报报告 v2（pf-pm 裁决：真问题="丈夫3分钟形成首个假设"，初诊=规则查表 R1-R5 只说不做，LLM 诊断裁掉；采集 A1-A7：系统代理 reg 只读/磁盘剩余/膨胀点合计/定时任务两计数/MCP 清单结构级排除/技能数/错误人话汇总；REPORT_MAX_BYTES 256KB 按节截断，077e8d9）；②UI 呈现五缺陷（GUI 实锤后修：版本"v2"读错协议字段/会话列表不排序/40·30 静默截断无提示/发送按钮窄列竖排/浏览全部徽章与标题重复，c14ed19，主控 IAB 真实浏览器逐一复验）；③PG 便携化取证（research/10：许可证白名单字面外需用户扩列、zonky +104MB 形态兼容、同类零先例、FTS5 中文硬边界，1ddbcc8，BACKUP 挂 P32）；④收尾小批（qa P3 处置：readExtState 注释语法对齐/R1-R3 补出口短语/硬顶例外注释 + fuzz 留痕加固 tmp/fuzz-last.log + typing prefers-reduced-motion；explorer 焦点项以官方文档证据裁掉，67b871d）。qa 双批通过（对抗性证伪：readExtState 结构级排除成立、三级同超压穿截断级联诊断节完整）；e2e 33/33+fuzz 44/44。前情：s63（P3 留档清零）；s61/62（UI 响应性+一键上报+换线重发修复）
+- 阶段：**P31 内测护航进行中**（①本机部分 ✅（v0.9.8 护航候选包就绪；s64 报告 v2 在 dev 树，随下版 tag 入包），真机 POC 待用户；②收窄完成 ✅；③已就位；④收窄完成 ✅）
 
 ## 已完成周期
 | 周期 | 内容 | journal |
@@ -38,6 +38,7 @@
 | s61 | **用户三主线**:①UI慢半拍断根(取证→修复#1-#7,底稿research/09);②一键上报(裁决→/api/report+📮→qa两轮P2×3返工12项全过);③布局细测(qa 20条矩阵+GUI 10项PASS);e2e 32/32+fuzz 44/44 | s61 |
 | s62 | s50e换线重发完全失效取证修复(P1,v0.9.8带病;双重缺陷+探针桩词法作用域教训)+qa建议级两项+矩阵补跑;e2e 32/32+fuzz 44/44 | s62 |
 | s63 | qa P3 留档批量清零:destroy 5s兜底/msgText()元素级剥离(导出·复制·重发)/草稿200字截断/WS delete断言转正;e2e 33/33+fuzz 44/44 | s63 |
+| s64 | **用户四主线**:报告v2可观测增强(规则式初诊R1-R5+采集A1-A7+256KB硬顶,077e8d9)+UI呈现五缺陷(版本v2/列表乱序/静默截断/发送竖排/徽章重复,c14ed19)+PG便携化取证(research/10,1ddbcc8,BACKUP挂P32待用户扩白名单)+收尾小批(qa P3处置/fuzz留痕/reduced-motion,67b871d);qa双批通过;e2e 33/33+fuzz 44/44 | s64 |
 ## 技术栈版本（全部 VERIFIED-RUN）
 process-compose v1.122.0 / nats-server v2.14.5 / nats-cli v0.4.0 / faucet v0.1.12 / goose v1.46.0 (AAIF) / node v22.21.1 / python 3.12 embeddable (Pillow 12.3.0；openpyxl 不在包内——s47 实测，旧记录失实已修正) / isomorphic-git 1.41.9 (vendored MIT, ADR-0007) / DOMPurify 3.2.4 (vendored Apache-2.0, s15)
 
@@ -62,9 +63,12 @@ ADR-0001 记忆拓扑 / ADR-0002 五件套技术栈 / ADR-0003 交付树+注册�
 - **P32 数据驱动**：据使用统计决定（候选：真机 PLM 适配、工作流模板、日程提醒）
 - **裁减原则**：商店/插件类扩张挂起至真机验证后；内测用户反馈是第一输入源，路线裁决权在团队
 ## Backlog（对标研究提炼，ADR-0010 复核条件）
-- **观察项**：栈冷启后首跑 fuzz 偶发 1 红、热跑稳定全绿（s61/s63 两次复现，疑似 goose 冷加载窗口，未留痕归因，低优先专项）
-- **s61 遗留**：explorer /select 不抢前台焦点；typing 动画无 prefers-reduced-motion；qa 布局矩阵跳过 3 条（全归档/无 key 态/confirm 窄窗）按需补跑
-- **s55-57 断根裁决遗留**：定时任务删除按钮同款守护盲区（删除后也需 restart goose-scheduler 才对守护生效，历史行为待补）；定时任务改期挂 P32+ 走聊天自然语言；vendor 目录名漂移（mcp-memory/mcp-seqthink vs 目录 id memory-graph/sequential-thinking，s46 时代命名，卸载 memory-graph 时真目录成孤儿）需一轮对齐
+- **观察项**：栈冷启后首跑 fuzz 偶发 1 红、热跑稳定全绿（s61/s63/s64 三次复现）——s64 已加固留痕（fuzz-chat.sh 全量输出恒写 tmp/fuzz-last.log），下次复现先查日志归因，再立专项
+- **s64 报告 v2 遗留**：报告探针转正（tmp/s64-probe-report.js+qa-edge/qa-sandbox → tools/e2e/，注意沙箱探针自拉桥进程占 18790/18799 端口，转正需与 e2e 时长权衡）；体积硬顶 head 段超限角落已注释标注（P3-1，产品路径不可达）
+- **PG（P32 候选，双前置）**：research/10 结论 BACKUP——①用户确认许可证白名单扩列（OSI 宽松等价类：PostgreSQL License、ISC）；②真机 POC（initdb 耗时/EDR 对用户目录 postgres.exe 态度）。FTS5 中文硬边界已实证，backlog「/api/search 升级 FTS5」条目若推进需重新设计
+- **s64 后 UI 候选**：浏览全部工作区卡片列表无上限（几十张卡全渲染，数据多时性能/视觉压力——同 UI-3 模式加上限+提示，或等 PG/后端一轮做分页）
+- **s61 遗留**：~~typing 动画无 prefers-reduced-motion~~ → s64 已修（67b871d）；~~explorer /select 不抢前台焦点~~ → s64 裁掉（SHOpenFolderAndSelectItems 无"不激活"旗标，explorer 无后台参数，workaround 40+ 行入桥模板复杂度不成比例且弹窗是 pm 原裁决行为；官方文档证据在 67b871d 交付记录）；qa 布局矩阵跳过 3 条（全归档/无 key 态/confirm 窄窗）按需补跑
+- ~~s55-57 断根裁决遗留：定时任务删除按钮守护盲区~~ → s58 已补；~~vendor 目录名漂移（mcp-memory/mcp-seqthink 孤儿目录）~~ → s59b 已清（全仓无引用+卸载路径自愈），本条历史遗留关闭
 - 工作区级「项目指令」（对照 Manus Projects master instruction）：.forge 元数据扩展 + prompt 注入，首月低频故 backlog
 - 多会话并行任务（Manus Wide Research 式）：妻子场景低频，backlog
 - /api/search 升级 FTS5：消息量 >1 万条时
