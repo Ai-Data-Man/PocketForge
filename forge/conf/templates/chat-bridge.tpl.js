@@ -727,7 +727,7 @@ function readExtState() {
         for (const line of raw.split(/\r?\n/)) {
             if (/^extensions:\s*$/.test(line)) { inExts = true; continue; }
             if (!inExts) continue;
-            if (/^[^\s]/.test(line)) break; // 下一顶级键
+            if (/^[^\s#]/.test(line)) break; // 下一顶级键（qa P3-2：# 豁免顶格注释行，与 mcpEnabled 同语法，防两函数对含注释 config 结论分叉）
             const extM = line.match(/^ {2}([A-Za-z0-9_\-]+):\s*$/);
             if (extM) { cur = extM[1]; out[cur] = true; continue; }
             if (cur) {
@@ -982,9 +982,9 @@ function reportSkillCount() {
 // ---- s64 A7/B: 7 天错误聚合 + 规则式初步诊断（查表，只说不做，绝不自动执行修复）----
 // >>> s64 规则区标记（纯函数：输入采集信号对象，输出 null 或文案；探针按标记提取单测）
 const REPORT_RULE_TEXTS = {
-    r1: '数据库服务没起来。建议：双击桌面的『停止数字员工』，再双击『启动数字员工』，然后重试刚才的事。',
-    r2: '数字员工还没有配『钥匙』。建议：看聊天窗口顶部的引导条，点它去配。',
-    r3: '最近有『钥匙失效』的记录。建议：到设置里把模型钥匙重新配一遍。',
+    r1: '数据库服务没起来。建议：双击桌面的『停止数字员工』，再双击『启动数字员工』，然后重试刚才的事。还不行，就把这份报告发给帮你的人。',
+    r2: '数字员工还没有配『钥匙』。建议：看聊天窗口顶部的引导条，点它去配。还不行，就把这份报告发给帮你的人。',
+    r3: '最近有『钥匙失效』的记录。建议：到设置里把模型钥匙重新配一遍。还不行，就把这份报告发给帮你的人。',
     r4: '启动端口被别的程序占了。建议：重启电脑后再双击启动；还不行就把这份报告发给帮你的人。',
     r5: '电脑开着代理，最近也有连不上网的记录，可能有关。建议：把这份报告发给帮你的人判断，先不要自己改代理设置。',
     none: '没发现明显的毛病，请把『请补充说明』填好一起发。',
@@ -1112,6 +1112,7 @@ async function buildReport() {
         '---\n\n## 请补充说明（填好再发出去）\n\n1. 什么时候出的问题：\n2. 当时做了什么操作：\n3. 期望的结果是什么：\n\n' +
         '## GitHub issue 模板（复制即贴）\n\n标题：问题：\n\n正文：\n- 环境：（把本报告「环境」一节粘贴在这里）\n- 复现步骤：\n  1.\n  2.\n- 实际结果：\n- 期望结果：\n';
     // s64 C: 体积硬顶（写盘前）——按节截断 pc.log→backup.log→统计 JSON；毛病/快速判断/环境与结构化短行绝不截
+    // 例外（qa P3-1）：head/tail 段（providers JSON/status.json 原文/会话概况行）自身超限时写盘可超 REPORT_MAX_BYTES——依赖上游字段有界（qa 沙箱实证 473KB 角落，产品路径不可达），不做运行时钳制
     let nLog = pcTail.length, nBak = bakTail.length, nStats = statsRaw.length;
     const render = () => head + secLog(nLog) + secBak(nBak) + secStats(nStats) + tailMd;
     while (Buffer.byteLength(render()) > REPORT_MAX_BYTES) {

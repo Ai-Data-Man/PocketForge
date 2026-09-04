@@ -183,6 +183,8 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 .typing .tdots i:nth-child(2){animation-delay:.15s}
 .typing .tdots i:nth-child(3){animation-delay:.3s}
 @keyframes tdot{0%,60%,100%{transform:translateY(0);opacity:.35}30%{transform:translateY(-4px);opacity:1}}
+/* s61 遗留：系统设置减少动态效果时停掉三点跳动，保留静态提示文本 */
+@media (prefers-reduced-motion: reduce){.typing .tdots i{animation:none}}
 /* s33: 开场快捷任务 chips */
 .quickwrap{display:flex;flex-wrap:wrap;gap:8px;padding:4px 16px 8px;align-self:flex-start}
 .quickchip{padding:8px 14px;border:1.5px solid var(--acc);border-radius:18px;background:var(--acc-soft);color:var(--acc);font-size:.8rem;cursor:pointer;transition:all .12s}

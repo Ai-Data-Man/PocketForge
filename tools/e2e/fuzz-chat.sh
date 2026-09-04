@@ -3,6 +3,8 @@
 # 期望：全部返回友好 JSON 错误，不 500、不崩溃、不泄漏内部路径。
 set -uo pipefail
 B=${1:-http://127.0.0.1:8790}
+# s64 收尾：全量输出恒留痕到项目 tmp/fuzz-last.log（此前"冷启首跑偶发 1 红热跑全绿"3 次复现均无断言名可查）
+LOG="$(cd "$(dirname "$0")/../.." && pwd)/tmp/fuzz-last.log"
 PASS=0; FAIL=0
 ck(){ if [ "$2" = "0" ]; then echo "PASS: $1"; PASS=$((PASS+1)); else echo "FAIL: $1"; FAIL=$((FAIL+1)); fi }
 J(){ python -c "
@@ -18,6 +20,7 @@ import sys
 raw=sys.stdin.read()
 sys.exit(0 if ('C:' not in raw and '/conf/' not in raw and 'ENOENT' not in raw) else 1)"; }
 P(){ curl -s -X POST "$1" -H 'content-type: application/json' -d "$2" | J; ck "$3" $?; }
+main(){
 P "$B/api/memory" '' "memory empty body"
 P "$B/api/memory" 'null' "memory null body"
 P "$B/api/memory" '"str"' "memory string body"
@@ -97,3 +100,7 @@ curl -s -X POST "$B/api/extensions" -H 'content-type: application/json' -d '{"id
 echo "=============================="
 echo "fuzz: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" = "0" ]
+}
+# tee 双写（终端+留痕文件）；PIPESTATUS 保住 main 的退出码，不用 $(...|tail) 类管道写法（项目挂死先例）
+main "$@" 2>&1 | tee "$LOG"
+exit "${PIPESTATUS[0]}"
