@@ -34,6 +34,18 @@ function stopBridge(child) {
         setTimeout(resolve, 5000); // 兜底：exit 事件不来也继续（同 s63 destroy 5s 兜底）
     });
 }
+// rmSync 间歇 EPERM：goose 孙进程靠 pipe EOF 自退，句柄拆除窗实测 0.1-0.3s（1.2 万文件最长 2290ms）；
+// maxRetries 方案已证伪（node v24 上游 Sleep 单位 bug 致零间隔），故固定 200ms 轮询、8s 上限（≈25× 余量）。
+async function rmSandbox(p) {
+    const t0 = Date.now();
+    for (;;) {
+        try { return FSS.rmSync(p, { recursive: true, force: true }); }
+        catch (e) {
+            if (Date.now() - t0 > 8000) throw e;
+            await new Promise(r => setTimeout(r, 200));
+        }
+    }
+}
 function waitHealth(port) {
     return new Promise((resolve, reject) => {
         const try1 = () => require('http').get({ host: '127.0.0.1', port, path: '/healthz', timeout: 1000 }, r => {
@@ -70,7 +82,7 @@ let child = null;
 (async () => {
     try {
         // ================= 场景 A：工程验收（:18790） =================
-        FSS.rmSync(SBA, { recursive: true, force: true });
+        await rmSandbox(SBA);
         for (const d of ['conf/goose/config', 'conf/goose/data/scheduled_recipes', 'conf/goose/config/recipes', 'data/logs', 'data/stats', 'data/backups', 'data/artifacts/ws-bloat', '.agents/skills/skill-alpha', '.agents/skills/skill-beta', '.agents/skills/skill-empty']) FSS.mkdirSync(J(SBA, d.split('/')), { recursive: true });
         FSS.writeFileSync(J(SBA, ['VERSION']), '9.9.9-s64probe');
         // config.yaml：mcp 块 env 注入 sk- 形态 + 一个不匹配任何脱敏正则的自定义值
@@ -210,10 +222,10 @@ let child = null;
 
         console.log('场景A(:18790) 落盘 r1=' + r1.size + 'B/' + r1.ms + 'ms, r2=' + r2.size + 'B, r3=' + r3.size + 'B');
         await stopBridge(child); child = null;
-        FSS.rmSync(SBA, { recursive: true, force: true });
+        await rmSandbox(SBA);
 
         // ================= 场景 B：qa 证伪（:18799） =================
-        FSS.rmSync(SBB, { recursive: true, force: true });
+        await rmSandbox(SBB);
         for (const d of ['conf/goose/config', 'conf/goose/data', 'data/logs', 'data/stats']) FSS.mkdirSync(J(SBB, d.split('/')), { recursive: true });
         FSS.writeFileSync(J(SBB, ['VERSION']), '9.9.9-qaprobe');
         FSS.writeFileSync(J(SBB, ['conf', 'goose', 'config', 'config.yaml']), 'GOOSE_PROVIDER: openai\nextensions:\n  mcp-fetch:\n    enabled: true\n');
@@ -274,7 +286,7 @@ let child = null;
         process.exitCode = 1;
     } finally {
         await stopBridge(child); child = null;
-        for (const d of [SBA, SBB]) { try { FSS.rmSync(d, { recursive: true, force: true }); } catch {} }
+        for (const d of [SBA, SBB]) { try { await rmSandbox(d); } catch {} }
     }
     console.log('==============================');
     console.log('report-probe-sandbox: PASS=' + pass + ' FAIL=' + fail);
