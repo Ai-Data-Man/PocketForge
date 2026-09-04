@@ -1,6 +1,6 @@
 # PocketForge 状态（永远反映"现在"；每次工作会话结束必须更新）
 
-- 更新：2026-09-05 s64（收尾）：用户四主线一轮——①一键上报报告 v2（pf-pm 裁决：真问题="丈夫3分钟形成首个假设"，初诊=规则查表 R1-R5 只说不做，LLM 诊断裁掉；采集 A1-A7：系统代理 reg 只读/磁盘剩余/膨胀点合计/定时任务两计数/MCP 清单结构级排除/技能数/错误人话汇总；REPORT_MAX_BYTES 256KB 按节截断，077e8d9）；②UI 呈现五缺陷（GUI 实锤后修：版本"v2"读错协议字段/会话列表不排序/40·30 静默截断无提示/发送按钮窄列竖排/浏览全部徽章与标题重复，c14ed19，主控 IAB 真实浏览器逐一复验）；③PG 便携化取证（research/10：许可证白名单字面外需用户扩列、zonky +104MB 形态兼容、同类零先例、FTS5 中文硬边界，1ddbcc8，BACKUP 挂 P32）；④收尾小批（qa P3 处置：readExtState 注释语法对齐/R1-R3 补出口短语/硬顶例外注释 + fuzz 留痕加固 tmp/fuzz-last.log + typing prefers-reduced-motion；explorer 焦点项以官方文档证据裁掉，67b871d）。qa 双批通过（对抗性证伪：readExtState 结构级排除成立、三级同超压穿截断级联诊断节完整）；e2e 33/33+fuzz 44/44。前情：s63（P3 留档清零）；s61/62（UI 响应性+一键上报+换线重发修复）
+- 更新：2026-09-05 s65（收尾）：报告 v2 探针转正（四 tmp 探针→tools/e2e/report-probe-{static,sandbox}.js+编排，挂 e2e 第 12 节，**e2e 升至 35/35**，5922d1d）；「浏览全部上限」零 diff 裁决（P29 起有 30/页分页，前提失实，STATE 勘误引以为戒）；EPIPE 竞态修复（第 11 节输出落地再 grep，a3adb0d，3×35/35）；沙箱 rmSync 间歇 EPERM 取证+修复（双因子：goose 孙进程句柄窗 0.1-0.3s + node v24 上游 Sleep 单位 bug 废掉 maxRetries；轮询重删 200ms/8s 四调用点，6ec8c29，5×29/29+2×35/35+等价复现 10/10）；goose 上游情报落档（research/04：不追 v1.49.0 等 v1.50 或退 v1.48.0，三红线源码级未动，f203083）+ 升级预案重建（abfbe3a）；矩阵 13 全归档态 GUI 全过（API 批量归档 175→复核→全量还原）。前情：s64（报告 v2/UI 五缺陷/PG 取证 BACKUP 挂 P32）
 - 阶段：**P31 内测护航进行中**（①本机部分 ✅（v0.9.8 护航候选包就绪；s64 报告 v2 在 dev 树，随下版 tag 入包），真机 POC 待用户；②收窄完成 ✅；③已就位；④收窄完成 ✅）
 
 ## 已完成周期
@@ -39,6 +39,7 @@
 | s62 | s50e换线重发完全失效取证修复(P1,v0.9.8带病;双重缺陷+探针桩词法作用域教训)+qa建议级两项+矩阵补跑;e2e 32/32+fuzz 44/44 | s62 |
 | s63 | qa P3 留档批量清零:destroy 5s兜底/msgText()元素级剥离(导出·复制·重发)/草稿200字截断/WS delete断言转正;e2e 33/33+fuzz 44/44 | s63 |
 | s64 | **用户四主线**:报告v2可观测增强(规则式初诊R1-R5+采集A1-A7+256KB硬顶,077e8d9)+UI呈现五缺陷(版本v2/列表乱序/静默截断/发送竖排/徽章重复,c14ed19)+PG便携化取证(research/10,1ddbcc8,BACKUP挂P32待用户扩白名单)+收尾小批(qa P3处置/fuzz留痕/reduced-motion,67b871d);qa双批通过;e2e 33/33+fuzz 44/44 | s64 |
+| s65 | 报告探针转正(e2e升至**35/35**,5922d1d)+EPIPE修复(a3adb0d)+沙箱rmSync EPERM取证修复(goose句柄窗+node Sleep单位bug,轮询重删,6ec8c29)+goose上游情报与升级预案(research/04+playbook,f203083/abfbe3a)+矩阵13全归档态GUI全过(数据全还原);浏览全部上限零diff裁决(P29有分页,勘误) | s65 |
 ## 技术栈版本（全部 VERIFIED-RUN）
 process-compose v1.122.0 / nats-server v2.14.5 / nats-cli v0.4.0 / faucet v0.1.12 / goose v1.46.0 (AAIF) / node v22.21.1 / python 3.12 embeddable (Pillow 12.3.0；openpyxl 不在包内——s47 实测，旧记录失实已修正) / isomorphic-git 1.41.9 (vendored MIT, ADR-0007) / DOMPurify 3.2.4 (vendored Apache-2.0, s15)
 
@@ -64,7 +65,7 @@ ADR-0001 记忆拓扑 / ADR-0002 五件套技术栈 / ADR-0003 交付树+注册�
 - **裁减原则**：商店/插件类扩张挂起至真机验证后；内测用户反馈是第一输入源，路线裁决权在团队
 ## Backlog（对标研究提炼，ADR-0010 复核条件）
 - **观察项**：栈冷启后首跑 fuzz 偶发 1 红、热跑稳定全绿（s61/s63/s64 三次复现）——s64 已加固留痕（fuzz-chat.sh 全量输出恒写 tmp/fuzz-last.log），下次复现先查日志归因，再立专项
-- **观察项（s65）**：侧栏「已归档 N」的 N=goose session/list 返回窗口大小（实测 50）而非库内归档总数——会话少时无感，规模化后属信息精度问题（主线 4 族）；e2e 第 12 节沙箱探针 rmSync 间歇 EPERM（8 跑 2 中，取证中）
+- **观察项（s65）**：侧栏「已归档 N」的 N=goose session/list 返回窗口大小（实测 50）而非库内归档总数——会话少时无感，规模化后属信息精度问题（主线 4 族）；~~e2e 第 12 节沙箱探针 rmSync 间歇 EPERM~~ → s65 已修复（轮询重删 6ec8c29，取证结论 tmp/forensic-rm-perm 可复跑）
 - **s64 报告 v2 遗留**：报告探针转正（tmp/s64-probe-report.js+qa-edge/qa-sandbox → tools/e2e/，注意沙箱探针自拉桥进程占 18790/18799 端口，转正需与 e2e 时长权衡）；体积硬顶 head 段超限角落已注释标注（P3-1，产品路径不可达）
 - **PG（P32 候选，双前置）**：research/10 结论 BACKUP——①用户确认许可证白名单扩列（OSI 宽松等价类：PostgreSQL License、ISC）；②真机 POC（initdb 耗时/EDR 对用户目录 postgres.exe 态度）。FTS5 中文硬边界已实证，backlog「/api/search 升级 FTS5」条目若推进需重新设计
 - ~~s64 后 UI 候选：浏览全部卡片列表无上限~~ → **s65 勘误撤销**：renderAllPane 自 P29 起即有 PAGE_N=30 分页+翻页器（s65 工程师零 diff 裁决，主控复核代码确认——此前条目是主控未核实就归约的错误断言，引以为戒）；真实缺口（若有）待 pm 重新归约
