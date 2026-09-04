@@ -6,11 +6,13 @@ $env:FORGE_ROOT = $ForgeRoot
 
 foreach ($line in Get-Content (Join-Path $ForgeRoot 'data\pc.port')) { $PC_PORT = $line.Trim(); break }
 foreach ($line in Get-Content (Join-Path $ForgeRoot 'data\faucet.port')) { $FAUCET_PORT = $line.Trim(); break }
+foreach ($line in Get-Content (Join-Path $ForgeRoot 'data\pg.port')) { $PG_PORT = $line.Trim(); break }
 foreach ($line in Get-Content (Join-Path $ForgeRoot 'data\secrets.env')) {
     if ($line -match '^([A-Za-z_][A-Za-z0-9_]*)=(.*)$') { [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process') }
 }
 $env:PC_PORT = $PC_PORT
 $env:FAUCET_PORT = $FAUCET_PORT
+$env:PG_PORT = $PG_PORT
 $env:GOOSE_PATH_ROOT = "$ForgeRoot\conf\goose"
 $env:GOOSE_DISABLE_KEYRING = '1'
 $env:GOOSE_TELEMETRY_ENABLED = 'false'

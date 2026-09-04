@@ -35,6 +35,10 @@ $memTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\memory-mc
 $memCmd = $memTpl.Replace('__FORGE_ROOT__', $ForgeRoot)
 [IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\memory-mcp.cmd'), $memCmd)
 
+# 1b-3) s66/ADR-0011: pg-init 包装脚本生成（pc oneshot 进程用，幂等守卫在模板内）
+$pgTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\pg-init.tpl.cmd'))
+[IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\pg-init.cmd'), $pgTpl.Replace('__FORGE_ROOT__', $ForgeRoot))
+
 # 1b-2) s20: .goosehints 幂等重建（模板为唯一真相源）。
 # 事故背景：hints 曾被开发期脚本写坏成 600KB 重复段（P11-P24 期间入库未察觉），
 # 每轮 system prompt 被垃圾挤爆。hints = 只读手册，agent 不应写它；损坏则留档重建。
@@ -120,6 +124,14 @@ if ((Test-Path $faucetFile)) {
 } else {
     $faucetPort = Pick-Port 8091
     "$faucetPort" | Set-Content $faucetFile
+}
+# s66/ADR-0011: PG 端口（pg.port 存在即复用，与 faucet 同款；${PG_PORT} 由两个启动器导出供 pc 展开）
+$pgFile = Join-Path $ForgeRoot 'data\pg.port'
+if ((Test-Path $pgFile)) {
+    $pgPort = Get-Content $pgFile
+} else {
+    $pgPort = Pick-Port 5432
+    "$pgPort" | Set-Content $pgFile
 }
 
 # 4) ports overlay 生成（pc 也不展开任意变量到 readiness port——用显式值）

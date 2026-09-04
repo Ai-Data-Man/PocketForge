@@ -64,6 +64,36 @@ processes:
       faucet-rawsql:
         condition: process_completed_successfully
 
+  # s66/ADR-0011 阶段一：便携 PG（zonky 17.11.0）。数据目录 data/pg（首启由 pg-init 现场初始化，
+  # 删 data/pg=重置）；端口 data/pg.port（${PG_PORT} 由启动器导出，pc 从环境展开）。
+  # 失败面：阶段一全仓零消费者——pg 失败仅本面板红，栈照常绿（无任何 depends_on 指向 pg/pg-init）。
+  # pc v1.122.0 schema 实证（2026-09-05，本开发机）：restart on_failure 支持 max_restarts（0=无限，N=封顶 N 次）
+  # 与 backoff_seconds；无 max_retries 字段（yaml 解析非严格，拼错字段被静默忽略——dry-run 阴性对照证实，
+  # 源码 src/types/process.go RestartPolicyConfig）；行为实测 max_restarts:2+backoff:3 → 重启止于 2 次后项目退出。
+  # EDR 硬拦时无上限重启=白烧 CPU，故封顶 3 次；阶段二随首个消费者复核翻转。
+  pg-init:
+    command: 'cmd /c ${FORGE_ROOT}/bin/pg-init.cmd'
+    is_daemon: false
+    availability:
+      restart: 'no'
+
+  pg:
+    command: '${FORGE_ROOT}/bin/pg/bin/postgres.exe -D ${FORGE_ROOT}/data/pg -p ${PG_PORT} -c listen_addresses=127.0.0.1 -c max_connections=20'
+    is_daemon: true
+    availability:
+      restart: 'on_failure'
+      max_restarts: 3
+      backoff_seconds: 5
+    log_location: '${FORGE_ROOT}/data/logs/pg.log'
+    readiness_probe:
+      exec:
+        command: '${FORGE_ROOT}/bin/pg/bin/pg_ctl.exe -D ${FORGE_ROOT}/data/pg status'
+      period_seconds: 5
+      failure_threshold: 12
+    depends_on:
+      pg-init:
+        condition: process_completed_successfully
+
   chat-bridge:
     command: '${FORGE_ROOT}/bin/node-v22/node-v22.21.1-win-x64/node.exe ${FORGE_ROOT}/bin/chat-bridge.js'
     environment:

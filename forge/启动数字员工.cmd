@@ -8,6 +8,7 @@ rem ---- bootstrap: goose config / secrets / ports (see conf\bootstrap.ps1) ----
 powershell -NoProfile -ExecutionPolicy Bypass -File "%FORGE_ROOT%\conf\bootstrap.ps1"
 for /f "usebackq delims=" %%p in ("%FORGE_ROOT%\data\pc.port") do set "PC_PORT=%%p"
 for /f "usebackq delims=" %%p in ("%FORGE_ROOT%\data\faucet.port") do set "FAUCET_PORT=%%p"
+for /f "usebackq delims=" %%p in ("%FORGE_ROOT%\data\pg.port") do set "PG_PORT=%%p"
 for /f "usebackq eol=# tokens=1,2 delims==" %%a in ("%FORGE_ROOT%\data\secrets.env") do set "%%a=%%b"
 
 rem ---- environment ----

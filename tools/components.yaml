@@ -33,6 +33,13 @@ components:
     asset: goose-x86_64-pc-windows-msvc.zip
     license: Apache-2.0
     url: https://github.com/aaif-goose/goose/releases/download/v1.46.0/goose-x86_64-pc-windows-msvc.zip
+  # s66/ADR-0011: zonky maven jar（内含 postgres-windows-x86_64.txz，fetch 时解出 bin/ 3 exe + dll + lib/share）
+  - name: postgresql
+    version: 17.11.0
+    repo: zonkyio/embedded-postgres-binaries
+    asset: embedded-postgres-binaries-windows-amd64-17.11.0.jar
+    license: PostgreSQL
+    url: https://repo1.maven.org/maven2/io/zonky/test/postgres/embedded-postgres-binaries-windows-amd64/17.11.0/embedded-postgres-binaries-windows-amd64-17.11.0.jar
   # P28: npm 型组件（非 release zip；由 forge/bin/vendor/artifact-vcs/package.json 锁定版本，npm --omit=dev 安装）
   - name: isomorphic-git
     version: 1.41.9

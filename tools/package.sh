@@ -46,6 +46,7 @@ declare -A SRC=(
  [playwright-mcp.Apache-2.0]="$FORGE/bin/pw-mcp/node_modules/@playwright/mcp/LICENSE"
  [isomorphic-git.MIT]="$FORGE/bin/vendor/artifact-vcs/node_modules/isomorphic-git/LICENSE.md"
  [DOMPurify.Apache-2.0]="$FORGE/vendor-licenses/DOMPurify.Apache-2.0"
+ [postgresql.PostgreSQL]="$FORGE/vendor-licenses/postgresql.PostgreSQL"
 )
 MISS=0
 for name in "${!SRC[@]}"; do
