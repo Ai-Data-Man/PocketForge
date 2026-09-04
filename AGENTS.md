@@ -22,7 +22,7 @@
 2. 无 Docker / WSL2 / Hyper-V → 排除一切容器化部署方案。
 3. 便携文件夹交付，终端用户零技术背景 → "一次双击启动成功"是验收线。
 4. 零系统污染：不写注册表、不写 PATH、不注册服务、不建计划任务；删文件夹 = 完全卸载；通过企业 EDR 审计。
-5. 许可证白名单：MIT / Apache-2.0 / 公有领域（SQLite）。BSL/GPL/SSPL/未明确 = 禁止。引入即记录于 research 底稿。
+5. 许可证白名单：MIT / Apache-2.0 / 公有领域（SQLite）/ PostgreSQL License、ISC（2026-09-05 用户批准扩列，ADR-0011）。BSL/GPL/SSPL/未明确 = 禁止。引入即记录于 research 底稿。
 6. 封闭系统（PLM 等）无 API → 数据获取只走浏览器自动化。
 7. 不预设业务场景：一切机制对任意业务通用。
 8. 设施细节对 Agent 透明（Agent 只见稳定契约）；Agent 运行时禁止自研（采用开源，见 ADR）。

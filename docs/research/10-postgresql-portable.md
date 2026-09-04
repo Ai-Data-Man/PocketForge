@@ -1,6 +1,6 @@
 # PostgreSQL（便携化嵌入形态）（来源：postgresql.org / EDB / zonkyio/embedded-postgres-binaries / npm registry）
-- 结论：BACKUP（备选——技术形态可行，引入前置条件两项：①许可证白名单扩列需用户确认；②真机 POC 实测 initdb 耗时与 EDR 态度。P32 候选，不进入当前交付树）
-- 一句话用途：候选的 forge 自建应用结构化存储+检索引擎（用户 2026-09-04 建议"正经后端+PG"的可行性取证）
+- 结论：ADOPT（2026-09-05 用户批准白名单扩列并采纳，ADR-0011；三阶段路线，每阶段独立可回退。原 BACKUP 双前置之一"扩列"已解除；真机 EDR/initdb 实测随阶段一沙盒与随包护航进行）
+- 一句话用途：forge 自建应用首选结构化存储+检索引擎（ADR-0011 阶段一基础设施接线 → 阶段二自建库 → 阶段三检索升级）
 - 许可证：**PostgreSQL License**（SPDX: `PostgreSQL`，https://www.postgresql.org/about/licence/ ，核对 2026-09-04）。官方自述 "similar to the BSD or MIT licenses"；OSI 2010-02-10 认证，无 copyleft、无网络条款。**不在现行白名单（MIT/Apache-2.0/公有领域）字面内**——文本与 SPDX 均独立，需扩列一行；同类别还卷入 npm `pg` 依赖树的 ISC（pg-int8/pg-numeric）。唯一字面命中现行白名单的客户端是 postgres.js（Unlicense=公有领域奉献）。
 - Windows/便携性：zonky 渠道（EDB 官方 zip 的最小子集，repack 脚本实证仅 `share`+`lib/*.dll`+bin 下 initdb/pg_ctl/postgres 三 exe）解压态 ~104MB（npm `@embedded-postgres/windows-x64@18.4.0-beta.17` registry 元数据）；EDB 官方 zip 压缩态 307-319MB（本机 HEAD 实测 17.5/16.9/18.0）。`initdb -D`+`postgres -D -p`+pg_ctl 全程无注册表/服务注册（官方文档），删目录即卸载——硬约束 1/2/4 形态兼容。
 - 版本与活跃度：PG 17.x/18.x 稳定线；zonky/npm 渠道跟随上游。
