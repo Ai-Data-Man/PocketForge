@@ -197,7 +197,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 #inputbar{position:relative;display:flex;gap:10px;padding:14px 18px;background:var(--panel);border-top:1px solid var(--line)}
 #txt{flex:1;font-size:.95rem;padding:12px 14px;border:1.5px solid var(--line-strong);border-radius:var(--r-m);outline:none;background:var(--panel);color:var(--tx);transition:border-color .12s}
 #txt:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
-#send{font-size:.92rem;padding:12px 24px;background:var(--acc);color:var(--acc-contrast);border:none;border-radius:var(--r-m);cursor:pointer;font-weight:600;box-shadow:var(--shadow-1);transition:filter .15s}
+#send{font-size:.92rem;padding:12px 24px;background:var(--acc);color:var(--acc-contrast);border:none;border-radius:var(--r-m);cursor:pointer;font-weight:600;box-shadow:var(--shadow-1);transition:filter .15s;white-space:nowrap;flex-shrink:0}
 #send:hover{filter:brightness(1.08)}
 #send:active{filter:brightness(.92)}
 #send:disabled{background:var(--mut-2);cursor:default}
@@ -524,7 +524,7 @@ function connect(){
       return;
     }
     if(m.sys==='error'){ if(pendingQueue.length){ rollbackQueue('对话没开好，刚才记下的话已放回，稍后再发一次。'); pendingForNew=false; } addErr(m.text+(m.text.includes('可选池')?'。到 ⚙️ 设置里勾选它，或换顶栏列表里有的模型。':'')); setBusy(false); return; } // B1: 开新对话失败时队列倒回（仅队列非空时，不影响其他 error 路径）
-    if(m.sys==='hello'){ $('version').textContent='v'+m.version; return; }
+    if(m.sys==='hello'){ $('version').textContent=m.app||('v'+m.version); return; } // s64: app=应用版本（自带 v 前缀）；回落才是 WS 协议版本
     if(m.sys==='models'){
       fetchedModels=m.models||[];
       note('拉到 '+fetchedModels.length+' 个模型，下面勾选要给员工用的（勾上才算）');
@@ -618,16 +618,22 @@ function sessItem(s,archived){
 function renderSessions(list){
   const box=$('sessions'); box.innerHTML='';
   const real=list.filter(s=>{const t=(s._meta&&s._meta.sessionType)||'standard';return t!=='scheduled';});
-  const act=real.filter(s=>!archSet[s.sessionId]);
-  const arc=real.filter(s=>archSet[s.sessionId]);
+  const byNew=s=>{const d=tsLocal(s.updatedAt);return d?d.getTime():0;}; // s64: 解析失败按 0 沉底；sort 稳定，时间相同保持原序
+  const act=real.filter(s=>!archSet[s.sessionId]).sort((a,b)=>byNew(b)-byNew(a));
+  const arc=real.filter(s=>archSet[s.sessionId]).sort((a,b)=>byNew(b)-byNew(a));
   if(!act.length&&!arc.length){ box.innerHTML='<div style="padding:12px;font-size:12px;color:var(--mut)">还没有对话。点上面「＋ 新对话」开始。</div>'; return; }
+  const trunc=txt=>{ const t=document.createElement('div'); t.className='fnote'; t.style.padding='4px 10px'; t.textContent=txt; box.appendChild(t); };
   for(const s of act.slice(0,40)) box.appendChild(sessItem(s,false));
+  if(act.length>40) trunc('还有 '+(act.length-40)+' 个更早对话没显示，用上面搜索或归档查看');
   if(arc.length){
     const h=document.createElement('div'); h.style.cssText='padding:7px 10px;font-size:11px;color:var(--mut);cursor:pointer;user-select:none';
     h.textContent=(archOpen?'▾':'▸')+' 已归档 '+arc.length;
     h.onclick=()=>{ archOpen=!archOpen; renderSessions(list); };
     box.appendChild(h);
-    if(archOpen) for(const s of arc.slice(0,30)) box.appendChild(sessItem(s,true));
+    if(archOpen){
+      for(const s of arc.slice(0,30)) box.appendChild(sessItem(s,true));
+      if(arc.length>30) trunc('已归档共 '+arc.length+' 个，显示最近 30 个');
+    }
   }
 }
 function subscribe(sid){ pendingForNew=!sid; lastOrig=null; wssend({type:'subscribe',sessionId:sid,model:lastKnownModel||undefined}); chat.innerHTML=''; toolCards.clear(); if(!sid){ addMsg('你好！我是小 forge。想做什么直接打字告诉我。','agent'); addQuickPrompts(); } }
@@ -1853,7 +1859,7 @@ function wsDisplayName(w){
 function wsStateLabel(w){
   if(w.sid===sessionId) return '本对话';
   if(w.state==='archived') return '已归档';
-  if(w.state==='active') return sessionTitle(w.sid)||'活跃对话';
+  if(w.state==='active') return '活跃对话'; // s64: 固定状态词——卡片标题已是会话名，徽章重复即噪音
   return '未关联';
 }
 
