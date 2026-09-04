@@ -66,7 +66,8 @@ ADR-0001 记忆拓扑 / ADR-0002 五件套技术栈 / ADR-0003 交付树+注册�
 - **观察项**：栈冷启后首跑 fuzz 偶发 1 红、热跑稳定全绿（s61/s63/s64 三次复现）——s64 已加固留痕（fuzz-chat.sh 全量输出恒写 tmp/fuzz-last.log），下次复现先查日志归因，再立专项
 - **s64 报告 v2 遗留**：报告探针转正（tmp/s64-probe-report.js+qa-edge/qa-sandbox → tools/e2e/，注意沙箱探针自拉桥进程占 18790/18799 端口，转正需与 e2e 时长权衡）；体积硬顶 head 段超限角落已注释标注（P3-1，产品路径不可达）
 - **PG（P32 候选，双前置）**：research/10 结论 BACKUP——①用户确认许可证白名单扩列（OSI 宽松等价类：PostgreSQL License、ISC）；②真机 POC（initdb 耗时/EDR 对用户目录 postgres.exe 态度）。FTS5 中文硬边界已实证，backlog「/api/search 升级 FTS5」条目若推进需重新设计
-- **s64 后 UI 候选**：浏览全部工作区卡片列表无上限（几十张卡全渲染，数据多时性能/视觉压力——同 UI-3 模式加上限+提示，或等 PG/后端一轮做分页）
+- ~~s64 后 UI 候选：浏览全部卡片列表无上限~~ → **s65 勘误撤销**：renderAllPane 自 P29 起即有 PAGE_N=30 分页+翻页器（s65 工程师零 diff 裁决，主控复核代码确认——此前条目是主控未核实就归约的错误断言，引以为戒）；真实缺口（若有）待 pm 重新归约
+- **s65 遗留**：e2e 第 11 节 ws-delete-receipt.js 在 pipefail 下偶发 EPIPE 竞态（grep -q 早退→node 管道断裂→set -e 中止全量，s62 转正即有，复跑即过）——下轮小批夹带修复（grep 缓冲或去 -q）
 - **goose 升级窗口（research/04 s64 情报）**：不追 v1.49.0；护航窗口距 v1.50 预计发版（~09-09±3）≥3 天则等 v1.50，否则取 v1.48.0；升级前重建缺失的 goose-upgrade 预案文档（research/04 已勘误挂缺失），回归五面清单已落 research/04；三条红线（scheduler persist/schedules ACP/GOOSE_PATH_ROOT）v1.46→v1.49 源码级未动
 - **s61 遗留**：~~typing 动画无 prefers-reduced-motion~~ → s64 已修（67b871d）；~~explorer /select 不抢前台焦点~~ → s64 裁掉（SHOpenFolderAndSelectItems 无"不激活"旗标，explorer 无后台参数，workaround 40+ 行入桥模板复杂度不成比例且弹窗是 pm 原裁决行为；官方文档证据在 67b871d 交付记录）；qa 布局矩阵跳过 3 条（全归档/无 key 态/confirm 窄窗）按需补跑
 - ~~s55-57 断根裁决遗留：定时任务删除按钮守护盲区~~ → s58 已补；~~vendor 目录名漂移（mcp-memory/mcp-seqthink 孤儿目录）~~ → s59b 已清（全仓无引用+卸载路径自愈），本条历史遗留关闭
