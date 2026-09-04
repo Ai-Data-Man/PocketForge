@@ -1,6 +1,6 @@
 # PocketForge 状态（永远反映"现在"；每次工作会话结束必须更新）
 
-- 更新：2026-09-05 s65（收尾）：报告 v2 探针转正（四 tmp 探针→tools/e2e/report-probe-{static,sandbox}.js+编排，挂 e2e 第 12 节，**e2e 升至 35/35**，5922d1d）；「浏览全部上限」零 diff 裁决（P29 起有 30/页分页，前提失实，STATE 勘误引以为戒）；EPIPE 竞态修复（第 11 节输出落地再 grep，a3adb0d，3×35/35）；沙箱 rmSync 间歇 EPERM 取证+修复（双因子：goose 孙进程句柄窗 0.1-0.3s + node v24 上游 Sleep 单位 bug 废掉 maxRetries；轮询重删 200ms/8s 四调用点，6ec8c29，5×29/29+2×35/35+等价复现 10/10）；goose 上游情报落档（research/04：不追 v1.49.0 等 v1.50 或退 v1.48.0，三红线源码级未动，f203083）+ 升级预案重建（abfbe3a）；矩阵 13 全归档态 GUI 全过（API 批量归档 175→复核→全量还原）。前情：s64（报告 v2/UI 五缺陷/PG 取证 BACKUP 挂 P32）
+- 更新：2026-09-05 s66（进行中→收尾）：**PG 阶段一落地**（ADR-0011 用户批准后当日完成设计+实施：zonky 17.11.0 进树 bin/pg 三 exe、pc 编排 pg-init 幂等 oneshot + pg daemon（readiness=pg_ctl status，max_restarts:3）、bootstrap Pick-Port base 5432 写 data/pg.port、两启动器导 PG_PORT；21 条验收全过 d252478；实测 initdb dev 12.6s/沙盒 18.3s、空闲内存全树约 76MB、包体压缩 +36.1MB、UTF8+C locale 线协议实读、127.0.0.1 独占监听；**顺藤挖出并修复既有产品缺陷：停止数字员工.cmd 用不存在的 pc shutdown 子命令（2>nul 吞错，栈从未真停）→down**；qa 通过+追加同族残留 update-runner.js:151 同死词（升级流程停栈从未生效，活栈解包锁险），修复中）。前情：s65（探针转正 e2e 35/35+双竞态清账+goose 情报）；s64（报告 v2/UI 五缺陷/PG 取证）报告 v2 探针转正（四 tmp 探针→tools/e2e/report-probe-{static,sandbox}.js+编排，挂 e2e 第 12 节，**e2e 升至 35/35**，5922d1d）；「浏览全部上限」零 diff 裁决（P29 起有 30/页分页，前提失实，STATE 勘误引以为戒）；EPIPE 竞态修复（第 11 节输出落地再 grep，a3adb0d，3×35/35）；沙箱 rmSync 间歇 EPERM 取证+修复（双因子：goose 孙进程句柄窗 0.1-0.3s + node v24 上游 Sleep 单位 bug 废掉 maxRetries；轮询重删 200ms/8s 四调用点，6ec8c29，5×29/29+2×35/35+等价复现 10/10）；goose 上游情报落档（research/04：不追 v1.49.0 等 v1.50 或退 v1.48.0，三红线源码级未动，f203083）+ 升级预案重建（abfbe3a）；矩阵 13 全归档态 GUI 全过（API 批量归档 175→复核→全量还原）。前情：s64（报告 v2/UI 五缺陷/PG 取证 BACKUP 挂 P32）
 - 阶段：**P31 内测护航进行中**（①本机部分 ✅（v0.9.8 护航候选包就绪；s64 报告 v2 在 dev 树，随下版 tag 入包），真机 POC 待用户；②收窄完成 ✅；③已就位；④收窄完成 ✅）
 
 ## 已完成周期
@@ -39,9 +39,10 @@
 | s62 | s50e换线重发完全失效取证修复(P1,v0.9.8带病;双重缺陷+探针桩词法作用域教训)+qa建议级两项+矩阵补跑;e2e 32/32+fuzz 44/44 | s62 |
 | s63 | qa P3 留档批量清零:destroy 5s兜底/msgText()元素级剥离(导出·复制·重发)/草稿200字截断/WS delete断言转正;e2e 33/33+fuzz 44/44 | s63 |
 | s64 | **用户四主线**:报告v2可观测增强(规则式初诊R1-R5+采集A1-A7+256KB硬顶,077e8d9)+UI呈现五缺陷(版本v2/列表乱序/静默截断/发送竖排/徽章重复,c14ed19)+PG便携化取证(research/10,1ddbcc8,BACKUP挂P32待用户扩白名单)+收尾小批(qa P3处置/fuzz留痕/reduced-motion,67b871d);qa双批通过;e2e 33/33+fuzz 44/44 | s64 |
+| s66 | **PG 阶段一落地**：ADR-0011(21068fa)→pm 裁决(zonky 17.11.0 实测 9.0s initdb/npm 全 beta 反证)→实施 d252478(21 条全过,pg-init+pg 两进程/端口动态拾取/零消费者零依赖)→qa 通过(决定性实验:占端口 pg 封顶停手其余 7 进程全绿);顺带修复停止脚本死词 shutdown→down(历史既坏);update-runner.js 同族死词修复中 | s66 |
 | s65 | 报告探针转正(e2e升至**35/35**,5922d1d)+EPIPE修复(a3adb0d)+沙箱rmSync EPERM取证修复(goose句柄窗+node Sleep单位bug,轮询重删,6ec8c29)+goose上游情报与升级预案(research/04+playbook,f203083/abfbe3a)+矩阵13全归档态GUI全过(数据全还原);浏览全部上限零diff裁决(P29有分页,勘误) | s65 |
 ## 技术栈版本（全部 VERIFIED-RUN）
-process-compose v1.122.0 / nats-server v2.14.5 / nats-cli v0.4.0 / faucet v0.1.12 / goose v1.46.0 (AAIF) / node v22.21.1 / python 3.12 embeddable (Pillow 12.3.0；openpyxl 不在包内——s47 实测，旧记录失实已修正) / isomorphic-git 1.41.9 (vendored MIT, ADR-0007) / DOMPurify 3.2.4 (vendored Apache-2.0, s15)
+postgresql 17.11.0 (zonky 便携,bin/pg 三 exe,+36.1MB 压缩) / process-compose v1.122.0 / nats-server v2.14.5 / nats-cli v0.4.0 / faucet v0.1.12 / goose v1.46.0 (AAIF) / node v22.21.1 / python 3.12 embeddable (Pillow 12.3.0；openpyxl 不在包内——s47 实测，旧记录失实已修正) / isomorphic-git 1.41.9 (vendored MIT, ADR-0007) / DOMPurify 3.2.4 (vendored Apache-2.0, s15)
 
 ## 关键决策索引
 ADR-0001 记忆拓扑 / ADR-0002 五件套技术栈 / ADR-0003 交付树+注册协议 / ADR-0004 E2E修订(rawsql oneshot+apps聚合) / ADR-0005 记忆四层架构 / ADR-0006 fork策略(默认不二开) / ADR-0007 制品工作区(每会话一区+isomorphic-git) / ADR-0008 工作区信息架构(双栏分层+生命周期+.forge)
@@ -61,6 +62,7 @@ ADR-0001 记忆拓扑 / ADR-0002 五件套技术栈 / ADR-0003 交付树+注册�
 ## 路线决策（团队拍板，2026-08-28；内测期阶段 = 验证优先于扩张）
 - **P31 内测护航（当前周期）**：①真机 POC 打包与护航（新包 → C:\PocketForge-Test 全流程启动 → 首任务冒烟）——**本机部分 s47 ✅ + s50 ✅ + s53 ✅（v0.9.8 护航候选包，沙盒全新部署+首任务实景冒烟通过）**，真机环节：用户 2026-09-05 确认"妻子可以打开运行"（启动 ✅），任务链/EDR 细节待护航反馈；②首个任务向导——**s51d 裁决收窄并落地：任务类型选择层已被 s33 chips+s48 报表卡实现（冻结，新增类型挂 P32）；本轮=配 Key 引导条（无 key 检测→引导条→现有 ⚙️ 面板，配好即消），GUI 双态实景 A1-A4 全过；s53 沙盒复测 A5(401兜底)/A7(重启后首任务) ✅ 全闭环**；③匿名本地使用统计（每天一次记录活跃会话数/报错计数/卡点关键词 → 驱动 P32+ 决策）——**s49 v1 已就位，s50e 增 upstreamByKind 细分**；④多线路韧性——**s50e 裁决收窄：401 自动切换永久裁掉（配置问题非线路问题），全自动 failover 裁掉；落地=错误细分计数+401 人话指引+「换备用线路再试」一键（零自动）；半自动准入：护航≥2周且 upstream 错误≥10次 且换线成功率≥50%**
 - **s47 冒烟新增候选**：~~node 绝对路径调用反复失败~~ → s47b 已修（hints 重教+gen-xlsx 加固，v0.9.5）；桥注入 PATH/FORGE_ROOT（P31-④ 相关，需目标机 `where node` 验证）；~~文件树任务后自动刷新（UX）~~ → s52b 已修（ACP stop 分支挂 renderCurPane，0cc98c0）；~~gen-xlsx 位置参数「标题」无效~~ → s52 已修（接收为 spec.title，JSON 内 title 优先，双断言验证 7d35690）
+- **PG 阶段一遗留（s66）**：①update-runner.js:151 死词 shutdown→down 修复中（升级流程停栈从未生效的历史既坏）；②checksums.txt 与 fetch.sh regen 口径分叉（regen 丢 downloads/* 行——统一或声明手工维护面）；③FORGE_ROOT 含空格时 pc yaml 命令行未加引号（既有家族，真机护航观察）；④pc restarts 计数按会话累计不重置（阶段二随 max_restarts 翻转复核）；⑤dev/沙盒 data/pc.port 同值 8099 可跨杀（既有家族）；⑥停止脚本 down 后可加"确已停"校验；⑦**阶段二动工前置：pg_dump 来源解决**（zonky/npm repack 均不含，ADR-0011 已记）
 - **P32 候选（对标输入，research/11）**：①数据主权用户话术（Manus 2026-08 数据删除事件=本地便携形态的实证论据，写进 welcome/项目须知）；②Plan Mode 三要素（随时/蓝图可编辑/确认执行）作任务选择层解冻的设计输入
 - **backlog（对标输入）**：MCP 商店选型加"检查包 MCP SDK 大版本"护栏（2026-07-28 stateless 规范与 goose 旧 spec 协议错位风险，风险入口=第三方包升级）；Letta"文件即记忆"基准作 ADR-0005 外部佐证（厂商自证未复现）；OpenClaw WATCH 降为仅跟踪安全态势（CVE 集群）
 - **P32 数据驱动**：据使用统计决定（候选：真机 PLM 适配、工作流模板、日程提醒）
