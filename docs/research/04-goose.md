@@ -45,4 +45,10 @@ GOOSE_PATH_ROOT 在 CLI+Desktop 双形态的收敛性；Desktop 免管理员运�
   3. Security 三连：`Permission denies take precedence`（#11477）/`Fail closed on malformed tool visibility`（#11474）/`Recognize Windows package runners`（#11466）——升级时重点回归权限卡链路 + .goosehints cmd 铁律。
   4. CLI `/new` 免重启新会话（#10767）——s50d 体验问题的参考解，已由人话文案覆盖。
   5. Z.ai GLM-5.2→GLM-5.3（#11226）——不动，内测期 pinned 栈。
-- 升级预案与不升级依据见 docs/research/goose-upstream-v1.48.md（同日，含四步沙盒升级流程）。
+- 升级预案与不升级依据见 docs/research/goose-upstream-v1.48.md（同日，含四步沙盒升级流程）。**〔2026-09-05 s64 勘误：该预案文件实际不存在（ls+find 双查），引用失效；升级窗口前需重建预案或从 journal s50 恢复流程。〕**
+
+## s64 上游情报（2026-09-05，VERIFIED-SOURCE/DOC：GitHub API + 双 tag source diff，未本机跑新版）
+- latest = **v1.49.0（2026-09-03）**；在用 v1.46.0；v2.0.0-rc 已停滞 4 个月（平台化整合期，非大版本前夜，~6.7 commits/天）。方法论警示：release note 正文是累积式（同一 PR 编号跨版本重复出现），**版本归属一律以 PR 合并日期 + compare API 为准**。
+- **三条红线 v1.46→v1.49 源码级全部未动**：① scheduler persist 语义（scheduler_trait.rs 零 diff，scheduler.rs 仅 cache_ttl 钳制与删 racy 断言）② 桥依赖的 `_goose/unstable/schedules/pause|unpause`（#11650 删的是 dictation/extensions-available/preferences，未触 schedules；#11696 删的 providers/list 字段桥零调用）③ GOOSE_PATH_ROOT（paths.rs:41）/ GOOSE_DISABLE_KEYRING（base.rs 双通道）在位。
+- 最想要的增量不在 v1.49：#11383 permission.yaml 跨进程写锁（multi-goose-process 形态正需要）**将随 v1.50**。
+- **升级裁决（researcher 建议 2026-09-05）：不追 v1.49.0。护航窗口距 v1.50 预计发版（~09-09±3，6-9 天节奏）≥3 天则等 v1.50 一次到位，否则取 v1.48.0（已野外浸泡 8 天+，安全批 #11466/#11474/#11477/#11537 齐全）。回归五面：s55-58 调度闭环全跑；session/load 回放（#11159 触碰 s15 endStream hack 面）+ 401 文案流（#11202）；smart_approve 审批卡（#10285 规范化工具名后 browser__ 前缀命中可能变化）+ 拒绝路径；MCP 商店安装→挂载→卸载；GOOSE_PATH_ROOT/KEYRING + 真实任务（#11537 后 agent 须产出单行 cmd）。新版二进制行为 UNVERIFIED，须走沙盒 s47 流程。**

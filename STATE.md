@@ -67,6 +67,7 @@ ADR-0001 记忆拓扑 / ADR-0002 五件套技术栈 / ADR-0003 交付树+注册�
 - **s64 报告 v2 遗留**：报告探针转正（tmp/s64-probe-report.js+qa-edge/qa-sandbox → tools/e2e/，注意沙箱探针自拉桥进程占 18790/18799 端口，转正需与 e2e 时长权衡）；体积硬顶 head 段超限角落已注释标注（P3-1，产品路径不可达）
 - **PG（P32 候选，双前置）**：research/10 结论 BACKUP——①用户确认许可证白名单扩列（OSI 宽松等价类：PostgreSQL License、ISC）；②真机 POC（initdb 耗时/EDR 对用户目录 postgres.exe 态度）。FTS5 中文硬边界已实证，backlog「/api/search 升级 FTS5」条目若推进需重新设计
 - **s64 后 UI 候选**：浏览全部工作区卡片列表无上限（几十张卡全渲染，数据多时性能/视觉压力——同 UI-3 模式加上限+提示，或等 PG/后端一轮做分页）
+- **goose 升级窗口（research/04 s64 情报）**：不追 v1.49.0；护航窗口距 v1.50 预计发版（~09-09±3）≥3 天则等 v1.50，否则取 v1.48.0；升级前重建缺失的 goose-upgrade 预案文档（research/04 已勘误挂缺失），回归五面清单已落 research/04；三条红线（scheduler persist/schedules ACP/GOOSE_PATH_ROOT）v1.46→v1.49 源码级未动
 - **s61 遗留**：~~typing 动画无 prefers-reduced-motion~~ → s64 已修（67b871d）；~~explorer /select 不抢前台焦点~~ → s64 裁掉（SHOpenFolderAndSelectItems 无"不激活"旗标，explorer 无后台参数，workaround 40+ 行入桥模板复杂度不成比例且弹窗是 pm 原裁决行为；官方文档证据在 67b871d 交付记录）；qa 布局矩阵跳过 3 条（全归档/无 key 态/confirm 窄窗）按需补跑
 - ~~s55-57 断根裁决遗留：定时任务删除按钮守护盲区~~ → s58 已补；~~vendor 目录名漂移（mcp-memory/mcp-seqthink 孤儿目录）~~ → s59b 已清（全仓无引用+卸载路径自愈），本条历史遗留关闭
 - 工作区级「项目指令」（对照 Manus Projects master instruction）：.forge 元数据扩展 + prompt 注入，首月低频故 backlog
