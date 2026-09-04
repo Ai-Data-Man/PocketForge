@@ -148,7 +148,8 @@ async function stopStack() {
     say('stop', '停止数字员工…');
     let port = '8099';
     try { port = fs.readFileSync(path.join(ROOT, 'data', 'pc.port'), 'utf8').trim() || port; } catch {}
-    try { execFileSync(path.join(ROOT, 'bin', 'pc', 'process-compose.exe'), ['-p', port, 'shutdown'], { stdio: 'ignore', timeout: 30000 }); } catch {}
+    // s66 fix: pc v1.122 无 shutdown 动词（同 停止数字员工.cmd），正确动词是 down；原死词被 catch 吞掉导致从未真正停栈
+    try { execFileSync(path.join(ROOT, 'bin', 'pc', 'process-compose.exe'), ['-p', port, 'down'], { stdio: 'ignore', timeout: 30000 }); } catch {}
     const t0 = Date.now();
     while (Date.now() - t0 < 20000) {
         const stillUp = await new Promise(resolve => {
