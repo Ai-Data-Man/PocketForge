@@ -2043,7 +2043,7 @@ function renderAllPane(){
         row.querySelectorAll('button').forEach(b=>b.style.display='none');
         const form=document.createElement('span'); form.style.cssText='display:inline-flex;gap:5px;align-items:center';
         const inp=document.createElement('input'); inp.value=w.id; inp.style.cssText='flex:1;padding:6px 8px;border:1px solid var(--line);border-radius:7px;font-size:12px';
-        const ok=document.createElement('button'); ok.textContent='确定'; ok.style.background='var(--g)'; ok.style.color='#fff'; ok.style.borderColor='var(--g)';
+        const ok=document.createElement('button'); ok.textContent='确定'; ok.style.background='var(--acc)'; ok.style.color='#fff'; ok.style.borderColor='var(--acc)';
         const cc=document.createElement('button'); cc.textContent='取消';
         ok.onclick=async()=>{
           const label=inp.value.trim(); if(!label) return;
