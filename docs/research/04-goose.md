@@ -22,7 +22,7 @@
 - Letta：需 PostgreSQL/Docker，Windows 原生差。拒。
 - OpenAI Agents SDK / Pydantic AI：仅库，loop/UI/会话全自建，违反"Agent 不自研"。拒。
 - LangGraph：库 MIT 可用但 Server 商业许可 + Docker。拒。
-- OpenHands：GUI 依赖 Docker/WSL。拒。
+- OpenHands：~~GUI 依赖 Docker/WSL~~〔2026-09-05 勘误：SDK 本地模式已免 Docker；拒因更新为"Windows 官方路线仍 WSL + pip 交付形态违反解压即用"，见 research/11〕。拒。
 - Codex CLI：Apache-2.0 Windows 原生可作兜底，但编码向 + ChatGPT 账号中心。WATCH。
 - Cline/Roo：VSCode 绑定，非技术用户不可用。拒。
 - OpenClaw：MIT，常驻"数字员工"形态贴近，但 Node 22+ / Execution Containers 免管理员存疑。WATCH（备用）。
