@@ -14,6 +14,9 @@
 - 聊天记录搜索（正常命中 + 短查询空返回）
 运行后自动清理；归档区 e2e-chat-* 残留需手工删 data/session-archive.json。
 
+### tools/e2e/report-probe.sh（s65 转正自 s64 tmp 探针）
+报告 v2 长期保护网：static（39 ck，静态/纯函数，秒级）+ sandbox（29 ck，自建沙箱真桥，端口 18790/18799，不碰 dev 栈，实测约 31-47s）。已挂进 e2e-chat.sh 第 12 节全量跑；也可单跑 `report-probe.sh static|sandbox`。
+
 ## 手工回归清单（GUI，改动 chat.tpl.html / chat-bridge.tpl.js 后必跑）
 1. 页面加载：bridge ok，左栏列表/归档折叠正常
 2. 新对话：欢迎语 + 4 个快捷任务 chips（点 chip 填入输入框）

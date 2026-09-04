@@ -125,6 +125,13 @@ rm -f "$FAKE"
 # ---------- 11) WS delete_session 回执（s62/P3: 请求者收到回执且连接随后被服务端关闭） ----------
 node "$ROOT/tools/e2e/ws-delete-receipt.js" | grep -q "PASS"; ck "ws delete_session receipt delivered before close" $?
 
+# ---------- 12) 报告 v2 探针（s65 转正自 s64 tmp 探针；详见 tools/e2e/report-probe.sh） ----------
+# static=39 ck 秒级；sandbox=29 ck 自建沙箱真桥（端口 18790/18799，不碰 dev 栈 8790），实测增量约 31-47s < 90s 门槛 → 挂进全量
+bash "$ROOT/tools/e2e/report-probe.sh" static > /tmp/report-probe-e2e.log 2>&1; ck "report v2 static probe 39 ck" $?
+bash "$ROOT/tools/e2e/report-probe.sh" sandbox >> /tmp/report-probe-e2e.log 2>&1; ck "report v2 sandbox probe 29 ck (ports 18790/18799)" $?
+grep -E "^report-probe" /tmp/report-probe-e2e.log
+rm -f /tmp/report-probe-e2e.log
+
 rm -f /tmp/e2e-v1.md
 echo "=============================="
 echo "chat-link E2E: PASS=$PASS FAIL=$FAIL"
