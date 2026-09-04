@@ -717,6 +717,27 @@ function mcpRemoveExtension(id) {
     if (!found) throw new Error('配置里没找到该扩展');
     atomicWrite(CFG, out.join('\n').replace(/\n*$/, '\n'));
 }
+// s17 A: 读 config.yaml extensions 块各扩展 enabled（/api/extensions 与 s64 报告共用；
+// 结构级只取 enabled 行——mcp 块内 env/cmd 等任何值不会进入返回值）
+function readExtState() {
+    try {
+        const raw = FSS.readFileSync(path.join(ROOT, 'conf', 'goose', 'config', 'config.yaml'), 'utf8');
+        const out = {};
+        let inExts = false, cur = null;
+        for (const line of raw.split(/\r?\n/)) {
+            if (/^extensions:\s*$/.test(line)) { inExts = true; continue; }
+            if (!inExts) continue;
+            if (/^[^\s]/.test(line)) break; // 下一顶级键
+            const extM = line.match(/^ {2}([A-Za-z0-9_\-]+):\s*$/);
+            if (extM) { cur = extM[1]; out[cur] = true; continue; }
+            if (cur) {
+                const enM = line.match(/^ {4}enabled:\s*(true|false)/);
+                if (enM) out[cur] = enM[1] === 'true';
+            }
+        }
+        return out;
+    } catch { return {}; }
+}
 
 // ---- s50b: 库里有什么（GET /api/db/overview）——faucet CLI 发现实 + REST 数行数；端点不收任何用户参数 ----
 const FAUCET_EXE = path.join(ROOT, 'bin', 'faucet', 'faucet.exe');
@@ -817,6 +838,7 @@ async function dbTableSchema(svc, tbl) {
 // 隐私黑名单（硬约束）：secrets.env、conf/goose/config/memory/、会话消息正文——绝不读取。
 // 写盘前兜底：含 sk- 形态 key 或 GH_TOKEN 的行整行替换为 <已脱敏>（providers.json 明文 key 已实证存在）。
 const REPORTS_DIR = path.join(ROOT, 'data', 'reports');
+const REPORT_MAX_BYTES = 256 * 1024; // s64 C: 报告体积硬顶（写盘前截断预算）＝reportTail 定位读预算，单一常量两处引用
 function reportSanitize(text) {
     // S2: 黑名单扩充——sk-/ghp_/gho_/github_pat_/AIza…/glpat-/xox[bap]-/GH_TOKEN，命中整行 <已脱敏>
     return String(text).split('\n').map(l => (/\bsk-[A-Za-z0-9][A-Za-z0-9_\-]{3,}|ghp_|gho_|github_pat_|AIza[\w\-]{10,}|glpat\-|xox[bap]\-|GH_TOKEN/i.test(l) ? '<已脱敏>' : l)).join('\n');
@@ -824,7 +846,7 @@ function reportSanitize(text) {
 function reportTail(file, want, skipRe) { // 从尾往前取 want 行，跳过 skipRe 命中行（healthz 噪音），攒够即止
     try {
         // B3: pc.log 无轮转——超 256KB 只定位读尾部 256KB（起点半行丢弃），避免长跑后整读造成内存尖峰+事件循环阻塞
-        const MAX = 256 * 1024;
+        const MAX = REPORT_MAX_BYTES;
         const st = FSS.statSync(file);
         let all;
         if (st.size > MAX) {
@@ -874,22 +896,143 @@ function reportOsVer() {
         } catch { resolve('未取到'); }
     });
 }
+// ---- s64 A1: 系统代理状态（注册表只读；零污染禁的是写不禁读；失败回落 null → 报告显示 未取到）----
+function reportSysProxy() {
+    return new Promise(resolve => {
+        try {
+            require('child_process').execFile('reg', ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings'], { timeout: 3000, windowsHide: true }, (e, out) => {
+                if (e) return resolve(null);
+                const s = String(out || '');
+                const enabled = /ProxyEnable\s+REG_DWORD\s+0x1/i.test(s);
+                const svM = s.match(/ProxyServer\s+REG_SZ\s+(\S+)/i);
+                resolve({ enabled, server: enabled && svM ? svM[1].slice(0, 120) : '' });
+            });
+        } catch { resolve(null); }
+    });
+}
+// ---- s64 A2: 数据盘剩余空间（fs.statfsSync 取 forge 所在盘；node 22.21 有此 API；失败回落 null）----
+function reportDiskFree() {
+    try {
+        const s = FSS.statfsSync(ROOT);
+        const free = Number(s.bavail) * Number(s.bsize);
+        return Number.isFinite(free) && free >= 0 ? free : null;
+    } catch { return null; }
+}
+function reportFmtBytes(n) {
+    if (n >= 1073741824) return (n / 1073741824).toFixed(1) + ' GB';
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+    if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
+    return n + ' B';
+}
+// ---- s64 A3: data 膨胀点体积（白名单路径；只报字节合计+文件数，绝不列文件名——ws-* 目录名派生自会话名）----
+const REPORT_BLOAT_TARGETS = [
+    ['会话库', ['conf', 'goose', 'data', 'sessions']],
+    ['工作区', ['data', 'artifacts']],
+    ['备份', ['data', 'backups']],
+];
+function reportDirSize(dir, deadline) { // 迭代遍历防深递归；symlink/junction 跳过防环（工作区引入即 junction）；超预算抛错
+    let bytes = 0, files = 0;
+    const stack = [dir];
+    while (stack.length) {
+        if (Date.now() > deadline) throw new Error('统计超时');
+        const d = stack.pop();
+        let ents;
+        try { ents = FSS.readdirSync(d, { withFileTypes: true }); } catch { continue; }
+        for (const ent of ents) {
+            if (ent.isSymbolicLink()) continue;
+            const full = path.join(d, ent.name);
+            if (ent.isDirectory()) stack.push(full);
+            else if (ent.isFile()) { try { const s = FSS.statSync(full); bytes += s.size; files++; } catch {} }
+        }
+    }
+    return { bytes, files };
+}
+function reportBloat() { // 全部目标共享 2s 预算；超时项显示 统计超时
+    const deadline = Date.now() + 2000;
+    return REPORT_BLOAT_TARGETS.map(([label, seg]) => {
+        try {
+            const r = reportDirSize(path.join(ROOT, ...seg), deadline);
+            return label + ' ' + reportFmtBytes(r.bytes) + '（' + r.files + ' 个文件）';
+        } catch { return label + ' 统计超时'; }
+    }).join('｜');
+}
+// ---- s64 A4: 定时任务两个数字（只数总数+paused 数；id/title/cron 绝不读取）----
+function reportScheduleCounts() {
+    const arr = readJson(path.join(ROOT, 'conf', 'goose', 'data', 'schedule.json'), null);
+    if (!Array.isArray(arr)) return null;
+    return { total: arr.length, paused: arr.filter(x => x && x.paused === true).length };
+}
+// ---- s64 A5: MCP 清单（复用 readExtState——结构级只取 enabled，mcp 块 env/cmd 任何值进不来；只渲染名称+启停）----
+function reportMcpList() {
+    const st = readExtState();
+    const ks = Object.keys(st).filter(k => k.indexOf('mcp-') === 0);
+    if (!ks.length) return '无';
+    return ks.map(k => {
+        const c = MCP_CATALOG.find(m => mcpExtensionId(m.id) === k);
+        return (c ? c.name : k) + '（' + (st[k] ? '开' : '停用') + '）';
+    }).join('｜');
+}
+// ---- s64 A6: 已安装技能数量（一个数字，名称绝不入报告）----
+function reportSkillCount() {
+    try {
+        const d = path.join(ROOT, '.agents', 'skills');
+        return FSS.readdirSync(d, { withFileTypes: true }).filter(e => e.isDirectory() && FSS.existsSync(path.join(d, e.name, 'SKILL.md'))).length;
+    } catch { return null; }
+}
+// ---- s64 A7/B: 7 天错误聚合 + 规则式初步诊断（查表，只说不做，绝不自动执行修复）----
+// >>> s64 规则区标记（纯函数：输入采集信号对象，输出 null 或文案；探针按标记提取单测）
+const REPORT_RULE_TEXTS = {
+    r1: '数据库服务没起来。建议：双击桌面的『停止数字员工』，再双击『启动数字员工』，然后重试刚才的事。',
+    r2: '数字员工还没有配『钥匙』。建议：看聊天窗口顶部的引导条，点它去配。',
+    r3: '最近有『钥匙失效』的记录。建议：到设置里把模型钥匙重新配一遍。',
+    r4: '启动端口被别的程序占了。建议：重启电脑后再双击启动；还不行就把这份报告发给帮你的人。',
+    r5: '电脑开着代理，最近也有连不上网的记录，可能有关。建议：把这份报告发给帮你的人判断，先不要自己改代理设置。',
+    none: '没发现明显的毛病，请把『请补充说明』填好一起发。',
+};
+function reportRuleR1(sig) { return sig.faucetAlive === false ? REPORT_RULE_TEXTS.r1 : null; }
+function reportRuleR2(sig) { return sig.provHasKey ? null : REPORT_RULE_TEXTS.r2; }
+function reportRuleR3(sig) { return sig.unauthorized > 0 ? REPORT_RULE_TEXTS.r3 : null; }
+function reportRuleR4(sig) { return sig.logHasEaddrinuse ? REPORT_RULE_TEXTS.r4 : null; }
+function reportRuleR5(sig) { return (sig.proxyOn && sig.upstreamTotal > 0 && !(sig.unauthorized > 0)) ? REPORT_RULE_TEXTS.r5 : null; } // R3 去重：钥匙失效已报则不重复触发
+// <<< s64 规则区标记结束
+function reportErrLine(a) { // A7 人话汇总一行
+    if (!(a.upstream > 0)) return '最近 7 天：没有连不上模型的记录';
+    const names = { unauthorized: '钥匙失效', rate: '限流', timeout: '超时', server: '服务端错误' };
+    const det = Object.keys(names).filter(k => a.kind[k] > 0).map(k => names[k] + ' ' + a.kind[k] + ' 次').join('、');
+    return '最近 7 天：连不上模型 ' + a.upstream + ' 次（' + det + '）';
+}
 async function buildReport() {
     const p2 = n => String(n).padStart(2, '0');
     const now = new Date();
     // 环境采集（并行，全部只读）
     const pcPort = reportReadPort('pc.port'), faucetPort = reportReadPort('faucet.port');
-    const [osVer, pcAlive, faucetAlive] = await Promise.all([
+    const [osVer, pcAlive, faucetAlive, sysProxy] = await Promise.all([
         reportOsVer(),
         pcPort ? reportProbe(pcPort) : Promise.resolve(null),
         faucetPort ? reportProbe(faucetPort) : Promise.resolve(null),
+        reportSysProxy(),
     ]);
     let upd = '无（data/updates/status.json 不存在）';
     try { upd = FSS.readFileSync(path.join(ROOT, 'data', 'updates', 'status.json'), 'utf8').trim() || upd; } catch {}
     let usageFiles = [];
     try { usageFiles = FSS.readdirSync(STATS_DIR).filter(n => /^usage-\d{8}\.json$/.test(n)).sort().slice(-7); } catch {}
-    // providers 脱敏：key/apiKey 一律替换，其余字段保留
-    const provs = readProviders().map(pr => {
+    // s64: 统计原文一次读入（嵌报告+聚合两用，截断重渲染不重复读盘）；A7 只累加 upstreamByKind 四键
+    const statsRaw = usageFiles.map(f => {
+        let raw = '(读不到)';
+        try { raw = FSS.readFileSync(path.join(STATS_DIR, f), 'utf8').trim(); } catch {}
+        return [f, raw];
+    });
+    const errAgg = { upstream: 0, kind: { unauthorized: 0, rate: 0, timeout: 0, server: 0 } };
+    for (const [, raw] of statsRaw) {
+        let j = null; try { j = JSON.parse(raw.replace(/^\uFEFF/, '')); } catch {}
+        const k = ((j && j.errorsByType) || {}).upstreamByKind || {};
+        for (const key of Object.keys(errAgg.kind)) errAgg.kind[key] += Number(k[key]) || 0;
+    }
+    errAgg.upstream = errAgg.kind.unauthorized + errAgg.kind.rate + errAgg.kind.timeout + errAgg.kind.server;
+    // providers 脱敏：key/apiKey 一律替换，其余字段保留（provHasKey 是 R2 信号，先于脱敏取）
+    const provsRaw = readProviders();
+    const provHasKey = provsRaw.some(pr => (pr.key !== undefined && pr.key !== '') || (pr.apiKey !== undefined && pr.apiKey !== ''));
+    const provs = provsRaw.map(pr => {
         const q = { ...pr };
         if (q.key !== undefined) q.key = pr.key ? '<已配置>' : '<未配置>';
         if (q.apiKey !== undefined) q.apiKey = pr.apiKey ? '<已配置>' : '<未配置>';
@@ -912,32 +1055,72 @@ async function buildReport() {
             '；最近会话：名称「' + ((last && last.name) || '未命名') + '」｜模型 ' + (model || '未知') +
             '｜接口 ' + ((last && last.provider_name) || '未知') + '｜最后活动 ' + ((last && last.updated_at) || '未知');
     } catch {}
-    const alive = v => v === null ? '未探测' : (v ? '存活' : '未响应');
-    let md = '# PocketForge 诊断报告\n\n';
-    md += '- 生成时间：' + now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate()) + ' ' + p2(now.getHours()) + ':' + p2(now.getMinutes()) + ':' + p2(now.getSeconds()) + '\n';
-    md += '- 版本（VERSION 文件）：' + APP_VERSION + '\n';
-    md += '- 升级状态：' + upd + '\n';
-    md += '- 提示：这份报告里可能带少量聊天痕迹（比如日志里的一句话），发给别人之前可以自己翻一遍，不放心就先删改再发。\n\n';
-    md += '## 环境\n\n';
-    md += '- 操作系统：' + osVer + '\n- Node：' + process.version + '\n';
-    md += '- 进程：\n  - chat-bridge（本服务，端口 ' + PORT + '）：运行中\n';
-    md += '  - pc（进程管理器，端口 ' + (pcPort || '未知') + '）：' + alive(pcAlive) + '\n';
-    md += '  - faucet（数据库服务，端口 ' + (faucetPort || '未知') + '）：' + alive(faucetAlive) + '\n\n';
     const pcTail = reportTail(path.join(ROOT, 'data', 'logs', 'pc.log'), 300, /healthz/);
-    md += '## 日志（pc.log 尾部 ' + pcTail.length + ' 行，已过滤 faucet healthz 探活噪音）\n\n```\n' + pcTail.join('\n') + '\n```\n\n';
     const bakTail = reportTail(path.join(ROOT, 'data', 'logs', 'backup.log'), 30, null);
-    md += '## 备份日志（backup.log 尾部 ' + (bakTail.length ? bakTail.length + ' 行' : '无') + '）\n\n' + (bakTail.length ? '```\n' + bakTail.join('\n') + '\n```\n\n' : '无\n\n');
-    md += '## 使用统计（最近 ' + usageFiles.length + ' 天，data/stats 原文）\n\n';
-    for (const f of usageFiles) {
-        let raw = '(读不到)';
-        try { raw = FSS.readFileSync(path.join(STATS_DIR, f), 'utf8').trim(); } catch {}
-        md += '### ' + f + '\n\n```json\n' + raw + '\n```\n\n';
+    const alive = v => v === null ? '未探测' : (v ? '存活' : '未响应');
+    // s64: 头部短行采集（A1-A6，全只读）
+    const diskFree = reportDiskFree();
+    const bloatLine = reportBloat();
+    const sched = reportScheduleCounts();
+    const mcpLine = reportMcpList();
+    const skillN = reportSkillCount();
+    // s64 B: 规则式初步诊断（查表输出，先于日志节组装——R4 信号来自 pcTail）
+    const sig = {
+        faucetAlive,
+        provHasKey,
+        unauthorized: errAgg.kind.unauthorized,
+        upstreamTotal: errAgg.upstream,
+        logHasEaddrinuse: pcTail.some(l => l.indexOf('EADDRINUSE') >= 0),
+        proxyOn: !!(sysProxy && sysProxy.enabled),
+    };
+    const diag = [reportRuleR1(sig), reportRuleR2(sig), reportRuleR3(sig), reportRuleR4(sig), reportRuleR5(sig)].filter(Boolean);
+    const proxyLine = sysProxy === null ? '未取到' : (sysProxy.enabled ? '开启' + (sysProxy.server ? '（' + sysProxy.server + '）' : '') : '关闭');
+    let head = '# PocketForge 诊断报告\n\n';
+    head += '- 生成时间：' + now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate()) + ' ' + p2(now.getHours()) + ':' + p2(now.getMinutes()) + ':' + p2(now.getSeconds()) + '\n';
+    head += '- 版本（VERSION 文件）：' + APP_VERSION + '\n';
+    head += '- 升级状态：' + upd + '\n';
+    head += '- 提示：这份报告里可能带少量聊天痕迹（比如日志里的一句话），发给别人之前可以自己翻一遍，不放心就先删改再发。\n\n';
+    head += '## 小forge自己看到的毛病\n\n';
+    head += (diag.length ? diag.map(d => '- ' + d).join('\n') : REPORT_RULE_TEXTS.none) + '\n\n';
+    head += '## 快速判断\n\n- ' + reportErrLine(errAgg) + '\n\n';
+    head += '## 环境\n\n';
+    head += '- 操作系统：' + osVer + '\n- Node：' + process.version + '\n';
+    head += '- 系统代理：' + proxyLine + '｜NO_PROXY：' + String(process.env.NO_PROXY || '未设置').slice(0, 120) + '\n';
+    head += '- 数据盘剩余空间：' + (diskFree === null ? '未取到' : reportFmtBytes(diskFree)) + '\n';
+    head += '- 膨胀点体积：' + bloatLine + '\n';
+    head += '- 定时任务：' + (sched === null ? '未取到' : sched.total + ' 个（暂停 ' + sched.paused + ' 个）') + '\n';
+    head += '- MCP 扩展：' + mcpLine + '\n';
+    head += '- 已安装技能：' + (skillN === null ? '未取到' : skillN + ' 个') + '\n';
+    head += '- 进程：\n  - chat-bridge（本服务，端口 ' + PORT + '）：运行中\n';
+    head += '  - pc（进程管理器，端口 ' + (pcPort || '未知') + '）：' + alive(pcAlive) + '\n';
+    head += '  - faucet（数据库服务，端口 ' + (faucetPort || '未知') + '）：' + alive(faucetAlive) + '\n\n';
+    // 可截节（渲染函数按行数出内容；n<全长时末尾加（已截断））
+    const secLog = n => '## 日志（pc.log 尾部 ' + n + ' 行，已过滤 faucet healthz 探活噪音）\n\n```\n' + pcTail.slice(0, n).join('\n') + (n < pcTail.length ? '\n（已截断）' : '') + '\n```\n\n';
+    const secBak = n => bakTail.length
+        ? '## 备份日志（backup.log 尾部 ' + (n ? n + ' 行' : '无') + '）\n\n```\n' + bakTail.slice(0, n).join('\n') + (n < bakTail.length ? '\n（已截断）' : '') + '\n```\n\n'
+        : '## 备份日志（backup.log 尾部无）\n\n无\n\n';
+    const secStats = n => {
+        const fs2 = n ? statsRaw.slice(-n) : []; // 最新优先保留
+        let s = '## 使用统计（最近 ' + fs2.length + ' 天，data/stats 原文）\n\n';
+        for (const [f, raw] of fs2) s += '### ' + f + '\n\n```json\n' + raw + '\n```\n\n';
+        if (!fs2.length) s += '无\n\n';
+        if (n < statsRaw.length) s += '（已截断）\n\n';
+        return s;
+    };
+    const tailMd = '## 模型接口配置（key 已脱敏）\n\n```json\n' + JSON.stringify(provs, null, 2) + '\n```\n\n' +
+        '## 会话概况（只含元数据，不含聊天内容）\n\n' + sessLine + '\n\n' +
+        '---\n\n## 请补充说明（填好再发出去）\n\n1. 什么时候出的问题：\n2. 当时做了什么操作：\n3. 期望的结果是什么：\n\n' +
+        '## GitHub issue 模板（复制即贴）\n\n标题：问题：\n\n正文：\n- 环境：（把本报告「环境」一节粘贴在这里）\n- 复现步骤：\n  1.\n  2.\n- 实际结果：\n- 期望结果：\n';
+    // s64 C: 体积硬顶（写盘前）——按节截断 pc.log→backup.log→统计 JSON；毛病/快速判断/环境与结构化短行绝不截
+    let nLog = pcTail.length, nBak = bakTail.length, nStats = statsRaw.length;
+    const render = () => head + secLog(nLog) + secBak(nBak) + secStats(nStats) + tailMd;
+    while (Buffer.byteLength(render()) > REPORT_MAX_BYTES) {
+        if (nLog > 0) nLog = Math.floor(nLog / 2);
+        else if (nBak > 0) nBak = Math.floor(nBak / 2);
+        else if (nStats > 1) nStats = Math.floor(nStats / 2);
+        else break;
     }
-    if (!usageFiles.length) md += '无\n\n';
-    md += '## 模型接口配置（key 已脱敏）\n\n```json\n' + JSON.stringify(provs, null, 2) + '\n```\n\n';
-    md += '## 会话概况（只含元数据，不含聊天内容）\n\n' + sessLine + '\n\n';
-    md += '---\n\n## 请补充说明（填好再发出去）\n\n1. 什么时候出的问题：\n2. 当时做了什么操作：\n3. 期望的结果是什么：\n\n';
-    md += '## GitHub issue 模板（复制即贴）\n\n标题：问题：\n\n正文：\n- 环境：（把本报告「环境」一节粘贴在这里）\n- 复现步骤：\n  1.\n  2.\n- 实际结果：\n- 期望结果：\n';
+    const md = render();
     // 落盘（原子写）+ 返回绝对路径
     FSS.mkdirSync(REPORTS_DIR, { recursive: true });
     const stamp = '' + now.getFullYear() + p2(now.getMonth() + 1) + p2(now.getDate()) + '-' + p2(now.getHours()) + p2(now.getMinutes());
@@ -1509,25 +1692,6 @@ const ext = path.extname(f).toLowerCase();
             'memory': { name: '长期记忆', desc: '记住您的偏好和常用做法（可在下方「记住的事」里查看删除）' },
             'chatrecall': { name: '会话回忆', desc: '能翻自己以前聊过的内容' },
         };
-        function readExtState() {
-            try {
-                const raw = FSS.readFileSync(CFG, 'utf8');
-                const out = {};
-                let inExts = false, cur = null;
-                for (const line of raw.split(/\r?\n/)) {
-                    if (/^extensions:\s*$/.test(line)) { inExts = true; continue; }
-                    if (!inExts) continue;
-                    if (/^[^\s]/.test(line)) break; // 下一顶级键
-                    const extM = line.match(/^ {2}([A-Za-z0-9_\-]+):\s*$/);
-                    if (extM) { cur = extM[1]; out[cur] = true; continue; }
-                    if (cur) {
-                        const enM = line.match(/^ {4}enabled:\s*(true|false)/);
-                        if (enM) out[cur] = enM[1] === 'true';
-                    }
-                }
-                return out;
-            } catch { return {}; }
-        }
         if (req.method === 'GET') {
             const st = readExtState();
             const rows = Object.keys(LABELS).map(k => ({
