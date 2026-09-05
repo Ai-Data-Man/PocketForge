@@ -1,3 +1,5 @@
 title: 每日记忆自检
 description: P8 验证用——检查全局记忆是否仍在
 instructions: 用 retrieve_memories 工具查询类别 wife_profile（is_global=true）。若内容含 DF-7001，输出"记忆正常：DF-7001"；为空则输出"记忆丢失警告"。
+settings:
+  max_turns: 10
