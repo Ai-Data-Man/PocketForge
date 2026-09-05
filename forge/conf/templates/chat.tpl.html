@@ -132,7 +132,14 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 .tact{border:none;background:none;cursor:pointer;font-size:12px;padding:2px 4px;border-radius:4px;opacity:.25;flex-shrink:0;color:var(--tx-2);transition:opacity .12s}
 .tnode:hover .tact,.tdir:hover .tact{opacity:.85}
 .tact:hover{background:var(--hover);opacity:1}
-.expl-pop{position:fixed;z-index:60;word-break:break-word;min-width:260px;max-width:420px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-m);padding:10px 12px;font-size:.78rem;line-height:1.65;color:var(--tx);box-shadow:var(--shadow-3);white-space:pre-wrap;font-family:inherit;text-align:left}
+/* s69 P2-8: 文件历史版本时间线（.vlist/.vitem 由 JS toggleVersions 生成） */
+.vlist{padding:2px 8px 6px 26px}
+.vitem{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:.72rem;border-bottom:1px dashed var(--line)}
+.vitem .vt{color:var(--mut);flex-shrink:0}
+.vitem .vm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vitem button{padding:3px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);cursor:pointer;font-size:.72rem;color:var(--tx-2);transition:all .12s}
+.vitem button:hover{border-color:var(--acc);color:var(--acc)}
+.expl-pop{position:fixed;z-index:60;word-break:break-word;min-width:260px;max-width:420px;max-height:60vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-m);padding:10px 12px;font-size:.78rem;line-height:1.65;color:var(--tx);box-shadow:var(--shadow-3);white-space:pre-wrap;font-family:inherit;text-align:left}
 .sec{margin-bottom:8px}
 .sech{display:inline-block;font-size:.66rem;color:var(--acc);background:var(--acc-soft);border-radius:4px;padding:2px 7px;margin-bottom:4px;font-weight:600}
 .sec pre{margin:2px 0 0;white-space:pre-wrap;font-family:Consolas,monospace;font-size:.72rem;color:var(--code-tx);max-height:180px;overflow:auto}
@@ -151,6 +158,9 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 .wrow button{border:1px solid var(--line-strong);background:var(--panel);border-radius:var(--r-s);font-size:.72rem;padding:5px 10px;cursor:pointer;margin-right:5px;color:var(--tx-2)}
 .wrow button:hover{border-color:var(--acc);color:var(--acc)}
 .wrow button.danger{color:var(--danger)}
+/* s69 P3-6: 外链路径输入框补齐 .frow input 同族基础样式 */
+#link-path{width:100%;box-sizing:border-box;padding:10px 11px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);font-size:.88rem;background:var(--panel);color:var(--tx);outline:none;transition:border-color .12s}
+#link-path:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
 
 /* ---------- 聊天区 ---------- */
 #chat{flex:1;overflow-y:auto;padding:calc(20px*var(--pd)) calc(24px*var(--pd));display:flex;flex-direction:column;gap:calc(12px*var(--pd))}
@@ -184,7 +194,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 .typing .tdots i:nth-child(3){animation-delay:.3s}
 @keyframes tdot{0%,60%,100%{transform:translateY(0);opacity:.35}30%{transform:translateY(-4px);opacity:1}}
 /* s61 遗留：系统设置减少动态效果时停掉三点跳动，保留静态提示文本 */
-@media (prefers-reduced-motion: reduce){.typing .tdots i{animation:none}}
+@media (prefers-reduced-motion: reduce){.typing .tdots i{animation:none}*{transition:none!important;animation:none!important}}
 /* s33: 开场快捷任务 chips */
 .quickwrap{display:flex;flex-wrap:wrap;gap:8px;padding:4px 16px 8px;align-self:flex-start}
 .quickchip{padding:8px 14px;border:1.5px solid var(--acc);border-radius:18px;background:var(--acc-soft);color:var(--acc);font-size:.8rem;cursor:pointer;transition:all .12s}
@@ -197,13 +207,13 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 .reportbox .rbtns{display:flex;gap:8px;flex-wrap:wrap}
 .reportbox .rsend{background:var(--acc);border-color:var(--acc);color:var(--acc-contrast);font-weight:600}
 #inputbar{position:relative;display:flex;gap:10px;padding:14px 18px;background:var(--panel);border-top:1px solid var(--line)}
-#txt{flex:1;font-size:.95rem;padding:12px 14px;border:1.5px solid var(--line-strong);border-radius:var(--r-m);outline:none;background:var(--panel);color:var(--tx);transition:border-color .12s}
+#txt{flex:1;min-width:0;font-size:.95rem;padding:12px 14px;border:1.5px solid var(--line-strong);border-radius:var(--r-m);outline:none;background:var(--panel);color:var(--tx);transition:border-color .12s}
 #txt:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
 #send{font-size:.92rem;padding:12px 24px;background:var(--acc);color:var(--acc-contrast);border:none;border-radius:var(--r-m);cursor:pointer;font-weight:600;box-shadow:var(--shadow-1);transition:filter .15s;white-space:nowrap;flex-shrink:0}
 #send:hover{filter:brightness(1.08)}
 #send:active{filter:brightness(.92)}
 #send:disabled{background:var(--mut-2);cursor:default}
-#stop{display:none;font-size:.85rem;padding:12px 16px;background:var(--danger);color:#fff;border:none;border-radius:var(--r-m);cursor:pointer;font-weight:600}
+#stop{display:none;font-size:.85rem;padding:12px 16px;background:var(--danger);color:var(--acc-contrast);border:none;border-radius:var(--r-m);cursor:pointer;font-weight:600}
 .mbar{margin-top:8px;display:flex;gap:6px;opacity:0;transition:opacity .15s}
 .msg:hover .mbar{opacity:1}
 .msgbtn{border:none;background:rgba(128,128,128,.15);color:var(--tx-2);border-radius:var(--r-s);font-size:.7rem;padding:3px 10px;cursor:pointer}
@@ -221,7 +231,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 #modal,.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:99;backdrop-filter:blur(2px)}
 .modal-bg.on{display:flex}
 #modal.on{display:flex}
-.panel-box,#panel{background:var(--panel);border-radius:var(--r-l);width:520px;max-height:86vh;overflow-y:auto;padding:22px 24px;box-shadow:var(--shadow-3);color:var(--tx)}
+.panel-box,#panel{background:var(--panel);border-radius:var(--r-l);width:520px;max-width:calc(100vw - 24px);max-height:86vh;overflow-y:auto;padding:22px 24px;box-shadow:var(--shadow-3);color:var(--tx)}
 .panel-box h3,#panel h3{margin:0 0 14px;font-size:1.05rem}
 .skill{border:1px solid var(--line);border-radius:var(--r-m);padding:12px 14px;margin-bottom:10px}
 .skill .nm{font-weight:600;font-size:.88rem}
@@ -240,6 +250,9 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 .mini.on{background:var(--acc);color:var(--acc-contrast);border-color:var(--acc);font-weight:600}
 .mini:disabled{opacity:.45;cursor:default}
 .mini:active:not(:disabled){transform:scale(.96)}
+/* s69 P2-6: 模态头部可见关闭钮（.mini 同族方形缩小版） */
+.mclose{float:right;width:30px;height:30px;padding:0;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);cursor:pointer;font-size:.8rem;color:var(--tx-2);transition:all .12s}
+.mclose:hover{border-color:var(--acc);color:var(--acc)}
 .prov{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--line);border-radius:var(--r-m);margin-bottom:6px;font-size:.8rem;cursor:pointer;transition:border-color .12s}
 .prov:hover{border-color:var(--line-strong)}
 .prov.active{border-color:var(--acc);background:var(--acc-softer);border-width:2px}
@@ -253,8 +266,8 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 #at-menu{display:none;position:absolute;bottom:100%;left:0;right:0;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-m);box-shadow:var(--shadow-3);z-index:50;max-height:200px;overflow-y:auto;margin-bottom:4px}
 #at-menu .mi{padding:9px 14px;font-size:.82rem;cursor:pointer;display:flex;align-items:center;gap:8px}
 #at-menu .mi:hover{background:var(--hover)}
-#slash-menu{display:none;position:absolute;bottom:64px;left:18px;right:18px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-m);box-shadow:var(--shadow-3);z-index:40;max-height:250px;overflow-y:auto}
-#slash-menu .mi{padding:9px 14px;cursor:pointer;border-radius:var(--r-s)}
+#at-menu .mi b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} /* s69 P3-8: 长文件名不再撑出横向滚动 */
+#slash-menu .mi{padding:9px 14px;cursor:pointer;border-radius:var(--r-s)} /* s69 P3-5: 容器样式统一走元素内联那份（挂 body、z-index:40），此处只留子项规则 */
 #slash-menu .mi:hover{background:var(--hover)}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -347,7 +360,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 </div>
 <div id="slash-menu" style="display:none;position:absolute;bottom:64px;left:18px;right:18px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.14);z-index:40;max-height:250px;overflow-y:auto"></div>
 <div id="skills-modal" class="modal-bg"><div class="panel-box">
-  <h3>🧩 小 forge 的技能（它学会的本领）</h3>
+  <h3>🧩 小 forge 的技能（它学会的本领）<button class="mclose" title="关闭" aria-label="关闭" onclick="$('skills-modal').classList.remove('on')">✕</button></h3>
   <div class="fnote" style="margin-bottom:10px">这些是它积累的操作手册。聊天时说相关的活儿它就会自动用；也可以点「让它现在用」。</div>
   <div id="skills-list"></div>
   <h3 style="margin:18px 0 8px">🛒 可添加的技能</h3>
@@ -357,7 +370,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
   <div class="fnote" id="store-note" style="display:none">中文说明整理中，稍后重开可见。</div>
 </div></div>
 <div id="manage-modal" class="modal-bg"><div class="panel-box">
-  <h3>🧠 管理小 forge</h3>
+  <h3>🧠 管理小 forge<button class="mclose" title="关闭" aria-label="关闭" onclick="$('manage-modal').classList.remove('on');clearTimeout(mcpPollTimer)">✕</button></h3>
   <div class="fnote" style="margin-bottom:10px">它是什么样、会什么、记了什么、几点干活——都在这里。</div>
   <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:8px" role="tablist">
     <button class="rtab on mtab" data-pane="ext" role="tab" aria-selected="true">🧠 本事</button>
@@ -401,7 +414,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
   </div>
 </div></div>
 <div id="modal"><div id="panel">
-  <h3>⚙️ 服务商连接</h3>
+  <h3>⚙️ 服务商连接<button class="mclose" title="关闭" aria-label="关闭" onclick="$('modal').classList.remove('on')">✕</button></h3>
   <div class="fnote" style="margin-bottom:10px">这里管"连到哪家大模型服务商"。每个档案 = 地址 + Key + 默认模型。顶栏可随时换模型（不用来这里）。</div>
   <div class="frow"><label>服务商档案</label>
     <div id="prov-list"></div>
@@ -559,6 +572,7 @@ function connect(){
       const anchor=b||card.querySelector('summary');
       const r=anchor.getBoundingClientRect();
       pop.style.position='fixed'; pop.style.left=r.left+'px'; pop.style.top=(r.bottom+6)+'px'; pop.style.right='auto';
+      const ph=pop.offsetHeight; if(r.bottom+6+ph>innerHeight) pop.style.top=Math.max(8,innerHeight-ph-8)+'px'; // s69 P2-5: 越过视口下缘时上翻
       pop.onclick=(ev)=>ev.stopPropagation();
       const close=(ev)=>{ if(pop.parentNode && !pop.contains(ev.target)){ pop.remove(); card._exppop=null; document.removeEventListener('click',close); } };
       setTimeout(()=>document.addEventListener('click',close),50);
@@ -761,6 +775,7 @@ function buildModelItems(filter){
   for(const o of shown){
     const el=document.createElement('div'); el.className='mi'+((cur&&cur.currentValue)===o.value&&o.activeProvider?' cur':'');
     el.textContent=o.provider+' · '+o.value;
+    el.title=o.provider+' · '+o.value; // s69 P3-7: 截断的长模型名悬停可看全
     el.onclick=()=>{ switchModel(o.value); $('model-pick').classList.remove('open'); };
     box.appendChild(el);
   }
@@ -805,8 +820,9 @@ function notifyDone(msg){
 }
 function stopNotify(){ if(notifyTimer){ clearInterval(notifyTimer); notifyTimer=null; document.title='小 forge · 数字员工'; } }
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden) stopNotify(); });
-function addErr(t){ const el=document.createElement('div'); el.className='msg agent'; el.textContent='⚠ '+t; chat.appendChild(el); chat.scrollTop=chat.scrollHeight; }
-function addInfo(t){ const el=document.createElement('div'); el.className='msg agent info'; el.textContent=t; chat.appendChild(el); chat.scrollTop=chat.scrollHeight; }
+function nearBottom(){ return chat.scrollHeight-chat.scrollTop-chat.clientHeight<80; } // s69 P2-7: 追加前测距——距底 <80px 才粘性滚底，用户上翻回看时不拽回
+function addErr(t){ const stick=nearBottom(); const el=document.createElement('div'); el.className='msg agent'; el.textContent='⚠ '+t; chat.appendChild(el); if(stick) chat.scrollTop=chat.scrollHeight; }
+function addInfo(t){ const stick=nearBottom(); const el=document.createElement('div'); el.className='msg agent info'; el.textContent=t; chat.appendChild(el); if(stick) chat.scrollTop=chat.scrollHeight; }
 function mdRender(raw){
   let h = raw.split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;');
   const NLCH = String.fromCharCode(10);
@@ -840,6 +856,7 @@ function flushTable2(out, bufRef){
   out.push(t + '</tbody></table>');
 }
 function addMsg(text,who){
+  const stick=nearBottom(); // s69 P2-7: 先测距再追加，新增大块内容不影响判定
   typing.style.display='none';
   if(who==='agent'&&streamEl&&streamEl.dataset.live==='1'){ streamEl.textContent+=text; }
   else{
@@ -847,7 +864,7 @@ function addMsg(text,who){
     if(who==='agent'){ el.dataset.live='1'; streamEl=el; } else { el.appendChild(msgButtons()); streamEl=null; }
     chat.appendChild(el);
   }
-  chat.scrollTop=chat.scrollHeight;
+  if(stick) chat.scrollTop=chat.scrollHeight;
 }
 function endStream(){ if(streamEl){
   streamEl.dataset.live='0';
@@ -881,6 +898,7 @@ function endStream(){ if(streamEl){
   streamEl=null;
 } }
 function toolCard(upd){
+  const stick=nearBottom(); // s69 P2-7
   const id=upd.toolCallId;
   let card=toolCards.get(id);
   if(!card){
@@ -929,7 +947,7 @@ function toolCard(upd){
       card.querySelector('summary').appendChild(b);
     }
   }
-  chat.scrollTop=chat.scrollHeight;
+  if(stick) chat.scrollTop=chat.scrollHeight;
 }
 function onAgentEvent(p){
   if(p.method==='session/update'){
@@ -1028,7 +1046,7 @@ txt.onkeydown=e=>{
   }
 };
 stopBtn.onclick=()=>{ wssend({type:'cancel'}); setBusy(false); };
-$('newchat').onclick=()=>{ subscribe(null); $('search-results').style.display='none'; $('sessions').style.display=''; $('chat-search').value=''; };
+$('newchat').onclick=()=>{ if(busy){ addInfo('它正忙着呢——等这步干完，或点 ⏹ 停止再开新的。'); return; } subscribe(null); $('search-results').style.display='none'; $('sessions').style.display=''; $('chat-search').value=''; }; // s69 P2-9: 忙碌态护栏（对齐 openSession）
 // 导出当前对话（小白：存成 txt 给别人看）
 window.exportChat=()=>{
   const NL=String.fromCharCode(10);
@@ -1043,8 +1061,13 @@ window.exportChat=()=>{
 };
 // Ctrl+Enter 或 Enter 发送；Ctrl+K 新对话；Ctrl+/ 技能
 document.addEventListener('keydown',e=>{
-  if((e.ctrlKey||e.metaKey)&&e.key==='k'){ e.preventDefault(); subscribe(null); }
+  if((e.ctrlKey||e.metaKey)&&e.key==='k'){ e.preventDefault(); $('newchat').click(); } // s69 P2-9: 复用 newchat 入口（busy 护栏+清搜索面板）
   if((e.ctrlKey||e.metaKey)&&e.key==='/'){ e.preventDefault(); $('open-skills').click(); }
+  if(e.key==='Escape'&&!e.ctrlKey&&!e.metaKey){ // s69 P2-6: Esc 关最上层模态（同 z-index 下 DOM 靠后者在上）
+    if($('modal').classList.contains('on')) $('modal').classList.remove('on');
+    else if($('manage-modal').classList.contains('on')){ $('manage-modal').classList.remove('on'); clearTimeout(mcpPollTimer); }
+    else if($('skills-modal').classList.contains('on')) $('skills-modal').classList.remove('on');
+  }
 });
 // 粘贴图片 -> 提示（ACP 支持图片 content，后续接）
 txt.addEventListener('paste',async e=>{
@@ -1423,10 +1446,12 @@ function renderProviders(list){
   if(selected){ renderModelPool(selected); fillProvForm(selected); }
 }
 
+let cfgKeyTouched=false; // s69 P3-14: 用户在 Key 框输入过即 dirty——切服务商档案不静默清空，防打字到一半丢 Key
+$('cfg-key').addEventListener('input',()=>{cfgKeyTouched=true;});
 function fillProvForm(pr){
   curProvName=pr.name;
   $('cfg-host').value=pr.host||'';
-  $('cfg-key').value='';
+  if(!cfgKeyTouched && document.activeElement!==$('cfg-key')) $('cfg-key').value='';
   $('prov-name').value='';
 }
 let fetchedModels=null;
@@ -1507,7 +1532,7 @@ $('save-cfg').onclick=()=>{
   const models=(ex&&ex.models)||[];
   wssend({type:'providers',save:true,update:{name,host,key:key||((ex&&ex.hasKey&&ex.key)||''),models}});
   curProvName=name; $('prov-name').value='';
-  note('已保存「'+name+'」。Key 留空则沿用原值。');
+  note('已保存「'+name+'」。Key 留空则沿用原值。'); cfgKeyTouched=false; // s69 P3-14: 保存即消费 dirty，后续切档恢复原清空行为
   setTimeout(loadProvidersUI,300);
 };
 function note(t){ $('save-note').textContent=t; }
@@ -2040,7 +2065,7 @@ function renderAllPane(){
     tip.textContent='归档对话和未关联的工作区在上方状态片里查看；未关联的可以删除。';
     box.appendChild(tip);
   }
-  if(!slice.length){ box.innerHTML='<div class="fnote" style="padding:10px">没有符合条件的工作区。</div>'; }
+  if(!slice.length){ const empty=document.createElement('div'); empty.className='fnote'; empty.style.padding='10px'; empty.textContent='没有符合条件的工作区。'; box.appendChild(empty); } // s69 P3-10: append 而非 innerHTML，保住上方提示条
   for(const w of slice){
     const row=document.createElement('div'); row.className='wrow';
     row.innerHTML='<div class="t1"><span>'+(w.state==='archived'?'🗂':'📁')+'</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(wsDisplayName(w))+'</span><span class="bdg">'+wsStateLabel(w)+'</span></div>'+
@@ -2054,7 +2079,7 @@ function renderAllPane(){
         row.querySelectorAll('button').forEach(b=>b.style.display='none');
         const form=document.createElement('span'); form.style.cssText='display:inline-flex;gap:5px;align-items:center';
         const inp=document.createElement('input'); inp.value=w.id; inp.style.cssText='flex:1;padding:6px 8px;border:1px solid var(--line);border-radius:7px;font-size:12px';
-        const ok=document.createElement('button'); ok.textContent='确定'; ok.style.background='var(--acc)'; ok.style.color='#fff'; ok.style.borderColor='var(--acc)';
+        const ok=document.createElement('button'); ok.textContent='确定'; ok.style.background='var(--acc)'; ok.style.color='var(--acc-contrast)'; ok.style.borderColor='var(--acc)';
         const cc=document.createElement('button'); cc.textContent='取消';
         ok.onclick=async()=>{
           const label=inp.value.trim(); if(!label) return;
