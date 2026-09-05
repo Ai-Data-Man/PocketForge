@@ -41,7 +41,8 @@
 | s64 | **用户四主线**:报告v2可观测增强(规则式初诊R1-R5+采集A1-A7+256KB硬顶,077e8d9)+UI呈现五缺陷(版本v2/列表乱序/静默截断/发送竖排/徽章重复,c14ed19)+PG便携化取证(research/10,1ddbcc8,BACKUP挂P32待用户扩白名单)+收尾小批(qa P3处置/fuzz留痕/reduced-motion,67b871d);qa双批通过;e2e 33/33+fuzz 44/44 | s64 |
 | s65 | 报告探针转正(e2e升至**35/35**,5922d1d)+EPIPE修复(a3adb0d)+沙箱rmSync EPERM取证修复(goose句柄窗+node Sleep单位bug,轮询重删,6ec8c29)+goose上游情报与升级预案(research/04+playbook,f203083/abfbe3a)+矩阵13全归档态GUI全过(数据全还原);浏览全部上限零diff裁决(P29有分页,勘误) | s65 |
 | s66 | **PG 阶段一+二落地**：ADR-0011(21068fa)→阶段一 d252478(pg-init/pg 两进程/动态端口/零依赖,qa 通过)→死词家族清账(停止脚本/update-runner,3da0502)→阶段二立轨+导出先行 4a2d54d+fc948e9+3409fc1(pg_dump 进树/每日备份链/探活 TCP/态B0 断言,e2e 升至 **45/45**)→沙盒打包验证轮(冷启真缺陷实锤修复,包体+289KB 压缩)→UI 令牌审计(--g 实锤,2e532c6)；postgres.js 取证/research 勘误全落档 | s66 |
-## 技术栈版本（全部 VERIFIED-RUN）
+- **v0.9.9 发布候选（2026-09-05 就绪，未发布）**：dist/PocketForge-20260905-v0.9.9.zip（325,752,371B，sha256 a31b7749…d66d744ad）= v0.9.8 后 63 提交全量（停止脚本真修复/报告 v2/UI 五修复/PG 阶段一+二/每日备份链）；沙盒全新冷启冒烟全过（含 fc948e9 守卫真实事故路径直证、重启幂等、报告零 PG 字节、停止无残留）；发布说明草稿 tmp/v0.9.9-release-notes-draft.md；**GitHub 发布待用户拍板**（需 push+GH_TOKEN），直接拷 dist zip 侧载亦可
+- ## 技术栈版本（全部 VERIFIED-RUN）
 postgresql 17.11.0 (zonky 便携,bin/pg 四 exe 含 pg_dump,+36.1MB 压缩;pg_dump 来自 EDB zip 同源子集) / process-compose v1.122.0 / nats-server v2.14.5 / nats-cli v0.4.0 / faucet v0.1.12 / goose v1.46.0 (AAIF) / node v22.21.1 / python 3.12 embeddable (Pillow 12.3.0；openpyxl 不在包内——s47 实测，旧记录失实已修正) / isomorphic-git 1.41.9 (vendored MIT, ADR-0007) / DOMPurify 3.2.4 (vendored Apache-2.0, s15)
 
 ## 关键决策索引

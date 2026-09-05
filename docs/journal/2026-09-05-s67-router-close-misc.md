@@ -13,5 +13,10 @@
 ## 真实检索基线
 2038 条消息 LIKE 0-3ms（冷扫 149ms）——阶段三触发器"近 1 万条"维持不变。
 
+## v0.9.9 候选包沙盒冷启冒烟（全过）
+- 制品自检：sha256 一致/28977 文件 unzip -t 无错/forge-backup 含 fc948e9 守卫/pg 4 exe/VERSION=v0.9.9。
+- 冷启：pg Ready restarts=0、pg-init Completed、bridge 200/4ms（node 计时）；**fc948e9 真实事故路径直证**——冷启 daily-backup exit 0、空 pg-dumps 被挡、zip 完整（修复前此路径 Compress-Archive 删 zip 必崩）；冷启首备份天然无 dump（daily-backup 由 faucet-rawsql 触发不依赖 pg，设计内失败面），pg Ready 后与第二轮启动均产出 dump（kept=2 新 zip 含 pg-dumps）。
+- 重启幂等（PG_VERSION mtime 逐位一致）/报告豁免口径外零 PG 字节/停止无 postgres 残留；dev 栈 node 实证恢复（10 进程全绿，pg Ready）。
+
 ## 验收
 9router 复测 28/28；dev 栈 node 实证恢复（healthz 14ms/pg probe READY）；仓库树净。
