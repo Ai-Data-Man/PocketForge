@@ -37,3 +37,27 @@
 - 双工程师并行按文件划片（tpl.html/tpl.js 分开），同文件任务严格串行。
 - 「配置化」切片必须穷尽常量的全部消费方（本日 P2-1 半途教训——fuzz 断言只打一个协议面恰好绕开其余三个）。
 - goose 上游检查点（09-06）：latest 仍 v1.49.0，v1.50 窗口未开。
+
+## 追加（同日续，凌晨~清晨波次）
+
+### 离线升级通道收口（v0.9.10 升级批）
+- sha256 通道（1c4a1e0）：/api/update/upload 双形态（zip/.sha256）+ sha256File 流式哈希自算自验 + 魔数/字节/哈希三重校验 + .part 原子落位（成功才 rename）；实施中抓 Node≥16 'close' 早于写流 finish 的竞态真缺陷（Windows 未释放 fd 致 .part 残留）——只拦"没读完就断"+清理挂 close 后。fuzz +17。
+- config 保全（64feedb，s69 遗留①修复）：update-runner PROTECTED 增 config.yaml/custom_providers/conf/goose/config/memory——升级包不含它们、此前被差量按 deleted 删盘→bootstrap 纯模板重建丢 s17 开关与 mcp-* 块（沙盒 8/8：真实 bootstrap.ps1 跑通合并路径，对照组复刻旧缺陷）。permission.yaml 不保全=有意（护栏默认靠升级送达）；data/config/* 天然幸存。
+- UI 两步向导（c8a1103）：两行独立 accept（.zip/.sha256）把选错文件拦在对话框层，六态人话文案；主控 IAB 实景确认。
+- qa 第二轮返工（f6ec76a）：IME 组合期 ↑↓ 被菜单劫持（中文用户真回归，isComposing 早退守卫+桩测 23/23）；**第二源进交付默认**（dft() 双源+_schema:1→2 迁移追加，边界=用户手工删过会被补回一次）；上传错误人话化不泄漏绝对路径；64KB 超限断言；.part wx 独占创建。
+- **裁决书正文缺失事故**：s67 af4e007 只写 verdicts/README 索引行、正文从未落盘（s44 项目须知同族事故第二例）——s69 补档重建（b54cf15），教训：**「已归档」必须 ls 验证文件在库，不许只看 commit message**。
+
+### v0.9.10 打包预演（ffd287f，未 tag 未发布）
+- dist/PocketForge-20260906-v0.9.10.zip：325,775,530 B，sha256 437775aa…026，28,980 文件，基线 df9d814。
+- 沙盒全新冷启全绿：healthz/pg Ready restarts=0/pg-init Completed；fc948e9 守卫两路径直证（冷启 skip/二轮 dump kept=2）；**s69 六新面入包全证**（两步升级向导/双源首启/mcp-catalog 3 条/permission user: 段+never_allow/CONTEXT_FILE_NAMES+四扩展关停/mcpEnabled 修复）；停止真停无残留；二次启动 PG_VERSION mtime 逐位不变。零阻断缺陷。
+- 观察项：首启 skill-sources.json 写 _schema:1、次启迁移补盖 _schema:2（功能无损）。
+- 发布决策材料：发布说明草稿已转正（占位段清零+制品指纹），v0.9.9 未发布件处置+是否 tag/发布归用户；发布前仍需复演 v0.9.9→v0.9.10 升级路径（s67 先例）。
+
+### P32 Plan Mode 设计输入（research/14，3f2de74）
+- 三要素推荐：①随时可入=「先出计划」入口+规划提示词模板（蓝图=ws/计划.md，s50 通道桥零改动）先做；②蓝图可编辑=文件树/预览/版本管理全套既有；③确认后执行=确认条本质是重发确认消息，不引新协议；执行态维持 smart_approve 权限卡，确认计划不免卡。
+- **裁决勘误**：goose-guardrails「todo 是 ACP plan 事件语义来源」失实（v1.46 全树零 SessionUpdate::Plan 发射点）——保留 todo 裁决不变（moim 持久清单独立成立），P32 不得依赖 plan 事件（勘误已注裁决书）。
+- goose 原生 /plan 工作流不可照抄（确认执行=清历史+全局切 Auto，与 ADR-0001/s69 安全默认冲突）。
+
+### 收官态
+- 回归：e2e-chat 45/45 + fuzz 102/102；树净；dev 栈 node 实证健康。
+- 待用户拍板：v0.9.9 未发布件处置、v0.9.10 是否 tag/发布（升级路径复演+发布说明终稿随发 publishing 前）。
