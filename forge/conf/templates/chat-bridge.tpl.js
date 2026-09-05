@@ -1143,9 +1143,11 @@ async function handleHttp(req, res) {
         return;
     }
     // s50c: POST 预检——声明超预算的直接 413，不收 body（防内存被撑爆）
+    // s68 豁免 /api/update/upload：离线升级包 300MB+，端点本身 req.pipe 落盘零内存积压，
+    //     预检不豁免 = 设置面板离线升级通道对任何版本永远 413（v0.9.8→v0.9.9 演练实锤）。
     if (req.method === 'POST') {
         const cl = parseInt(req.headers['content-length'] || '0', 10) || 0;
-        if (cl > POST_MAX_BYTES) {
+        if (cl > POST_MAX_BYTES && !url.startsWith('/api/update/upload')) {
             res.writeHead(413, { 'content-type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify({ ok: false, err: '文件太大（上限 50MB）' }));
             req.destroy();
