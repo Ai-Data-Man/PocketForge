@@ -194,6 +194,42 @@ d=json.load(sys.stdin)
 assert d.get('ok') is True and d.get('skills'), d.keys()
 assert all(isinstance(s.get('source'),dict) and s['source'].get('subdir') for s in d['skills']), d['skills'][:2]
 "; ck "skillstore remote source carries subdir (s70-B2)" $?
+# s70 切片C: MCP 目录配置化——沙盒探针（首启生成/坏配置回落矩阵/回环/白名单随配置，明细随本日志留痕）
+node "$(dirname "$0")/mcp-catalog-probe.js"; ck "s70 slice-C mcp-catalog config probe (7 asserts)" $?
+# s70 切片C: dev 桥零回归——GET 3 条默认形状（installed/enabled/install 键在）
+curl -s "$B/api/mcpstore" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+assert [x['id'] for x in d]==['sequential-thinking','memory-graph','fetch'], d
+assert all('installed' in x and 'enabled' in x and 'install' in x for x in d), d[0]
+"; ck "mcpstore GET default catalog shape (s70-C)" $?
+# s70 切片C: dev 配置回环——增假条目→列表出现→删掉（零代码零重启；假条目不安装不出网）；坏 JSON 容错→还原
+MC="$FR/data/config/mcp-catalog.json"
+MCPBK="$(mktemp)"
+curl -s "$B/api/mcpstore" >/dev/null; [ -f "$MC" ] || curl -s "$B/api/mcpstore" >/dev/null  # 首启生成
+cp "$MC" "$MCPBK"
+python -c "
+import json,sys
+d=json.load(open(sys.argv[1],encoding='utf-8'))
+d['catalog'].append({'id':'fuzz-mcp-zzz','name':'假条目','desc':'fuzz','pkg':'fuzz-pkg-zzz','entry':'node_modules/fuzz/fuzz.js','license':'MIT'})
+json.dump(d,open(sys.argv[1],'w',encoding='utf-8'),indent=2,ensure_ascii=False)
+" "$MC"
+curl -s "$B/api/mcpstore" | grep -q 'fuzz-mcp-zzz'; ck "mcpstore config roundtrip add (s70-C)" $?
+cp "$MCPBK" "$MC"
+curl -s "$B/api/mcpstore" | python -c "
+import sys,json
+ids=[x['id'] for x in json.load(sys.stdin)]
+assert 'fuzz-mcp-zzz' not in ids and len(ids)==3, ids
+"; ck "mcpstore config roundtrip remove (s70-C)" $?
+printf '{bad json' > "$MC"
+curl -s "$B/api/mcpstore" | python -c "
+import sys,json
+assert [x['id'] for x in json.load(sys.stdin)]==['sequential-thinking','memory-graph','fetch']
+"; ck "mcpstore bad-json fallback to builtin defaults (s70-C)" $?
+curl -s "$B/api/update/status" | grep -q 'mcp-catalog.json'; ck "mcpstore bad-json warn surfaced (s70-C)" $?
+[ "$(cat "$MC")" = "{bad json" ]; ck "mcpstore bad-json user file untouched (s70-C)" $?
+cp "$MCPBK" "$MC"; rm -f "$MCPBK"
+curl -s -X POST "$B/api/mcpstore" -H 'content-type: application/json' -d '{"id":"ghost-mcp-zzz"}' | grep -q '目录里没有这个 MCP'; ck "mcpstore install foreign id rejected, whitelist follows config (s70-C)" $?
 # S1: /api/report 门禁矩阵——POST/HEAD 405；GET 走端点级 Origin 门（不豁免 GET）+ 自定义头 X-PF-Report: 1（img/no-cors 发不出）
 [ "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/report")" = "405" ]; ck "report POST refused 405" $?
 [ "$(curl -s -o /dev/null -w '%{http_code}' -I "$B/api/report")" = "405" ]; ck "report HEAD refused 405" $?

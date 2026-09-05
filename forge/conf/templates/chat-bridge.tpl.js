@@ -164,6 +164,7 @@ const STATE_SCHEMAS = {
     },
     'skills/origin.json': { latest: 1, steps: {} }, // s70 切片A: 技能来源标记（.agents/skills/<dir>/origin.json，下方随 .forge 先例逐目录迁移）
     'config/skill-sources.json': { latest: 1, steps: {} }, // s70 切片B: 技能市场源配置（缺失时由 readSkillSources 首启生成内置默认）
+    'config/mcp-catalog.json': { latest: 1, steps: {} }, // s70 切片C: MCP 目录配置（缺失时由 readMcpCatalog 首启生成内置默认）
 };
 function migrateJsonAt(f, key) {
     const meta = STATE_SCHEMAS[key];
@@ -756,12 +757,35 @@ async function installRemoteSkill(dirName, res) {
 }
 
 // s46: MCP 市场（精选目录，npm vendored；安装=vendor 安装+写 config.yaml extensions，重启生效）
+// s70 切片C（裁决 S3）: 目录配置化——本常量降级为内置默认；加目录项=编辑 data/config/mcp-catalog.json（零桥代码 diff）。
+// 新目录项准入=人工四条闸门（①许可证白名单②goose 实装真调③npm 可达有维护方④MCP SDK 大版本护栏），每入一枚留 journal 选型——
+// JSON 无注释，清单落档 docs/verdicts/2026-09-05-marketplace-ecosystem.md 切片C 与 docs/research/13。
 const MCP_CATALOG = [
     { id: 'sequential-thinking', name: '深度思考', desc: '复杂任务先拆步骤再动手，提升多步推理质量', pkg: '@modelcontextprotocol/server-sequential-thinking', entry: 'node_modules/@modelcontextprotocol/server-sequential-thinking/dist/index.js', license: 'MIT' },
     { id: 'memory-graph', name: '关系图谱记忆', desc: '实体关系图谱（人物/设备台账类结构化记忆），与内置长期记忆互补', pkg: '@modelcontextprotocol/server-memory', entry: 'node_modules/@modelcontextprotocol/server-memory/dist/index.js', license: 'MIT' },
     // s54: fetch（Backlog「MCP 商店最小形态」收尾项）——轻量网页抓取转文本，不开浏览器即可读网页
     { id: 'fetch', name: '网页抓取', desc: '把网页内容抓下来转成文字（不开浏览器，轻量快速），适合读文章、取表格数据', pkg: 'fetch-mcp', entry: 'node_modules/fetch-mcp/cli.js', license: 'MIT' },
 ];
+const MCP_CATALOG_FILE = path.join(ROOT, 'data', 'config', 'mcp-catalog.json');
+function readMcpCatalog() {
+    // 首启不存在→由内置默认生成；坏 JSON/缺 _schema/缺字段/条目非法/id 重复→warn 回落内置默认（不炸、不改写用户文件）
+    // id/pkg/entry 白名单同门：id 进扩展 id+vendor 目录+YAML 键，entry 进 config.yaml 单引号串（禁引号/反斜杠），pkg 进 npm 参数
+    const dft = () => MCP_CATALOG.map(x => ({ ...x }));
+    const okItem = m => m && typeof m.id === 'string' && /^[\w\-]{1,64}$/.test(m.id)
+        && ['name', 'desc', 'license'].every(k => typeof m[k] === 'string' && m[k])
+        && typeof m.pkg === 'string' && /^[@\w.\-/]+$/.test(m.pkg)
+        && typeof m.entry === 'string' && /^[@\w.\-/]+$/.test(m.entry); // @ 容 @scope 包路径（同 pkg）
+    if (!FSS.existsSync(MCP_CATALOG_FILE)) {
+        try { FSS.mkdirSync(path.dirname(MCP_CATALOG_FILE), { recursive: true }); atomicWrite(MCP_CATALOG_FILE, JSON.stringify({ _schema: 1, catalog: dft() }, null, 2)); } catch {}
+        return dft();
+    }
+    const j = readJson(MCP_CATALOG_FILE, null);
+    if (j && j._schema === 1 && Array.isArray(j.catalog) && j.catalog.length && j.catalog.every(okItem)
+        && new Set(j.catalog.map(x => x.id)).size === j.catalog.length) return j.catalog;
+    const warnOnce = msg => { if (!stateWarnings.includes(msg)) stateWarnings.push(msg); console.warn(msg); };
+    warnOnce('mcp-catalog.json 无法解析（应为 _schema:1 + catalog 数组且条目字段齐全），已回落内置 MCP 目录');
+    return dft();
+}
 const mcpInstallState = {}; // id -> {stage:'installing'|'done'|'error', msg}
 function mcpExtensionId(id) { return 'mcp-' + id; }
 function mcpInstalled(id) {
@@ -1662,9 +1686,10 @@ const ext = path.extname(f).toLowerCase();
     }
     else if (url === '/api/mcpstore') {
         // s46: MCP 市场最小形态——精选目录（npm vendored），安装=后台 npm i + 写 extensions，重启生效
+        // s70 切片C: 目录读 data/config/mcp-catalog.json（每请求读取→改 JSON 零重启生效）；坏配置回落内置默认
         if (req.method === 'GET') {
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify(MCP_CATALOG.map(m => ({
+            res.end(JSON.stringify(readMcpCatalog().map(m => ({
                 id: m.id, name: m.name, desc: m.desc, license: m.license,
                 installed: mcpInstalled(m.id),
                 enabled: mcpEnabled(m.id),
@@ -1677,7 +1702,7 @@ const ext = path.extname(f).toLowerCase();
             req.on('end', () => {
                 let id = '', op = '';
                 try { const b = JSON.parse(Buffer.concat(chunks).toString('utf8')); if (typeof b.id !== 'string') throw 0; id = b.id; op = b.op === 'uninstall' ? 'uninstall' : ''; } catch {}
-                const item = MCP_CATALOG.find(m => m.id === id);
+                const item = readMcpCatalog().find(m => m.id === id);
                 res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
                 // s57: op=uninstall 删 config.yaml 块 + vendor 目录（停用走 /api/extensions，这里是删）
                 if (op === 'uninstall') {
