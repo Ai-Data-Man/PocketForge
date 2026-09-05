@@ -114,6 +114,67 @@ assert t and t[0].get('origin') is None, t
 "; ck "api/skills exposes origin field, broken origin.json tolerated (s70)" $?
 rm -rf "$STMP"; trap - EXIT
 [ ! -d "$STMP" ]; ck "s70 fuzz temp skill cleaned up" $?
+# qa返工(P2-2/P3-1/P3-4, 审查 075ee4b+d5a7d17): 原子安装实景——本地安装门 / origin 暴露与随删 / 覆盖失败保旧版 / XSS 向量
+# fuzz-* 名号即用即清（下方 trap 兜底）；安装断言走 .agents/skills 真目录，卸载断言顺带回归删除链
+REPO="$FR/skills-repo"; CACHE="$FR/data/cache/skills"; INST="$FR/.agents/skills"
+trap 'rm -rf "$REPO/fuzz-gate-tmp" "$INST/fuzz-gate-tmp" "$INST/fuzz-swap-tmp" "$INST/fuzz-swap-tmp.tmp" "$INST/fuzz-swap-tmp.bak" "$INST/fuzz-walk-tmp" "$INST/fuzz-xss-tmp" "$CACHE/fuzz-swap-tmp"' EXIT
+post(){ curl -s -X POST "$B/api/skillstore" -H 'content-type: application/json' -d "$1"; }
+SKMD='---\nname: %s\ndescription: %s\n---\nbody\n'
+# P3-4a: 本地安装门冲突分支——self 目录 + skills-repo 同名 → local POST（不带 remote）拒绝人话
+mkdir -p "$REPO/fuzz-gate-tmp" "$INST/fuzz-gate-tmp"
+printf -- "$SKMD" fuzz-gate-tmp fuzz > "$REPO/fuzz-gate-tmp/SKILL.md"
+printf -- "$SKMD" fuzz-gate-tmp fuzz > "$INST/fuzz-gate-tmp/SKILL.md"
+printf '{"_schema":1,"source":"self","installed_at":"t"}' > "$INST/fuzz-gate-tmp/origin.json"
+post '{"name":"fuzz-gate-tmp"}' | grep -q '小 forge 自己在用'; ck "skillstore local POST self-conflict rejected (P3-4)" $?
+# P3-4b: skills-repo 安装 → origin 暴露 /api/skills → 卸载随删
+rm -rf "$INST/fuzz-gate-tmp"
+post '{"name":"fuzz-gate-tmp"}' | grep -q '"ok":true'; ck "skillstore local install ok (P3-4)" $?
+curl -s "$B/api/skills" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+t=[x for x in d if x['name']=='fuzz-gate-tmp']
+assert t and t[0].get('origin')=={'source':'local','repo':'skills-repo'}, t
+"; ck "api/skills exposes local origin after install (P3-4)" $?
+post '{"name":"fuzz-gate-tmp","op":"uninstall"}' | grep -q '"ok":true'; ck "skillstore uninstall ok (P3-4)" $?
+[ ! -d "$INST/fuzz-gate-tmp" ]; ck "uninstall removed skill dir (P3-4)" $?
+rm -rf "$REPO/fuzz-gate-tmp"
+# P2-2 实景①: market-over-market 原子更新——v1 装 → 缓存升 v2 → 再装=换名更新，dst 全新目录无合并残留
+mkdir -p "$CACHE/fuzz-swap-tmp"
+printf -- "$SKMD" fuzz-swap-tmp v1 > "$CACHE/fuzz-swap-tmp/SKILL.md"
+post '{"name":"fuzz-swap-tmp","remote":true}' | grep -q '"ok":true'; ck "market install v1 ok (P2-2)" $?
+grep -q 'description: v1' "$INST/fuzz-swap-tmp/SKILL.md"; ck "market install v1 lands in dst (P2-2)" $?
+printf -- "$SKMD" fuzz-swap-tmp v2 > "$CACHE/fuzz-swap-tmp/SKILL.md"
+post '{"name":"fuzz-swap-tmp","remote":true}' | grep -q '"ok":true'; ck "market-over-market update v2 ok (P2-2)" $?
+grep -q 'description: v2' "$INST/fuzz-swap-tmp/SKILL.md" && ! grep -q 'description: v1' "$INST/fuzz-swap-tmp/SKILL.md" && [ ! -e "$INST/fuzz-swap-tmp.bak" ]; ck "v2 replaced v1 via rename-swap, no .bak leftover (P2-2)" $?
+# P2-2 实景②+P3-1: 覆盖失败保旧版——缓存 origin.json 变目录卡死 writeSkillOrigin → 安装失败不假成功，旧版 v2 完好无 .tmp/.bak
+mkdir -p "$CACHE/fuzz-swap-tmp/origin.json"
+post '{"name":"fuzz-swap-tmp","remote":true}' | grep -q '安装失败'; ck "poisoned origin write fails install loudly (P3-1)" $?
+grep -q 'description: v2' "$INST/fuzz-swap-tmp/SKILL.md" && grep -q '"source": "market"' "$INST/fuzz-swap-tmp/origin.json" && [ ! -e "$INST/fuzz-swap-tmp.tmp" ] && [ ! -e "$INST/fuzz-swap-tmp.bak" ]; ck "failed overwrite keeps old v2 intact, no tmp/bak debris (P2-2)" $?
+rm -rf "$CACHE/fuzz-swap-tmp"
+post '{"name":"fuzz-swap-tmp","op":"uninstall"}' >/dev/null; [ ! -d "$INST/fuzz-swap-tmp" ]; ck "cleanup: uninstalled after failed overwrite (P2-2)" $?
+# P2-2 实景③: 缓存缺失走 walkApi 直拉——幽灵目录必败 → 安装失败，预置旧版完好（qa 复现路径的失败分支实证）
+mkdir -p "$INST/fuzz-walk-tmp"
+printf -- "$SKMD" fuzz-walk-tmp old > "$INST/fuzz-walk-tmp/SKILL.md"
+printf '{"_schema":1,"source":"market","repo":"ghost/x","installed_at":"t"}' > "$INST/fuzz-walk-tmp/origin.json"
+post '{"name":"fuzz-walk-tmp","remote":true}' | grep -q '安装失败'; ck "walkApi ghost fetch fails install friendly (P2-2)" $?
+grep -q 'description: old' "$INST/fuzz-walk-tmp/SKILL.md" && [ ! -e "$INST/fuzz-walk-tmp.tmp" ] && [ ! -e "$INST/fuzz-walk-tmp.bak" ]; ck "walkApi failure keeps old version intact (P2-2)" $?
+rm -rf "$INST/fuzz-walk-tmp"
+# P2-1 XSS 向量端到端: evil repo（引号+img 标签）→ /api/skills 原样回传（JSON 层），渲染层 esc 断言在 badge-esc-probe
+# 注：origin.json 里引号须 JSON 转义（\"），否则文件非法、originOf 容错成 null，向量根本到不了前端面
+EVILJSON='a/b\"><img src=x onerror=alert(1)>'
+mkdir -p "$INST/fuzz-xss-tmp"
+printf -- "$SKMD" fuzz-xss-tmp x > "$INST/fuzz-xss-tmp/SKILL.md"
+printf '{"_schema":1,"source":"market","repo":"%s","installed_at":"t"}' "$EVILJSON" > "$INST/fuzz-xss-tmp/origin.json"
+curl -s "$B/api/skills" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+t=[x for x in d if x['name']=='fuzz-xss-tmp']
+assert t and t[0]['origin'] and '<img' in t[0]['origin']['repo'] and '\"' in t[0]['origin']['repo'], t
+"; ck "evil repo survives /api/skills raw (json layer, P2-1)" $?
+rm -rf "$INST/fuzz-xss-tmp"
+node "$(dirname "$0")/badge-esc-probe.js"; ck "badge esc neutralizes quote+img vector + obadge truncation css (P2-1)" $?
+rm -rf "$REPO/fuzz-gate-tmp" "$INST/fuzz-gate-tmp" "$INST/fuzz-swap-tmp" "$INST/fuzz-swap-tmp.tmp" "$INST/fuzz-swap-tmp.bak" "$INST/fuzz-walk-tmp" "$INST/fuzz-xss-tmp" "$CACHE/fuzz-swap-tmp"; trap - EXIT
+[ ! -d "$INST/fuzz-swap-tmp" ] && [ ! -d "$CACHE/fuzz-swap-tmp" ]; ck "P2-2/P3-4 fuzz temp skills cleaned up" $?
 # s70 切片B: 技能市场源配置化——沙盒自拉桥探针（明细随本日志留痕）
 node "$(dirname "$0")/skill-sources-probe.js" a; ck "s70 slice-B manifest source migration probe (3 asserts)" $?
 node "$(dirname "$0")/skill-sources-probe.js" b; ck "s70 slice-B skill-sources config probe (6 asserts)" $?

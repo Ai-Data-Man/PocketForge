@@ -651,10 +651,9 @@ function originOf(dir) {
     return null;
 }
 function writeSkillOrigin(dst, source, repo, branch) {
-    try {
-        FSS.mkdirSync(dst, { recursive: true });
-        atomicWrite(path.join(dst, 'origin.json'), JSON.stringify({ _schema: 1, source, repo, branch, installed_at: new Date().toISOString() }, null, 2));
-    } catch {}
+    // qa返工(P3-1): 写失败不再静默吞掉——抛错随原子安装回滚并报安装失败，不假成功
+    FSS.mkdirSync(dst, { recursive: true });
+    atomicWrite(path.join(dst, 'origin.json'), JSON.stringify({ _schema: 1, source, repo, branch, installed_at: new Date().toISOString() }, null, 2));
 }
 function skillInstallBlocked(dst) {
     // 同名冲突语义：已装且（无标记或 self）→ 拒绝（防静默覆盖本机/自沉淀技能）；market/local → 覆盖=更新语义放行
@@ -662,6 +661,28 @@ function skillInstallBlocked(dst) {
     const o = originOf(dst);
     if (o && o.source !== 'self') return null;
     return '这个名字小 forge 自己在用，先换个技能名再装。';
+}
+// qa返工(P2-2): 覆盖=更新先装到 dst.tmp，全部成功后旧版→.bak→tmp 换名→删 bak；任一步失败清 tmp（必要时还原 .bak）再抛错——失败时旧版完好。
+// 换名后 dst 为全新目录，无 cpSync 合并残留（qa-P3-3 随之消除）。调用方 name 已过白名单+保留名过滤，.tmp/.bak 后缀不产生新保留名。
+async function installAtomic(dst, stage) {
+    const tmp = dst + '.tmp', bak = dst + '.bak';
+    try { FSS.rmSync(tmp, { recursive: true, force: true }); } catch {}
+    try {
+        await stage(tmp); // 在临时目录装好（含 origin.json），失败即抛
+    } catch (e) {
+        try { FSS.rmSync(tmp, { recursive: true, force: true }); } catch {}
+        throw e;
+    }
+    try { FSS.rmSync(bak, { recursive: true, force: true }); } catch {} // 清上次中断残留（此时旧版已在 dst）
+    let bakDone = false;
+    if (FSS.existsSync(dst)) { FSS.renameSync(dst, bak); bakDone = true; }
+    try {
+        FSS.renameSync(tmp, dst);
+    } catch (e) {
+        if (bakDone) { try { FSS.renameSync(bak, dst); } catch {} }
+        throw e;
+    }
+    if (bakDone) { try { FSS.rmSync(bak, { recursive: true, force: true }); } catch {} }
 }
 async function installRemoteSkill(dirName, res) {
     const dst = path.join(ROOT, '.agents', 'skills', dirName);
@@ -679,16 +700,17 @@ async function installRemoteSkill(dirName, res) {
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: true }));
     };
-    // s56: 优先从本地缓存复制（出网面收敛到 sync 一处）
+    // s56: 优先从本地缓存复制（出网面收敛到 sync 一处）；qa返工(P2-2): 原子安装，失败旧版完好
     try {
         if (FSS.existsSync(path.join(SKILL_CACHE, dirName, 'SKILL.md'))) {
-            FSS.cpSync(path.join(SKILL_CACHE, dirName), dst, { recursive: true });
-            writeSkillOrigin(dst, 'market', src.repo, src.branch);
+            await installAtomic(dst, async tmp => {
+                FSS.cpSync(path.join(SKILL_CACHE, dirName), tmp, { recursive: true });
+                writeSkillOrigin(tmp, 'market', src.repo, src.branch);
+            });
             finish();
             return;
         }
     } catch (e) {
-        try { FSS.rmSync(dst, { recursive: true, force: true }); } catch {}
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, err: '安装失败: ' + e.message }));
         return;
@@ -712,16 +734,14 @@ async function installRemoteSkill(dirName, res) {
         }
     }
     try {
-        await walkApi(dirName, dst);
-        // s70: 先清旧 origin 再回写缓存（缓存树不带来源标记），最后写新标记
-        try { FSS.rmSync(path.join(dst, 'origin.json'), { force: true }); } catch {}
-        // 顺手把整个技能目录写进缓存（安装路径与缓存路径同构，纯复制即可）
-        try { FSS.cpSync(dst, path.join(SKILL_CACHE, dirName), { recursive: true }); } catch {}
-        writeSkillOrigin(dst, 'market', src.repo, src.branch);
+        await installAtomic(dst, async tmp => {
+            await walkApi(dirName, tmp);
+            // 顺手把整个技能目录写进缓存（缓存树不带来源标记，纯复制即可）；缓存写失败不挡安装
+            try { FSS.cpSync(tmp, path.join(SKILL_CACHE, dirName), { recursive: true }); } catch {}
+            writeSkillOrigin(tmp, 'market', src.repo, src.branch);
+        });
         finish();
     } catch (e) {
-        // 失败清理半成品目录
-        try { FSS.rmSync(dst, { recursive: true, force: true }); } catch {}
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, err: '安装失败: ' + e.message }));
     }
@@ -1732,7 +1752,7 @@ const ext = path.extname(f).toLowerCase();
             const chunks = [];
             let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
             req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
-            req.on('end', () => {
+            req.on('end', async () => {
                 try {
                     const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
                     // s50h(FIND-3): 白名单外再过保留设备名（con 等），remote 与本地复制两分支同门
@@ -1752,8 +1772,11 @@ const ext = path.extname(f).toLowerCase();
                     if (!FSS.existsSync(path.join(src, 'SKILL.md'))) throw new Error('商店里没有这个技能');
                     const blocked = skillInstallBlocked(dst); // s70: 同名冲突保护（本地精选目录安装同门）
                     if (blocked) throw new Error(blocked);
-                    FSS.cpSync(src, dst, { recursive: true });
-                    writeSkillOrigin(dst, 'local', 'skills-repo', '');
+                    // qa返工(P2-2): 本地复制同门原子安装——写 origin 失败（P3-1）随整体回滚，不假成功
+                    await installAtomic(dst, async tmp => {
+                        FSS.cpSync(src, tmp, { recursive: true });
+                        writeSkillOrigin(tmp, 'local', 'skills-repo', '');
+                    });
                     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ ok: true }));
                 } catch (e) {
