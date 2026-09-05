@@ -119,6 +119,8 @@
 6. **不存在的机制**（防误解，源码全树核对，VERIFIED-DOC）：无工具白/黑名单环境变量（无 GOOSE_TOOL_ALLOW/DENY 类键）；无文件系统沙盒（shell 直跑用户权限 cmd，shell.rs:103-242）；无网络白名单（egress 仅记录，出网控制只能靠系统代理/防火墙层——与 STATE 开放问题 3 的 IE 代理认知互恰）；无上下文字符预算（2.2/2.4）。
 7. **提示注入模式扫描器**：`SECURITY_PROMPT_ENABLED=true` 可启用 pattern 扫描（security/patterns.rs），命中且超阈值生成 RequireApproval 卡（security_inspector.rs:22-46）——auto 模式下唯一能"打穿"恒放行的机制，但默认关、阈值与误报未评估。
 
+〔s69 S-A 落地后补（VERIFIED-RUN，commit e5a2f4a）：①`never_allow` 只有写在 permission.yaml 的 `user:` 段才直通 Deny——写在 `smart_approve:` 段（judge 缓存语义）仍出卡；②`PermissionConfig` Deserialize 无 `#[serde(default)]`，`user:` 段缺 `always_allow/ask_before` 任一键即 goose panic 桥 crash-loop（实锤踩中一次）——手改 permission.yaml 必须三键齐写，升级迁移同查（挂 G6 检查面）；③G1 的 `GOOSE_MODE=auto` 有两个注入点（桥 env + conf/process-compose.yaml），桥侧 `delete env.GOOSE_MODE` 兜底对任何未来注入免疫；④enabled:false 关停扩展已双臂探针 VERIFIED-RUN（tmp/goose-probe/ext-probe.js，58→47 把工具），§3.3-2 的 UNVERIFIED 摘除。〕
+
 ---
 
 ## 4. 建议清单
