@@ -34,6 +34,13 @@ function wsSession(steps, timeoutMs, pred) {
                     if (op !== 0x1) continue;
                     let msg; try { msg = JSON.parse(payload.toString('utf8')); } catch { continue; }
                     inbox.push(msg);
+                    // s71(G1) 探针适配：smart_approve 下真 prompt 可能弹卡——自动回 allow_once，
+                    // 防止 goose turn 挂死在无人应答的权限请求上（本探针只测本地门，不判卡片）
+                    if (msg.agent && msg.agent.method === 'session/request_permission') {
+                        const opts = (msg.agent.params && msg.agent.params.options) || [];
+                        const opt = opts.find(o => o.kind === 'allow_once') || opts[0];
+                        socket.write(clientFrame(JSON.stringify({ type: 'acp_reply', callId: msg.agent.id, option: opt && opt.optionId })));
+                    }
                     if (msg.sys === 'subscribed' && !secondSent && steps.then) {
                         secondSent = true;
                         socket.write(clientFrame(JSON.stringify(steps.then())));

@@ -81,7 +81,7 @@ function atomicWrite(file, data) {
 // s50e: strip UTF-8 BOM——记事本默认带 BOM 保存，不剥则 JSON.parse 抛错、配置"消失"
 function readJson(f, dft) { try { return JSON.parse(FSS.readFileSync(f, 'utf8').replace(/^\uFEFF/, '')); } catch { return dft; } }
 // ---- P31-③ 匿名本地使用统计 v1：仅写本地 data/stats/usage-YYYYMMDD.json，无外传、无 UI ----
-// permissionCards.timeout v1 恒 0：前端 60s 超时兜底同样发 acp_reply(allow_once)，桥内与手动「这次可以」不可区分
+// permissionCards.timeout v1 恒 0：前端 60s 超时兜底同样发 acp_reply（s71 G2 起为 reject_once），桥内与手动选择不可区分、计入 denied（口径漂移记录在案）
 // artifactsGenerated v1 恒 0：gen-xlsx 走 goose 扩展不经过桥，无侵入的工作区 diff 扫描代价大，先只占位
 const STATS_DIR = path.join(ROOT, 'data', 'stats');
 const S26_ERR_RE = /Ran into this error|Server error|rate limit|timed? out|ECONN|fetch failed|could not connect|network error/i; // 与前端 endStream(s26) 同款上游故障正则
@@ -321,13 +321,17 @@ function spawnAcp() {
         GOOSE_PATH_ROOT: path.join(ROOT, 'conf', 'goose'),
         GOOSE_DISABLE_KEYRING: '1',
         GOOSE_TELEMETRY_ENABLED: 'false',
-        GOOSE_MODE: 'auto',
+        // s71(G1): 不注入 GOOSE_MODE——回落 config.yaml 的 smart_approve（env 会压 config，base.rs get_param），
+        // permission.yaml 的 ask_before/never_allow 自此真实生效（auto 分支根本不查询）
         GOOSE_PROVIDER: 'openai',
         GOOSE_MODEL: (act && act.models && act.models[0]) || secrets.GOOSE_MODEL_NAME || 'myopencode/glm-5.2',
         OPENAI_API_KEY: (act && act.key) || secrets.FORGE_AGENT_API_KEY || process.env.OPENAI_API_KEY,
         OPENAI_HOST: (act && act.host) || secrets.FORGE_AGENT_HOST || process.env.OPENAI_HOST,
         OPENAI_BASE_PATH: 'chat/completions',
     };
+    // s71(G1): env 会压 config（base.rs get_param 先读 env）——显式剥离父环境可能携带的 GOOSE_MODE
+    // （pc yaml/启动器残留），确保回落 config.yaml 的 smart_approve，permission.yaml 真实生效
+    delete env.GOOSE_MODE;
     const child = spawn(GOOSE, ['acp'], { env, stdio: ['pipe', 'pipe', 'pipe'] });
     child.stdout.on('data', chunk => onAcpData(chunk));
     child.stderr.on('data', d => process.stderr.write('[acp] ' + d));

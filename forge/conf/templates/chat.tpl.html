@@ -944,7 +944,8 @@ function onAgentEvent(p){
   }
   if(p.method==='session/request_permission'){
     // s19: 小白「问你」面板——替代旧的自动批第一项。展示工具+参数摘要，四个大按钮。
-    // 超时兜底：60 秒无操作自动选「这次可以」（allow_once），避免 agent 卡死等待
+    // 超时兜底：60 秒无操作自动选「这次不行」（reject_once，s71 G2）——卡片承诺"您选了它才动"，
+    // 超时放行违背承诺；无人看屏时拒绝=任务停住可恢复，放行=破坏已发生不可逆
     const params=p.params||{};
     const opts=params.options||[];
     if(!opts.length){ wssend({type:'acp_reply',callId:p.id,option:undefined}); return; }
@@ -991,10 +992,9 @@ function onAgentEvent(p){
       window.__permTipShown=true;
       addInfo('💡 这个任务要确认好几步。想让它一口气干完：把上方「工作模式」切到「自动干活」，或者遇到确认时点「✅ 以后都允许」。');
     }
-    // 超时兜底选「这次可以」（allow_once）而非列表第一项（可能是 allow_always，太激进）
-    const onceOpt = opts.find(o=>o.kind==='allow_once') || opts[0];
-    const onceMeta = KIND[onceOpt.kind] || {t:onceOpt.name||onceOpt.optionId};
-    setTimeout(()=>settle(onceOpt.optionId,'（等太久，自动选了 '+onceMeta.t+'）'),60000);
+    // 超时兜底自动选「这次不行」（reject_once）——goose 每张卡必带该选项；「以后都别问」不能自动替用户按（持久化太激进）
+    const noOpt = opts.find(o=>o.kind==='reject_once') || opts[0];
+    setTimeout(()=>settle(noOpt.optionId,'（等太久没人选，自动帮你选了 🚫 这次不行。想让它做的话，再点一次按钮就行。）'),60000);
     return;
   }
   if(p.method==='stop'){ setBusy(false); endStream(); loadSessions(); renderCurPane(); flushPendingQueue(); } // s52b: 任务完成自动刷新文件树（小白不用手动刷新找文件）；#3: 干完活补发排队中的消息

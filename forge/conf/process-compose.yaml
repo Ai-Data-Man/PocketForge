@@ -102,7 +102,6 @@ processes:
     environment:
       - 'FORGE_ROOT=${FORGE_ROOT}'
       - 'PORT=8790'
-      - 'GOOSE_MODE=auto'
       - 'GOOSE_PROVIDER=openai'
       - 'GOOSE_MODEL=${GOOSE_MODEL_NAME}'
       - 'OPENAI_API_KEY=${FORGE_AGENT_API_KEY}'

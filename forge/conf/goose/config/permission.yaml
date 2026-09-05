@@ -1,6 +1,7 @@
 smart_approve:
   always_allow: []
   ask_before:
+  - faucet-db__faucet_raw_sql
   - browser__browser_click
   - browser__browser_close
   - browser__browser_drag
@@ -19,7 +20,6 @@ smart_approve:
   - browser__browser_tabs
   - browser__browser_type
   - edit
-  - extensionmanager__manage_extensions
   - faucet-db__faucet_delete
   - faucet-db__faucet_insert
   - faucet-db__faucet_update
@@ -28,3 +28,8 @@ smart_approve:
   - todo__todo_write
   - write
   never_allow: []
+user:
+  always_allow: []
+  ask_before: []
+  never_allow:
+  - browser__browser_run_code_unsafe
