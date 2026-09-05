@@ -414,7 +414,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
   </div>
 </div></div>
 <div id="modal"><div id="panel">
-  <h3>⚙️ 服务商连接<button class="mclose" title="关闭" aria-label="关闭" onclick="$('modal').classList.remove('on')">✕</button></h3>
+  <h3>⚙️ 服务商连接<button class="mclose" title="关闭" aria-label="关闭" onclick="$('modal').classList.remove('on');cfgKeyTouched=false;$('cfg-key').value=''">✕</button></h3>
   <div class="fnote" style="margin-bottom:10px">这里管"连到哪家大模型服务商"。每个档案 = 地址 + Key + 默认模型。顶栏可随时换模型（不用来这里）。</div>
   <div class="frow"><label>服务商档案</label>
     <div id="prov-list"></div>
@@ -1064,7 +1064,7 @@ document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key==='k'){ e.preventDefault(); $('newchat').click(); } // s69 P2-9: 复用 newchat 入口（busy 护栏+清搜索面板）
   if((e.ctrlKey||e.metaKey)&&e.key==='/'){ e.preventDefault(); $('open-skills').click(); }
   if(e.key==='Escape'&&!e.ctrlKey&&!e.metaKey){ // s69 P2-6: Esc 关最上层模态（同 z-index 下 DOM 靠后者在上）
-    if($('modal').classList.contains('on')) $('modal').classList.remove('on');
+    if($('modal').classList.contains('on')){ $('modal').classList.remove('on'); cfgKeyTouched=false; $('cfg-key').value=''; } // qa返工(P2-2): 关闭即弃半截 Key，不带入下一档案
     else if($('manage-modal').classList.contains('on')){ $('manage-modal').classList.remove('on'); clearTimeout(mcpPollTimer); }
     else if($('skills-modal').classList.contains('on')) $('skills-modal').classList.remove('on');
   }
@@ -1338,7 +1338,7 @@ async function loadMemUI(){
 }
 $('mem-q').oninput=()=>{ memShown=MEM_PAGE; memPaint(); };
 
-$('modal').onclick=e=>{ if(e.target.id==='modal') $('modal').classList.remove('on'); };
+$('modal').onclick=e=>{ if(e.target.id==='modal'){ $('modal').classList.remove('on'); cfgKeyTouched=false; $('cfg-key').value=''; } }; // qa返工(P2-2): 背景点击同弃半截 Key
 
 // s50b: 管理面板「库里的数据」小节——首次切到「数据」标签时拉取
 // s51: 点表名就地展开列清单——人话类型+样例值（表名/列名保留原文，@ 引用靠原名）

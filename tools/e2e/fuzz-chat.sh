@@ -91,6 +91,22 @@ assert mcp and all(x['builtin'] is False and x['visible'] is True for x in mcp),
 assert any(x['id']=='mcp-fetch' for x in mcp), mcp
 "; ck "extensions dynamic mcp merged (s57)" $?
 curl -s -X POST "$B/api/extensions" -H 'content-type: application/json' -d '{"id":"mcp-ghost-zzz","enabled":false}' | grep -q '参数不合法'; ck "extensions dynamic id whitelist enforced" $?
+# qa返工(P3-3): 回归钉——disable 已装 MCP → GET 显 false → 按原值还原（动态白名单+GET 合并读路径；端态还原零残留）
+EN0=$(curl -s "$B/api/extensions" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+r=[x for x in d if x['id']=='mcp-fetch']
+assert r, d
+print('true' if r[0]['enabled'] else 'false')
+")
+curl -s -X POST "$B/api/extensions" -H 'content-type: application/json' -d '{"id":"mcp-fetch","enabled":false}' | grep -q '"ok":true'; ck "extensions disable installed mcp ok (P3-3 nail)" $?
+curl -s "$B/api/extensions" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+r=[x for x in d if x['id']=='mcp-fetch']
+assert r and r[0]['enabled'] is False, d
+"; ck "extensions GET shows false after disable (P3-3 nail)" $?
+curl -s -X POST "$B/api/extensions" -H 'content-type: application/json' -d "{\"id\":\"mcp-fetch\",\"enabled\":$EN0}" | grep -q '"ok":true'; ck "extensions mcp enabled-state restored (P3-3 nail)" $?
 # s70 切片A: 技能来源标记与同名冲突保护——临时技能目录即建即删（trap 兜底；全部断言走冲突拒绝分支，零安装副作用）
 FR="${FORGE_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)/forge}"
 command -v cygpath >/dev/null 2>&1 && FR="$(cygpath -u "$FR" 2>/dev/null || echo "$FR")"

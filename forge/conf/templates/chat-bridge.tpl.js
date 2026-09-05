@@ -465,7 +465,9 @@ function readSkillSources() {
         && typeof s.branch === 'string' && /^[\w.\-/]+$/.test(s.branch)
         && (s.subdir === undefined || subdirSafe(s.subdir));
     const valid = j.sources.filter(okSrc);
-    if (!valid.length) { warnOnce('skill-sources.json 没有有效源（条目缺 repo/branch），已回落内置默认源'); return dft(); }
+    if (!valid.length) { warnOnce('skill-sources.json 没有有效源（条目缺 repo/branch 或 subdir 非法），已回落内置默认源'); return dft(); }
+    // qa返工(P3-3): 解析成功先清旧配置类警告（文件修复后同进程自愈）；部分无效时下方跳过警告会重新入列
+    for (let i = stateWarnings.length - 1; i >= 0; i--) if (stateWarnings[i].indexOf('skill-sources.json') === 0) stateWarnings.splice(i, 1);
     if (valid.length < j.sources.length) warnOnce('skill-sources.json 跳过 ' + (j.sources.length - valid.length) + ' 条无效源');
     return valid.map(s => ({ repo: s.repo, branch: s.branch, subdir: s.subdir || REMOTE_SKILLS.subdir, enabled: s.enabled !== false }));
 }
@@ -503,29 +505,6 @@ function parseSkillMeta(raw, fallbackName) {
         description: desc || '(无说明)',
         body: raw.length > 4000 ? raw.slice(0, 4000) : raw,
     };
-}
-async function listRemoteSkills(installedSet, res) {
-    try {
-        const listing = await ghJson('https://api.github.com/repos/' + REMOTE_SKILLS.repo + '/contents/' + REMOTE_SKILLS.subdir + '?ref=' + REMOTE_SKILLS.branch);
-        if (!Array.isArray(listing)) throw new Error('技能源不可达');
-        const dirs = listing.filter(e => e.type === 'dir').map(e => e.name);
-        const out = [];
-        let done = 0;
-        const emit = () => {
-            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify(out));
-        };
-        if (!dirs.length) { emit(); return; }
-        for (const d of dirs) {
-            let meta = { name: d, description: '(远程技能)', body: '' };
-            try { meta = parseSkillMeta(await ghText('https://raw.githubusercontent.com/' + REMOTE_SKILLS.repo + '/' + REMOTE_SKILLS.branch + '/' + REMOTE_SKILLS.subdir + '/' + d + '/SKILL.md'), d); } catch {}
-            out.push({ ...meta, dir: d, installed: installedSet.has(d), remote: true });
-            if (++done === dirs.length) emit();
-        }
-    } catch (e) {
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: false, err: '技能源拉取失败: ' + e.message }));
-    }
 }
 // s56: 技能市场缓存优先管道：sync（拉源→写缓存→异步补中文）→ GET 秒回缓存 → 安装/预览走本地缓存
 const SKILL_CACHE = path.join(ROOT, 'data', 'cache', 'skills');
@@ -733,7 +712,7 @@ async function installRemoteSkill(dirName, res) {
         for (const it of items) {
             // qa-P2: 上游文件/子目录名过同一白名单（递归写盘面与用户输入同门）
             if (!/^[\w\-\.]{1,64}$/.test(it.name) || !fileNameSafe(it.name)) continue;
-            const rel = subdir + '/' + relPath === '' ? it.name : relPath + '/' + it.name;
+            const rel = relPath ? relPath + '/' + it.name : it.name; // qa返工(P3-2): 原式 subdir+'/'+relPath==='' 恒假（优先级），根目录文件曾拼出 subdir/ 前缀
             if (it.type === 'dir') {
                 await walkApi(rel, path.join(destDir, it.name));
             } else {
@@ -771,22 +750,26 @@ function readMcpCatalog() {
     // 首启不存在→由内置默认生成；坏 JSON/缺 _schema/缺字段/条目非法/id 重复→warn 回落内置默认（不炸、不改写用户文件）
     // id/pkg/entry 白名单同门：id 进扩展 id+vendor 目录+YAML 键，entry 进 config.yaml 单引号串（禁引号/反斜杠），pkg 进 npm 参数
     const dft = () => MCP_CATALOG.map(x => ({ ...x }));
-    const okItem = m => m && typeof m.id === 'string' && /^[\w\-]{1,64}$/.test(m.id)
+    // qa返工(P3-4): id/pkg/entry 首字符禁 '-'（npm 参数/正则形态防混淆）
+    const okItem = m => m && typeof m.id === 'string' && m.id[0] !== '-' && /^[\w\-]{1,64}$/.test(m.id)
         && ['name', 'desc', 'license'].every(k => typeof m[k] === 'string' && m[k])
-        && typeof m.pkg === 'string' && /^[@\w.\-/]+$/.test(m.pkg)
-        && typeof m.entry === 'string' && /^[@\w.\-/]+$/.test(m.entry); // @ 容 @scope 包路径（同 pkg）
+        && typeof m.pkg === 'string' && m.pkg[0] !== '-' && /^[@\w.\-/]+$/.test(m.pkg)
+        && typeof m.entry === 'string' && m.entry[0] !== '-' && /^[@\w.\-/]+$/.test(m.entry); // @ 容 @scope 包路径（同 pkg）
     if (!FSS.existsSync(MCP_CATALOG_FILE)) {
         try { FSS.mkdirSync(path.dirname(MCP_CATALOG_FILE), { recursive: true }); atomicWrite(MCP_CATALOG_FILE, JSON.stringify({ _schema: 1, catalog: dft() }, null, 2)); } catch {}
         return dft();
     }
     const j = readJson(MCP_CATALOG_FILE, null);
     if (j && j._schema === 1 && Array.isArray(j.catalog) && j.catalog.length && j.catalog.every(okItem)
-        && new Set(j.catalog.map(x => x.id)).size === j.catalog.length) return j.catalog;
+        && new Set(j.catalog.map(x => x.id)).size === j.catalog.length) {
+        for (let i = stateWarnings.length - 1; i >= 0; i--) if (stateWarnings[i].indexOf('mcp-catalog.json') === 0) stateWarnings.splice(i, 1); // qa返工(P3-3): 解析成功清旧警告
+        return j.catalog;
+    }
     const warnOnce = msg => { if (!stateWarnings.includes(msg)) stateWarnings.push(msg); console.warn(msg); };
     warnOnce('mcp-catalog.json 无法解析（应为 _schema:1 + catalog 数组且条目字段齐全），已回落内置 MCP 目录');
     return dft();
 }
-const mcpInstallState = {}; // id -> {stage:'installing'|'done'|'error', msg}
+const mcpInstallState = Object.create(null); // qa返工(P3-4): 无原型——id 含 __proto__/constructor 等时写状态不落原型链
 function mcpExtensionId(id) { return 'mcp-' + id; }
 function mcpInstalled(id) {
     try {
@@ -1083,7 +1066,7 @@ function reportMcpList() {
     const ks = Object.keys(st).filter(k => k.indexOf('mcp-') === 0);
     if (!ks.length) return '无';
     return ks.map(k => {
-        const c = MCP_CATALOG.find(m => mcpExtensionId(m.id) === k);
+        const c = readMcpCatalog().find(m => mcpExtensionId(m.id) === k); // qa返工(P2-1): 目录随配置（配置删条目后报告回落显示扩展 id）
         return (c ? c.name : k) + '（' + (st[k] ? '开' : '停用') + '）';
     }).join('｜');
 }
@@ -1695,7 +1678,8 @@ const ext = path.extname(f).toLowerCase();
                 // s57: op=uninstall 删 config.yaml 块 + vendor 目录（停用走 /api/extensions，这里是删）
                 if (op === 'uninstall') {
                     if ((mcpInstallState[id] || {}).stage === 'installing') { res.end(JSON.stringify({ ok: false, err: '正在安装，等装完再卸' })); return; }
-                    if (!item || !mcpInstalled(id)) { res.end(JSON.stringify({ ok: false, err: '没有安装这个 MCP，不用卸载' })); return; }
+                    // qa返工(P2-1): 只以 config.yaml 实存块判定「已装」——目录删条目后已装项不成孤儿（item 不参与卸载，vendor 目录名由 id 派生）
+                    if (!mcpInstalled(id)) { res.end(JSON.stringify({ ok: false, err: '没有安装这个 MCP，不用卸载' })); return; }
                     try {
                         mcpRemoveExtension(id);
                         delete mcpInstallState[id];
@@ -1827,7 +1811,8 @@ const ext = path.extname(f).toLowerCase();
                 builtin: !(k in st),
             }));
             // s57: 已装 MCP 动态并入（能力开关面板盲区修复）——mcpEnabled 返回 true 时算「开着」
-            for (const m of MCP_CATALOG) {
+            // qa返工(P2-1): 目录读配置（readMcpCatalog），增删条目零重启生效
+            for (const m of readMcpCatalog()) {
                 if (!mcpInstalled(m.id)) continue;
                 rows.push({ id: mcpExtensionId(m.id), name: m.name, desc: m.desc, enabled: mcpEnabled(m.id), visible: true, builtin: false });
             }
@@ -1841,7 +1826,9 @@ const ext = path.extname(f).toLowerCase();
                 try {
                     const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
                     // s57: id 合法面 = 内置 LABELS ∪ 已装 MCP（mcp-*）；enabled 行级替换两态同门
-                    const dyn = MCP_CATALOG.some(m => mcpInstalled(m.id) && mcpExtensionId(m.id) === b.id);
+                    // qa返工(P2-1): 目录删条目后已装项仍可停用——id 以 mcp- 开头且 config.yaml 实存同名块也放行
+                    const dyn = readMcpCatalog().some(m => mcpInstalled(m.id) && mcpExtensionId(m.id) === b.id)
+                        || (typeof b.id === 'string' && /^mcp-[\w\-]{1,64}$/.test(b.id) && readExtState()[b.id] !== undefined);
                     if (!(b.id in LABELS) && !dyn) throw new Error('参数不合法');
                     if (typeof b.enabled !== 'boolean') throw new Error('参数不合法');
                     let raw = FSS.readFileSync(CFG, 'utf8');
