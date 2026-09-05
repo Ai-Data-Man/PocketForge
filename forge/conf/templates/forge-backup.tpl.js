@@ -35,7 +35,9 @@ if (pgPort && fs.existsSync(pgDumpExe)) {
 } else {
     console.warn('pg_dump skipped: PG not present (no bin/pg or data/pg.port)');
 }
-if (fs.existsSync(dumpsDir)) SOURCES.push('data/pg-dumps');
+// 空 pg-dumps（首启 pg_dump 拒连 warn 后）不得入 SOURCES：PS5.1 Compress-Archive -Update
+// 追加空目录会 exit 0 且删掉已生成 zip（s66 沙盒冷启实测，后续 statSync 必 ENOENT）。
+if (fs.existsSync(dumpsDir) && fs.readdirSync(dumpsDir).some(f => /^pg-.*\.sql$/.test(f))) SOURCES.push(dumpsDir.replace(/\\/g, '/'));
 
 if (SOURCES.length === 0) { console.log('nothing to back up'); process.exit(0); }
 
