@@ -7,10 +7,12 @@ const key = crypto.randomBytes(16).toString('base64');
 const req = http.request({ host: '127.0.0.1', port: PORT, path: '/ws', headers: {
     Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Key': key, 'Sec-WebSocket-Version': '13',
     Origin: 'http://127.0.0.1:' + PORT } });
-req.end();
-const t0 = Date.now();
-const timer = setTimeout(() => { console.log('PROBE-B: FAIL - timeout'); process.exit(1); }, 20000);
-let gotDeletedAt = null, closedAt = null, sid = null;
+// req.end() 推迟到 ACP 就绪门通过后（research/15）；req 对象创建惰性，不 end 不落网
+(async () => {
+    await awaitAcpReady();   // research/15 就绪门：healthz 200 ≠ ACP 就绪，先等 hello.caps.modes 再放行探针
+    const t0 = Date.now();
+    const timer = setTimeout(() => { console.log('PROBE-B: FAIL - timeout'); process.exit(1); }, 20000);
+    let gotDeletedAt = null, closedAt = null, sid = null;
 req.on('upgrade', (res, socket) => {
     socket.write(frame({ type: 'subscribe', sessionId: null }));
     let buf = Buffer.alloc(0);
@@ -46,6 +48,57 @@ req.on('upgrade', (res, socket) => {
     socket.on('error', e => { console.log('PROBE-B: socket error:', e.message); });
 });
 req.on('error', e => { clearTimeout(timer); console.log('PROBE-B: FAIL -', e.message); process.exit(1); });
+req.end();
+})();
+// research/15 就绪门（同 ws-fuzz-s50h.js）：连 WS 只读 hello 帧，caps.modes 在（桥 acpCaps 信号）才放行；
+// 未就绪/连接拒 500ms 起步 ×2 退避重连，deadline 45s 超门人话失败退出。
+async function awaitAcpReady() {
+    const t0 = Date.now();
+    for (let delay = 500; ;) {
+        const left = 45000 - (Date.now() - t0);
+        if (left <= 0) { console.error('PROBE-B: FAIL - 桥 ACP 45s 未就绪（hello 无 caps.modes）'); process.exit(1); }
+        if (await readHelloOnce(left < 5000 ? left : 5000)) return;
+        console.error('[gate] ACP 未就绪/连接拒，' + delay + 'ms 后重连');
+        await new Promise(r => setTimeout(r, delay));
+        delay *= 2;
+    }
+}
+function readHelloOnce(timeoutMs) {
+    return new Promise((resolve) => {
+        const key = crypto.randomBytes(16).toString('base64');
+        const req = http.request({ host: '127.0.0.1', port: PORT, path: '/ws', headers: {
+            Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Key': key, 'Sec-WebSocket-Version': '13',
+            Origin: 'http://127.0.0.1:' + PORT } });
+        let buf = Buffer.alloc(0), settled = false, sock = null;
+        function finish(v) {
+            if (settled) return; settled = true; clearTimeout(timer);
+            try { if (sock) sock.destroy(); } catch {}   // upgrade 后 socket 脱离 req 托管，必须显式销毁否则进程挂住
+            try { req.destroy(); } catch {}
+            resolve(v);
+        }
+        const timer = setTimeout(() => finish(false), timeoutMs);
+        req.on('upgrade', (res, socket) => {
+            sock = socket;
+            socket.on('data', d => {
+                buf = Buffer.concat([buf, d]);
+                while (buf.length >= 2) {
+                    const op = buf[0] & 0x0f;
+                    let len = buf[1] & 0x7f, off = 2;
+                    if (len === 126) { if (buf.length < 4) return; len = buf.readUInt16BE(2); off = 4; }
+                    if (buf.length < off + len) return;
+                    const payload = buf.slice(off, off + len); buf = buf.slice(off + len);
+                    if (op !== 0x1) continue;
+                    let msg; try { msg = JSON.parse(payload.toString('utf8')); } catch { continue; }
+                    if (msg.sys === 'hello') { finish(!!(msg.caps && msg.caps.modes)); return; }
+                }
+            });
+            socket.on('error', () => finish(false));
+            socket.on('close', () => finish(false));
+        });
+        req.on('error', () => finish(false));
+        req.end();
+    });
+}
 function frame(obj) {
     const payload = Buffer.from(JSON.stringify(obj), 'utf8'), mask = crypto.randomBytes(4);
     const masked = Buffer.from(payload.map((b, i) => b ^ mask[i % 4]));

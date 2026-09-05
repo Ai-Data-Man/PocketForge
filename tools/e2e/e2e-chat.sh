@@ -9,6 +9,7 @@ FORGE="$ROOT/forge"
 PASS=0; FAIL=0
 ck(){ if [ "$2" = "0" ]; then echo "PASS: $1"; PASS=$((PASS+1)); else echo "FAIL: $1"; FAIL=$((FAIL+1)); fi }
 B=http://127.0.0.1:8790
+# healthz=HTTP 层就绪；ACP 就绪由探针侧 hello.caps.modes 就绪门保证（research/15，见 ws-delete-receipt.js）
 curl -s --max-time 3 "$B/healthz" | grep -q ok; ck "bridge up" $?
 
 SID="e2e-chat-$(date +%s)"
