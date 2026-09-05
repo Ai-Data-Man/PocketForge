@@ -5,6 +5,12 @@
 - Windows/便携性：zonky 渠道（EDB 官方 zip 的最小子集，repack 脚本实证仅 `share`+`lib/*.dll`+bin 下 initdb/pg_ctl/postgres 三 exe）解压态 **125MB（2026-09-05 勘误：zonky 17.11.0 jar 解包实测；原记 104MB 系 npm 18.x beta registry 元数据口径，偏小）**；EDB 官方 zip 压缩态 307-319MB（本机 HEAD 实测 17.5/16.9/18.0）。`initdb -D`+`postgres -D -p`+pg_ctl 全程无注册表/服务注册（官方文档），删目录即卸载——硬约束 1/2/4 形态兼容。
 - 版本与活跃度：PG 17.x/18.x 稳定线；zonky/npm 渠道跟随上游。**2026-09-05 勘误补事实：npm 渠道（@embedded-postgres/*）所有版本线均为 beta、无一条稳定版**——把 beta 标签制品 pin 进交付树违背 pinned-stable 纪律，此为 ADR-0011 选 zonky 的决定性理由。
 - 验证状态：许可证与官方文档 VERIFIED-DOC(2026-09-04)；EDB zip 体积 VERIFIED-RUN(2026-09-04, curl -sI HEAD)；zonky 打包内容 VERIFIED-RUN(2026-09-05, jar 解包 3 exe+dll+share)；node 客户端（pg 8.23.0 MIT ~98KB / postgres.js 3.4.9 Unlicense ~293KB，均纯 JS 零编译）VERIFIED-DOC(registry 元数据)。**阶段一实测清账（2026-09-05，s66）**：initdb 耗时 dev 机实测 7.2s（手工口径）/12.6s（pc 编排冷启口径，含 pc 起服）；PG 空闲内存 postmaster 工作集 18.9MB、全进程树 6 进程合计约 76MB；沙盒全流程实测见 s66 交付。**UNVERIFIED 留真机 POC**：企业 EDR 对用户目录 postgres.exe 的态度。
+## s66 补充取证（2026-09-05，pg_dump 来源，VERIFIED-RUN）
+- **zonky 渠道确认无 pg_dump**（maven 组目录全扫 22 制品，windows 线无 -lite/-extracted 变体）；**EDB 官方 zip 17.11-1 = zonky windows jar 的正源**（8 个闭包 DLL 与 initdb.exe sha256 逐一字节一致，整文件级实证）。zip sha256=6eabdf00…（341MB，开发机下载面；解压树留 downloads/edb-pg-17.11-1/）。
+- pg_dump 依赖闭包 8 DLL 全部已在树内且哈希一致 → **交付树增量 = pg_dump.exe 单文件 0.59MB**；不新增运行库要求（VCRUNTIME140 与 postgres.exe 同级，目标机存在性并入真机 POC 清账）。
+- 裸目录最小集（exe+8DLL）对本机运行中 PG 17.11.0 dump 空集群实测通过（exit 0，17.11=17.11 同版本合规）。排除路线：npm 全 beta、MSYS2 无 17.11 且不同源、Chocolatey=EDB installer 包装（禁 installer）、pgAdmin 无 portable。pg_restore/psql 闭包同级（+1.55MB，阶段二备份面再议）。
+- pin 注意：EDB URL 有 -1/-2 rebuild，pin -1（与 zonky 同源）；PG 大版本升级时 pg_dump 须同步换版并重做哈希护栏。
+
 - 对本项目的关键事实/风险：
   1. **许可证是硬门槛不是技术门槛**：引入必须先扩白名单（建议表述："OSI 认证宽松许可等价类：PostgreSQL License、ISC"），扩列属硬约束变更，待用户确认后落 ADR。
   2. **Windows 三坑**：postgres.exe 在管理员令牌下拒绝启动（社区多源交叉证实）——启动链必须非提权，目标机用户天然无管理员权限是利好，残余风险=用户右键"以管理员身份运行"；中文 Windows initdb 必须显式 `-E UTF8 --locale=C`（C locale 默认编码是 SQL_ASCII 不是 UTF8）；多进程模型（postmaster+每连接 backend）比 SQLite 多崩溃清理/孤儿进程一层运维面，process-compose 托管可行。
