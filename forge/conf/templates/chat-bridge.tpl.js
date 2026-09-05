@@ -157,13 +157,18 @@ const STATE_SCHEMAS = {
     'workspace-map.json': { latest: 1, steps: {} },
     'session-archive.json': { latest: 1, steps: {} },
     '.forge': { latest: 1, steps: {} },
-    'cache/skills/manifest.json': { latest: 1, steps: {} }, // s56: 技能市场缓存（path.join 与正斜杠键在 Windows 等价，已验）
+    // s70 切片B: manifest v2 = 条目补 source{repo,branch}（存量默认 anthropics/skills；步骤内用字面量——迁移 IIFE 跑在下方 REMOTE_SKILLS 初始化之前，引用常量会 TDZ）
+    'cache/skills/manifest.json': {
+        latest: 2,
+        steps: { 2: m => { if (m && Array.isArray(m.skills)) for (const s of m.skills) if (s && !s.source) s.source = { repo: 'anthropics/skills', branch: 'main' }; return m; } },
+    },
     'skills/origin.json': { latest: 1, steps: {} }, // s70 切片A: 技能来源标记（.agents/skills/<dir>/origin.json，下方随 .forge 先例逐目录迁移）
+    'config/skill-sources.json': { latest: 1, steps: {} }, // s70 切片B: 技能市场源配置（缺失时由 readSkillSources 首启生成内置默认）
 };
 function migrateJsonAt(f, key) {
     const meta = STATE_SCHEMAS[key];
     if (!meta) return;
-    const j = readJson(f, undefined); if (j === undefined) return;
+    let j = readJson(f, undefined); if (j === undefined) return; // let: 迁移步骤返回新对象需重绑（s70 切片B 首个实步骤函数实锤，const 为潜伏缺陷）
     let v = (typeof j._schema === 'number') ? j._schema : 0;
     if (v > meta.latest) { stateWarnings.push(key + ' 由更新版本创建(schema ' + v + ' > ' + meta.latest + ')，已保持原样'); return; }
     if (v === meta.latest) return;
@@ -434,7 +439,29 @@ function cmpVer(a, b) {
     return 0;
 }
 // s45: 远程技能源——anthropics/skills（开源样例库，agentskills.io 同规范）
+// s70 切片B（裁决 S2）: 源配置化——本常量降级为内置默认；加源=编辑 data/config/skill-sources.json（源管理无 UI，裁决否决项4）
 const REMOTE_SKILLS = { repo: 'anthropics/skills', branch: 'main', subdir: 'skills' };
+const SKILL_SOURCES_FILE = path.join(ROOT, 'data', 'config', 'skill-sources.json');
+function readSkillSources() {
+    // 首启不存在→生成内置默认；坏 JSON/无有效条目→warn 回落内置默认（不炸、不改写用户文件）；enabled 缺省视为 true
+    const dft = () => [{ repo: REMOTE_SKILLS.repo, branch: REMOTE_SKILLS.branch, subdir: REMOTE_SKILLS.subdir, enabled: true }];
+    const warnOnce = msg => { if (!stateWarnings.includes(msg)) stateWarnings.push(msg); console.warn(msg); };
+    let raw = null;
+    try { raw = FSS.readFileSync(SKILL_SOURCES_FILE, 'utf8'); } catch {
+        try { FSS.mkdirSync(path.dirname(SKILL_SOURCES_FILE), { recursive: true }); atomicWrite(SKILL_SOURCES_FILE, JSON.stringify({ _schema: 1, sources: dft() }, null, 2)); } catch {}
+        return dft();
+    }
+    let j = null; try { j = JSON.parse(raw.replace(/^\uFEFF/, '')); } catch {}
+    if (!j || j._schema !== 1 || !Array.isArray(j.sources)) { warnOnce('skill-sources.json 无法解析（应为 _schema:1 + sources 数组），已回落内置默认源'); return dft(); }
+    // repo=owner/repo 形、branch/subdir 无 URL 元字符——源串拼进 GitHub URL，与目录名白名单同门
+    const okSrc = s => s && typeof s.repo === 'string' && /^[\w.\-]+\/[\w.\-]+$/.test(s.repo)
+        && typeof s.branch === 'string' && /^[\w.\-/]+$/.test(s.branch)
+        && (s.subdir === undefined || (typeof s.subdir === 'string' && /^[\w.\-/]*$/.test(s.subdir)));
+    const valid = j.sources.filter(okSrc);
+    if (!valid.length) { warnOnce('skill-sources.json 没有有效源（条目缺 repo/branch），已回落内置默认源'); return dft(); }
+    if (valid.length < j.sources.length) warnOnce('skill-sources.json 跳过 ' + (j.sources.length - valid.length) + ' 条无效源');
+    return valid.map(s => ({ repo: s.repo, branch: s.branch, subdir: s.subdir || REMOTE_SKILLS.subdir, enabled: s.enabled !== false }));
+}
 function ghFetch(p) {
     // GitHub API/raw 统一走代理（现场代理 127.0.0.1:7890；可用 data/proxy.env 覆盖）
     let proxy = 'http://127.0.0.1:7890';
@@ -499,20 +526,24 @@ function readSkillManifest() { return readJson(path.join(SKILL_CACHE, 'manifest.
 function writeSkillManifest(m) { FSS.mkdirSync(SKILL_CACHE, { recursive: true }); atomicWrite(path.join(SKILL_CACHE, 'manifest.json'), JSON.stringify(m, null, 2)); }
 let skillSyncBusy = false; // 后台重拉/翻译防抖标志
 async function fetchAllRemoteSkills() {
-    // 拉源：目录列表 + 逐技能 SKILL.md（body 落盘，不进 manifest）
-    const listing = await ghJson('https://api.github.com/repos/' + REMOTE_SKILLS.repo + '/contents/' + REMOTE_SKILLS.subdir + '?ref=' + REMOTE_SKILLS.branch);
-    if (!Array.isArray(listing)) throw new Error('技能源不可达');
+    // s70 切片B: 遍历 enabled 源合并清单（源顺序=配置顺序）；同名 dir 先到保留、后到跳过（留痕一行）
+    // 条目带 source{repo,branch}（源身份，切片A origin.json 同构）；某源不可达即整轮失败→保留旧缓存（出网失败路径）
     const skills = [];
-    for (const e of listing.filter(x => x.type === 'dir')) {
-        // qa-P2: 上游 GitHub 返回的目录名与用户输入同门——白名单外跳过（防源被攻破写出缓存树之外）
-        if (!/^[\w\-]{1,64}$/.test(e.name) || !fileNameSafe(e.name)) continue;
-        let meta = { name: e.name, description: '(远程技能)' };
-        try { meta = parseSkillMeta(await ghText('https://raw.githubusercontent.com/' + REMOTE_SKILLS.repo + '/' + REMOTE_SKILLS.branch + '/' + REMOTE_SKILLS.subdir + '/' + e.name + '/SKILL.md'), e.name); } catch {}
-        const body = meta.body; delete meta.body;
-        const ddir = path.join(SKILL_CACHE, e.name);
-        FSS.mkdirSync(ddir, { recursive: true });
-        atomicWrite(path.join(ddir, 'SKILL.md'), body);
-        skills.push({ dir: e.name, name: meta.name, description: meta.description, desc_zh: null });
+    for (const src of readSkillSources().filter(s => s.enabled)) {
+        const listing = await ghJson('https://api.github.com/repos/' + src.repo + '/contents/' + src.subdir + '?ref=' + src.branch);
+        if (!Array.isArray(listing)) throw new Error('技能源不可达: ' + src.repo);
+        for (const e of listing.filter(x => x.type === 'dir')) {
+            // qa-P2: 上游 GitHub 返回的目录名与用户输入同门——白名单外跳过（防源被攻破写出缓存树之外）
+            if (!/^[\w\-]{1,64}$/.test(e.name) || !fileNameSafe(e.name)) continue;
+            if (skills.some(s => s.dir === e.name)) { console.log('skill source dup skip:', e.name, '(先到保留, 后到源 ' + src.repo + ')'); continue; }
+            let meta = { name: e.name, description: '(远程技能)' };
+            try { meta = parseSkillMeta(await ghText('https://raw.githubusercontent.com/' + src.repo + '/' + src.branch + '/' + src.subdir + '/' + e.name + '/SKILL.md'), e.name); } catch {}
+            const body = meta.body; delete meta.body;
+            const ddir = path.join(SKILL_CACHE, e.name);
+            FSS.mkdirSync(ddir, { recursive: true });
+            atomicWrite(path.join(ddir, 'SKILL.md'), body);
+            skills.push({ dir: e.name, name: meta.name, description: meta.description, desc_zh: null, source: { repo: src.repo, branch: src.branch } });
+        }
     }
     return skills;
 }
@@ -523,7 +554,7 @@ function mergeSkillManifest(oldM, skills) {
         const o = prev.get(s.dir);
         if (o) { s.desc_zh = o.desc_zh !== undefined ? o.desc_zh : null; if (!s.description || s.description === '(无说明)') s.description = o.description; }
     }
-    return { _schema: 1, fetched_at: new Date().toISOString(), translating: false, skills };
+    return { _schema: 2, fetched_at: new Date().toISOString(), translating: false, skills };
 }
 async function translateSkillManifest(manifest) {
     // 异步惰性中文补齐：≤30 条/请求，一次批量直调；失败不重试不阻塞（下次 sync 再补）
@@ -640,6 +671,10 @@ async function installRemoteSkill(dirName, res) {
         res.end(JSON.stringify({ ok: false, err: blocked }));
         return;
     }
+    // s70 切片B: 安装来源随 manifest 条目 source（缓存树不带标记）；条目缺失回落内置默认
+    const m = readSkillManifest();
+    const ent = m && Array.isArray(m.skills) ? m.skills.find(s => s.dir === dirName) : null;
+    const src = (ent && ent.source && typeof ent.source.repo === 'string' && typeof ent.source.branch === 'string') ? { repo: ent.source.repo, branch: ent.source.branch } : REMOTE_SKILLS;
     const finish = () => {
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: true }));
@@ -648,7 +683,7 @@ async function installRemoteSkill(dirName, res) {
     try {
         if (FSS.existsSync(path.join(SKILL_CACHE, dirName, 'SKILL.md'))) {
             FSS.cpSync(path.join(SKILL_CACHE, dirName), dst, { recursive: true });
-            writeSkillOrigin(dst, 'market', REMOTE_SKILLS.repo, REMOTE_SKILLS.branch);
+            writeSkillOrigin(dst, 'market', src.repo, src.branch);
             finish();
             return;
         }
@@ -659,18 +694,20 @@ async function installRemoteSkill(dirName, res) {
         return;
     }
     // 缓存缺该目录：递归拉取 skills/<dir> 全部文件（GitHub contents API；子目录递归），拉完写缓存
+    // subdir 取自当前配置里该源的值（manifest source 只存 {repo,branch} 身份）；配置已改找不到→内置默认
+    const subdir = (readSkillSources().filter(s => s.enabled).find(s => s.repo === src.repo && s.branch === src.branch) || REMOTE_SKILLS).subdir;
     async function walkApi(relPath, destDir) {
-        const items = await ghJson('https://api.github.com/repos/' + REMOTE_SKILLS.repo + '/contents/' + REMOTE_SKILLS.subdir + '/' + relPath + '?ref=' + REMOTE_SKILLS.branch);
+        const items = await ghJson('https://api.github.com/repos/' + src.repo + '/contents/' + subdir + '/' + relPath + '?ref=' + src.branch);
         if (!Array.isArray(items)) throw new Error('技能目录拉取失败: ' + relPath);
         for (const it of items) {
             // qa-P2: 上游文件/子目录名过同一白名单（递归写盘面与用户输入同门）
             if (!/^[\w\-\.]{1,64}$/.test(it.name) || !fileNameSafe(it.name)) continue;
-            const rel = REMOTE_SKILLS.subdir + '/' + relPath === '' ? it.name : relPath + '/' + it.name;
+            const rel = subdir + '/' + relPath === '' ? it.name : relPath + '/' + it.name;
             if (it.type === 'dir') {
                 await walkApi(rel, path.join(destDir, it.name));
             } else {
                 FSS.mkdirSync(destDir, { recursive: true });
-                FSS.writeFileSync(path.join(destDir, it.name), await ghFetch(it.download_url || ('https://raw.githubusercontent.com/' + REMOTE_SKILLS.repo + '/' + REMOTE_SKILLS.branch + '/' + REMOTE_SKILLS.subdir + '/' + rel)));
+                FSS.writeFileSync(path.join(destDir, it.name), await ghFetch(it.download_url || ('https://raw.githubusercontent.com/' + src.repo + '/' + src.branch + '/' + subdir + '/' + rel)));
             }
         }
     }
@@ -680,7 +717,7 @@ async function installRemoteSkill(dirName, res) {
         try { FSS.rmSync(path.join(dst, 'origin.json'), { force: true }); } catch {}
         // 顺手把整个技能目录写进缓存（安装路径与缓存路径同构，纯复制即可）
         try { FSS.cpSync(dst, path.join(SKILL_CACHE, dirName), { recursive: true }); } catch {}
-        writeSkillOrigin(dst, 'market', REMOTE_SKILLS.repo, REMOTE_SKILLS.branch);
+        writeSkillOrigin(dst, 'market', src.repo, src.branch);
         finish();
     } catch (e) {
         // 失败清理半成品目录

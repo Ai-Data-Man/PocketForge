@@ -114,6 +114,16 @@ assert t and t[0].get('origin') is None, t
 "; ck "api/skills exposes origin field, broken origin.json tolerated (s70)" $?
 rm -rf "$STMP"; trap - EXIT
 [ ! -d "$STMP" ]; ck "s70 fuzz temp skill cleaned up" $?
+# s70 切片B: 技能市场源配置化——沙盒自拉桥探针（明细随本日志留痕）
+node "$(dirname "$0")/skill-sources-probe.js" a; ck "s70 slice-B manifest source migration probe (3 asserts)" $?
+node "$(dirname "$0")/skill-sources-probe.js" b; ck "s70 slice-B skill-sources config probe (6 asserts)" $?
+# s70 切片B: dev 桥在线断言——远程清单条目均带 source（缓存秒回，零副作用）
+curl -s "$B/api/skillstore?remote=1" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+assert d.get('ok') is True and d.get('skills'), d.keys()
+assert all(isinstance(s.get('source'),dict) and s['source'].get('repo') and s['source'].get('branch') for s in d['skills']), d['skills'][:2]
+"; ck "skillstore remote entries carry source (s70-B)" $?
 # S1: /api/report 门禁矩阵——POST/HEAD 405；GET 走端点级 Origin 门（不豁免 GET）+ 自定义头 X-PF-Report: 1（img/no-cors 发不出）
 [ "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/report")" = "405" ]; ck "report POST refused 405" $?
 [ "$(curl -s -o /dev/null -w '%{http_code}' -I "$B/api/report")" = "405" ]; ck "report HEAD refused 405" $?
