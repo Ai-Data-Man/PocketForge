@@ -38,6 +38,22 @@ rm -rf "$DL/pg-tmp"
 n=$(find "$BIN/pg/bin" -name '*.exe' | wc -l)
 [ "$n" = "3" ] || { echo "FATAL: bin/pg/bin 应恰 3 个 exe(initdb/pg_ctl/postgres)，实得 $n（渠道污染）"; exit 1; }
 
+# pg_dump (s66 阶段二/ADR-0011: zonky 渠道无 pg_dump；EDB zip 17.11-1 = zonky 正源，research/10。
+# pin -1 rebuild；PG 大版本升级时本步与哈希护栏须同步重做)
+dl https://get.enterprisedb.com/postgresql/postgresql-17.11-1-windows-x64-binaries.zip "$DL/edb-pg-17.11-1-windows-x64-binaries.zip"
+echo "6eabdf00d2893713b75db4336a23c3fdf505f056e217ec6e2e95d901750cfea3  $DL/edb-pg-17.11-1-windows-x64-binaries.zip" | sha256sum -c -
+mkdir -p "$DL/edb-pg-17.11-1"
+unzip -oq "$DL/edb-pg-17.11-1-windows-x64-binaries.zip" "pgsql/bin/pg_dump.exe" -d "$DL/edb-pg-17.11-1"
+cp "$DL/edb-pg-17.11-1/pgsql/bin/pg_dump.exe" "$BIN/pg/bin/pg_dump.exe"
+# 同源断言：pg_dump 依赖闭包 8 DLL，zip 内与树内（zonky 抽取结果）逐一哈希一致
+for dll in libcrypto-3-x64.dll libiconv-2.dll libintl-9.dll liblz4.dll libpq.dll libssl-3-x64.dll libwinpthread-1.dll libzstd.dll; do
+  z="$(unzip -p "$DL/edb-pg-17.11-1-windows-x64-binaries.zip" "pgsql/bin/$dll" | sha256sum | cut -d' ' -f1)"
+  t="$(sha256sum "$BIN/pg/bin/$dll" | cut -d' ' -f1)"
+  [ "$z" = "$t" ] || { echo "FATAL: $dll zip($z) 与树内($t) 哈希不一致（非同源）"; exit 1; }
+done
+n=$(find "$BIN/pg/bin" -name '*.exe' | wc -l)
+[ "$n" = "4" ] || { echo "FATAL: bin/pg/bin 应恰 4 个 exe(initdb/pg_ctl/postgres/pg_dump)，实得 $n（渠道污染）"; exit 1; }
+
 # license texts (raw)
 for r in "F1bonacc1/process-compose/APACHE-2.0.txt" "nats-io/nats-server/LICENSE" "nats-io/natscli/LICENSE" "aaif-goose/goose/LICENSE"; do
   n="$(echo "$r" | tr '/' '_')"

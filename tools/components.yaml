@@ -40,6 +40,14 @@ components:
     asset: embedded-postgres-binaries-windows-amd64-17.11.0.jar
     license: PostgreSQL
     url: https://repo1.maven.org/maven2/io/zonky/test/postgres/embedded-postgres-binaries-windows-amd64/17.11.0/embedded-postgres-binaries-windows-amd64-17.11.0.jar
+  # s66 阶段二/ADR-0011: pg_dump 来源（zonky 渠道无 pg_dump；EDB=zonky 正源，research/10）。只抽取 pg_dump.exe 单文件入树（8 依赖 DLL 已随 zonky 条目在树）
+  - name: postgresql-client-pg_dump
+    version: 17.11-1
+    repo: EnterpriseDB (官方 zip，postgreSQL-17.11-1-windows-x64-binaries.zip)
+    asset: 只取 pgsql/bin/pg_dump.exe (+0.59MB)
+    license: PostgreSQL
+    url: https://get.enterprisedb.com/postgresql/postgresql-17.11-1-windows-x64-binaries.zip
+    sha256: 6eabdf00d2893713b75db4336a23c3fdf505f056e217ec6e2e95d901750cfea3
   # P28: npm 型组件（非 release zip；由 forge/bin/vendor/artifact-vcs/package.json 锁定版本，npm --omit=dev 安装）
   - name: isomorphic-git
     version: 1.41.9

@@ -87,7 +87,10 @@ processes:
     log_location: '${FORGE_ROOT}/data/logs/pg.log'
     readiness_probe:
       exec:
-        command: '${FORGE_ROOT}/bin/pg/bin/pg_ctl.exe -D ${FORGE_ROOT}/data/pg status'
+        # s66 阶段二：TCP 探活替代 pg_ctl status（后者探 data 目录全局态，托管进程死亡而孤儿占目录时假阳性；
+        # 端口可连接=消费方真实契约）。net.connect 探 data/pg.port，2s 超时，连通 0/否则 1。
+        # 内联 node -e 会遭 Go->cmd->argv 三层引号转义破坏（实证见 tmp/s66-readiness-tcp-experiment.log），故落文件。
+        command: '${FORGE_ROOT}/bin/node-v22/node-v22.21.1-win-x64/node.exe ${FORGE_ROOT}/bin/pg-probe.js ${FORGE_ROOT}/data/pg.port'
       period_seconds: 5
       failure_threshold: 12
     depends_on:

@@ -52,6 +52,16 @@ fi
 
 # ---------- 4) 注册应用（模拟 agent 写 apps/*.yaml + 热加载） ----------
 mkdir -p "$FORGE/apps"
+# s66 实证：project update 用客户端 env 展开 ${VAR}——不带启动器同款 env 会把运行栈命令行里的
+# ${PG_PORT}/${FAUCET_PORT}/${FORGE_AGENT_*} 展开为空（pg 变 `-p -c` crash loop）。故先导全 env。
+export FORGE_ROOT="$(cygpath -w "$FORGE")"   # pc 展开 ${FORGE_ROOT} 需 Windows 形态（同启动器）
+export PC_PORT=${PC_PORT:-$(cat "$FORGE/data/pc.port" 2>/dev/null || echo 8099)}
+export FAUCET_PORT=$(cat "$FORGE/data/faucet.port" 2>/dev/null || echo 8091)
+export PG_PORT=$(cat "$FORGE/data/pg.port" 2>/dev/null || echo 5432)
+export GOOSE_PATH_ROOT="$(cygpath -w "$FORGE/conf/goose")" GOOSE_DISABLE_KEYRING=1 GOOSE_TELEMETRY_ENABLED=false
+if [ -f "$FORGE/data/secrets.env" ]; then
+  while IFS='=' read -r k v; do case "$k" in FORGE_*|GOOSE_MODEL_NAME) [ -n "$v" ] && export "$k=$v";; esac; done < <(grep -v '^#' "$FORGE/data/secrets.env")
+fi
 APP_YAML_WIN=$(cygpath -w "$FORGE/apps/e2e-report.yaml")
 python - "$APP_YAML_WIN" "$(cygpath -w "$ROOT/tools/e2e")" <<'PYEOF'
 import sys, io

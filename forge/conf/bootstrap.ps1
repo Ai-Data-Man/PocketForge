@@ -39,6 +39,10 @@ $memCmd = $memTpl.Replace('__FORGE_ROOT__', $ForgeRoot)
 $pgTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\pg-init.tpl.cmd'))
 [IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\pg-init.cmd'), $pgTpl.Replace('__FORGE_ROOT__', $ForgeRoot))
 
+# 1b-4) s66 阶段二: pg readiness TCP 探活脚本生成（pc exec 的 cmd /C 对内联 -e 有三层引号转义问题，故落文件）
+$probeTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\pg-probe.tpl.js'))
+[IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\pg-probe.js'), $probeTpl)
+
 # 1b-2) s20: .goosehints 幂等重建（模板为唯一真相源）。
 # 事故背景：hints 曾被开发期脚本写坏成 600KB 重复段（P11-P24 期间入库未察觉），
 # 每轮 system prompt 被垃圾挤爆。hints = 只读手册，agent 不应写它；损坏则留档重建。

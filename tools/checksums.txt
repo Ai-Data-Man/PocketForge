@@ -11,4 +11,6 @@ fc5a3b2a5e438889e0000d77f9c4debe55e8df75bf21bb3ec73fdcfc619d0ed0 *forge/bin/pc/p
 6978bdb96e1e515285eb7bbf8915c4a254644107b1fcb44917e52f707dbe798a *forge/bin/pg/bin/initdb.exe
 5afdea4f4860b52cd03cee4c51be5d034a51f7ed63312acc3b6abee9006fa0ba *forge/bin/pg/bin/pg_ctl.exe
 4125c1e963072d929f6468a449ad184b26d3be7d97cae3181c3d613dace49c8d *forge/bin/pg/bin/postgres.exe
+ff766351cc88b0ea2bc7b6e365777cb51f792b16000688a378f64124810ffa88 *forge/bin/pg/bin/pg_dump.exe
 98040fae18dd9633ff95932125b0cecf0a45a1a9312e216e2a33ad03a31d4251 *downloads/zonky-pg-17.11.0.jar
+6eabdf00d2893713b75db4336a23c3fdf505f056e217ec6e2e95d901750cfea3 *downloads/edb-pg-17.11-1-windows-x64-binaries.zip

@@ -135,6 +135,40 @@ bash "$ROOT/tools/e2e/report-probe.sh" sandbox >> /tmp/report-probe-e2e.log 2>&1
 grep -E "^report-probe" /tmp/report-probe-e2e.log
 rm -f /tmp/report-probe-e2e.log
 
+# ---------- 13) PG 备份链两态（s66/ADR-0011 阶段二：导出先行；跑在栈上，pg 由 pc 托管） ----------
+PC_PORT=$(cat "$FORGE/data/pc.port" 2>/dev/null || echo 8099)
+PC="$FORGE/bin/pc/process-compose.exe"
+PCRUN(){ timeout 20 env PC_DISABLE_TUI=1 "$PC" -p "$PC_PORT" "$@" </dev/null 2>/dev/null | grep -viE 'debug|duplicate'; }
+wait_backup_done(){ for i in $(seq 1 40); do sleep 2; grep -q "$1" "$FORGE/data/logs/backup.log" 2>/dev/null && return 0; done; return 1; }
+mkdir -p "$FORGE/data/pg-dumps"
+for s in 01 02 03; do printf 'e2e-seed\n' > "$FORGE/data/pg-dumps/pg-1999-01-${s}T00-00-00.sql"; done
+# 态A：PG 在场——真实 dump 产出 + keep 3 生效 + zip 含 pg-dumps 条目
+PCRUN process start daily-backup >/dev/null
+wait_backup_done 'backup ok' || true   # 完成门：backup.log 每次 pc 重跑即重建，末行 backup ok=本轮收尾
+if grep -q 'pg_dump ok' "$FORGE/data/logs/backup.log"; then ck "backup state-A: pg_dump ok into data/pg-dumps (PG present)" 0; else ck "backup state-A: pg_dump ok into data/pg-dumps (PG present)" 1; fi
+NEWU=$(ls -t "$FORGE/data/pg-dumps/"pg-*.sql | head -1)
+if grep -q 'PostgreSQL database dump' "$NEWU"; then ck "backup state-A: newest dump has PostgreSQL dump marker" 0; else ck "backup state-A: newest dump has PostgreSQL dump marker" 1; fi
+[ "$(ls "$FORGE/data/pg-dumps/"pg-*.sql | wc -l)" = "3" ] && [ ! -f "$FORGE/data/pg-dumps/pg-1999-01-01T00-00-00.sql" ]; A3=$?
+ck "backup state-A: keep-3 pruned oldest dump" "$A3"
+NEWZ=$(ls -t "$FORGE/data/backups/"forge-backup-*.zip | head -1)
+unzip -l "$NEWZ" > /tmp/e2e-ziplist.txt 2>&1   # 落地再 grep：grep -q 早退会 SIGPIPE unzip，pipefail 下中止全量（s65 同族）
+# zip 条目分隔符随 Compress-Archive 可能是 \ 或 /，用 . 通配
+if grep -q 'pg-dumps[\\/]pg-' /tmp/e2e-ziplist.txt; then ck "backup state-A: zip contains pg-dumps entry" 0; else ck "backup state-A: zip contains pg-dumps entry" 1; fi
+rm -f /tmp/e2e-ziplist.txt
+# 态B：PG 不在场（pc process stop 单进程级，不碰全栈）——warn 一行 + zip 照常
+PCRUN process stop pg >/dev/null
+PCRUN process start daily-backup >/dev/null
+wait_backup_done 'backup ok' || true
+grep -q 'pg_dump skipped' "$FORGE/data/logs/backup.log"; B1=$?
+if [ "$B1" = "0" ]; then ck "backup state-B: pg_dump skipped warn (PG absent)" 0; else ck "backup state-B: pg_dump skipped warn (PG absent)" 1; fi
+tail -1 "$FORGE/data/logs/backup.log" | grep -q 'backup ok'; B2=$?
+if [ "$B2" = "0" ]; then ck "backup state-B: zip still produced" 0; else ck "backup state-B: zip still produced" 1; fi
+# 复原 pg 并等探活回绿
+PCRUN process start pg >/dev/null
+PR=1; for i in $(seq 1 12); do sleep 5; ST=$(PCRUN process get pg); echo "$ST" | grep -q Ready && { PR=0; break; }; done
+ck "backup chain: pg restored Ready after state-B" $PR
+rm -f "$FORGE/data/pg-dumps/"pg-1999-*.sql
+
 rm -f /tmp/e2e-v1.md
 echo "=============================="
 echo "chat-link E2E: PASS=$PASS FAIL=$FAIL"
