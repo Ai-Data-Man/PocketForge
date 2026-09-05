@@ -37,7 +37,12 @@ const REPO = CFG.repo || '';
 const PROXY = CFG.proxy || '';
 
 // ---- 受保护路径：相对 forge 根，前缀匹配即永不覆盖/删除 ----
-const PROTECTED = ['data/', 'conf/goose/data/', 'conf/goose/state/', 'conf/ports.env.yaml', 'conf/apps.env.yaml'];
+// v0.9.10（s69 遗留①+差量同族核实）：config.yaml 升级包不含→差量判 deleted 删盘→bootstrap 纯模板
+// 重建丢用户能力开关+mcp-* 块——PROTECTED 化后文件留盘，bootstrap 走 s17/s46 合并重建。
+// custom_providers/=用户自配的模型端点（交付时改 base_url 与 key）；memory/=memory MCP 用户记忆库
+// （升级包剔除该目录→差量把库文件判 deleted）。升级包不含、bootstrap 会重建的不保（.goosehints），
+// 种子交付优先的不保（conf/goose/config/recipes/——G4 max_turns 等种子修复靠升级送达，备份兜底）。
+const PROTECTED = ['data/', 'conf/goose/data/', 'conf/goose/state/', 'conf/goose/config/config.yaml', 'conf/goose/config/custom_providers/', 'conf/goose/config/memory/', 'conf/ports.env.yaml', 'conf/apps.env.yaml'];
 
 function isProtected(rel) { return PROTECTED.some(p => rel === p.replace(/\/$/, '') || rel.startsWith(p)); }
 function sha256(buf) { return crypto.createHash('sha256').update(buf).digest('hex'); }
