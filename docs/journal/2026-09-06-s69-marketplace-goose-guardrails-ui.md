@@ -67,3 +67,10 @@
 - 修复分档：tools 侧就绪门已落（88f01d6：ws-fuzz-s50h+ws-delete-receipt 连 WS 读 hello 帧 caps.modes 门，退避重连 deadline 45s；真实重启窗口实证门等待后 11/0 绿）；桥侧 /healthz 就绪前回 503 入 v0.9.10 后批次（readiness_probe 语义诚实化）。backlog 观察项销账。
 - 测试资产转正（18719b4）：ui-logic-probe（kbd/IME 23+模态关闭 10=33ck，入 e2e-chat 第 14 节）+ cold-surface-probe（发版前沙盒六新面 15ck，参数化 PF_ROOT）；e2e 基线升 **46/46**。
 - v0.9.10 打包预演（ffd287f）：dist/PocketForge-20260906-v0.9.10.zip sha256 437775aa…026，沙盒冷启零阻断，六新面入包全证；发布说明草稿转正+真机护航须知入库；v0.9.9 未发布件处置与 tag/发布归用户。
+
+### 追加（同日上午）：v0.9.9→v0.9.10 升级路径复演（发布前最后一块验证）
+- 全链走通：v0.9.9 沙盒部署→造用户态三样（能力开关标记/mcp-fetch 安装/测试记忆）→**325MB 真包走新离线升级通道**（zip 上传 200 1.2s；.sha256 旧桥拒=预期，手工放置）→升级完成 7.5min→断言。
+- **阻断级实证（推翻发布说明表述）**：「设置类用户态在存量升级路径被重置」——能力开关回模板默认、mcp-fetch 注册丢失（vendor 目录侥幸孤儿在盘）、测试记忆被删；铁证=旧 runner backup manifest deleted 含 config.yaml/memory。根因链：升级执行者是 v0.9.9 旧 runner（运行中不换代码），64feedb 的 PROTECTED 只保护由新 runner 执行的升级（v0.9.10→未来）。**主控裁决**：发布说明诚实改写+「升级前手动备份 conf/goose/config/」步骤（内测期护航者执行）；桥端升级前自备份设计入 v0.9.11。
+- 好消息：data/ 用户数据完好；s67 缺陷2「升级后假成功」窗口在本通道不复现（runner healthz 按版本匹配判定）；护栏四新面经模板重建全部送达（never_allow/CONTEXT_FILE_NAMES/smart_approve/两步向导）。
+- 新账入 v0.9.11 台账：升级器静默挂死 1 次（stop 后 17min 进程消失，未复现，P1——落盘日志+心跳+总超时回滚为修复候选）；main() 未 await stopStack()（清杀与重启并发竞态，P2）；MCP 商店安装裸 npm.cmd 依赖 PATH（打包栈受限令牌必失败，真机 PATH 注入覆盖与否待验证，P2）；package.sh 排除 .playwright-mcp 残留（0bb9852，重打包 28,955 文件，新 sha d3f0df26…6c98）。
+- 发布就绪结论：v0.9.10 预览包（重打包版）+ 发布说明诚实版 + 护航须知齐备；**是否发布/打 tag 归用户拍板**。
