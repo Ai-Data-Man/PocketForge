@@ -231,7 +231,8 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 .skill pre{background:var(--code-bg);border:1px solid var(--line);border-radius:var(--r-s);padding:10px;font-size:.72rem;max-height:220px;overflow:auto;white-space:pre-wrap;margin:8px 0 0;color:var(--code-tx)}
 .frow{margin-bottom:14px}
 .frow label{display:block;font-size:.78rem;color:var(--mut);margin-bottom:6px;font-weight:500}
-.frow input,.frow select{width:100%;padding:10px 11px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);font-size:.88rem;background:var(--panel);color:var(--tx);transition:border-color .12s;box-sizing:border-box}
+.frow input,.frow select{padding:10px 11px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);font-size:.88rem;background:var(--panel);color:var(--tx);transition:border-color .12s;box-sizing:border-box}
+.frow>input,.frow>select{width:100%}
 .frow input:focus,.frow select:focus{border-color:var(--acc);outline:none;box-shadow:0 0 0 3px var(--acc-soft)}
 .fnote{font-size:.74rem;color:var(--mut);margin-top:4px;line-height:1.5}
 .mini{padding:8px 14px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);cursor:pointer;font-size:.8rem;color:var(--tx-2);transition:all .12s}
@@ -244,7 +245,8 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 .prov.active{border-color:var(--acc);background:var(--acc-softer);border-width:2px}
 .prov .nm{font-weight:600}
 .prov .hd{color:var(--mut);font-size:.7rem;flex:1}
-.mpick{display:block;font-size:.8rem;padding:4px 2px;cursor:pointer}
+.mpick{display:flex;align-items:flex-start;gap:7px;font-size:.8rem;line-height:1.45;padding:4px 2px;cursor:pointer}
+.mpick input[type=checkbox]{flex-shrink:0;margin-top:2px;accent-color:var(--acc)}
 .prov button{border:none;background:none;cursor:pointer;font-size:.8rem;color:var(--tx-2)}
 #save-cfg{width:100%;padding:12px;background:var(--acc);color:var(--acc-contrast);border:none;border-radius:var(--r-m);font-size:.92rem;cursor:pointer;margin-top:6px;font-weight:600;box-shadow:var(--shadow-1)}
 .upd-section{border-top:1px solid var(--line);padding-top:14px;margin-top:14px}
@@ -324,7 +326,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
       <button class="mini" id="link-btn" title="链接电脑上其他文件夹">🔗 外链</button>
       <input type="file" id="up-input" multiple style="display:none">
     </div>
-    <div style="padding:0 10px 4px"><label class="fnote" style="cursor:pointer"><input type="checkbox" id="att-only"> 只看附件（<span id="att-n">0</span>）</label></div>
+    <div style="padding:0 10px 4px"><label class="fnote" style="cursor:pointer;display:inline-flex;align-items:center;gap:5px"><input type="checkbox" id="att-only"> 只看附件（<span id="att-n">0</span>）</label></div>
     <div id="rtree"></div>
     <div id="link-row" style="display:none">
       <input id="link-path" placeholder="外部文件夹路径，如 C:\Users\...">
@@ -784,6 +786,7 @@ function loadProvidersUI(){ wssend({type:'providers'}); }
 $('model-pick').onclick=e=>{
   const pk=$('model-pick');
   if(e.target.id==='model-search') return;
+  if(e.target.closest('.mi')) return; // s69 P2-1: 点模型项的冒泡不再被父级 toggle 复开
   pk.classList.toggle('open');
   if(pk.classList.contains('open')){ $('model-search').value=''; buildModelItems(''); setTimeout(()=>$('model-search').focus(),50); }
 };
@@ -814,7 +817,7 @@ function mdRender(raw){
     parts[i] = '<pre class=\"mdcode\">' + (nlPos >= 0 ? c.slice(nlPos + 1) : c) + '</pre>';
   }
   h = parts.join('');
-  h = h.split('**').join('</b>').split('</b>').map(function(x, i2){ return i2 % 2 ? '</b>' + x : x; }).join('');
+  h = h.split('**').map(function(x, i2){ return i2 % 2 ? '<b>' + x + '</b>' : x; }).join('');
   const lines = h.split(NLCH);
   let tableBuf = [];
   const kept = [];
@@ -1407,7 +1410,7 @@ function renderProviders(list){
   let selected=null;
   for(const pr of list){
     const el=document.createElement('div'); el.className='prov'+(pr.active?' active':'');
-    el.innerHTML='<span class="nm">'+pr.name+'</span><span class="hd">'+((pr.models||[]).length+' 个模型 · '+(pr.hasKey?'🔑':'⚠无key'))+'</span>';
+    el.innerHTML='<span class="nm">'+esc(pr.name)+'</span><span class="hd">'+((pr.models||[]).length+' 个模型 · '+(pr.hasKey?'🔑':'⚠无key'))+'</span>';
     const use=document.createElement('button'); use.textContent=pr.active?'✓使用中':'启用';
     use.onclick=(e)=>{e.stopPropagation(); wssend({type:'providers',save:true,activate:pr.name}); note('已切换到 '+pr.name); };
     const del=document.createElement('button'); del.textContent='✕';
@@ -1451,7 +1454,7 @@ function renderFetchPool(){
 }
 function renderModelPool(pr){
   const box=$('model-pool'); if(!box) return;
-  box.innerHTML='<div class="fnote" style="margin:6px 0">「'+pr.name+'」可选池（勾选的才出现在顶栏）：</div>';
+  box.innerHTML='<div class="fnote" style="margin:6px 0">「'+esc(pr.name)+'」可选池（勾选的才出现在顶栏）：</div>';
   if(!(pr.models||[]).length){ box.innerHTML+='<div class="fnote">还没勾任何模型。点「⟳ 拉取模型列表」然后勾选。</div>'; return; }
   for(const m of pr.models){
     const lab=document.createElement('label'); lab.className='mpick';
@@ -1983,7 +1986,7 @@ function markSel(){
 function fileNode(n,depth){
   const el=document.createElement('div'); el.className='tnode'; el.style.paddingLeft=(4+depth*14)+'px';
   el.title=n.path+'（点击预览）';
-  el.innerHTML='<span>'+fileIcon(n.name)+'</span><span class="nm">'+n.name+'</span>'+
+  el.innerHTML='<span>'+fileIcon(n.name)+'</span><span class="nm">'+esc(n.name)+'</span>'+
     (n.att?'<span class="bdg">附件</span>':'')+'<span class="sz">'+fmtSize(n.size||0)+'</span>';
   el.onclick=()=>window.open('/preview/'+encodeURIComponent(curWs+'/'+n.path),'_blank');
   el.appendChild(tactBtn('↗','用电脑里的办公软件打开',async()=>{
@@ -2121,7 +2124,7 @@ async function toggleVersions(f, rowEl){
     box.innerHTML='';
     for(const v of d.versions){
       const it=document.createElement('div'); it.className='vitem';
-      it.innerHTML='<span class="vt">'+v.time+'</span><span class="vm" title="'+(v.msg||'').replace(/"/g,'&quot;')+'">'+(v.msg||'(无说明)')+'</span>';
+      it.innerHTML='<span class="vt">'+v.time+'</span><span class="vm" title="'+(v.msg||'').replace(/"/g,'&quot;')+'">'+esc(v.msg||'(无说明)')+'</span>';
       const pv=document.createElement('button'); pv.textContent='看'; pv.title='预览这一版';
       pv.onclick=()=>window.open('/api/vcs/blob?ws='+encodeURIComponent(curWs||'')+'&file='+encodeURIComponent(f.name)+'&oid='+v.oid,'_blank');
       const rs=document.createElement('button'); rs.textContent='恢复'; rs.title='把这个文件变回这一版（当前版会先自动存一版）';
