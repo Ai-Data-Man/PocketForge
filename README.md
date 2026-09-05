@@ -13,7 +13,7 @@
 2. 无 Docker / WSL2 / Hyper-V。
 3. 便携文件夹交付，"一次双击启动成功"。
 4. 零系统污染：不写注册表/PATH/服务/计划任务；删文件夹即卸载；过 EDR 审计。
-5. 许可证白名单：MIT / Apache-2.0 / 公有领域。
+5. 许可证白名单：MIT / Apache-2.0 / 公有领域 / PostgreSQL License、ISC（2026-09-05 用户批准扩列，ADR-0011）。
 6. 封闭系统（如 PLM）无 API → 只走浏览器自动化。
 7. 不预设业务场景。
 8. 设施细节对 Agent 透明；Agent 运行时禁止自研（选型见 DECISIONS/）。
