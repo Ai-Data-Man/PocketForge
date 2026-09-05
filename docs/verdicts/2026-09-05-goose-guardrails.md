@@ -53,6 +53,7 @@
   - `apps`：**关**。goose 自带 HTML app 沙盒窗口与产品应用注册协议（pc/apps yaml + data/artifacts 制品区）是两套并行叙事，对小白是歧义源；手册教的是注册协议路线。
   - `analyze`：**关**。tree-sitter 代码库索引——妻子场景没有"大型陌生代码库"；省 3–4 把工具 + prompt 说明段。只读工具无风险，关它纯粹是给弱模型减工具选择噪音。
   - `todo`：**留**。零点名但它是 ACP `plan` 事件的语义来源（onAgentEvent 已预留 chat.tpl.html:938），P32 候选"Plan Mode 三要素"以它为底座——砍了 todo 等于预砍 P32 的选项。1–2 把工具的成本买一个未来选项，值。
+    - 〔s69 勘误（research/14 取证）：「todo 是 ACP plan 事件的语义来源」失实——v1.46.0 全树零 `SessionUpdate::Plan` 发射点（唯一命中为测试 fixture），todo 与 plan 事件无机械转换。**保留 todo 的裁决不变**（每轮 moim 自动注入的持久清单机制独立成立）；但 P32 不得把 ACP plan 事件当依赖，Plan Mode 设计输入以 research/14 为准。〕
 - **净效果**：工具清单 58 → 约 49；移除"自开关扩展/委派子代理/自建 app"三类自主面；tool payload 减约 3–5KB。
 - **前置条件**：enabled:false 写法端到端 UNVERIFIED（research/12 §3.3 机制链完整）——落地时先跑双臂探针，再上生产模板。
 
