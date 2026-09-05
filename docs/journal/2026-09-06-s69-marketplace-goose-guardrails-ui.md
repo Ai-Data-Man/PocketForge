@@ -61,3 +61,9 @@
 ### 收官态
 - 回归：e2e-chat 45/45 + fuzz 102/102；树净；dev 栈 node 实证健康。
 - 待用户拍板：v0.9.9 未发布件处置、v0.9.10 是否 tag/发布（升级路径复演+发布说明终稿随发 publishing 前）。
+
+### 追加（同日晨）：fuzz 冷启首红根因结案（research/15 + 88f01d6）
+- 根因 VERIFIED-RUN：桥 server.listen 早于 goose ACP initialize（:445 异步无 await），/healthz 无条件 200——healthz 通过≠能受理 session/new；fuzz 唯一 ACP 依赖面 ws-fuzz-s50h 矩阵在就绪窗口超 10s 即红，矩阵恒折 1 行=「恰好 1 红」，复跑 goose 已热（2.2s）故全绿。pc.log 实录 listen→ACP-initialized 10.1s/12.8s/150.8s 括号夹逼。
+- 修复分档：tools 侧就绪门已落（88f01d6：ws-fuzz-s50h+ws-delete-receipt 连 WS 读 hello 帧 caps.modes 门，退避重连 deadline 45s；真实重启窗口实证门等待后 11/0 绿）；桥侧 /healthz 就绪前回 503 入 v0.9.10 后批次（readiness_probe 语义诚实化）。backlog 观察项销账。
+- 测试资产转正（18719b4）：ui-logic-probe（kbd/IME 23+模态关闭 10=33ck，入 e2e-chat 第 14 节）+ cold-surface-probe（发版前沙盒六新面 15ck，参数化 PF_ROOT）；e2e 基线升 **46/46**。
+- v0.9.10 打包预演（ffd287f）：dist/PocketForge-20260906-v0.9.10.zip sha256 437775aa…026，沙盒冷启零阻断，六新面入包全证；发布说明草稿转正+真机护航须知入库；v0.9.9 未发布件处置与 tag/发布归用户。
