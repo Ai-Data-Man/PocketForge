@@ -24,11 +24,13 @@ if (pgPort && fs.existsSync(pgDumpExe)) {
     fs.mkdirSync(dumpsDir, { recursive: true });
     const dump = path.join(dumpsDir, `pg-${ts}.sql`);
     try {
-        execFileSync(pgDumpExe, ['-h', '127.0.0.1', '-p', pgPort, '-U', 'postgres', '-d', 'postgres', '-Fp', '-f', dump], { stdio: 'pipe' });
+        // timeout 10s: PG 半开连接挂死保护（pg_dump 卡住不能拖死 daily-backup oneshot）
+        execFileSync(pgDumpExe, ['-h', '127.0.0.1', '-p', pgPort, '-U', 'postgres', '-d', 'postgres', '-Fp', '-f', dump], { stdio: 'pipe', timeout: 10000 });
         const dumps = fs.readdirSync(dumpsDir).filter(f => /^pg-.*\.sql$/.test(f)).sort();
         while (dumps.length > 3) fs.unlinkSync(path.join(dumpsDir, dumps.shift()));
         console.log(`pg_dump ok: pg-${ts}.sql (${(fs.statSync(dump).size / 1024).toFixed(0)}KB) kept=${dumps.length}`);
     } catch (e) {
+        try { fs.unlinkSync(dump); } catch {} // best-effort: 中途断连/超时的残缺 sql 不随 zip 分发
         const msg = (e.stderr && e.stderr.toString().trim().split('\n')[0]) || String(e.message).split('\n')[0];
         console.warn(`pg_dump skipped: ${msg.trim()}`);
     }

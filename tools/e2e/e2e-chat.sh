@@ -140,6 +140,22 @@ PC_PORT=$(cat "$FORGE/data/pc.port" 2>/dev/null || echo 8099)
 PC="$FORGE/bin/pc/process-compose.exe"
 PCRUN(){ timeout 20 env PC_DISABLE_TUI=1 "$PC" -p "$PC_PORT" "$@" </dev/null 2>/dev/null | grep -viE 'debug|duplicate'; }
 wait_backup_done(){ for i in $(seq 1 40); do sleep 2; grep -q "$1" "$FORGE/data/logs/backup.log" 2>/dev/null && return 0; done; return 1; }
+# 态B0（fc948e9 回归守卫）：空 pg-dumps + PG 不在场 = 冷启致命态。seed 前先走一遍，
+# 守卫（pg-dumps 无 pg-*.sql 不入 SOURCES）若被撤，Compress-Archive -Update 追加空目录会 exit 0 且删 zip → statSync ENOENT 崩溃。
+PCRUN process stop pg >/dev/null
+rm -f "$FORGE/data/pg-dumps/"pg-*.sql
+BEFORE0=$(ls -t "$FORGE/data/backups/"forge-backup-*.zip 2>/dev/null | head -1 || true)
+PCRUN process start daily-backup >/dev/null
+wait_backup_done 'backup ok' || true
+if tail -1 "$FORGE/data/logs/backup.log" | grep -q 'backup ok'; then ck "backup state-B0: cold-start empty pg-dumps backup ok" 0; else ck "backup state-B0: cold-start empty pg-dumps backup ok" 1; fi
+NEWZ0=$(ls -t "$FORGE/data/backups/"forge-backup-*.zip 2>/dev/null | head -1 || true)
+# zip 完整断言锚定"本轮产出"（NEWZ0 必须是新文件）：撤守卫时 -Update 删 zip → 无新 zip → FAIL，旧 zip 不许顶包
+if [ -n "$NEWZ0" ] && [ "$NEWZ0" != "$BEFORE0" ] && unzip -t "$NEWZ0" > /tmp/e2e-zipb0.txt 2>&1; then ck "backup state-B0: cold-start empty pg-dumps zip intact" 0; else ck "backup state-B0: cold-start empty pg-dumps zip intact" 1; fi
+rm -f /tmp/e2e-zipb0.txt
+# 复原 pg 并等探活回绿（态A 需要真实 dump 成功）
+PCRUN process start pg >/dev/null
+PR0=1; for i in $(seq 1 12); do sleep 5; ST0=$(PCRUN process get pg); echo "$ST0" | grep -q Ready && { PR0=0; break; }; done
+ck "backup state-B0: pg Ready again before state-A" $PR0
 mkdir -p "$FORGE/data/pg-dumps"
 for s in 01 02 03; do printf 'e2e-seed\n' > "$FORGE/data/pg-dumps/pg-1999-01-${s}T00-00-00.sql"; done
 # 态A：PG 在场——真实 dump 产出 + keep 3 生效 + zip 含 pg-dumps 条目
