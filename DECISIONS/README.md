@@ -14,5 +14,6 @@ ADR（架构决策记录）= 持久的"为什么"。一经 Accepted 正文不可
 | 0008 | 工作区信息架构——双栏分层、会话生命周期、.forge 元数据 | Accepted |
 | 0009 | 自动升级系统与状态 Schema 演进 | Accepted |
 | 0010 | 能力中心与记忆可视化（双视角暴露） | Accepted |
+| 0011 | 许可证白名单扩列（PostgreSQL License/ISC）与 PG 采纳三阶段路线 | Accepted |
 
 模板见 `_template.md`。
