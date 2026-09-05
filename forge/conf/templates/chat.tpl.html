@@ -1905,6 +1905,8 @@ txt.addEventListener('input',()=>{
   } else { menu.style.display='none'; slashCur=[]; }
 });
 txt.addEventListener('keydown',e=>{
+  // qa返工(P2-1): IME 组合期 ↑↓/Esc 属输入法操作（选字翻页/取消组合），不劫持——守卫同 txt.onkeydown Enter 分支先例
+  if(e.isComposing) return;
   // s69 P2-10: slash/at 菜单开着时 ↑↓ 移动高亮（含环形回绕）；Esc 关闭（既有路径保留）
   const slOpen=txt.value.startsWith('/')&&$('slash-menu').style.display==='block';
   const atOpen=$('at-menu').style.display==='block';

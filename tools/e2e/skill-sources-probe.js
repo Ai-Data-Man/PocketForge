@@ -1,6 +1,6 @@
 // 技能市场源配置化探针（s70 切片B，docs/verdicts/2026-09-05-marketplace-ecosystem.md S2，9 ck）
 // 场景A（迁移，端口 18795 自建 tools/e2e/.skill-sb-a）：存量 manifest v1→v2 条目补 source{repo,branch}+留档+幂等（3 ck）
-// 场景B（配置，同端口自建 .skill-sb-b）：首启生成默认/坏 JSON 容错/空数组零源/缺 branch 回落/多源同名跳过（6 ck）
+// 场景B（配置，同端口自建 .skill-sb-b）：首启生成默认(双源,P2-2)/坏 JSON 容错/空数组零源/缺 branch 回落/存量单源迁移补baoyu+幂等(P2-2)/多源同名跳过（8 ck）
 // 场景C（B2 subdir，自建 .skill-sb-b）：subdir 白名单矩阵（../绝对/盘符/尾斜杠拒+合法/空收）/manifest source.subdir 随装进 origin/缺 subdir 键回落解析（8 ck）
 // 全部断言不依赖出网（多源合并项在线增强、离线走「失败路径也算过」裁决条款）；不依赖 dev 栈、不碰 8790。
 // 沙盒跑完自清；goose.exe 硬链接（同卷零拷贝，桥启动需 spawn goose）。
@@ -17,7 +17,11 @@ const SBA = path.join(__dirname, '.skill-sb-a');
 const SBB = path.join(__dirname, '.skill-sb-b');
 const PORT = 18795;
 const OLD_FETCHED = '2020-01-01T00:00:00.000Z';
-const DFT_CFG = { _schema: 1, sources: [{ repo: 'anthropics/skills', branch: 'main', subdir: 'skills', enabled: true }] };
+// qa返工(P2-2): 首启生成默认=双源（anthropics + baoyu，与桥端 dft() 对齐）
+const DFT_CFG = { _schema: 1, sources: [
+    { repo: 'anthropics/skills', branch: 'main', subdir: 'skills', enabled: true },
+    { repo: 'JimLiu/baoyu-skills', branch: 'main', subdir: 'skills', enabled: true },
+] };
 let pass = 0, fail = 0;
 function ck(name, fn) { try { fn(); console.log('PASS: ' + name); pass++; } catch (e) { console.log('FAIL: ' + name + ' — ' + e.message); fail++; } }
 const J = (sb, p) => path.join.apply(null, [sb].concat(p));
@@ -203,10 +207,10 @@ let child = null;
     await waitHealth();
     const r3 = await getJson('/api/skillstore?remote=1');
     const w3 = await getJson('/api/update/status');
-    ck('切片B-6 空数组容错: 回落内置默认(warn)+stale秒回+文件不动', () => {
+    ck('切片B-6 空数组容错: 回落内置默认(warn)+stale秒回+坏配置不追加(仅schema升级, P2-2边界)', () => {
         C.equal(r3.j.ok, true, 'stale 秒回失效');
         C.ok(w3.j.warnings.some(x => x.includes('没有有效源')), JSON.stringify(w3.j.warnings));
-        C.equal(FSS.readFileSync(CFG, 'utf8'), '{"_schema":1,"sources":[]}', '用户文件被改写');
+        C.deepEqual(readJ(CFG), { _schema: 2, sources: [] }, JSON.stringify(readJ(CFG))); // 迁移管线升 _schema 但不往坏配置追加 baoyu，条目原样
     });
     await stopBridge(child); child = null;
 
@@ -217,10 +221,34 @@ let child = null;
     await waitHealth();
     const r4 = await getJson('/api/skillstore?remote=1');
     const w4 = await getJson('/api/update/status');
-    ck('切片B-7 缺branch容错: stale秒回+warn回落内置默认+文件不动', () => {
+    ck('切片B-7 缺branch容错: stale秒回+warn回落内置默认+坏条目不追加(仅schema升级, P2-2边界)', () => {
         C.equal(r4.j.ok, true, 'stale 秒回失效');
         C.ok(w4.j.warnings.some(x => x.includes('没有有效源')), JSON.stringify(w4.j.warnings));
-        C.equal(FSS.readFileSync(CFG, 'utf8'), JSON.stringify({ _schema: 1, sources: [{ repo: 'ghost-org/ghost-repo' }] }), '用户文件被改写');
+        C.deepEqual(readJ(CFG), { _schema: 2, sources: [{ repo: 'ghost-org/ghost-repo' }] }, JSON.stringify(readJ(CFG)));
+    });
+    await stopBridge(child); child = null;
+
+    // V4b qa返工(P2-2): 存量单源升级——迁移补第二源 baoyu（合法配置才追加）+留档；重启幂等（不重复追加/无新备份/内容一致）
+    seedStale();
+    FSS.writeFileSync(CFG, JSON.stringify({ _schema: 1, sources: [{ repo: 'anthropics/skills', branch: 'main', subdir: 'skills', enabled: true }] }));
+    const cfgBaks = () => FSS.readdirSync(path.dirname(CFG)).filter(n => n.includes('skill-sources.json.pre-migration-')).length; // 沙盒含 B-6/B-7 遗留留档，只断增量
+    const baks0 = cfgBaks();
+    child = spawnBridge(SBB);
+    await waitHealth();
+    const cfgUp = readJ(CFG);
+    ck('切片B-7b 存量单源升级: 迁移追加baoyu(原条目保留+_schema升2+留档+1份)', () => {
+        C.deepEqual(cfgUp, { _schema: 2, sources: [
+            { repo: 'anthropics/skills', branch: 'main', subdir: 'skills', enabled: true },
+            { repo: 'JimLiu/baoyu-skills', branch: 'main', subdir: 'skills', enabled: true },
+        ] }, JSON.stringify(cfgUp));
+        C.equal(cfgBaks(), baks0 + 1, '备份 count=' + cfgBaks() + ' base=' + baks0);
+    });
+    await stopBridge(child); child = null;
+    child = spawnBridge(SBB);
+    await waitHealth();
+    ck('切片B-7c 升级幂等: 重启不重复追加/无新备份/内容一致', () => {
+        C.equal(cfgBaks(), baks0 + 1, '新增备份 count=' + cfgBaks() + ' base=' + baks0);
+        C.equal(JSON.stringify(readJ(CFG)), JSON.stringify(cfgUp), '内容漂移');
     });
     await stopBridge(child); child = null;
 
@@ -246,9 +274,11 @@ let child = null;
             console.log('NOTE: 切片B-8/9 出网不可达，走失败路径条款（旧缓存保留不阻塞）');
         }
     });
-    ck('切片B-9 (在线)清单条目均带 source{repo,branch}', () => {
+    ck('切片B-9 (在线)清单条目均带 source{repo,branch}（双源仓, P2-2）', () => {
         if (!online) return; // 离线时随 B-8 失败路径条款通过
-        for (const s of r5.j.skills) C.deepEqual(s.source && { repo: s.source.repo, branch: s.source.branch }, { repo: 'anthropics/skills', branch: 'main' }, s.dir);
+        for (const s of r5.j.skills) {
+            C.ok(s.source && ['anthropics/skills', 'JimLiu/baoyu-skills'].includes(s.source.repo) && s.source.branch === 'main', s.dir + ' ' + JSON.stringify(s.source));
+        }
     });
     await stopBridge(child); child = null;
     } // 场景B end
@@ -278,10 +308,10 @@ let child = null;
         await waitHealth();
         const rc = await getJson('/api/skillstore?remote=1');
         const wc = await getJson('/api/update/status');
-        ck('B2-' + name + ': warn回落内置默认+stale秒回+文件不动', () => {
+        ck('B2-' + name + ': warn回落内置默认+stale秒回+坏条目不追加(仅schema升级, P2-2边界)', () => {
             C.equal(rc.j.ok, true, 'stale 秒回失效');
             C.ok(wc.j.warnings.some(x => x.includes('没有有效源')), JSON.stringify(wc.j.warnings));
-            C.equal(FSS.readFileSync(CFG_C, 'utf8'), JSON.stringify({ _schema: 1, sources: [bad] }), '用户文件被改写');
+            C.deepEqual(readJ(CFG_C), { _schema: 2, sources: [bad] }, JSON.stringify(readJ(CFG_C)));
         });
         await stopBridge(child); child = null;
     }

@@ -55,6 +55,8 @@ function sha256File(f) {
         s.on('error', reject);
     });
 }
+// qa返工(P3-1): 上传分支错误人话化——fs 异常 message 携带绝对路径，直接回传即泄漏内部布局；err 换人话，type/code（若有）原样保留供诊断
+function upErr(e, msg) { const o = { ok: false, err: msg }; const t = e && (e.type || e.code); if (t) o.type = t; return o; }
 
 // v2→v3 一次性迁移：旧版散落文件 + 根级 .git → ws-imported/（历史保留）
 (function migrateV3() {
@@ -163,6 +165,9 @@ function statsFlushDebounced() {
     } catch {}
 })();
 // ---- 状态 schema 迁移管线（ADR-0009）：自描述 _schema + 顺序幂等步骤 + 迁移前留档 ----
+// qa返工(P2-2): 第二源内置默认（62c7e54 市场文案已承诺双源）——首启生成即双源；迁移步骤与 okSrc 共用同一定义（单一真相源，置于 STATE_SCHEMAS 之前避开 TDZ）
+const BAOYU_SKILLS = { repo: 'JimLiu/baoyu-skills', branch: 'main', subdir: 'skills' };
+const SKILL_REPO_RE = /^[\w.\-]+\/[\w.\-]+$/, SKILL_BRANCH_RE = /^[\w.\-/]+$/; // 源串拼进 GitHub URL，与目录名白名单同门（原 readSkillSources 内联正则上提）
 const stateWarnings = [];
 const STATE_SCHEMAS = {
     'workspace-map.json': { latest: 1, steps: {} },
@@ -174,7 +179,21 @@ const STATE_SCHEMAS = {
         steps: { 2: m => { if (m && Array.isArray(m.skills)) for (const s of m.skills) if (s && !s.source) s.source = { repo: 'anthropics/skills', branch: 'main' }; return m; } },
     },
     'skills/origin.json': { latest: 1, steps: {} }, // s70 切片A: 技能来源标记（.agents/skills/<dir>/origin.json，下方随 .forge 先例逐目录迁移）
-    'config/skill-sources.json': { latest: 1, steps: {} }, // s70 切片B: 技能市场源配置（缺失时由 readSkillSources 首启生成内置默认）
+    // s70 切片B: 技能市场源配置（缺失时由 readSkillSources 首启生成内置默认）。
+    // qa返工(P2-2): latest 2 = 存量升级补第二源 baoyu——仅当文件当前无此条目且至少一条合法源（坏配置不追加、条目原样，走回落容错）；
+    // 幂等：升至 _schema:2 后重启早退。边界：无法区分「从未有过/用户已删」，升级会补回一次，用户再删不复活
+    'config/skill-sources.json': {
+        latest: 2,
+        steps: {
+            2: j => {
+                if (!j || !Array.isArray(j.sources)) return j;
+                const ok = s => s && typeof s.repo === 'string' && SKILL_REPO_RE.test(s.repo) && typeof s.branch === 'string' && SKILL_BRANCH_RE.test(s.branch) && (s.subdir === undefined || subdirSafe(s.subdir));
+                if (!j.sources.some(ok)) return j;
+                if (!j.sources.some(s => s && s.repo === BAOYU_SKILLS.repo)) j.sources.push({ ...BAOYU_SKILLS, enabled: true });
+                return j;
+            },
+        },
+    },
     'config/mcp-catalog.json': { latest: 1, steps: {} }, // s70 切片C: MCP 目录配置（缺失时由 readMcpCatalog 首启生成内置默认）
 };
 function migrateJsonAt(f, key) {
@@ -462,7 +481,11 @@ const SKILL_SOURCES_FILE = path.join(ROOT, 'data', 'config', 'skill-sources.json
 function subdirSafe(p) { return typeof p === 'string' && p.indexOf('..') < 0 && p[0] !== '/' && p[p.length - 1] !== '/' && /^[\w.\-/]*$/.test(p); }
 function readSkillSources() {
     // 首启不存在→生成内置默认；坏 JSON/无有效条目→warn 回落内置默认（不炸、不改写用户文件）；enabled 缺省视为 true
-    const dft = () => [{ repo: REMOTE_SKILLS.repo, branch: REMOTE_SKILLS.branch, subdir: REMOTE_SKILLS.subdir, enabled: true }];
+    // qa返工(P2-2): 首启生成即双源
+    const dft = () => [
+        { repo: REMOTE_SKILLS.repo, branch: REMOTE_SKILLS.branch, subdir: REMOTE_SKILLS.subdir, enabled: true },
+        { ...BAOYU_SKILLS, enabled: true },
+    ];
     const warnOnce = msg => { if (!stateWarnings.includes(msg)) stateWarnings.push(msg); console.warn(msg); };
     let raw = null;
     try { raw = FSS.readFileSync(SKILL_SOURCES_FILE, 'utf8'); } catch {
@@ -470,10 +493,10 @@ function readSkillSources() {
         return dft();
     }
     let j = null; try { j = JSON.parse(raw.replace(/^\uFEFF/, '')); } catch {}
-    if (!j || j._schema !== 1 || !Array.isArray(j.sources)) { warnOnce('skill-sources.json 无法解析（应为 _schema:1 + sources 数组），已回落内置默认源'); return dft(); }
-    // repo=owner/repo 形、branch/subdir 无 URL 元字符——源串拼进 GitHub URL，与目录名白名单同门
-    const okSrc = s => s && typeof s.repo === 'string' && /^[\w.\-]+\/[\w.\-]+$/.test(s.repo)
-        && typeof s.branch === 'string' && /^[\w.\-/]+$/.test(s.branch)
+    if (!j || (j._schema !== 1 && j._schema !== 2) || !Array.isArray(j.sources)) { warnOnce('skill-sources.json 无法解析（应为 _schema:1/2 + sources 数组），已回落内置默认源'); return dft(); } // P2-2: 迁移升至 _schema:2，读侧同步收
+    // repo=owner/repo 形、branch/subdir 无 URL 元字符——源串拼进 GitHub URL，与目录名白名单同门（正则上提共用，见 SKILL_REPO_RE）
+    const okSrc = s => s && typeof s.repo === 'string' && SKILL_REPO_RE.test(s.repo)
+        && typeof s.branch === 'string' && SKILL_BRANCH_RE.test(s.branch)
         && (s.subdir === undefined || subdirSafe(s.subdir));
     const valid = j.sources.filter(okSrc);
     if (!valid.length) { warnOnce('skill-sources.json 没有有效源（条目缺 repo/branch 或 subdir 非法），已回落内置默认源'); return dft(); }
@@ -1374,28 +1397,33 @@ async function handleHttp(req, res) {
                     FSS.writeFileSync(path.join(UPD_DIR, fname), raw);
                     console.log('update upload verified:', zname);
                     res.end(JSON.stringify({ ok: true, name: fname, verified: true }));
-                }).catch(e => res.end(JSON.stringify({ ok: false, err: e.message })));
+                }).catch(e => res.end(JSON.stringify(upErr(e, '校验读取失败（安装包可能正被占用），请重试'))));
             });
             return;
         }
         if (!/^PocketForge-[\w.-]+\.zip$/.test(fname)) { res.end(JSON.stringify({ ok: false, err: '文件名需形如 PocketForge-*.zip' })); return; }
         FSS.mkdirSync(UPD_DIR, { recursive: true });
         const declared = parseInt(req.headers['content-length'] || '0', 10) || 0;
-        const tmpPath = path.join(UPD_DIR, fname + '.part');
-        const ws2 = FSS.createWriteStream(tmpPath);
+        // qa返工(P3-3): .part 唯一化——wx 独占创建防同名并发上传互踩；撞车换随机名重试一次，两败即拒（不留半开句柄）
+        let tmpPath = '', ws2 = null;
+        for (let i = 0; i < 2 && !ws2; i++) {
+            const p = path.join(UPD_DIR, fname + '.' + process.pid.toString(36) + Date.now().toString(36) + Math.random().toString(36).slice(2, 7) + '.part');
+            try { const fd = FSS.openSync(p, 'wx'); ws2 = FSS.createWriteStream(p, { fd }); tmpPath = p; } catch {}
+        }
+        if (!ws2) { res.end(JSON.stringify({ ok: false, err: '上传太频繁，请稍后再试' })); return; }
         let got = 0, doneResp = false, reqEnded = false, failed = false;
         const fail = (err) => {
             if (doneResp) return;
             doneResp = true; failed = true;
             try { ws2.destroy(); } catch {}
-            res.end(JSON.stringify({ ok: false, err }));
+            res.end(JSON.stringify(typeof err === 'string' ? { ok: false, err } : err)); // P3-1: 对象形态=upErr() 产物（人话+type），直接透传
         };
         req.on('data', c => { got += c.length; });
         req.on('end', () => { reqEnded = true; });
         req.on('error', () => fail('上传中断'));
         // Node≥16：body 完整读完也发 close（早于 finish）——只有「没读完就断」才算中断
         req.on('close', () => { if (!reqEnded) fail('上传中断'); });
-        ws2.on('error', e => fail(e.message));
+        ws2.on('error', e => fail(upErr(e, '安装包保存失败（磁盘可能已满或被占用），请重试')));
         // 失败清理放在流 close（fd 释放）之后——Windows 上删已打开文件不可靠
         ws2.on('close', () => { if (failed) { try { FSS.rmSync(tmpPath, { force: true }); } catch {} } });
         req.pipe(ws2);
@@ -1411,7 +1439,7 @@ async function handleHttp(req, res) {
                 doneResp = true;
                 console.log('update upload staged:', fname, got, 'bytes');
                 res.end(JSON.stringify({ ok: true, name: fname, bytes: got }));
-            } catch (e) { fail(e.message); }
+            } catch (e) { fail(upErr(e, '安装包落位失败（文件可能被占用），请重试')); }
         });
     }
     else if (url === '/api/update/start' && req.method === 'POST') {

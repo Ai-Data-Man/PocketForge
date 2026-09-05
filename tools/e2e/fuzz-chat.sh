@@ -193,7 +193,7 @@ rm -rf "$REPO/fuzz-gate-tmp" "$INST/fuzz-gate-tmp" "$INST/fuzz-swap-tmp" "$INST/
 [ ! -d "$INST/fuzz-swap-tmp" ] && [ ! -d "$CACHE/fuzz-swap-tmp" ]; ck "P2-2/P3-4 fuzz temp skills cleaned up" $?
 # s70 切片B: 技能市场源配置化——沙盒自拉桥探针（明细随本日志留痕）
 node "$(dirname "$0")/skill-sources-probe.js" a; ck "s70 slice-B manifest source migration probe (3 asserts)" $?
-node "$(dirname "$0")/skill-sources-probe.js" b; ck "s70 slice-B skill-sources config probe (6 asserts)" $?
+node "$(dirname "$0")/skill-sources-probe.js" b; ck "s70 slice-B skill-sources config probe (8 asserts)" $?
 # s70 切片B: dev 桥在线断言——远程清单条目均带 source（缓存秒回，零副作用）
 curl -s "$B/api/skillstore?remote=1" | python -c "
 import sys,json
@@ -254,15 +254,27 @@ curl -s -X POST "$B/api/mcpstore" -H 'content-type: application/json' -d '{"id":
 [ "$(curl -s -o /dev/null -w '%{http_code}' -H 'X-PF-Report: 0' "$B/api/report")" = "403" ]; ck "report wrong X-PF-Report value refused 403" $?
 # v0.9.10 离线升级 sha256 通道（裁决 docs/verdicts/2026-09-05-offline-upgrade-sha.md c 方案，s69 遗留⑨）
 # 小文件构造场景：UPD=dev 树 data/updates，fuzz-* 即用即清（trap 兜底）；zip 魔数/字节数/哈希自算自验+失败清理
-UPD="$FR/data/updates"; UZ="PocketForge-fuzz-upl.zip"; US="PocketForge-fuzz-upl.zip.sha256"; UZT="$(mktemp -u).zip"
+UPD="$FR/data/updates"; UZ="PocketForge-fuzz-upl.zip"; US="PocketForge-fuzz-upl.zip.sha256"; UZT="$(mktemp -u).zip"; UZD="PocketForge-fuzz-dstdir.zip"
 mkdir -p "$UPD"
-trap 'rm -f "$UPD/$UZ" "$UPD/$UZ.part" "$UPD/$US" "$UZT"' EXIT
+trap 'rm -rf "$UPD/$UZ" "$UPD/$UZ".*.part "$UPD/$US" "$UZT" "$UPD/$UZD"' EXIT
 curl -s -X POST "$B/api/update/upload?name=evil.exe" --data-binary 'x' | grep -q '文件名需形如'; ck "update upload bad zip name rejected (v0.9.10)" $?
 curl -s -X POST "$B/api/update/upload?name=PocketForge-fuzz-bad.sha256" --data-binary 'zz' | grep -q '校验文件名需形如'; ck "update upload bad sha name rejected (v0.9.10)" $?
 printf '%064d  %s\n' 0 "$UZ" | curl -s -X POST "$B/api/update/upload?name=$US" --data-binary @- | grep -q '请先上传安装包'; ck "update upload sha-before-zip friendly (v0.9.10)" $?
 [ ! -e "$UPD/$US" ]; ck "update upload sha-before-zip writes nothing (v0.9.10)" $?
+# qa返工(P3-2): 校验文件 64KB 超限分支——>65536 字节必须拒
+python -c "import sys; sys.stdout.buffer.write(b'0'*65537)" | curl -s -X POST "$B/api/update/upload?name=$US" --data-binary @- | grep -q '校验文件过大'; ck "update upload sha256 over-64KB rejected (qa P3-2)" $?
+# qa返工(P3-1): 落位失败分支（目标名被目录占用→rename 必败）错误人话化——响应为人话且不泄漏内部路径
+mkdir -p "$UPD/$UZD"
+printf 'PK\x03\x04poison' | curl -s -X POST "$B/api/update/upload?name=$UZD" --data-binary @- | python -c "
+import sys,json
+raw=sys.stdin.read()
+assert 'C:' not in raw and '/conf/' not in raw and 'ENOENT' not in raw, raw
+d=json.loads(raw)
+assert d.get('ok') is False and '落位失败' in d.get('err',''), d
+"; ck "update upload rename failure humanized, no path leak (qa P3-1)" $?
+rm -rf "$UPD/$UZD"
 curl -s -X POST "$B/api/update/upload?name=$UZ" --data-binary 'not a zip at all' | grep -q '不是有效的安装包'; ck "update upload magic rejected (v0.9.10)" $?
-[ ! -e "$UPD/$UZ" ] && [ ! -e "$UPD/$UZ.part" ]; ck "update upload magic leaves no residue (v0.9.10)" $?
+[ ! -e "$UPD/$UZ" ] && [ -z "$(ls "$UPD/$UZ".*.part 2>/dev/null)" ]; ck "update upload magic leaves no residue (v0.9.10)" $?
 # 字节数不符（声明 1000 实发 10+半关）：Node HTTP 层协议级 400 拒（业务层对账仍兜底），零残留
 python - "$B" "$UZ" <<'PYEOF'
 import socket,sys
@@ -274,7 +286,7 @@ data = s.recv(4096).decode('utf8','replace')
 sys.exit(0 if (' 400 ' in data or 'ok":false' in data) and ' 200 ' not in data else 1)
 PYEOF
 ck "update upload short body rejected (v0.9.10)" $?
-[ ! -e "$UPD/$UZ" ] && [ ! -e "$UPD/$UZ.part" ]; ck "update upload short body leaves no residue (v0.9.10)" $?
+[ ! -e "$UPD/$UZ" ] && [ -z "$(ls "$UPD/$UZ".*.part 2>/dev/null)" ]; ck "update upload short body leaves no residue (v0.9.10)" $?
 python -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1],'w'); z.writestr('m.txt','pf-fuzz-payload'); z.close()" "$UZT"
 curl -s -X POST "$B/api/update/upload?name=$UZ" --data-binary @"$UZT" | grep -q '"ok":true'; ck "update upload valid zip staged (v0.9.10)" $?
 printf '%064d  %s\n' 0 "$UZ" | curl -s -X POST "$B/api/update/upload?name=$US" --data-binary @- | grep -q '校验不一致'; ck "update upload hash mismatch rejected (v0.9.10)" $?
@@ -293,8 +305,8 @@ data = s.recv(4096).decode('utf8','replace')
 sys.exit(0 if (' 413 ' in data or ' 413' in data or data == '') else 1)
 PYEOF
 ck "s50c oversized non-upload POST still rejected, upload exemption not leaked (v0.9.10)" $?
-rm -f "$UPD/$UZ" "$UPD/$US" "$UZT"; trap - EXIT
-[ ! -e "$UPD/$UZ" ] && [ ! -e "$UPD/$US" ] && [ ! -e "$UPD/$UZ.part" ]; ck "v0.9.10 upload fuzz cleaned up" $?
+rm -rf "$UPD/$UZ" "$UPD/$UZ".*.part "$UPD/$US" "$UZT" "$UPD/$UZD"; trap - EXIT
+[ ! -e "$UPD/$UZ" ] && [ ! -e "$UPD/$US" ] && [ -z "$(ls "$UPD/$UZ".*.part 2>/dev/null)" ]; ck "v0.9.10 upload fuzz cleaned up" $?
 echo "=============================="
 echo "fuzz: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" = "0" ]
