@@ -31,5 +31,9 @@
 - e2e.sh 重拉栈走降权包装（runas+清旧 wrapper+sleep 波动容忍）；事实勘误：重拉点在 e2e.sh 第 5 节，e2e-chat.sh 本无拉起分支（前置 bridge up 断言兜底）。
 - 验证：e2e-chat 45/45 + 停止脚本负/正双路径（负路径假 pc API 触发 WARNING+exit 1；正路径 2.4s all stopped）+ node 实证恢复（bridge 200/pg Ready）。
 
+## 诊断规则实弹演习（R1 真实故障触发）
+- 停 faucet（pc process stop）→ 生成报告 →「小forge自己看到的毛病」节精确命中 R1 全文（含 67b871d 补的出口短语），R5（代理开+连接错）按预期并存；faucet 拉回 Ready、bridge 200 恢复。
+- 规则链至此三重验证：单测正反例（s64 探针）+ qa 对抗证伪 + 真实故障实弹。R2/R4 待真机自然故障顺带观察（人为造钥匙失效/端口占用风险大于收益）。
+
 ## 验收
 9router 复测 28/28；dev 栈 node 实证恢复（healthz 14ms/pg probe READY）；仓库树净。
