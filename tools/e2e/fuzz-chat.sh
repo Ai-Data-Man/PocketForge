@@ -252,6 +252,49 @@ curl -s -X POST "$B/api/mcpstore" -H 'content-type: application/json' -d '{"id":
 [ "$(curl -s -o /dev/null -w '%{http_code}' -H 'X-PF-Report: 1' -H 'Origin: http://evil.example' "$B/api/report")" = "403" ]; ck "report evil origin + header refused 403" $?
 [ "$(curl -s -o /dev/null -w '%{http_code}' "$B/api/report")" = "403" ]; ck "report missing X-PF-Report refused 403" $?
 [ "$(curl -s -o /dev/null -w '%{http_code}' -H 'X-PF-Report: 0' "$B/api/report")" = "403" ]; ck "report wrong X-PF-Report value refused 403" $?
+# v0.9.10 离线升级 sha256 通道（裁决 docs/verdicts/2026-09-05-offline-upgrade-sha.md c 方案，s69 遗留⑨）
+# 小文件构造场景：UPD=dev 树 data/updates，fuzz-* 即用即清（trap 兜底）；zip 魔数/字节数/哈希自算自验+失败清理
+UPD="$FR/data/updates"; UZ="PocketForge-fuzz-upl.zip"; US="PocketForge-fuzz-upl.zip.sha256"; UZT="$(mktemp -u).zip"
+mkdir -p "$UPD"
+trap 'rm -f "$UPD/$UZ" "$UPD/$UZ.part" "$UPD/$US" "$UZT"' EXIT
+curl -s -X POST "$B/api/update/upload?name=evil.exe" --data-binary 'x' | grep -q '文件名需形如'; ck "update upload bad zip name rejected (v0.9.10)" $?
+curl -s -X POST "$B/api/update/upload?name=PocketForge-fuzz-bad.sha256" --data-binary 'zz' | grep -q '校验文件名需形如'; ck "update upload bad sha name rejected (v0.9.10)" $?
+printf '%064d  %s\n' 0 "$UZ" | curl -s -X POST "$B/api/update/upload?name=$US" --data-binary @- | grep -q '请先上传安装包'; ck "update upload sha-before-zip friendly (v0.9.10)" $?
+[ ! -e "$UPD/$US" ]; ck "update upload sha-before-zip writes nothing (v0.9.10)" $?
+curl -s -X POST "$B/api/update/upload?name=$UZ" --data-binary 'not a zip at all' | grep -q '不是有效的安装包'; ck "update upload magic rejected (v0.9.10)" $?
+[ ! -e "$UPD/$UZ" ] && [ ! -e "$UPD/$UZ.part" ]; ck "update upload magic leaves no residue (v0.9.10)" $?
+# 字节数不符（声明 1000 实发 10+半关）：Node HTTP 层协议级 400 拒（业务层对账仍兜底），零残留
+python - "$B" "$UZ" <<'PYEOF'
+import socket,sys
+host, port = sys.argv[1].replace('http://','').split(':')
+s = socket.create_connection((host, int(port)), timeout=5)
+s.sendall(('POST /api/update/upload?name=%s HTTP/1.1\r\nHost: %s\r\nContent-Type: application/octet-stream\r\nContent-Length: 1000\r\n\r\nshort-body' % (sys.argv[2], sys.argv[1])).encode())
+s.shutdown(socket.SHUT_WR)
+data = s.recv(4096).decode('utf8','replace')
+sys.exit(0 if (' 400 ' in data or 'ok":false' in data) and ' 200 ' not in data else 1)
+PYEOF
+ck "update upload short body rejected (v0.9.10)" $?
+[ ! -e "$UPD/$UZ" ] && [ ! -e "$UPD/$UZ.part" ]; ck "update upload short body leaves no residue (v0.9.10)" $?
+python -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1],'w'); z.writestr('m.txt','pf-fuzz-payload'); z.close()" "$UZT"
+curl -s -X POST "$B/api/update/upload?name=$UZ" --data-binary @"$UZT" | grep -q '"ok":true'; ck "update upload valid zip staged (v0.9.10)" $?
+printf '%064d  %s\n' 0 "$UZ" | curl -s -X POST "$B/api/update/upload?name=$US" --data-binary @- | grep -q '校验不一致'; ck "update upload hash mismatch rejected (v0.9.10)" $?
+[ ! -e "$UPD/$US" ] && [ -e "$UPD/$UZ" ]; ck "update upload mismatch keeps zip, writes no sha (v0.9.10)" $?
+H="$(sha256sum "$UZT" | cut -d' ' -f1)"
+printf '%s  %s\n' "$H" "$UZ" | curl -s -X POST "$B/api/update/upload?name=$US" --data-binary @- | grep -q '"verified":true'; ck "update upload matched pair verified (v0.9.10)" $?
+grep -qE '^[0-9a-f]{64}' "$UPD/$US"; ck "update upload sha256 landed, runner-parseable (v0.9.10)" $?
+curl -s "$B/api/update/status" | grep -q "$UZ"; ck "update status lists staged zip (v0.9.10)" $?
+[ "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/update/upload?name=$UZ" -H 'Origin: http://evil.example' --data-binary 'x')" = "403" ]; ck "update upload evil origin 403 (v0.9.10)" $?
+python - "$B" <<'PYEOF'
+import socket,sys
+host, port = sys.argv[1].replace('http://','').split(':')
+s = socket.create_connection((host, int(port)), timeout=5)
+s.sendall(('POST /api/memory HTTP/1.1\r\nHost: %s\r\nContent-Type: application/json\r\nContent-Length: 52428801\r\n\r\n{"a"' % sys.argv[1]).encode())
+data = s.recv(4096).decode('utf8','replace')
+sys.exit(0 if (' 413 ' in data or ' 413' in data or data == '') else 1)
+PYEOF
+ck "s50c oversized non-upload POST still rejected, upload exemption not leaked (v0.9.10)" $?
+rm -f "$UPD/$UZ" "$UPD/$US" "$UZT"; trap - EXIT
+[ ! -e "$UPD/$UZ" ] && [ ! -e "$UPD/$US" ] && [ ! -e "$UPD/$UZ.part" ]; ck "v0.9.10 upload fuzz cleaned up" $?
 echo "=============================="
 echo "fuzz: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" = "0" ]

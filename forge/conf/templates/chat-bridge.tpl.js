@@ -45,6 +45,17 @@ function atomicWrite(file, data) {
     FSS.renameSync(tmp, file);
 }
 
+// 流式 sha256（离线升级校验用；大文件不整读进内存）
+function sha256File(f) {
+    return new Promise((resolve, reject) => {
+        const h = crypto.createHash('sha256');
+        const s = FSS.createReadStream(f);
+        s.on('data', c => h.update(c));
+        s.on('end', () => resolve(h.digest('hex')));
+        s.on('error', reject);
+    });
+}
+
 // v2→v3 一次性迁移：旧版散落文件 + 根级 .git → ws-imported/（历史保留）
 (function migrateV3() {
     try {
@@ -1336,16 +1347,72 @@ async function handleHttp(req, res) {
         });
     }
     else if (url.startsWith('/api/update/upload') && req.method === 'POST') {
-        // 离线升级：小白在弹窗里选好下载好的 zip，直接流式落到 data/updates/
+        // 离线升级：小白把下载好的 zip 和 .sha256 都从弹窗选进来（单文件逐个传）。
+        // v0.9.10（裁决 docs/verdicts/2026-09-05-offline-upgrade-sha.md c 方案，s69 遗留⑨）：
+        // 桥端自算自验——zip 收完做字节数对账+PK 魔数预检（先落 .part，任何失败即清理，不留垃圾暂存，
+        // 关闭旧 upload 不校验内容留垃圾问题）；.sha256 收完对暂存 zip 实算哈希比对，一致才落位
+        // <zip>.sha256——update-runner 的 verifySha 原样消费，runner 零改动。UI 上传控件下批。
         const qs = new URL(req.url, 'http://x').searchParams;
         const fname = (qs.get('name') || ('PocketForge-manual-' + Date.now() + '.zip')).replace(/[\/:*?"<>|]/g, '_');
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        const UPD_DIR = path.join(ROOT, 'data', 'updates');
+        if (/\.sha256$/.test(fname)) {
+            // 校验文件：小文本（sha256sum 产物百来字节），缓冲后解析比对
+            if (!/^PocketForge-[\w.-]+\.zip\.sha256$/.test(fname)) { res.end(JSON.stringify({ ok: false, err: '校验文件名需形如 PocketForge-*.zip.sha256' })); return; }
+            const chunks = []; let bytes = 0;
+            req.on('data', c => { bytes += c.length; if (bytes <= 65536) chunks.push(c); });
+            req.on('end', () => {
+                const raw = Buffer.concat(chunks);
+                if (bytes > 65536) { res.end(JSON.stringify({ ok: false, err: '校验文件过大（应为 sha256sum 生成的百来字节文本）' })); return; }
+                const expect = ((raw.toString('utf8').match(/^([0-9a-fA-F]{64})/) || [])[1] || '').toLowerCase();
+                if (!expect) { res.end(JSON.stringify({ ok: false, err: '校验文件格式不对（应为 sha256sum 生成的校验文件）' })); return; }
+                const zname = fname.slice(0, -'.sha256'.length);
+                const zpath = path.join(UPD_DIR, zname);
+                if (!FSS.existsSync(zpath)) { res.end(JSON.stringify({ ok: false, err: '请先上传安装包 ' + zname })); return; }
+                sha256File(zpath).then(actual => {
+                    if (actual !== expect) { res.end(JSON.stringify({ ok: false, err: '校验不一致：安装包和校验文件不配套，请重新下载这两个文件' })); return; }
+                    FSS.writeFileSync(path.join(UPD_DIR, fname), raw);
+                    console.log('update upload verified:', zname);
+                    res.end(JSON.stringify({ ok: true, name: fname, verified: true }));
+                }).catch(e => res.end(JSON.stringify({ ok: false, err: e.message })));
+            });
+            return;
+        }
         if (!/^PocketForge-[\w.-]+\.zip$/.test(fname)) { res.end(JSON.stringify({ ok: false, err: '文件名需形如 PocketForge-*.zip' })); return; }
-        FSS.mkdirSync(path.join(ROOT, 'data', 'updates'), { recursive: true });
-        const ws2 = FSS.createWriteStream(path.join(ROOT, 'data', 'updates', fname));
+        FSS.mkdirSync(UPD_DIR, { recursive: true });
+        const declared = parseInt(req.headers['content-length'] || '0', 10) || 0;
+        const tmpPath = path.join(UPD_DIR, fname + '.part');
+        const ws2 = FSS.createWriteStream(tmpPath);
+        let got = 0, doneResp = false, reqEnded = false, failed = false;
+        const fail = (err) => {
+            if (doneResp) return;
+            doneResp = true; failed = true;
+            try { ws2.destroy(); } catch {}
+            res.end(JSON.stringify({ ok: false, err }));
+        };
+        req.on('data', c => { got += c.length; });
+        req.on('end', () => { reqEnded = true; });
+        req.on('error', () => fail('上传中断'));
+        // Node≥16：body 完整读完也发 close（早于 finish）——只有「没读完就断」才算中断
+        req.on('close', () => { if (!reqEnded) fail('上传中断'); });
+        ws2.on('error', e => fail(e.message));
+        // 失败清理放在流 close（fd 释放）之后——Windows 上删已打开文件不可靠
+        ws2.on('close', () => { if (failed) { try { FSS.rmSync(tmpPath, { force: true }); } catch {} } });
         req.pipe(ws2);
-        ws2.on('finish', () => res.end(JSON.stringify({ ok: true, name: fname })));
-        ws2.on('error', e => res.end(JSON.stringify({ ok: false, err: e.message })));
+        ws2.on('finish', () => {
+            if (doneResp) return;
+            // 字节数对账：实收与声明不一致（截断/中断）→ 拒+清理
+            if (declared && got !== declared) { fail('传输不完整（应收 ' + declared + ' 字节，实收 ' + got + '），请重新上传'); return; }
+            try {
+                const fd = FSS.openSync(tmpPath, 'r');
+                const head = Buffer.alloc(4); FSS.readSync(fd, head, 0, 4, 0); FSS.closeSync(fd);
+                if (head.toString('latin1') !== 'PK\x03\x04') { fail('这不是有效的安装包（文件已损坏），请重新下载'); return; }
+                FSS.renameSync(tmpPath, path.join(UPD_DIR, fname));
+                doneResp = true;
+                console.log('update upload staged:', fname, got, 'bytes');
+                res.end(JSON.stringify({ ok: true, name: fname, bytes: got }));
+            } catch (e) { fail(e.message); }
+        });
     }
     else if (url === '/api/update/start' && req.method === 'POST') {
         const chunks = [];
