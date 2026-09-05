@@ -64,6 +64,11 @@ curl -sL -x "$PROXY" --retry 3 -o "$LIC/faucetdb_faucet_LICENSE-MIT" "https://ra
 curl -sL -x "$PROXY" --retry 3 -o "$LIC/postgresql.PostgreSQL" "https://raw.githubusercontent.com/postgres/postgres/REL_17_11/COPYRIGHT" || true
 [ -s "$LIC/postgresql.PostgreSQL" ] || { echo "MISSING LICENSE: postgresql.PostgreSQL"; exit 1; }
 
-# checksums
-( cd "$BIN" && find . -type f \( -name '*.exe' \) -exec sha256sum {} \; ) > "$ROOT/tools/checksums.txt"
+# checksums (s67 口径统一: 本表=fetch.sh 产物档案, 仓库根相对路径+二进制(*)标记, regen 幂等。
+# 范围=本脚本下载的归档 + 其解压出的 bin exe; node/python 不归本脚本管, 不进表。
+# 新增资产须同步补下面两处列举。)
+( cd "$ROOT" && \
+  sha256sum -b downloads/pc.zip downloads/nats-server.zip downloads/nats-cli.zip downloads/faucet.zip downloads/goose.zip downloads/zonky-pg-17.11.0.jar downloads/edb-pg-17.11-1-windows-x64-binaries.zip && \
+  find forge/bin/pc forge/bin/nats-server forge/bin/nats-cli forge/bin/faucet forge/bin/goose forge/bin/pg -type f -name '*.exe' -exec sha256sum -b {} + \
+) > "$ROOT/tools/checksums.txt"
 cat "$ROOT/tools/checksums.txt"

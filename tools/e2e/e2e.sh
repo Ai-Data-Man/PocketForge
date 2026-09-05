@@ -84,8 +84,26 @@ curl -s --max-time 3 http://127.0.0.1:8199/fake-plm.html >/dev/null; ck "app ser
 # ---------- 5) 重启持久 ----------
 timeout 20 env PC_DISABLE_TUI=1 "$FORGE/bin/pc/process-compose.exe" -p $PC_PORT down </dev/null >/dev/null 2>&1 || taskkill //IM process-compose.exe //F >/dev/null 2>&1 || true
 sleep 3
-cmd //c "$(cygpath -w "$FORGE/启动数字员工.cmd")" </dev/null > "$FORGE/data/logs/e2e-relaunch.log" 2>&1 &
-sleep 25
+# s67(STATE遗留3): 本机内建 Administrator 提权环境下 postgres 拒提权运行(restarts 耗尽面板红)。
+# relaunch 走 runas /trustlevel:0x20000 降权令牌包装(目标机标准用户等价无感)。wrapper 须 GBK:
+# cmd 按 ANSI codepage 解析中文启动器名; 输出重定向移入 wrapper(runas 不向子进程传句柄)。
+# 先清旧 wrapper: 上轮 wrapper 停栈后挂在 pause, 不清则新实例静默不执行(s67 实证观察项)。
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='cmd.exe'\" | Where-Object { \$_.CommandLine -match 'relaunch-wrap' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }" 2>/dev/null || true
+python - "$(cygpath -w "$FORGE")" <<'PYEOF'
+import os, sys
+forge = sys.argv[1]
+wrap = os.path.join(forge, 'data', 'logs', 'e2e-relaunch-wrap.cmd')
+content = ('@echo off\r\ncall "%s" > "%s" 2>&1\r\n' % (
+    os.path.join(forge, '\u542f\u52a8\u6570\u5b57\u5458\u5de5.cmd'),
+    os.path.join(forge, 'data', 'logs', 'e2e-relaunch.log')))
+data = content.encode('gbk')
+assert b'\xc6\xf4' in data, 'GBK bytes missing in wrapper'
+open(wrap, 'wb').write(data)
+PYEOF
+if ! cmd //c runas //trustlevel:0x20000 "$(cygpath -w "$FORGE/data/logs/e2e-relaunch-wrap.cmd")" </dev/null >/dev/null 2>&1; then
+  echo "WARN: restricted-token relaunch failed (runas); stack may be down"
+fi
+sleep 40   # s67: 降权 runas 链(bootstrap→pc listen)实测机器慢时 >25s, 25s 断言会打早(exit 7)
 NEW_PORT=$(cat "$FORGE/data/pc.port")
 timeout 15 env PC_DISABLE_TUI=1 "$FORGE/bin/pc/process-compose.exe" -p $NEW_PORT process get e2e-report </dev/null 2>/dev/null | grep -viE "debug|duplicate" | grep -qE "Running|Launching|Launched"; ck "app auto-registered after restart" $?
 KEY2=$(cat "$FORGE/data/faucet/.apikey" 2>/dev/null || true)
