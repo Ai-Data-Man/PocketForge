@@ -450,7 +450,15 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
     <button id="upd-check" class="mini" style="flex:1">检查更新</button>
     <button id="upd-go" class="mini" style="flex:1;display:none;background:var(--acc);color:var(--acc-contrast)"></button>
     <button id="upd-manual-btn" class="mini" style="flex:1">离线升级</button>
-    <input type="file" id="upd-file" accept=".zip" style="display:none">
+    <input type="file" id="upd-zip-file" accept=".zip" style="display:none">
+    <input type="file" id="upd-sha-file" accept=".sha256" style="display:none">
+  </div>
+  <div id="upd-manual" style="display:none;margin-top:8px;border:1px solid var(--line);border-radius:8px;padding:8px">
+    <div style="display:flex;align-items:center;gap:6px"><span class="fnote" style="flex:1">第 1 步：安装包（.zip）</span><button id="upd-zip-btn" class="mini">选择文件</button></div>
+    <div class="fnote" id="upd-zip-status" role="status" style="margin:2px 0 6px">未选择</div>
+    <div style="display:flex;align-items:center;gap:6px"><span class="fnote" style="flex:1">第 2 步：校验文件（.sha256）</span><button id="upd-sha-btn" class="mini">选择文件</button></div>
+    <div class="fnote" id="upd-sha-status" role="status" style="margin:2px 0 6px">未选择</div>
+    <button id="upd-manual-go" class="mini" style="display:none;width:100%;background:var(--acc);color:var(--acc-contrast)">开始离线升级</button>
   </div>
   <div class="fnote" id="upd-status" style="margin-top:8px"></div>
 </div></div>
@@ -1731,7 +1739,7 @@ function msgText(m){ const c=m.cloneNode(true); c.querySelectorAll('.mbar').forE
 
 
 // ---- 升级（ADR-0009）----
-let updAsset=null, updPoll=null;
+let updAsset=null, updPoll=null, updStagedName=null;
 async function updateRefresh(){
   try{
     const d=await (await fetch('/api/update/status')).json();
@@ -1778,22 +1786,65 @@ $('upd-go').onclick=async()=>{
   if(d.ok){ $('upd-status').textContent='⏳ 升级器已启动，页面稍后自动重连…'; if(!updPoll) updPoll=setInterval(updateStatusTick,2500); }
   else $('upd-status').textContent='❌ '+d.err;
 };
-$('upd-manual-btn').onclick=()=>$('upd-file').click();
-$('upd-file').onchange=function(){
+// 离线升级两步上传（裁决 docs/verdicts/2026-09-05-offline-upgrade-sha.md）：zip 与 .sha256 挨个传，
+// 端点双形态自验（verified:true 才算配对通过），配对通过才亮「开始离线升级」——与在线检查更新互不干扰
+$('upd-manual-btn').onclick=()=>{
+  const p=$('upd-manual'), show=p.style.display==='none';
+  p.style.display=show?'block':'none';
+  if(show) fetch('/api/update/status').then(r=>r.json()).then(d=>{
+    if(d.staged&&d.staged[0]){ updStagedName=d.staged[0];
+      if($('upd-zip-status').textContent==='未选择') $('upd-zip-status').textContent='已有安装包 '+updStagedName+'，跳过第 1 步直接做第 2 步';
+    }
+  }).catch(()=>{});
+};
+$('upd-zip-btn').onclick=()=>$('upd-zip-file').click();
+$('upd-zip-file').onchange=function(){
   const f=this.files[0]; this.value='';
   if(!f) return;
-  if(!/^PocketForge-.+\.zip$/.test(f.name)){ $('upd-status').textContent='⚠ 请选择 PocketForge-*.zip 安装包'; return; }
-  if(!confirm('用这个安装包离线升级？数字员工将自动重启。')) return;
+  if(!/^PocketForge-.+\.zip$/.test(f.name)){ $('upd-zip-status').textContent='⚠ 请选择 PocketForge-*.zip 安装包'; return; }
+  $('upd-zip-status').textContent='⏳ 上传中…';
+  $('upd-sha-status').textContent='未选择';
+  $('upd-manual-go').style.display='none';
   const xhr=new XMLHttpRequest();
   xhr.open('POST','/api/update/upload?name='+encodeURIComponent(f.name));
-  xhr.upload.onprogress=e=>{ if(e.lengthComputable) $('upd-status').textContent='上传中 '+Math.round(e.loaded/e.total*100)+'%'; };
+  xhr.upload.onprogress=e=>{ if(e.lengthComputable) $('upd-zip-status').textContent='⏳ 上传中 '+Math.round(e.loaded/e.total*100)+'%'; };
   xhr.onload=()=>{ let d={}; try{ d=JSON.parse(xhr.responseText); }catch{}
-    if(d.ok){ $('upd-status').textContent='安装包就绪，启动升级器…';
-      fetch('/api/update/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({staged:d.name})})
-        .then(r=>r.json()).then(d2=>{ if(d2.ok){ if(!updPoll) updPoll=setInterval(updateStatusTick,2500); } else $('upd-status').textContent='❌ '+d2.err; });
-    } else $('upd-status').textContent='❌ 上传失败';
+    const err=d.err||'上传失败';
+    if(d.ok){ updStagedName=d.name; $('upd-zip-status').textContent='✅ 安装包已就绪，请做第 2 步：选择校验文件'; }
+    else if(err.indexOf('不是有效的安装包')>=0) $('upd-zip-status').textContent='❌ 这个文件不是安装包（可能选错了文件），请重新选择 .zip';
+    else $('upd-zip-status').textContent='❌ '+err;
   };
+  xhr.onerror=()=>{ $('upd-zip-status').textContent='❌ 上传失败'; };
   xhr.send(f);
+};
+$('upd-sha-btn').onclick=()=>$('upd-sha-file').click();
+$('upd-sha-file').onchange=function(){
+  const f=this.files[0]; this.value='';
+  if(!f) return;
+  if(!/^PocketForge-.+\.zip\.sha256$/.test(f.name)){ $('upd-sha-status').textContent='⚠ 请选择 PocketForge-*.zip.sha256 校验文件'; return; }
+  $('upd-sha-status').textContent='⏳ 正在核对…';
+  const xhr=new XMLHttpRequest();
+  xhr.open('POST','/api/update/upload?name='+encodeURIComponent(f.name));
+  xhr.onload=()=>{ let d={}; try{ d=JSON.parse(xhr.responseText); }catch{}
+    const err=d.err||'上传失败';
+    if(d.ok&&d.verified){ updStagedName=d.name.slice(0,-'.sha256'.length);
+      $('upd-sha-status').textContent='✅ 配对校验通过，安装包完好';
+      $('upd-manual-go').style.display='block';
+    }
+    else if(err.indexOf('不一致')>=0) $('upd-sha-status').textContent='❌ 校验文件和安装包不配套：请重新选择校验文件（第 1 步的安装包不用重传）';
+    else if(err.indexOf('请先上传')>=0) $('upd-sha-status').textContent='❌ 请先做第 1 步：上传安装包';
+    else $('upd-sha-status').textContent='❌ '+err;
+  };
+  xhr.onerror=()=>{ $('upd-sha-status').textContent='❌ 上传失败'; };
+  xhr.send(f);
+};
+$('upd-manual-go').onclick=async()=>{
+  if(!updStagedName) return;
+  if(!confirm('用这个安装包离线升级？数字员工将自动重启。')) return;
+  const r=await fetch('/api/update/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({staged:updStagedName})});
+  const d=await r.json();
+  if(d.ok){ $('upd-status').textContent='⏳ 升级器已启动，页面稍后自动重连…'; if(!updPoll) updPoll=setInterval(updateStatusTick,2500); }
+  else $('upd-status').textContent='❌ '+d.err;
 };
 updateRefresh();
 
