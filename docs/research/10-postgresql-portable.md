@@ -11,6 +11,12 @@
 - 裸目录最小集（exe+8DLL）对本机运行中 PG 17.11.0 dump 空集群实测通过（exit 0，17.11=17.11 同版本合规）。排除路线：npm 全 beta、MSYS2 无 17.11 且不同源、Chocolatey=EDB installer 包装（禁 installer）、pgAdmin 无 portable。pg_restore/psql 闭包同级（+1.55MB，阶段二备份面再议）。
 - pin 注意：EDB URL 有 -1/-2 rebuild，pin -1（与 zonky 同源）；PG 大版本升级时 pg_dump 须同步换版并重做哈希护栏。
 
+## s66 阶段二补充取证（2026-09-05，postgres.js 3.4.9 客户端，VERIFIED-RUN）
+- **依赖树清点**：npm --omit=dev install postgres@3.4.9 → added 1 package，npm ls --all 仅自身——**零传递依赖实证**（原 UNVERIFIED-DOC 转 VERIFIED-RUN）。license: Unlicense；main: cjs/src/index.js + type: module（双形态，CJS require 可用）。
+- **运行时探针**（node v22.21.1 ↔ PG 17.11.0 @127.0.0.1:5432，全部通过，探针 tmp/s66-pgclient-forensics/）：CJS require ok（26ms）；select version() → PostgreSQL 17.11（67ms）；UTF-8 中文往返逐字节一致（79ms）；错误路径 42P01 后连接存活；服务端 terminate → ECONNRESET；connect_timeout:2 + 不可路由地址 → 2004ms 抛 CONNECT_TIMEOUT——超时语义精确命中。
+- **API 注意（3.4.9 实测）**：sql.reserve() 连接级对象只有 release 无 destroy/close；池级只有 close/end；断连注入须走服务端 terminate 或池级 end。
+- **结论**：postgres.js 3.4.9 通过全部取证项，后备 pg 8.23.0 不触发。入树时点=首行业务数据同提交（ADR-0011 阶段二裁决 §4）。
+
 - 对本项目的关键事实/风险：
   1. **许可证是硬门槛不是技术门槛**：引入必须先扩白名单（建议表述："OSI 认证宽松许可等价类：PostgreSQL License、ISC"），扩列属硬约束变更，待用户确认后落 ADR。
   2. **Windows 三坑**：postgres.exe 在管理员令牌下拒绝启动（社区多源交叉证实）——启动链必须非提权，目标机用户天然无管理员权限是利好，残余风险=用户右键"以管理员身份运行"；中文 Windows initdb 必须显式 `-E UTF8 --locale=C`（C locale 默认编码是 SQL_ASCII 不是 UTF8）；多进程模型（postmaster+每连接 backend）比 SQLite 多崩溃清理/孤儿进程一层运维面，process-compose 托管可行。
