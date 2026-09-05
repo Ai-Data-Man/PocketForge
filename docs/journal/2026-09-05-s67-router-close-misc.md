@@ -25,5 +25,11 @@
 ## goose v1.50 监控检查点
 2026-09-05 14:xx：latest 仍为 v1.49.0（09-03）。下次检查点 09-06+；若 v1.50 发布→按 research/goose-upgrade-playbook.md 启动升级窗口。
 
+## s66 遗留三件收口（8054c40）
+- 停止脚本"确已停"校验（轮询 pc API+人话警告）；**顺带根治：cmd 内 UTF-8 中文 rem 在 GBK 代码页吃掉下一行行首**（pc.port 读取行已被静默废掉多日，靠默认端口侥幸命中）——.cmd ASCII 化升级为硬规则（记忆 pitfalls #15）。
+- checksums.txt 统一为机器单一真相源（downloads 七归档+fetch.sh 管辖六目录 exe 全量重算，regen 幂等不丢行，16/16 等价验证）。
+- e2e.sh 重拉栈走降权包装（runas+清旧 wrapper+sleep 波动容忍）；事实勘误：重拉点在 e2e.sh 第 5 节，e2e-chat.sh 本无拉起分支（前置 bridge up 断言兜底）。
+- 验证：e2e-chat 45/45 + 停止脚本负/正双路径（负路径假 pc API 触发 WARNING+exit 1；正路径 2.4s all stopped）+ node 实证恢复（bridge 200/pg Ready）。
+
 ## 验收
 9router 复测 28/28；dev 栈 node 实证恢复（healthz 14ms/pg probe READY）；仓库树净。
