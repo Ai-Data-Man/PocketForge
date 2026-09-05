@@ -18,5 +18,12 @@
 - 冷启：pg Ready restarts=0、pg-init Completed、bridge 200/4ms（node 计时）；**fc948e9 真实事故路径直证**——冷启 daily-backup exit 0、空 pg-dumps 被挡、zip 完整（修复前此路径 Compress-Archive 删 zip 必崩）；冷启首备份天然无 dump（daily-backup 由 faucet-rawsql 触发不依赖 pg，设计内失败面），pg Ready 后与第二轮启动均产出 dump（kept=2 新 zip 含 pg-dumps）。
 - 重启幂等（PG_VERSION mtime 逐位一致）/报告豁免口径外零 PG 字节/停止无 postgres 残留；dev 栈 node 实证恢复（10 进程全绿，pg Ready）。
 
+## 四皮肤×昼夜视觉 sweep（令牌计算样式客观审计，8 组合全过）
+- 方法：IAB 真页面逐组合切换（skin × light/dark），读 .quickchip 边框/底色、#send 底色、侧栏底色、截断提示行色、消息边框的 computed style，与 --acc 令牌比对。**方法论坑：后台标签页 transition 节流会把 computed 值冻结在起始值——审计前必须注入 `*{transition:none!important}`**（首跑"芯片边框恒绿"即此伪影，注入后消失，非产品缺陷）。
+- 结果：8 组合全部正确——--acc 四皮肤昼/夜值逐一命中（绿 #0e7a43/#2ea36b、靛青 #1a6fd4/#4d94e8、暮紫 #6d48b8/#a184e8、石墨 #3d4a54/#8fa3b0）；芯片边框/底色、发送键、侧栏、消息边框、弱色提示全部跟随令牌。结合 s65 未定义引用审计（0），设计令牌体系完整性双重验证通过。
+
+## goose v1.50 监控检查点
+2026-09-05 14:xx：latest 仍为 v1.49.0（09-03）。下次检查点 09-06+；若 v1.50 发布→按 research/goose-upgrade-playbook.md 启动升级窗口。
+
 ## 验收
 9router 复测 28/28；dev 栈 node 实证恢复（healthz 14ms/pg probe READY）；仓库树净。
