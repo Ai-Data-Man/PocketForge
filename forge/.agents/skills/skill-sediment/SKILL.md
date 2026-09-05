@@ -22,6 +22,7 @@ metadata:
 
 ## 写出 SKILL.md
 - 位置：`.agents/skills/<name>/SKILL.md`（项目级，随文件夹走）。
+- 同目录写来源标记 `origin.json`：`{"_schema":1,"source":"self","installed_at":"<ISO时间>"}`（区别自己攒的和外面装的；漏写不影响使用，只会被当成随包技能）。
 - name：小写字母数字连字符，必须与目录同名，≤64 字符。
 - description：三段式（Use when… / even if… / Do NOT use for…），写触发关键词，≤1024 字符。模型容易漏触发，描述要主动。
 - 正文 <500 行：编号步骤 + 坑（footguns）+ **验证步骤**（怎么确认做对了）。

@@ -158,6 +158,7 @@ const STATE_SCHEMAS = {
     'session-archive.json': { latest: 1, steps: {} },
     '.forge': { latest: 1, steps: {} },
     'cache/skills/manifest.json': { latest: 1, steps: {} }, // s56: 技能市场缓存（path.join 与正斜杠键在 Windows 等价，已验）
+    'skills/origin.json': { latest: 1, steps: {} }, // s70 切片A: 技能来源标记（.agents/skills/<dir>/origin.json，下方随 .forge 先例逐目录迁移）
 };
 function migrateJsonAt(f, key) {
     const meta = STATE_SCHEMAS[key];
@@ -175,6 +176,11 @@ function migrateJsonAt(f, key) {
     try {
         for (const ent of FSS.readdirSync(ART_DIR, { withFileTypes: true })) {
             if (ent.isDirectory()) migrateJsonAt(path.join(ART_DIR, ent.name, '.forge'), '.forge');
+        }
+    } catch {}
+    try { // s70: 技能来源标记逐目录迁移（同 .forge 先例）
+        for (const ent of FSS.readdirSync(path.join(ROOT, '.agents', 'skills'), { withFileTypes: true })) {
+            if (ent.isDirectory()) migrateJsonAt(path.join(ROOT, '.agents', 'skills', ent.name, 'origin.json'), 'skills/origin.json');
         }
     } catch {}
 })();
@@ -604,8 +610,36 @@ async function listRemoteSkills(installedSet, res) {
         res.end(JSON.stringify({ ok: false, err: '技能源拉取失败: ' + e.message }));
     }
 }
+// s70 切片A（裁决 S1）: 技能来源标记——origin.json { _schema:1, source: market|local|self, repo, branch, installed_at }
+function originOf(dir) {
+    // 容错：坏 JSON/缺字段/未知 source → null（按本机技能处理，不炸）
+    try {
+        const o = JSON.parse(FSS.readFileSync(path.join(dir, 'origin.json'), 'utf8'));
+        if (o && (o.source === 'market' || o.source === 'local' || o.source === 'self')) return o;
+    } catch {}
+    return null;
+}
+function writeSkillOrigin(dst, source, repo, branch) {
+    try {
+        FSS.mkdirSync(dst, { recursive: true });
+        atomicWrite(path.join(dst, 'origin.json'), JSON.stringify({ _schema: 1, source, repo, branch, installed_at: new Date().toISOString() }, null, 2));
+    } catch {}
+}
+function skillInstallBlocked(dst) {
+    // 同名冲突语义：已装且（无标记或 self）→ 拒绝（防静默覆盖本机/自沉淀技能）；market/local → 覆盖=更新语义放行
+    if (!FSS.existsSync(path.join(dst, 'SKILL.md'))) return null; // 与卸载同门：SKILL.md 才算「已装」
+    const o = originOf(dst);
+    if (o && o.source !== 'self') return null;
+    return '这个名字小 forge 自己在用，先换个技能名再装。';
+}
 async function installRemoteSkill(dirName, res) {
     const dst = path.join(ROOT, '.agents', 'skills', dirName);
+    const blocked = skillInstallBlocked(dst);
+    if (blocked) {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, err: blocked }));
+        return;
+    }
     const finish = () => {
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: true }));
@@ -614,6 +648,7 @@ async function installRemoteSkill(dirName, res) {
     try {
         if (FSS.existsSync(path.join(SKILL_CACHE, dirName, 'SKILL.md'))) {
             FSS.cpSync(path.join(SKILL_CACHE, dirName), dst, { recursive: true });
+            writeSkillOrigin(dst, 'market', REMOTE_SKILLS.repo, REMOTE_SKILLS.branch);
             finish();
             return;
         }
@@ -641,9 +676,12 @@ async function installRemoteSkill(dirName, res) {
     }
     try {
         await walkApi(dirName, dst);
-        finish();
+        // s70: 先清旧 origin 再回写缓存（缓存树不带来源标记），最后写新标记
+        try { FSS.rmSync(path.join(dst, 'origin.json'), { force: true }); } catch {}
         // 顺手把整个技能目录写进缓存（安装路径与缓存路径同构，纯复制即可）
         try { FSS.cpSync(dst, path.join(SKILL_CACHE, dirName), { recursive: true }); } catch {}
+        writeSkillOrigin(dst, 'market', REMOTE_SKILLS.repo, REMOTE_SKILLS.branch);
+        finish();
     } catch (e) {
         // 失败清理半成品目录
         try { FSS.rmSync(dst, { recursive: true, force: true }); } catch {}
@@ -1187,7 +1225,8 @@ async function handleHttp(req, res) {
                             } else if (fmDone) bodyLines.push(line);
                         }
                         const body = bodyLines.join(nl).trim();
-                        out.push({ name: ent.name, description: (meta.description || '').replace(/^['\"]|['\"]$/g, ''), body: body.slice(0, 4000), path: f });
+                        const o = originOf(path.join(d, ent.name)); // s70: 来源标记（无/坏 → null=本机随包）
+                        out.push({ name: ent.name, description: (meta.description || '').replace(/^['\"]|['\"]$/g, ''), body: body.slice(0, 4000), path: f, origin: o ? { source: o.source, repo: o.repo || '' } : null });
                     } catch {}
                 }
             } catch {}
@@ -1674,7 +1713,10 @@ const ext = path.extname(f).toLowerCase();
                     const src = path.join(REPO, b.name);
                     const dst = path.join(INSTALLED, b.name);
                     if (!FSS.existsSync(path.join(src, 'SKILL.md'))) throw new Error('商店里没有这个技能');
+                    const blocked = skillInstallBlocked(dst); // s70: 同名冲突保护（本地精选目录安装同门）
+                    if (blocked) throw new Error(blocked);
                     FSS.cpSync(src, dst, { recursive: true });
+                    writeSkillOrigin(dst, 'local', 'skills-repo', '');
                     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ ok: true }));
                 } catch (e) {

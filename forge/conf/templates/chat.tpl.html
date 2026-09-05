@@ -227,6 +227,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 .skill .nm{font-weight:600;font-size:.88rem}
 .skill .ds{font-size:.78rem;color:var(--mut);margin:4px 0 8px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .skill .ops{display:flex;gap:8px}
+.skill .obadge{font-size:.68rem;font-weight:400;color:var(--mut);margin-left:6px;white-space:nowrap}
 .skill pre{background:var(--code-bg);border:1px solid var(--line);border-radius:var(--r-s);padding:10px;font-size:.72rem;max-height:220px;overflow:auto;white-space:pre-wrap;margin:8px 0 0;color:var(--code-tx)}
 .frow{margin-bottom:14px}
 .frow label{display:block;font-size:.78rem;color:var(--mut);margin-bottom:6px;font-weight:500}
@@ -1572,7 +1573,7 @@ $('open-skills').onclick=async()=>{
     if(!list.length){ box.innerHTML='<div class="fnote">还没有技能。让它干活时说「记住这个做法」，它就会自己学。</div>'; return; }
     for(const sk of list){
       const el=document.createElement('div'); el.className='skill';
-      el.innerHTML='<div class="nm">'+esc(sk.name)+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
+      el.innerHTML='<div class="nm">'+esc(sk.name)+skillOriginBadge(sk)+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
       const ops=document.createElement('div'); ops.className='ops';
       const use=document.createElement('button'); use.className='mini'; use.textContent='让它现在用';
       use.onclick=()=>{ $('skills-modal').classList.remove('on'); $('txt').value='请按技能 '+sk.name+' 的流程来做'; $('txt').focus(); };
@@ -1590,6 +1591,13 @@ $('open-skills').onclick=async()=>{
 // s42/s45/s56: 技能商店（本地 skills-repo + 远程缓存；搜索过滤；中文说明优先）
 let storeAll=[]; // 当前可装列表（avail），供搜索过滤
 function skillDesc(sk){ return sk.desc_zh || sk.description || '（无说明）'; }
+function skillOriginBadge(sk){ // s70 切片A: 来源徽标——市场=🌐+源短名 / 自己攒的=✍ / 本机随包=无标
+  const o=sk.origin;
+  if(!o) return '';
+  if(o.source==='market'){ const r=(o.repo||'').split('/').pop()||'市场'; return '<span class="obadge" title="从技能市场装的（'+(o.repo||'市场')+'）">🌐 '+esc(r)+'</span>'; }
+  if(o.source==='self') return '<span class="obadge" title="在这个小 forge 里自己攒的">✍ 自己攒的</span>';
+  return '';
+}
 function storePaint(){
   const box=$('store-list'); if(!box) return;
   const q=(($('store-q')||{}).value||'').trim().toLowerCase();
@@ -1644,7 +1652,7 @@ async function loadSkills2(){
   try{ const r=await fetch('/api/skills'); const list=await r.json(); const box=$('skills-list'); box.innerHTML='';
     for(const sk of list){
       const el=document.createElement('div'); el.className='skill';
-      el.innerHTML='<div class="nm">'+esc(sk.name)+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
+      el.innerHTML='<div class="nm">'+esc(sk.name)+skillOriginBadge(sk)+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
       // s57: 卸载已装技能（删 .agents/skills/<dir>）
       const ops=document.createElement('div'); ops.className='ops';
       const del=document.createElement('button'); del.className='mini'; del.textContent='✕'; del.title='卸载这个技能';

@@ -91,6 +91,29 @@ assert mcp and all(x['builtin'] is False and x['visible'] is True for x in mcp),
 assert any(x['id']=='mcp-fetch' for x in mcp), mcp
 "; ck "extensions dynamic mcp merged (s57)" $?
 curl -s -X POST "$B/api/extensions" -H 'content-type: application/json' -d '{"id":"mcp-ghost-zzz","enabled":false}' | grep -q '参数不合法'; ck "extensions dynamic id whitelist enforced" $?
+# s70 切片A: 技能来源标记与同名冲突保护——临时技能目录即建即删（trap 兜底；全部断言走冲突拒绝分支，零安装副作用）
+FR="${FORGE_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)/forge}"
+command -v cygpath >/dev/null 2>&1 && FR="$(cygpath -u "$FR" 2>/dev/null || echo "$FR")"
+STMP="$FR/.agents/skills/fuzz-conflict-tmp"
+trap 'rm -rf "$STMP"' EXIT
+mkdir -p "$STMP" && printf -- '---\nname: fuzz-conflict-tmp\ndescription: fuzz temp\n---\nbody\n' > "$STMP/SKILL.md"
+curl -s -X POST "$B/api/skillstore" -H 'content-type: application/json' -d '{"name":"fuzz-conflict-tmp","remote":true}' | grep -q '小 forge 自己在用'; ck "skillstore conflict no-origin rejected (s70)" $?
+printf '{bad json' > "$STMP/origin.json"
+curl -s -X POST "$B/api/skillstore" -H 'content-type: application/json' -d '{"name":"fuzz-conflict-tmp","remote":true}' | grep -q '小 forge 自己在用'; ck "skillstore origin bad json tolerated as builtin (s70)" $?
+printf '{"_schema":1,"repo":"x","installed_at":"t"}' > "$STMP/origin.json"
+curl -s -X POST "$B/api/skillstore" -H 'content-type: application/json' -d '{"name":"fuzz-conflict-tmp","remote":true}' | grep -q '小 forge 自己在用'; ck "skillstore origin missing source tolerated as builtin (s70)" $?
+printf '{"_schema":1,"source":"self","installed_at":"t"}' > "$STMP/origin.json"
+curl -s -X POST "$B/api/skillstore" -H 'content-type: application/json' -d '{"name":"fuzz-conflict-tmp","remote":true}' | grep -q '小 forge 自己在用'; ck "skillstore conflict self-origin rejected (s70)" $?
+printf '{bad json' > "$STMP/origin.json"
+curl -s "$B/api/skills" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+assert isinstance(d,list)
+t=[x for x in d if x['name']=='fuzz-conflict-tmp']
+assert t and t[0].get('origin') is None, t
+"; ck "api/skills exposes origin field, broken origin.json tolerated (s70)" $?
+rm -rf "$STMP"; trap - EXIT
+[ ! -d "$STMP" ]; ck "s70 fuzz temp skill cleaned up" $?
 # S1: /api/report 门禁矩阵——POST/HEAD 405；GET 走端点级 Origin 门（不豁免 GET）+ 自定义头 X-PF-Report: 1（img/no-cors 发不出）
 [ "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/report")" = "405" ]; ck "report POST refused 405" $?
 [ "$(curl -s -o /dev/null -w '%{http_code}' -I "$B/api/report")" = "405" ]; ck "report HEAD refused 405" $?
