@@ -35,5 +35,10 @@
 - 停 faucet（pc process stop）→ 生成报告 →「小forge自己看到的毛病」节精确命中 R1 全文（含 67b871d 补的出口短语），R5（代理开+连接错）按预期并存；faucet 拉回 Ready、bridge 200 恢复。
 - 规则链至此三重验证：单测正反例（s64 探针）+ qa 对抗证伪 + 真实故障实弹。R2/R4 待真机自然故障顺带观察（人为造钥匙失效/端口占用风险大于收益）。
 
+## pg.log 慢性膨胀治理（b0d78bd）
+- 机理：探针裸 process.exit(0) 带开 socket 死亡 → postgres 每 5s 收 RST 记 COMMERROR；PG17 backend_startup 对客户端优雅 EOF 有静默分支——修复=探针连通后 s.end() 优雅半关（close 事件为退出同步点）。实测 pg.log 增速 4.5MB/天 → **0**；readiness Ready 语义保持；e2e 45/45。
+- pc 能力核实（源码级）：per-process log_rotation 受支持但不继承顶层；per-process writer O_TRUNC——pg 每次重启 pg.log 清零（噪音只在单次存活期累积）。轮换留作备用能力。
+- max_restarts:3 预算会真实烧尽（调试期实证两次自动重启）——维持"阶段二首个消费者复核"触发。
+
 ## 验收
 9router 复测 28/28；dev 栈 node 实证恢复（healthz 14ms/pg probe READY）；仓库树净。
