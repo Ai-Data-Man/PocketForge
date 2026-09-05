@@ -1798,7 +1798,7 @@ async function loadSkillCmds(){
 }
 loadSkillCmds();
 const SLASH=[
-  {cmd:'/新对话', alias:['new','xin','开新'], desc:'开始一个新对话', run:()=>subscribe(null)},
+  {cmd:'/新对话', alias:['new','xin','开新'], desc:'开始一个新对话', run:()=>$('newchat').click()}, // s69 P2-9 同门：走 newchat 入口吃 busy 护栏
   {cmd:'/技能', alias:['skills','jineng'], desc:'看它学会的本领', run:()=>$('open-skills').click()},
   {cmd:'/文件', alias:['files','wenjian','工作区'], desc:'打开工作区文件面板', run:()=>$('rside-toggle').click()},
   {cmd:'/设置', alias:['settings','shezhi','服务商','模型'], desc:'服务商连接与模型', run:()=>$('open-settings').click()},
