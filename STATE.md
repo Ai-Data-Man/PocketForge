@@ -71,6 +71,8 @@ ADR-0001 记忆拓扑 / ADR-0002 五件套技术栈 / ADR-0003 交付树+注册�
 - **观察项**：栈冷启后首跑 fuzz 偶发 1 红、热跑稳定全绿（s61/s63/s64 三次复现；s65 主动冷启复现未中，第 4 数据点）——s64 已加固留痕（fuzz-chat.sh 全量输出恒写 tmp/fuzz-last.log），下次复现先查日志归因，再立专项
 - **观察项（s65）**：侧栏「已归档 N」的 N=goose session/list 返回窗口大小（实测 50）而非库内归档总数——会话少时无感，规模化后属信息精度问题（主线 4 族）；~~e2e 第 12 节沙箱探针 rmSync 间歇 EPERM~~ → s65 已修复（轮询重删 6ec8c29，取证结论 tmp/forensic-rm-perm 可复跑）
 - **s64 报告 v2 遗留**：报告探针转正（tmp/s64-probe-report.js+qa-edge/qa-sandbox → tools/e2e/，注意沙箱探针自拉桥进程占 18790/18799 端口，转正需与 e2e 时长权衡）；体积硬顶 head 段超限角落已注释标注（P3-1，产品路径不可达）
+- **PG 阶段二 doctrine（s66 裁决生效，实施中）**：①新存储默认 PG，每应用一库 forge_<app>，禁跨应用共享写；②首行业务数据三件套同提交（客户端 vendored+schema_migrations 注册表+恢复工具入树）；③导出先行恒在（pg_dump 每日随 forge-backup，plain SQL 落 data/pg-dumps keep 3）；④消费方失败面闭合集（回落文件/降级禁用/论证否则否决；lazy 连接、connect ≤2s、桥零 depends_on 指向 pg）。客户端 pin postgres.js 3.4.9（Unlicense；pg 8.23.0 MIT 后备）。回退阶梯 L0=删 data/pg+bin/pg+备份三行；L1=pg_dump 导出后重建。**范围勘误（对 ADR-0011）**：阶段二"迁移对象按价值排序"前提被 scale-inventory 掏空——迁移清单=空全部转触发制；"消息检索=用户痛点"未证实（用户点名的是 PG/正经后端）
+- **阶段三门槛（定死，防重新谈判）**：①同步=ACP stop 事件增量+启动对账+桥硬删同步删索引（正确性+隐私双红线）；②检索=PG 可达走全文/不可达回落既有 LIKE；③隐私=会话正文进 PG 需删除传播设计+welcome 存储描述更新。触发器：真机消息量逼近 1 万 或 妻子搜索负反馈；都不满足无限期挂起
 - **PG（已立项，ADR-0011，2026-09-05 用户批准）**：白名单扩列（PostgreSQL License/ISC）已裁决通过；三阶段路线=①zonky 便携 PG 进树+process-compose 托管（initdb 非提权/UTF8/C locale）→②自建应用首选库（消息检索>索引>统计；不动 goose/faucet 内部 SQLite——零二开纪律）→③/api/search 迁 PG 全文检索（FTS5 条目作废）。阶段一沙盒实测：initdb 耗时/EDR 对 postgres.exe/pg 客户端 vendored
 - ~~s64 后 UI 候选：浏览全部卡片列表无上限~~ → **s65 勘误撤销**：renderAllPane 自 P29 起即有 PAGE_N=30 分页+翻页器（s65 工程师零 diff 裁决，主控复核代码确认——此前条目是主控未核实就归约的错误断言，引以为戒）；真实缺口（若有）待 pm 重新归约
 - **s65 遗留**：e2e 第 11 节 ws-delete-receipt.js 在 pipefail 下偶发 EPIPE 竞态（grep -q 早退→node 管道断裂→set -e 中止全量，s62 转正即有，复跑即过）——下轮小批夹带修复（grep 缓冲或去 -q）
