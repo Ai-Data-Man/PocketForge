@@ -2,16 +2,19 @@
 <html lang="zh">
 <head><meta charset="utf-8"><title>预览</title>
 <style>
-body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:#f4f6f5}
-#bar{background:#0b6b3a;color:#fff;padding:10px 18px;font-size:14px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0}
-#bar a{color:#cfe9db;font-size:13px}
-#content{padding:22px;max-width:1080px;margin:0 auto;background:#fff;min-height:60vh;margin-bottom:22px;border-radius:0 0 12px 12px;overflow-x:auto}
+/* s69 P3-13: 独立预览页不接主 UI 皮肤体系（边界：仅 prefers-color-scheme 昼夜自适应，不随皮肤/字号设置）；顶栏走中性色，不硬编码品牌绿 */
+:root{--bg:#f4f6f5;--tx:#1c2823;--bar:#3d4a54;--bar-tx:#fff;--bar-link:#ccd7de;--panel:#fff;--line:#d5e2da;--th:#eef5f0;--pre-bg:#f6f8f6;--pre-line:#dde;--err:#b00020}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1512;--tx:#e6ede9;--bar:#232b30;--bar-tx:#e6ede9;--bar-link:#9fb3bf;--panel:#161d19;--line:#33413a;--th:#1a231e;--pre-bg:#121a15;--pre-line:#33413a;--err:#ff8a7a}}
+body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:var(--bg);color:var(--tx)}
+#bar{background:var(--bar);color:var(--bar-tx);padding:10px 18px;font-size:14px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0}
+#bar a{color:var(--bar-link);font-size:13px}
+#content{padding:22px;max-width:1080px;margin:0 auto;background:var(--panel);min-height:60vh;margin-bottom:22px;border-radius:0 0 12px 12px;overflow-x:auto}
 table{border-collapse:collapse;margin:10px 0;font-size:13.5px}
-th,td{border:1px solid #d5e2da;padding:5px 12px}
-th{background:#eef5f0}
-pre{background:#f6f8f6;border:1px solid #dde;border-radius:8px;padding:12px;overflow-x:auto}
+th,td{border:1px solid var(--line);padding:5px 12px}
+th{background:var(--th)}
+pre{background:var(--pre-bg);border:1px solid var(--pre-line);border-radius:8px;padding:12px;overflow-x:auto}
 img{max-width:100%}
-#err{color:#b00020;padding:30px;text-align:center}
+#err{color:var(--err);padding:30px;text-align:center}
 </style>
 <script src="/vendor/marked.min.js"></script>
 <script src="/vendor/purify.min.js"></script>
@@ -44,7 +47,7 @@ async function main(){
   } else if (ext === 'html' || ext === 'htm'){
     const text = await res.text();
     const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'width:100%;height:70vh;border:1px solid #dde;border-radius:8px';
+    iframe.style.cssText = 'width:100%;height:70vh;border:1px solid var(--pre-line);border-radius:8px';
     iframe.sandbox = ''; // C2: 禁脚本，预览静态外观即可
     iframe.srcdoc = text;
     content.innerHTML = ''; content.appendChild(iframe);
@@ -59,7 +62,7 @@ async function main(){
     const wb = XLSXlib.read(buf, { type: 'array' });
     let html = '';
     for (const sheetName of wb.SheetNames){
-      if (wb.SheetNames.length > 1) html += '<h3 style="color:#0b6b3a">' + sheetName + '</h3>';
+      if (wb.SheetNames.length > 1) html += '<h3 style="color:var(--tx)">' + sheetName + '</h3>';
       html += XLSXlib.utils.sheet_to_html(wb.Sheets[sheetName]);
     }
     content.innerHTML = DOMPurify.sanitize(html);
