@@ -2,6 +2,8 @@
 GOOSE_PROVIDER: openai
 GOOSE_MODEL: myopencode/glm-5.2
 GOOSE_MODE: smart_approve
+# T1（裁决书 S-B）：hints 只认 .goosehints，不再吸入 AGENTS.md（dev 仓库工作契约/用户域文件泄漏面）
+CONTEXT_FILE_NAMES: ['.goosehints']
 
 extensions:
   faucet-db:
@@ -29,3 +31,22 @@ extensions:
     cmd: 'cmd'
     args: ['/c', '__FORGE_ROOT__/bin/memory-mcp.cmd']
     timeout: 120
+  # G3（裁决书 S-B）：关停无场景点名的平台扩展——已双臂探针实证（tmp/goose-probe/ext-probe.js）：
+  # apps/summon/extensionmanager/analyze 共 11 把工具消失，其余扩展不受影响。
+  # todo 保留（ACP plan 事件来源，P32 底座）。用户在设置面板改过开关的，bootstrap 重建时保留其值。
+  apps:
+    type: platform
+    name: apps
+    enabled: false
+  summon:
+    type: platform
+    name: summon
+    enabled: false
+  extensionmanager:
+    type: platform
+    name: extensionmanager
+    enabled: false
+  analyze:
+    type: platform
+    name: analyze
+    enabled: false
