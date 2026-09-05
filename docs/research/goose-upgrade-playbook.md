@@ -23,9 +23,11 @@
 ### 第 3 步：回归五面（s64 清单，逐面留痕）
 1. **调度闭环**（s55-58）：建定时任务→⏸暂停→查 schedule.json paused 落盘→▶恢复→pc restart goose-scheduler 守护重载→UI 复原；再删任务确认守护盲区补丁（s58）生效。
 2. **会话回放与错误流**：打开一个长会话验证 session/load 回放完整（s15 endStream 补发面，#11159 触碰过）；造一次 401（错 key）验证人话指引与「换备用线路再试」（s50e 链路，#11202 触碰错误文案流）。
-3. **审批卡**：smart_approve 模式跑一个 browser 工具任务，验证 permission.yaml 前缀名命中（#10285 后行为可能变化，s19 遗留 UNVERIFIED 项顺路关闭）+ 拒绝路径 fail-closed（#11477）。
+3. **审批卡**：smart_approve 模式跑一个 browser 工具任务，验证 permission.yaml 前缀名命中 + 拒绝路径 fail-closed。G6 两条（v1.48 起的上游行为变化）**必须复验**，任一失配 = 升级回滚面：①#11477「denial 优先」——never_allow（含 `browser__browser_run_code_unsafe`）仍被机制拒绝，且不被任何 allow 项覆盖；②#10285 工具名规范化——permission.yaml 前缀名（`browser__*`/`faucet-db__*`）逐项核对命中，G1/G5 审批清单升级后静默失配是真实回归面（s19 遗留 UNVERIFIED 项顺路关闭）。
 4. **MCP 商店**：装一个商店项→重启→挂载→goose 调用成功→卸载（s54/s57 链路）。
 5. **真实任务**：GOOSE_PATH_ROOT 下跑一个真实任务（读文件+生成 xlsx），确认 agent 适应 #11537 单行 cmd 约束（多行命令被拒不再静默截断）。
+6. **生产转储巡检**（T2；方法 = research/12 §2.1）：升级后跑一次最小会话（prompt 只求「回复ok」控 token），读 `conf/goose/state/logs/llm_request.*.jsonl`（恒开轮换 10 份；取 mtime 最新的带 tools 请求，0 号可能是标题生成请求）核对模型实际看到什么：system prompt 的 Extensions 段（apps/summon/extensionmanager/analyze 应缺席——G3 否定块仍生效）、工具清单数量与名字（S-B 后基线 47）、Global Hints（手册）在而 Project Hints 段为空（CONTEXT_FILE_NAMES 仍生效）。装新 MCP 后当场再巡检一次。
+7. **G7 上游观察项**（升级窗口重评，不阻塞 PASS/FAIL 判定）：RepetitionInspector 注册 `new(None)` 无重复上限、SecurityScanner `SECURITY_PROMPT_ENABLED` 默认关——产品侧均无配置键，当前没有熔断/扫描在役；v1.50 核对上游是否新增配置化开关，顺带评估开启后内网浏览器场景误报率。核实点行号出自 v1.46.0（agent.rs:748、security/mod.rs:65-73），新版须重对。
 
 ### 第 4 步：收尾
 - 全部 PASS → commit components.yaml/fetch.sh/checksums.txt（message 引用 research/04 与本预案）；STATE 版本表回写；dev 栈换新二进制重跑 e2e 33/33 + fuzz 44/44。
