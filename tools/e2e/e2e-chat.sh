@@ -185,6 +185,12 @@ PR=1; for i in $(seq 1 12); do sleep 5; ST=$(PCRUN process get pg); echo "$ST" |
 ck "backup chain: pg restored Ready after state-B" $PR
 rm -f "$FORGE/data/pg-dumps/"pg-1999-*.sql
 
+# ---------- 14) UI 逻辑桩测（s69 转正自 tmp p210-211-kbd-check + p22-close-path-check；详见 tools/e2e/ui-logic-probe.js） ----------
+# kbd 23 ck + 模态关闭路径 10 ck，秒级无桥无网络；提取锚点=稳定标记正则（模板漂移显式 NOT FOUND，不误报）
+node "$ROOT/tools/e2e/ui-logic-probe.js" > /tmp/ui-logic-probe.log 2>&1; ck "ui-logic probe 33 ck (kbd 23 + close-path 10)" $?
+grep -E "^ui-logic-probe" /tmp/ui-logic-probe.log
+rm -f /tmp/ui-logic-probe.log
+
 rm -f /tmp/e2e-v1.md
 echo "=============================="
 echo "chat-link E2E: PASS=$PASS FAIL=$FAIL"
