@@ -811,22 +811,10 @@ function mcpWriteExtension(id, entry) {
     atomicWrite(CFG, raw.replace(/\n*$/, '\n') + block);
 }
 // s57: 读 mcp-* 块的 enabled（无块视为 true；商店列表显示已启用/已停用）
-// qa-s57(P2): 块界扫描（自写正则会跨块吞下一块的 enabled 行）
+// s67: 收敛到 readExtState 的 extensions: 门禁单一扫描（qa-s57 P2 块界语义保留）。B2/C 批移交缺陷：
+// S-B 在 extensions: 前加 GOOSE_*/CONTEXT_FILE_NAMES 顶格键后，原文件头扫描遇首个顶格键即 break → 恒 true
 function mcpEnabled(id) {
-    try {
-        const raw = FSS.readFileSync(path.join(ROOT, 'conf', 'goose', 'config', 'config.yaml'), 'utf8');
-        let inBlock = false, val = null;
-        for (const line of raw.split('\n')) {
-            if (/^[^\s#]/.test(line)) break; // 下一顶级键，extensions 区结束
-            const blk = line.match(/^ {2}([A-Za-z0-9_\-]+):\s*$/);
-            if (blk) { inBlock = blk[1] === mcpExtensionId(id); continue; }
-            if (inBlock) {
-                const en = line.match(/^ {4}enabled:\s*(true|false)/);
-                if (en) { val = en[1] === 'true'; break; }
-            }
-        }
-        return val === null ? true : val;
-    } catch { return true; }
+    return readExtState()[mcpExtensionId(id)] !== false;
 }
 // s57: 行级删除 `  mcp-<id>:` 块（到下一个同缩进键或文件尾）；卸载 MCP 用
 function mcpRemoveExtension(id) {
