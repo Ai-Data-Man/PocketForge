@@ -1,9 +1,10 @@
 // 技能市场源配置化探针（s70 切片B，docs/verdicts/2026-09-05-marketplace-ecosystem.md S2，9 ck）
 // 场景A（迁移，端口 18795 自建 tools/e2e/.skill-sb-a）：存量 manifest v1→v2 条目补 source{repo,branch}+留档+幂等（3 ck）
 // 场景B（配置，同端口自建 .skill-sb-b）：首启生成默认/坏 JSON 容错/空数组零源/缺 branch 回落/多源同名跳过（6 ck）
+// 场景C（B2 subdir，自建 .skill-sb-b）：subdir 白名单矩阵（../绝对/盘符/尾斜杠拒+合法/空收）/manifest source.subdir 随装进 origin/缺 subdir 键回落解析（8 ck）
 // 全部断言不依赖出网（多源合并项在线增强、离线走「失败路径也算过」裁决条款）；不依赖 dev 栈、不碰 8790。
 // 沙盒跑完自清；goose.exe 硬链接（同卷零拷贝，桥启动需 spawn goose）。
-// 用法：node tools/e2e/skill-sources-probe.js [a|b]   （缺省 a+b 全跑，实测约 30-60s，在线多源合并 +30s；fuzz-chat.sh 按 a/b 两行接入）
+// 用法：node tools/e2e/skill-sources-probe.js [a|b|c]   （缺省 a+b 全跑，实测约 30-60s，在线多源合并 +30s；fuzz-chat.sh 按 a/b/c 三行接入）
 'use strict';
 const SCENE = (process.argv[2] || 'ab').toLowerCase();
 const C = require('assert');
@@ -152,11 +153,12 @@ let child = null;
     } // 场景A end
 
     // ================= 场景B：源配置容错 + 多源合并（.skill-sb-b） =================
-    if (!SCENE.includes('b')) {
+    if (!SCENE.includes('b') && !SCENE.includes('c')) {
         for (const sb of [SBA, SBB]) { try { await rmSandbox(sb); } catch {} }
         console.log('skill-sources probe: PASS=' + pass + ' FAIL=' + fail);
         process.exit(fail ? 1 : 0);
     }
+    if (SCENE.includes('b')) {
     await rmSandbox(SBB);
     seedBase(SBB);
     const CFG = J(SBB, ['data', 'config', 'skill-sources.json']);
@@ -249,6 +251,108 @@ let child = null;
         for (const s of r5.j.skills) C.deepEqual(s.source && { repo: s.source.repo, branch: s.source.branch }, { repo: 'anthropics/skills', branch: 'main' }, s.dir);
     });
     await stopBridge(child); child = null;
+    } // 场景B end
+
+    // ================= 场景C（s70 B2）：subdir 白名单 + source.subdir 记录（.skill-sb-b 复用） =================
+    if (SCENE.includes('c')) {
+    await rmSandbox(SBB);
+    seedBase(SBB);
+    const CFG_C = J(SBB, ['data', 'config', 'skill-sources.json']);
+    const MF_C = J(SBB, ['data', 'cache', 'skills', 'manifest.json']);
+    const seedStaleC = () => FSS.writeFileSync(MF_C, JSON.stringify({
+        _schema: 2, fetched_at: OLD_FETCHED, translating: false,
+        skills: [{ dir: 'alpha', name: 'alpha', description: 'd1', desc_zh: '甲', source: { repo: 'anthropics/skills', branch: 'main' } }],
+    }));
+    // C1-C4: subdir 白名单矩阵——../绝对路径/盘符/尾斜杠 → 整条源拒用（warn 回落内置默认）+ 用户文件不动 + 桥活
+    const BADS = [
+        ['C-1 subdir .. 拒用', { repo: 'anthropics/skills', branch: 'main', subdir: 'skills/../..' }],
+        ['C-2 subdir 绝对路径拒用', { repo: 'anthropics/skills', branch: 'main', subdir: '/abs/skills' }],
+        ['C-3 subdir 盘符拒用', { repo: 'anthropics/skills', branch: 'main', subdir: 'C:/skills' }],
+        ['C-4 subdir 尾斜杠拒用', { repo: 'anthropics/skills', branch: 'main', subdir: 'skills/' }],
+    ];
+    for (const [name, bad] of BADS) {
+        seedStaleC();
+        FSS.mkdirSync(path.dirname(CFG_C), { recursive: true });
+        FSS.writeFileSync(CFG_C, JSON.stringify({ _schema: 1, sources: [bad] }));
+        child = spawnBridge(SBB);
+        await waitHealth();
+        const rc = await getJson('/api/skillstore?remote=1');
+        const wc = await getJson('/api/update/status');
+        ck('B2-' + name + ': warn回落内置默认+stale秒回+文件不动', () => {
+            C.equal(rc.j.ok, true, 'stale 秒回失效');
+            C.ok(wc.j.warnings.some(x => x.includes('没有有效源')), JSON.stringify(wc.j.warnings));
+            C.equal(FSS.readFileSync(CFG_C, 'utf8'), JSON.stringify({ _schema: 1, sources: [bad] }), '用户文件被改写');
+        });
+        await stopBridge(child); child = null;
+    }
+    // C5: 合法 subdir + 空串 subdir → 收用零 warn（空串回落内置 'skills'）
+    FSS.writeFileSync(CFG_C, JSON.stringify({ _schema: 1, sources: [
+        { repo: 'anthropics/skills', branch: 'main', subdir: 'skills', enabled: true },
+        { repo: 'ghost-org/ghost-repo', branch: 'main', subdir: '', enabled: true },
+    ] }));
+    child = spawnBridge(SBB);
+    await waitHealth();
+    const wc5 = await getJson('/api/update/status');
+    ck('B2-C5 subdir 合法+空串收用: 零warn（空串回落默认，合法值原样使用）', () => {
+        C.equal(wc5.j.warnings.filter(x => x.includes('skill-sources.json')).length, 0, JSON.stringify(wc5.j.warnings));
+    });
+    await stopBridge(child); child = null;
+
+    // C6-C8: 安装链 source.subdir（离线走缓存复制路径，零出网）
+    seedStaleC();
+    const ent = (dir, source) => ({ dir, name: dir, description: 'd-' + dir, desc_zh: null, source });
+    FSS.writeFileSync(MF_C, JSON.stringify({
+        _schema: 2, fetched_at: OLD_FETCHED, translating: false,
+        skills: [
+            ent('fuzz-sub-tmp', { repo: 'JimLiu/baoyu-skills', branch: 'main', subdir: 'skills' }), // B2 新形态：带 subdir
+            ent('fuzz-legacy-tmp', { repo: 'anthropics/skills', branch: 'main' }), // 旧形态：缺 subdir 键
+        ],
+    }));
+    for (const d of ['fuzz-sub-tmp', 'fuzz-legacy-tmp']) {
+        FSS.mkdirSync(J(SBB, ['data', 'cache', 'skills', d]), { recursive: true });
+        FSS.writeFileSync(J(SBB, ['data', 'cache', 'skills', d, 'SKILL.md']), '---\nname: ' + d + '\ndescription: d\n---\nbody\n');
+    }
+    child = spawnBridge(SBB); // 配置缺省→首启生成内置默认（anthropics 源在册，legacy 条目 subdir 从配置回落）
+    await waitHealth();
+    const post = body => new Promise((resolve, reject) => {
+        const rq = require('http').request({ host: '127.0.0.1', port: PORT, path: '/api/skillstore', method: 'POST', headers: { 'content-type': 'application/json' } }, r2 => {
+            let b = ''; r2.on('data', c => b += c); r2.on('end', () => { try { resolve(JSON.parse(b)); } catch (e) { reject(e); } });
+        }); rq.on('error', reject); rq.end(body);
+    });
+    await post(JSON.stringify({ name: 'fuzz-sub-tmp', remote: true }));
+    const o1 = readJ(J(SBB, ['.agents', 'skills', 'fuzz-sub-tmp', 'origin.json']));
+    ck('B2-C6 manifest source.subdir 随装进 origin.json（repo/subdir 同记录）', () => {
+        C.equal(o1.source, 'market', JSON.stringify(o1));
+        C.equal(o1.repo, 'JimLiu/baoyu-skills', JSON.stringify(o1));
+        C.equal(o1.subdir, 'skills', 'subdir 未随装: ' + JSON.stringify(o1));
+    });
+    // C7: origin.json 带 subdir → originOf 照常解析（/api/skills 暴露非空）+ market 冲突门放行（覆盖=更新语义不受 subdir 键影响）
+    const api1 = await getJson('/api/skills');
+    ck('B2-C7 origin 带 subdir 解析容错: /api/skills 暴露+冲突门放行', () => {
+        const t = api1.j.find(x => x.name === 'fuzz-sub-tmp');
+        C.ok(t && t.origin && t.origin.source === 'market' && t.origin.repo === 'JimLiu/baoyu-skills', JSON.stringify(t));
+    });
+    await post(JSON.stringify({ name: 'fuzz-sub-tmp', remote: true })); // market-over-market 第二次装=更新语义（冲突门未拒）
+    ck('B2-C7b market origin（带 subdir）覆盖放行: 重装 ok 且 origin 仍在', () => {
+        const o = readJ(J(SBB, ['.agents', 'skills', 'fuzz-sub-tmp', 'origin.json']));
+        C.equal(o.source, 'market', JSON.stringify(o));
+    });
+    // C8: 旧 manifest source 缺 subdir 键 → 安装照常解析（subdir 从当前配置该源回落）
+    await post(JSON.stringify({ name: 'fuzz-legacy-tmp', remote: true }));
+    const o2 = readJ(J(SBB, ['.agents', 'skills', 'fuzz-legacy-tmp', 'origin.json']));
+    ck('B2-C8 旧 source 缺 subdir 键照常解析: 安装成功+subdir 从配置回落', () => {
+        C.equal(o2.repo, 'anthropics/skills', JSON.stringify(o2));
+        C.equal(o2.subdir, 'skills', 'subdir 未回落: ' + JSON.stringify(o2));
+    });
+    // 卸载随删（origin 随目录消失，B2 记录不留残留）
+    await post(JSON.stringify({ name: 'fuzz-sub-tmp', op: 'uninstall' }));
+    await post(JSON.stringify({ name: 'fuzz-legacy-tmp', op: 'uninstall' }));
+    ck('B2-C9 卸载随删: 安装目录（含 origin subdir 记录）消失', () => {
+        C.equal(FSS.existsSync(J(SBB, ['.agents', 'skills', 'fuzz-sub-tmp'])), false);
+        C.equal(FSS.existsSync(J(SBB, ['.agents', 'skills', 'fuzz-legacy-tmp'])), false);
+    });
+    await stopBridge(child); child = null;
+    } // 场景C end
 
     for (const sb of [SBA, SBB]) { try { await rmSandbox(sb); } catch {} } // 沙箱自清（同 report-probe 先例）
     console.log('==============================');

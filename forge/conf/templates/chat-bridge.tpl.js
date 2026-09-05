@@ -446,6 +446,8 @@ function cmpVer(a, b) {
 // s70 切片B（裁决 S2）: 源配置化——本常量降级为内置默认；加源=编辑 data/config/skill-sources.json（源管理无 UI，裁决否决项4）
 const REMOTE_SKILLS = { repo: 'anthropics/skills', branch: 'main', subdir: 'skills' };
 const SKILL_SOURCES_FILE = path.join(ROOT, 'data', 'config', 'skill-sources.json');
+// B2: subdir 白名单——path-safe（charset 禁 : \ →盘符/反斜杠形态、禁前后导斜杠、禁 .. 任意级穿越）；空串由调用方回落默认
+function subdirSafe(p) { return typeof p === 'string' && p.indexOf('..') < 0 && p[0] !== '/' && p[p.length - 1] !== '/' && /^[\w.\-/]*$/.test(p); }
 function readSkillSources() {
     // 首启不存在→生成内置默认；坏 JSON/无有效条目→warn 回落内置默认（不炸、不改写用户文件）；enabled 缺省视为 true
     const dft = () => [{ repo: REMOTE_SKILLS.repo, branch: REMOTE_SKILLS.branch, subdir: REMOTE_SKILLS.subdir, enabled: true }];
@@ -460,7 +462,7 @@ function readSkillSources() {
     // repo=owner/repo 形、branch/subdir 无 URL 元字符——源串拼进 GitHub URL，与目录名白名单同门
     const okSrc = s => s && typeof s.repo === 'string' && /^[\w.\-]+\/[\w.\-]+$/.test(s.repo)
         && typeof s.branch === 'string' && /^[\w.\-/]+$/.test(s.branch)
-        && (s.subdir === undefined || (typeof s.subdir === 'string' && /^[\w.\-/]*$/.test(s.subdir)));
+        && (s.subdir === undefined || subdirSafe(s.subdir));
     const valid = j.sources.filter(okSrc);
     if (!valid.length) { warnOnce('skill-sources.json 没有有效源（条目缺 repo/branch），已回落内置默认源'); return dft(); }
     if (valid.length < j.sources.length) warnOnce('skill-sources.json 跳过 ' + (j.sources.length - valid.length) + ' 条无效源');
@@ -546,7 +548,7 @@ async function fetchAllRemoteSkills() {
             const ddir = path.join(SKILL_CACHE, e.name);
             FSS.mkdirSync(ddir, { recursive: true });
             atomicWrite(path.join(ddir, 'SKILL.md'), body);
-            skills.push({ dir: e.name, name: meta.name, description: meta.description, desc_zh: null, source: { repo: src.repo, branch: src.branch } });
+            skills.push({ dir: e.name, name: meta.name, description: meta.description, desc_zh: null, source: { repo: src.repo, branch: src.branch, subdir: src.subdir } });
         }
     }
     return skills;
@@ -654,10 +656,11 @@ function originOf(dir) {
     } catch {}
     return null;
 }
-function writeSkillOrigin(dst, source, repo, branch) {
+function writeSkillOrigin(dst, source, repo, branch, subdir) {
     // qa返工(P3-1): 写失败不再静默吞掉——抛错随原子安装回滚并报安装失败，不假成功
+    // B2: subdir 可选（本地 skills-repo/旧调用不带 → JSON.stringify 省键；缺 subdir 键的存量 origin.json 照常解析）
     FSS.mkdirSync(dst, { recursive: true });
-    atomicWrite(path.join(dst, 'origin.json'), JSON.stringify({ _schema: 1, source, repo, branch, installed_at: new Date().toISOString() }, null, 2));
+    atomicWrite(path.join(dst, 'origin.json'), JSON.stringify({ _schema: 1, source, repo, branch, subdir, installed_at: new Date().toISOString() }, null, 2));
 }
 function skillInstallBlocked(dst) {
     // 同名冲突语义：已装且（无标记或 self）→ 拒绝（防静默覆盖本机/自沉淀技能）；market/local → 覆盖=更新语义放行
@@ -699,7 +702,9 @@ async function installRemoteSkill(dirName, res) {
     // s70 切片B: 安装来源随 manifest 条目 source（缓存树不带标记）；条目缺失回落内置默认
     const m = readSkillManifest();
     const ent = m && Array.isArray(m.skills) ? m.skills.find(s => s.dir === dirName) : null;
-    const src = (ent && ent.source && typeof ent.source.repo === 'string' && typeof ent.source.branch === 'string') ? { repo: ent.source.repo, branch: ent.source.branch } : REMOTE_SKILLS;
+    const ms = (ent && ent.source && typeof ent.source.repo === 'string' && typeof ent.source.branch === 'string') ? ent.source : REMOTE_SKILLS;
+    // B2: source 记录 subdir 用加键形态（research/13 §3.1，非 repo/subdir 复合形态）；旧 manifest/origin 缺 subdir 键照常解析（切片A originOf 容错一致）→当前配置该源→内置默认
+    const src = { repo: ms.repo, branch: ms.branch, subdir: subdirSafe(ms.subdir) && ms.subdir ? ms.subdir : (readSkillSources().filter(s => s.enabled).find(s => s.repo === ms.repo && s.branch === ms.branch) || REMOTE_SKILLS).subdir };
     const finish = () => {
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: true }));
@@ -709,7 +714,7 @@ async function installRemoteSkill(dirName, res) {
         if (FSS.existsSync(path.join(SKILL_CACHE, dirName, 'SKILL.md'))) {
             await installAtomic(dst, async tmp => {
                 FSS.cpSync(path.join(SKILL_CACHE, dirName), tmp, { recursive: true });
-                writeSkillOrigin(tmp, 'market', src.repo, src.branch);
+                writeSkillOrigin(tmp, 'market', src.repo, src.branch, src.subdir);
             });
             finish();
             return;
@@ -719,9 +724,8 @@ async function installRemoteSkill(dirName, res) {
         res.end(JSON.stringify({ ok: false, err: '安装失败: ' + e.message }));
         return;
     }
-    // 缓存缺该目录：递归拉取 skills/<dir> 全部文件（GitHub contents API；子目录递归），拉完写缓存
-    // subdir 取自当前配置里该源的值（manifest source 只存 {repo,branch} 身份）；配置已改找不到→内置默认
-    const subdir = (readSkillSources().filter(s => s.enabled).find(s => s.repo === src.repo && s.branch === src.branch) || REMOTE_SKILLS).subdir;
+    // 缓存缺该目录：递归拉取 <subdir>/<dir> 全部文件（GitHub contents API；子目录递归），拉完写缓存；subdir 已随 source 解析（B2）
+    const subdir = src.subdir;
     async function walkApi(relPath, destDir) {
         const items = await ghJson('https://api.github.com/repos/' + src.repo + '/contents/' + subdir + '/' + relPath + '?ref=' + src.branch);
         if (!Array.isArray(items)) throw new Error('技能目录拉取失败: ' + relPath);
@@ -742,7 +746,7 @@ async function installRemoteSkill(dirName, res) {
             await walkApi(dirName, tmp);
             // 顺手把整个技能目录写进缓存（缓存树不带来源标记，纯复制即可）；缓存写失败不挡安装
             try { FSS.cpSync(tmp, path.join(SKILL_CACHE, dirName), { recursive: true }); } catch {}
-            writeSkillOrigin(tmp, 'market', src.repo, src.branch);
+            writeSkillOrigin(tmp, 'market', src.repo, src.branch, src.subdir);
         });
         finish();
     } catch (e) {
