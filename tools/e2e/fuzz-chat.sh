@@ -246,6 +246,80 @@ curl -s "$B/api/update/status" | grep -q 'mcp-catalog.json'; ck "mcpstore bad-js
 [ "$(cat "$MC")" = "{bad json" ]; ck "mcpstore bad-json user file untouched (s70-C)" $?
 cp "$MCPBK" "$MC"; rm -f "$MCPBK"
 curl -s -X POST "$B/api/mcpstore" -H 'content-type: application/json' -d '{"id":"ghost-mcp-zzz"}' | grep -q '目录里没有这个 MCP'; ck "mcpstore install foreign id rejected, whitelist follows config (s70-C)" $?
+# s72: 市场源与目录管理端点 /api/config/market（用户 2026-09-06 点名推翻裁决否决项4「源管理无 UI」）
+# 鉴权同门：跨站 Origin POST 403（handleHttp 顶部全局门）
+[ "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/config/market" -H 'Origin: http://evil.example' -H 'content-type: application/json' -d '{"op":"skill-add","repo":"a/b","branch":"main"}')" = "403" ]; ck "market evil origin 403 (s72)" $?
+# 白名单/形态拒：repo/branch 穿越（RE 容 .. 但写侧禁）、subdir 非法、mcp 条目非法、未知 op、空 body
+curl -s -X POST "$B/api/config/market" -H 'content-type: application/json' -d '{"op":"skill-add","repo":"../etc","branch":"main"}' | grep -q '仓库名需形如'; ck "market skill-add traversal repo rejected (s72)" $?
+curl -s -X POST "$B/api/config/market" -H 'content-type: application/json' -d '{"op":"skill-add","repo":"a/b","branch":"../x"}' | grep -q '分支名'; ck "market skill-add traversal branch rejected (s72)" $?
+curl -s -X POST "$B/api/config/market" -H 'content-type: application/json' -d '{"op":"skill-add","repo":"a/b","branch":"main","subdir":"../x"}' | grep -q '子目录不合法'; ck "market skill-add subdir traversal rejected (s72)" $?
+curl -s -X POST "$B/api/config/market" -H 'content-type: application/json' -d '{"op":"skill-add","repo":"a/b","branch":"main","subdir":"C:/x"}' | grep -q '子目录不合法'; ck "market skill-add subdir drive rejected (s72)" $?
+curl -s -X POST "$B/api/config/market" -H 'content-type: application/json' -d '{"op":"mcp-add","id":"-x","name":"n","desc":"d","pkg":"p","entry":"e","license":"MIT"}' | grep -q '条目不合法'; ck "market mcp-add leading-dash id rejected (s72)" $?
+curl -s -X POST "$B/api/config/market" -H 'content-type: application/json' -d '{"op":"mcp-add","id":"x","name":"n","desc":"d","pkg":"p;q","entry":"e","license":"MIT"}' | grep -q '条目不合法'; ck "market mcp-add bad pkg rejected (s72)" $?
+curl -s -X POST "$B/api/config/market" -H 'content-type: application/json' -d '{"op":"fly"}' | grep -q '未知操作'; ck "market unknown op rejected (s72)" $?
+curl -s -X POST "$B/api/config/market" -H 'content-type: application/json' -d 'null' | grep -q '未知操作'; ck "market null body rejected (s72)" $?
+# GET 形状：ok + 双数组 + 源条目字段齐 + 目录条目带 installed/enabled 计算字段（同 mcpstore GET 门）
+curl -s "$B/api/config/market" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+assert d.get('ok') is True and isinstance(d.get('skillSources'),list) and isinstance(d.get('mcpCatalog'),list), d.keys()
+assert all(all(k in s for k in ('repo','branch','subdir','enabled')) for s in d['skillSources']), d['skillSources']
+assert all(all(k in m for k in ('id','name','pkg','entry','license','installed','enabled')) for m in d['mcpCatalog']), d['mcpCatalog'][:1]
+"; ck "market GET shape (s72)" $?
+# 孤儿规则：已装项（fetch）拒删目录；未知条目人话拒
+curl -s -X POST "$B/api/config/market" -H 'content-type: application/json' -d '{"op":"mcp-remove","id":"fetch"}' | grep -q '已安装，先在上方卸载'; ck "market mcp-remove installed refused (s72)" $?
+curl -s -X POST "$B/api/config/market" -H 'content-type: application/json' -d '{"op":"mcp-remove","id":"ghost-mcp-zzz"}' | grep -q '目录里没有这个条目'; ck "market mcp-remove unknown friendly (s72)" $?
+# 合法回环（即用即恢复）：加假源→文件落地 latest _schema→GET 可见→重复拒→停用→最后一个启用拒→删到剩一→最后一个拒删
+SS="$FR/data/config/skill-sources.json"; SSBK="$(mktemp)"
+cp "$SS" "$SSBK"
+trap 'cp "$SSBK" "$SS" 2>/dev/null; rm -f "$SSBK"' EXIT
+mp(){ curl -s -X POST "$B/api/config/market" -H 'content-type: application/json' -d "$1"; }
+mp '{"op":"skill-add","repo":"fuzz-org/fuzz-repo","branch":"main","subdir":"skills"}' | grep -q '"ok":true'; ck "market skill-add ok (s72)" $?
+grep -q 'fuzz-org/fuzz-repo' "$SS" && python -c "
+import json,sys
+d=json.load(open(sys.argv[1],encoding='utf-8'))
+assert d['_schema']==2, d['_schema']
+" "$SS"; ck "market skill-add persisted at latest schema (s72)" $?
+mp '{"op":"skill-add","repo":"fuzz-org/fuzz-repo","branch":"main"}' | grep -q '已经在列表里'; ck "market skill-add duplicate rejected (s72)" $?
+mp '{"op":"skill-toggle","repo":"anthropics/skills","branch":"main","enabled":false}' | grep -q '"ok":true'; ck "market skill-toggle disable ok (s72)" $?
+curl -s "$B/api/config/market" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+s=[x for x in d['skillSources'] if x['repo']=='anthropics/skills'][0]
+assert s['enabled'] is False, s
+"; ck "market GET reflects toggle (s72)" $?
+mp '{"op":"skill-toggle","repo":"JimLiu/baoyu-skills","branch":"main","enabled":false}' >/dev/null
+mp '{"op":"skill-toggle","repo":"fuzz-org/fuzz-repo","branch":"main","enabled":false}' | grep -q '至少要保留一个启用中的技能源'; ck "market disable-last-enabled refused (s72)" $?
+mp '{"op":"skill-remove","repo":"JimLiu/baoyu-skills","branch":"main"}' >/dev/null
+mp '{"op":"skill-remove","repo":"fuzz-org/fuzz-repo","branch":"main"}' | grep -q '至少要保留一个'; ck "market remove-last-source refused (s72)" $?
+cp "$SSBK" "$SS"
+# mcp 目录回环：加假条目→GET 可见→删→消失（零代码零重启；假条目不安装不出网）
+MC2="$FR/data/config/mcp-catalog.json"; MCPBK2="$(mktemp)"
+cp "$MC2" "$MCPBK2"
+mp '{"op":"mcp-add","id":"fuzz-mcp-zzz","name":"假条目","desc":"fuzz","pkg":"fuzz-pkg-zzz","entry":"node_modules/fuzz/fuzz.js","license":"MIT"}' | grep -q '"ok":true'; ck "market mcp-add ok (s72)" $?
+curl -s "$B/api/config/market" | grep -q 'fuzz-mcp-zzz'; ck "market mcp-add visible in GET (s72)" $?
+mp '{"op":"mcp-remove","id":"fuzz-mcp-zzz"}' | grep -q '"ok":true'; ck "market mcp-remove ok (s72)" $?
+curl -s "$B/api/config/market" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+assert 'fuzz-mcp-zzz' not in [x['id'] for x in d['mcpCatalog']], d['mcpCatalog']
+"; ck "market mcp-remove gone from GET (s72)" $?
+cp "$MCPBK2" "$MC2"
+# 坏 JSON 容错不被写侧绕过：源文件坏→GET 仍回落默认 ok:true 且读路径不改用户文件；UI 写入顺带修复（有效视图落地）
+printf '{bad json' > "$SS"
+curl -s "$B/api/config/market" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+assert d.get('ok') is True and len(d['skillSources'])>=1, d
+"; ck "market GET bad-json fallback (s72)" $?
+[ "$(cat "$SS")" = "{bad json" ]; ck "market GET leaves user file untouched (s72)" $?
+mp '{"op":"skill-add","repo":"fuzz-org/fuzz-repo","branch":"main"}' | grep -q '"ok":true'; ck "market skill-add repairs broken config (s72)" $?
+python -c "
+import json,sys
+d=json.load(open(sys.argv[1],encoding='utf-8'))
+assert any(s['repo']=='fuzz-org/fuzz-repo' for s in d['sources']), d
+" "$SS"; ck "market repaired file valid with new source (s72)" $?
+cp "$SSBK" "$SS"; rm -f "$SSBK" "$MCPBK2"; trap - EXIT
 # S1: /api/report 门禁矩阵——POST/HEAD 405；GET 走端点级 Origin 门（不豁免 GET）+ 自定义头 X-PF-Report: 1（img/no-cors 发不出）
 [ "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/report")" = "405" ]; ck "report POST refused 405" $?
 [ "$(curl -s -o /dev/null -w '%{http_code}' -I "$B/api/report")" = "405" ]; ck "report HEAD refused 405" $?

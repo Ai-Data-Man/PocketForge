@@ -479,6 +479,12 @@ const REMOTE_SKILLS = { repo: 'anthropics/skills', branch: 'main', subdir: 'skil
 const SKILL_SOURCES_FILE = path.join(ROOT, 'data', 'config', 'skill-sources.json');
 // B2: subdir 白名单——path-safe（charset 禁 : \ →盘符/反斜杠形态、禁前后导斜杠、禁 .. 任意级穿越）；空串由调用方回落默认
 function subdirSafe(p) { return typeof p === 'string' && p.indexOf('..') < 0 && p[0] !== '/' && p[p.length - 1] !== '/' && /^[\w.\-/]*$/.test(p); }
+// s72: 源校验器上提共用（原 readSkillSources 内联 okSrc）——市场配置端点写侧同门复验，防两处校验漂移
+function okSkillSrc(s) {
+    return s && typeof s.repo === 'string' && SKILL_REPO_RE.test(s.repo)
+        && typeof s.branch === 'string' && SKILL_BRANCH_RE.test(s.branch)
+        && (s.subdir === undefined || subdirSafe(s.subdir));
+}
 function readSkillSources() {
     // 首启不存在→生成内置默认；坏 JSON/无有效条目→warn 回落内置默认（不炸、不改写用户文件）；enabled 缺省视为 true
     // qa返工(P2-2): 首启生成即双源
@@ -495,10 +501,7 @@ function readSkillSources() {
     let j = null; try { j = JSON.parse(raw.replace(/^\uFEFF/, '')); } catch {}
     if (!j || (j._schema !== 1 && j._schema !== 2) || !Array.isArray(j.sources)) { warnOnce('skill-sources.json 无法解析（应为 _schema:1/2 + sources 数组），已回落内置默认源'); return dft(); } // P2-2: 迁移升至 _schema:2，读侧同步收
     // repo=owner/repo 形、branch/subdir 无 URL 元字符——源串拼进 GitHub URL，与目录名白名单同门（正则上提共用，见 SKILL_REPO_RE）
-    const okSrc = s => s && typeof s.repo === 'string' && SKILL_REPO_RE.test(s.repo)
-        && typeof s.branch === 'string' && SKILL_BRANCH_RE.test(s.branch)
-        && (s.subdir === undefined || subdirSafe(s.subdir));
-    const valid = j.sources.filter(okSrc);
+    const valid = j.sources.filter(okSkillSrc);
     if (!valid.length) { warnOnce('skill-sources.json 没有有效源（条目缺 repo/branch 或 subdir 非法），已回落内置默认源'); return dft(); }
     // qa返工(P3-3): 解析成功先清旧配置类警告（文件修复后同进程自愈）；部分无效时下方跳过警告会重新入列
     for (let i = stateWarnings.length - 1; i >= 0; i--) if (stateWarnings[i].indexOf('skill-sources.json') === 0) stateWarnings.splice(i, 1);
@@ -780,21 +783,24 @@ const MCP_CATALOG = [
     { id: 'fetch', name: '网页抓取', desc: '把网页内容抓下来转成文字（不开浏览器，轻量快速），适合读文章、取表格数据', pkg: 'fetch-mcp', entry: 'node_modules/fetch-mcp/cli.js', license: 'MIT' },
 ];
 const MCP_CATALOG_FILE = path.join(ROOT, 'data', 'config', 'mcp-catalog.json');
-function readMcpCatalog() {
-    // 首启不存在→由内置默认生成；坏 JSON/缺 _schema/缺字段/条目非法/id 重复→warn 回落内置默认（不炸、不改写用户文件）
-    // id/pkg/entry 白名单同门：id 进扩展 id+vendor 目录+YAML 键，entry 进 config.yaml 单引号串（禁引号/反斜杠），pkg 进 npm 参数
-    const dft = () => MCP_CATALOG.map(x => ({ ...x }));
-    // qa返工(P3-4): id/pkg/entry 首字符禁 '-'（npm 参数/正则形态防混淆）
-    const okItem = m => m && typeof m.id === 'string' && m.id[0] !== '-' && /^[\w\-]{1,64}$/.test(m.id)
+// s72: 目录条目校验器上提共用（原 readMcpCatalog 内联 okItem）——市场配置端点写侧同门复验
+// id/pkg/entry 白名单同门：id 进扩展 id+vendor 目录+YAML 键，entry 进 config.yaml 单引号串（禁引号/反斜杠），pkg 进 npm 参数
+// qa返工(P3-4): id/pkg/entry 首字符禁 '-'（npm 参数/正则形态防混淆）
+function okMcpItem(m) {
+    return m && typeof m.id === 'string' && m.id[0] !== '-' && /^[\w\-]{1,64}$/.test(m.id)
         && ['name', 'desc', 'license'].every(k => typeof m[k] === 'string' && m[k])
         && typeof m.pkg === 'string' && m.pkg[0] !== '-' && /^[@\w.\-/]+$/.test(m.pkg)
         && typeof m.entry === 'string' && m.entry[0] !== '-' && /^[@\w.\-/]+$/.test(m.entry); // @ 容 @scope 包路径（同 pkg）
+}
+function readMcpCatalog() {
+    // 首启不存在→由内置默认生成；坏 JSON/缺 _schema/缺字段/条目非法/id 重复→warn 回落内置默认（不炸、不改写用户文件）
+    const dft = () => MCP_CATALOG.map(x => ({ ...x }));
     if (!FSS.existsSync(MCP_CATALOG_FILE)) {
         try { FSS.mkdirSync(path.dirname(MCP_CATALOG_FILE), { recursive: true }); atomicWrite(MCP_CATALOG_FILE, JSON.stringify({ _schema: 1, catalog: dft() }, null, 2)); } catch {}
         return dft();
     }
     const j = readJson(MCP_CATALOG_FILE, null);
-    if (j && j._schema === 1 && Array.isArray(j.catalog) && j.catalog.length && j.catalog.every(okItem)
+    if (j && j._schema === 1 && Array.isArray(j.catalog) && j.catalog.length && j.catalog.every(okMcpItem)
         && new Set(j.catalog.map(x => x.id)).size === j.catalog.length) {
         for (let i = stateWarnings.length - 1; i >= 0; i--) if (stateWarnings[i].indexOf('mcp-catalog.json') === 0) stateWarnings.splice(i, 1); // qa返工(P3-3): 解析成功清旧警告
         return j.catalog;
@@ -869,6 +875,86 @@ function readExtState() {
         }
         return out;
     } catch { return {}; }
+}
+
+// ---- s72: 市场源与 MCP 目录配置入口（GET/POST /api/config/market；用户 2026-09-06 点名推翻裁决否决项4「源管理无 UI」）----
+// GET = 两文件当前有效视图（走 readSkillSources/readMcpCatalog 原路：坏 JSON 仍容错回落、不改写用户文件）；
+// POST = 在有效视图上施加变更 → 同门校验器全量复验 → 原子写（落 latest _schema，防下次迁移复活已删源）。
+// 写侧以「有效视图」为基准：坏配置本就被读取器整体忽略/过滤，首次 UI 变更把它顺带写成干净清单——读侧永不写用户文件的语义不变。
+function marketView() {
+    return {
+        ok: true,
+        skillSources: readSkillSources(),
+        mcpCatalog: readMcpCatalog().map(x => ({ ...x, installed: mcpInstalled(x.id), enabled: mcpEnabled(x.id) })), // installed/enabled 为计算字段（同 mcpstore GET），文件内容原样保留
+    };
+}
+function marketMutate(b) {
+    const bad = err => ({ ok: false, err });
+    try {
+        const op = b.op;
+        if (op === 'skill-add' || op === 'skill-remove' || op === 'skill-toggle') {
+            const list = readSkillSources().map(s => ({ ...s }));
+            const repo = typeof b.repo === 'string' ? b.repo.trim() : '';
+            const branch = typeof b.branch === 'string' ? b.branch.trim() : '';
+            const same = s => s.repo === repo && s.branch === branch;
+            if (op === 'skill-add') {
+                // 写侧比读取器更紧：RE 本身容 '..'（读取器容错面历史形态，改动牵动回落语义），
+                // 但 UI 写入面禁 '..'（repo/branch 拼进 GitHub URL，存进用户配置文件不能带穿越形态）
+                if (!SKILL_REPO_RE.test(repo) || repo.indexOf('..') >= 0) return bad('仓库名需形如「用户名/仓库名」，例如 anthropics/skills');
+                if (!SKILL_BRANCH_RE.test(branch) || !branch || branch.indexOf('..') >= 0) return bad('分支名只能用字母数字和 ._-/，例如 main');
+                const subdir = typeof b.subdir === 'string' ? b.subdir.trim() : '';
+                if (subdir && !subdirSafe(subdir)) return bad('子目录不合法：不能以 / 开头或结尾，不能包含 .. 或盘符');
+                if (list.some(same)) return bad('这个源已经在列表里（同仓库同分支不重复添加）');
+                list.push({ repo, branch, subdir: subdir || REMOTE_SKILLS.subdir, enabled: true });
+            } else {
+                const i = list.findIndex(same);
+                if (i < 0) return bad('源列表里没有这个源，请刷新后重试');
+                if (op === 'skill-toggle') {
+                    if (typeof b.enabled !== 'boolean') return bad('参数不合法');
+                    list[i].enabled = b.enabled;
+                } else {
+                    if (list.length <= 1) return bad('至少要保留一个技能源');
+                    list.splice(i, 1);
+                }
+            }
+            if (!list.some(s => okSkillSrc(s) && s.enabled !== false)) return bad('至少要保留一个启用中的技能源'); // 全停用会让市场清单被清空（fetchAllRemoteSkills 零源），同门拒绝
+            atomicWrite(SKILL_SOURCES_FILE, JSON.stringify({ _schema: STATE_SCHEMAS['config/skill-sources.json'].latest, sources: list }, null, 2));
+            syncRemoteSkills(); // 即刻生效：后台重拉市场清单（skillSyncBusy 防重入；失败静默保留旧缓存）
+            return marketView();
+        }
+        if (op === 'mcp-add' || op === 'mcp-remove') {
+            const list = readMcpCatalog().map(x => ({ ...x }));
+            if (op === 'mcp-add') {
+                const item = {
+                    id: typeof b.id === 'string' ? b.id.trim() : '',
+                    name: typeof b.name === 'string' ? b.name.trim() : '',
+                    desc: typeof b.desc === 'string' ? b.desc.trim() : '',
+                    pkg: typeof b.pkg === 'string' ? b.pkg.trim() : '',
+                    entry: typeof b.entry === 'string' ? b.entry.trim() : '',
+                    license: typeof b.license === 'string' ? b.license.trim() : '',
+                };
+                if (!okMcpItem(item)) return bad('条目不合法：标识需 1-64 位字母数字或 -（且不以 - 开头），名称/说明/许可证/包名/入口都要填，包名与入口只含 @ 字母数字 . - /');
+                if (list.some(x => x.id === item.id)) return bad('目录里已有这个标识，换一个');
+                list.push(item);
+            } else {
+                const id = typeof b.id === 'string' ? b.id : '';
+                const i = list.findIndex(x => x.id === id);
+                if (i < 0) return bad('目录里没有这个条目，请刷新后重试');
+                if ((mcpInstallState[id] || {}).stage === 'installing') return bad('这个插件正在安装，等装完再删');
+                if (mcpInstalled(id)) return bad('这个插件已安装，先在上方卸载，再从目录删除'); // 孤儿规则：目录删了已装项，config.yaml 块与 vendor 目录会成孤儿
+                if (list.length <= 1) return bad('目录至少要保留一个条目'); // 读取器把空 catalog 视为坏配置回落内置默认，写空无意义
+                list.splice(i, 1);
+            }
+            if (!list.length || !list.every(okMcpItem) || new Set(list.map(x => x.id)).size !== list.length) return bad('变更后的目录不合法，已拒绝');
+            atomicWrite(MCP_CATALOG_FILE, JSON.stringify({ _schema: STATE_SCHEMAS['config/mcp-catalog.json'].latest, catalog: list }, null, 2));
+            return marketView();
+        }
+        return bad('未知操作');
+    } catch (e) {
+        const o = { ok: false, err: '保存失败（配置文件可能被占用），请重试' };
+        if (e && e.code) o.type = e.code; // upErr 同门：人话+错误码，不带路径
+        return o;
+    }
 }
 
 // ---- s50b: 库里有什么（GET /api/db/overview）——faucet CLI 发现实 + REST 数行数；端点不收任何用户参数 ----
@@ -1802,6 +1888,24 @@ const ext = path.extname(f).toLowerCase();
                     });
                     child.on('error', () => {});
                 } catch (e3) { mcpInstallState[id] = { stage: 'error', msg: '安装启动失败：' + e3.message }; }
+            });
+        } else { res.writeHead(405); res.end(); }
+    }
+    else if (url === '/api/config/market') {
+        // s72: 市场源与 MCP 目录管理（技术用户配置面）。GET=当前有效视图；POST=变更操作（同门校验+原子写）。
+        // 鉴权同门：非 GET 跨站 Origin 由 handleHttp 顶部统一 403；POST 尺寸走 POST_MAX_BYTES 双层（预检+累积）。
+        if (req.method === 'GET') {
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify(marketView()));
+        } else if (req.method === 'POST') {
+            const chunks = [];
+            let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
+            req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
+            req.on('end', () => {
+                let b = null;
+                try { b = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch {}
+                res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify(marketMutate(b && typeof b === 'object' && !Array.isArray(b) ? b : {})));
             });
         } else { res.writeHead(405); res.end(); }
     }

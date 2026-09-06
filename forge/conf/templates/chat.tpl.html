@@ -409,6 +409,40 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
     <div class="fnote" style="margin-bottom:10px">这些是官方出品的增强插件，装好后重启数字员工生效。</div>
     <div id="mcp-list" style="max-height:340px;overflow-y:auto"></div>
     <div id="mcp-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:4px 0"></div>
+    <div style="border-top:1px solid var(--line);margin-top:12px;padding-top:10px">
+      <h3 style="margin:0 0 6px">数据源与目录管理</h3>
+      <div class="fnote" style="margin-bottom:8px">这里是技能市场「从哪进货」、插件目录「有哪些货」的配置面（给懂技术的你，平时不用动）。<b>技能源规矩</b>：公开开源仓库、许可证在白名单内（MIT / Apache-2.0 等）、添加前先去仓库把内容过目一遍。<b>插件目录新条目四道闸门</b>：① 许可证在白名单内 ② 装好后真实调用过一次 ③ npm 上有包、有维护方 ④ 注意 MCP 协议大版本不兼容风险。自己加的货自己负责。</div>
+      <div style="display:flex;gap:18px;flex-wrap:wrap">
+        <div style="flex:1;min-width:270px">
+          <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">技能源</div>
+          <div id="mkt-src-list" style="max-height:190px;overflow-y:auto"></div>
+          <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">
+            <input id="mkt-src-repo" placeholder="用户名/仓库名" style="flex:2;min-width:120px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
+            <input id="mkt-src-branch" value="main" placeholder="分支" style="flex:1;min-width:56px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
+            <input id="mkt-src-subdir" placeholder="子目录(可选)" style="flex:1;min-width:84px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
+            <button id="mkt-src-add" class="mini">添加</button>
+          </div>
+          <div class="fnote" id="mkt-src-note"></div>
+        </div>
+        <div style="flex:1;min-width:270px">
+          <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">插件目录</div>
+          <div id="mkt-cat-list" style="max-height:130px;overflow-y:auto"></div>
+          <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">
+            <input id="mkt-cat-id" placeholder="标识(字母数字-)" style="flex:1;min-width:96px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
+            <input id="mkt-cat-name" placeholder="显示名称" style="flex:1;min-width:96px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
+            <input id="mkt-cat-license" placeholder="许可证 如 MIT" style="flex:1;min-width:88px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
+          </div>
+          <div style="display:flex;gap:5px;margin-top:5px;flex-wrap:wrap">
+            <input id="mkt-cat-pkg" placeholder="npm 包名" style="flex:2;min-width:120px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
+            <input id="mkt-cat-entry" placeholder="入口 node_modules/包/dist/index.js" style="flex:2;min-width:140px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
+          </div>
+          <div style="display:flex;gap:5px;margin-top:5px;flex-wrap:wrap">
+            <input id="mkt-cat-desc" placeholder="一句话说明" style="flex:1;min-width:140px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
+            <button id="mkt-cat-add" class="mini">添加</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
   <div class="mpane" id="mpane-guard" style="display:none">
     <h3 style="margin:0 0 8px">安全护栏</h3>
@@ -1188,11 +1222,96 @@ async function loadMcpUI(){
   }
   pagerPaint('mcp-pager',listPage.mcp,ps.pages,ps.total,p=>{ listPage.mcp=p; loadMcpUI(); });
   if(needPoll){ clearTimeout(mcpPollTimer); mcpPollTimer=setTimeout(loadMcpUI, 5000); }
+  loadMarketUI(); // s72: 同标签页的「数据源与目录管理」区块跟随刷新（轮询期重复拉取无害，列表重绘不碰表单输入）
 }
 async function installMcp(id){
   try{ await apiJSON('/api/mcpstore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id})}); }catch(e){}
   loadMcpUI();
 }
+// s72: 数据源与目录管理（技术用户配置面）——改动即刻生效：技能源变更后台重拉市场清单后刷商店，目录变更刷插件列表
+async function loadMarketUI(){
+  const sl=$('mkt-src-list'), cl=$('mkt-cat-list'); if(!sl||!cl) return;
+  let d;
+  try { d = await apiJSON('/api/config/market'); }
+  catch(e){ sl.innerHTML=cl.innerHTML='<div class="fnote">读取失败：'+esc(e.message)+'</div>'; return; }
+  if(!d.ok){ sl.innerHTML=cl.innerHTML='<div class="fnote">读取失败：'+esc(d.err||'')+'</div>'; return; }
+  sl.innerHTML='';
+  for(const s of d.skillSources){
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 2px;border-bottom:1px solid var(--line)';
+    row.innerHTML='<div style="flex:1;min-width:0"><div style="font-size:.8rem;font-weight:600;word-break:break-all">'+esc(s.repo)+'</div>'+
+      '<div class="fnote">'+esc(s.branch)+(s.subdir?' · '+esc(s.subdir):'')+' · '+(s.enabled===false?'已停用':'启用中')+'</div></div>';
+    const tog=document.createElement('button'); tog.className='mini'; tog.textContent=s.enabled===false?'▶':'⏸'; tog.title=s.enabled===false?'启用这个源':'停用这个源（市场里先不再进货）';
+    tog.onclick=async()=>{
+      tog.disabled=true;
+      try{
+        const r=await apiJSON('/api/config/market',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op:'skill-toggle',repo:s.repo,branch:s.branch,enabled:s.enabled===false})});
+        if(!r.ok) throw new Error(r.err||'失败');
+        loadMarketUI(); loadSkillStore();
+      }catch(e){ tog.disabled=false; alert('没改成：'+e.message); }
+    };
+    const del=document.createElement('button'); del.className='mini'; del.textContent='🗑'; del.title='删除这个技能源';
+    del.onclick=async()=>{
+      if(!confirm('删除技能源「'+s.repo+'」？已装好的技能不受影响。')) return;
+      del.disabled=true;
+      try{
+        const r=await apiJSON('/api/config/market',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op:'skill-remove',repo:s.repo,branch:s.branch})});
+        if(!r.ok) throw new Error(r.err||'失败');
+        $('mkt-src-note').textContent='已删除，市场清单正在后台刷新，稍后重开商店可见。';
+        loadMarketUI(); loadSkillStore();
+      }catch(e){ del.disabled=false; alert('没删成：'+e.message); }
+    };
+    row.appendChild(tog); row.appendChild(del); sl.appendChild(row);
+  }
+  if(!d.skillSources.length) sl.innerHTML='<div class="fnote">没有技能源。</div>';
+  cl.innerHTML='';
+  for(const m of d.mcpCatalog){
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 2px;border-bottom:1px solid var(--line)';
+    row.innerHTML='<div style="flex:1;min-width:0"><div style="font-size:.8rem;font-weight:600">'+esc(m.name)+(m.installed?' <span class="fnote">'+(m.enabled===false?'已停用':'已启用')+'</span>':' <span class="fnote">未安装</span>')+'</div>'+
+      '<div class="fnote" style="word-break:break-all">'+esc(m.pkg)+' · '+esc(m.license)+'</div></div>';
+    const del=document.createElement('button'); del.className='mini'; del.textContent='🗑'; del.title='从目录删除这个条目';
+    del.onclick=async()=>{
+      if(!confirm('从目录删除「'+m.name+'」？（已安装的要去上方先卸载）')) return;
+      del.disabled=true;
+      try{
+        const r=await apiJSON('/api/config/market',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op:'mcp-remove',id:m.id})});
+        if(!r.ok) throw new Error(r.err||'失败');
+        loadMcpUI();
+      }catch(e){ del.disabled=false; alert('没删成：'+e.message); }
+    };
+    row.appendChild(del); cl.appendChild(row);
+  }
+}
+$('mkt-src-add').onclick=async()=>{
+  const repo=$('mkt-src-repo').value.trim(), branch=$('mkt-src-branch').value.trim(), subdir=$('mkt-src-subdir').value.trim();
+  if(!repo){ alert('仓库名要填，形如「用户名/仓库名」。'); return; }
+  $('mkt-src-add').disabled=true;
+  try{
+    const r=await apiJSON('/api/config/market',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op:'skill-add',repo,branch,subdir})});
+    if(!r.ok) throw new Error(r.err||'失败');
+    $('mkt-src-repo').value=''; $('mkt-src-subdir').value='';
+    $('mkt-src-note').textContent='已添加，市场清单正在后台刷新，稍后重开商店可见新源的货。';
+    loadMarketUI(); loadSkillStore();
+  }catch(e){ alert('没加成：'+e.message); }
+  $('mkt-src-add').disabled=false;
+};
+$('mkt-cat-add').onclick=async()=>{
+  const body={
+    op:'mcp-add',
+    id:$('mkt-cat-id').value.trim(), name:$('mkt-cat-name').value.trim(), license:$('mkt-cat-license').value.trim(),
+    pkg:$('mkt-cat-pkg').value.trim(), entry:$('mkt-cat-entry').value.trim(), desc:$('mkt-cat-desc').value.trim(),
+  };
+  if(!body.id || !body.name || !body.pkg){ alert('标识、显示名称、npm 包名都要填。'); return; }
+  $('mkt-cat-add').disabled=true;
+  try{
+    const r=await apiJSON('/api/config/market',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok) throw new Error(r.err||'失败');
+    for(const k of ['mkt-cat-id','mkt-cat-name','mkt-cat-license','mkt-cat-pkg','mkt-cat-entry','mkt-cat-desc']) $(k).value='';
+    loadMcpUI();
+  }catch(e){ alert('没加成：'+e.message); }
+  $('mkt-cat-add').disabled=false;
+};
 $('manage-modal').onclick=e=>{ if(e.target.id==='manage-modal'){ e.target.classList.remove('on'); clearTimeout(mcpPollTimer); } }; // s51c: 关弹窗停安装轮询
 
 // ---- s32: 定时任务列表（只读+删除；设置由聊天对话完成） ----
