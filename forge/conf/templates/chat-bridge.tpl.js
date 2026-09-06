@@ -2177,7 +2177,10 @@ const ext = path.extname(f).toLowerCase();
                 FSS.mkdirSync(vdir, { recursive: true });
                 try {
                     const { execFile } = require('child_process');
-                    const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+                    // s75(v0.9.11台账): 树内 npm 优先——目标机零权限 PATH 未必有 npm；桥跑在树内 node 上（execPath 同目录即自带 npm），存在即用绝对路径，否则回落裸名走 PATH。win32 走 shell，绝对路径自裹引号防路径空格。
+                    const npmBare = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+                    const npmTree = path.join(path.dirname(process.execPath), npmBare);
+                    const npm = FSS.existsSync(npmTree) ? (process.platform === 'win32' ? '"' + npmTree + '"' : npmTree) : npmBare;
                     const child = execFile(npm, ['install', '--omit=dev', item.pkg], { cwd: vdir, timeout: 300000, shell: process.platform === 'win32', env: { ...process.env, HTTP_PROXY: process.env.HTTP_PROXY || 'http://127.0.0.1:7890', HTTPS_PROXY: process.env.HTTPS_PROXY || 'http://127.0.0.1:7890' }, maxBuffer: 16 * 1024 * 1024 }, (err) => {
                         if (err) { mcpInstallState[id] = { stage: 'error', msg: '安装失败：' + (err.message || '').slice(0, 200) }; return; }
                         try { mcpWriteExtension(id, item.entry); mcpInstallState[id] = { stage: 'done', msg: '安装完成，重启数字员工后生效' }; }
