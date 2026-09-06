@@ -1,9 +1,7 @@
 # PocketForge 状态（永远反映"现在"；每次工作会话结束必须更新）
 
-- 更新：2026-09-07 s75（**s74 遗留①闭环：goose 扩展进程滞留修复**（research/17 首选档落地）——栈外验证 session/close 回收成立（3 会话 33 后代进程→close×3→1s 归零；bogus close 空 result 无 error）→ 桥 delete_session 硬删 DB 同时 fire-and-forget 发 ACP session/close（id 不注册 waiting，未碰 unsubscribe/归档，零 goose 二开）；端到端实景：单会话 11→0、fuzz 5 会话 55 进程→5 删→0（≤5s）；工具转正 tools/clean-orphan-mcp.ps1（带引号命令行正则收紧，只杀父死）+tools/list-goose-procs.ps1；e2e 新增 11b 节 ws-close-reclaim.js 自相对进程数断言→**e2e-chat 48/48+fuzz 143/143**；残余滞留面=闲置会话不删仍滞留（裁决已知，兜底=桥重启整树回收+孤儿清扫脚本）；教训：goose 会话 id 按库内 max 复用，删行后新会话拿旧号（按时间戳识别归属））。前情：s74（IA 根治四切片）
-- 阶段：**P31 内测护航进行中**（①本机部分 ✅（v0.9.9 候选包就绪未发布，GitHub 发布待用户拍板；**v0.9.10 内容已成形在 dev 树**：四主线+离线升级通道+config 保全，发布说明草稿就绪），真机 POC 待用户（须知 docs/real-machine-poc-briefing.md——默认模式变化预期管理）；②收窄完成 ✅；③已就位；④收窄完成 ✅）
-
-- 阶段：**P31 内测护航进行中**（①本机部分 ✅（v0.9.9 候选包就绪未发布，GitHub 发布待用户拍板；**v0.9.10 内容已成形在 dev 树**：四主线+离线升级通道+config 保全，发布说明草稿就绪），真机 POC 待用户（须知 docs/real-machine-poc-briefing.md——默认模式变化预期管理）；②收窄完成 ✅；③已就位；④收窄完成 ✅）
+- 更新：2026-09-07 s74/s75（用户三主线=产品设计根治+进程缺陷修复+**v0.9.10 终包指纹 842150f9…e57f9**（326,141,506B/28,996 文件，沙盒全新冷启 cold-surface 15/15+s74/s75 新面 8/8+session/close 入包+二启 PG_VERSION 逐位幂等+真停零残留，指纹节见发布说明））。**①信息架构根治**（裁决 2026-09-07-ia-root-cure cd5a69a：R1-R4 规范入 AGENTS.md §7 为 qa 正式审查依据，首实战产出 R2 carve-out；IA-1 技能域归位 35a2e69+返工寄宿 afed0cd；IA-2 归档视图化 840b0f0；IA-3 表说明 7ede8c2+afed0cd——主控修正 forge_table_info 改应用库内（pm 原案 forge_bridge 写通道 agent 够不着）+hints 建表义务；qa P3×2 fde61e1；agent 软约束 VERIFIED-RUN 无提示自发写表说明 1/1）；**②进程滞留缺陷闭环**（research/17 540dc98：根因=桥不发 ACP session/close 致每会话滞留 ~7 stdio 扩展进程[单变量矩阵 VERIFIED-RUN]+孤儿形态=扩展初始化失败分支[VERIFIED-DOC]；修复 3133da4：栈外验证 close 回收 33→0→桥 delete_session fire-and-forget 补发 close，批量 55→0 实景；残余面=闲置不删会话仍滞留，兜底=桥重启整树回收+tools/clean-orphan-mcp.ps1）；**③文档/测试资产**（发布说明 IA 段+指纹更新；护航须知新布局；welcome/使用说明 s43 陈旧两版修正 159045f；archprobe 转正 ia-logic-probe fc9d3b8）；模式切换观察销账（回合间生效 VERIFIED-RUN，回合中不中断属 goose 设计）；方法论：.goosehints 是 bootstrap 物化产物改模板必须重跑 bootstrap／软约束第一判据=写通道可达性／同文件并行编辑互相卷入 commit。**终态 e2e-chat 48/48+fuzz 143/143**。前情：s73（用户四点批评全落+PG切片2）
+- 阶段：**P31 内测护航进行中**（①本机部分 ✅（**v0.9.10 终包就绪**：s74/s75 内容全入+沙盒验证全过；v0.9.9 未发布件处置+GitHub tag/发布待用户拍板；存量升级按发布说明手动备份 conf/goose/config/），真机 POC 待用户（须知已同步 s74 新布局）；②收窄完成 ✅；③已就位；④收窄完成 ✅）
 
 ## 已完成周期
 | 周期 | 内容 | journal |

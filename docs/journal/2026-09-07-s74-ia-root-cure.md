@@ -30,3 +30,25 @@
 - **软约束设计第一判据=写通道可达性**：让 agent 履行义务，义务入口必须用它已有的工具；需要它学新入口（HTTP API/新工具）的义务执行率趋零。
 - 配置搬家的验收要含「首开即有货」：惰性加载器搬家后，新入口的冷启动路径必须自己触发加载（IA-1 返工缺陷）。
 - 空态/早退路径要清翻页器（缺陷家族：paintInstalled 清了、新代码两条早退没清——qa 家族枚举法抓出）。
+
+## 追加（同日凌晨续）：收口三波
+
+### 进程缺陷闭环（s74 遗留① → s75 修复，详见 s75 journal）
+research/17（540dc98）单变量矩阵定根因：桥不发 ACP session/close → goose acp sessions HashMap 持 Agent 永不 drop → 每会话滞留 ~7 个 stdio 扩展进程（52 个 memory 只是同名好认的一族）；孤儿形态（PPID 死）=扩展初始化失败分支（rmcp Drop 只杀子不杀孙，VERIFIED-DOC 未复现）。**产品缺陷定性**（交付配置 enabled:true 同构）。修复 3133da4（栈外先证 close 回收 33→0，桥 delete_session fire-and-forget 补发，批量 55→0 实景，e2e 新增 11b 节）；清扫脚本转正 tools/clean-orphan-mcp.ps1。
+
+### 模式切换观察销账
+WS 钩子实证 set_mode 真实出站；auto 下建文件任务零卡直通完成=回合间切换立即生效；会话 1 的「切了还弹卡」=回合中不中断当回合审批流（goose 按回合生效，合理设计）。
+
+### 文档/测试资产/妻子的文档
+- 发布说明 v0.9.10 并入 IA 段（用户人话版「界面重新归置」节+内测技术要点 s74 节，c2b7fae）。
+- 护航须知同步新布局（1b7f0b8）：技能入口修正（旧文还指 🧠 本事标签——s45 后就是 🧩，陈旧两版）+归档找回指引+两条新预期（界面归置/表说明占位）。
+- welcome 好用地方②与 使用说明.md 本事节：s43 起 ⚙️→🧠 的陈旧描述修正+🧩/📦 入口补全（159045f）。
+- qa archprobe 转正 tools/e2e/ia-logic-probe.js 入 e2e 第 15 节（fc9d3b8），基线 46→47；s75 ws-close-reclaim 再升至 48。
+
+### v0.9.10 终包（指纹 842150f9…e57f9，2026-09-07 02:39）
+dist/PocketForge-20260907-v0.9.10.zip = 326,141,506 B / 28,996 文件。沙盒全新冷启验证：cold-surface-probe **15/15**（s69 六面全保）+ **s74/s75 新面 8/8**（归档chip/归档搜索/技能双tab/已装搜索/源配置折叠/数据面板搜索/系统表折叠/插件目录改名，node 直读页面 HTML 断言）+ .goosehints 建表义务在包 + bin/chat-bridge.js session/close 在证 + 停止真停零残留 + 二启 PG_VERSION mtime 逐位不变。dev 栈已恢复（runas 降权链），终态回归 **e2e-chat 48/48 + fuzz 143/143**。
+
+### GUI 猎捕补录（主控 IAB）
+- 归档全生命周期：chat 视图 📥→chip 计数实时跳→归档视图定位→原生 confirm 删除→WS 回执→计数回落（中途一次删除丢失=研究员重启桥竞态，死套接字静默丢+重连后状态一致，非缺陷；wssend 无重试队列属已知可接受行为）。
+- 技能市场装/卸往返：folder-cleanup 安装入「我的技能」✅；GUI 卸载两次未成（原生 confirm 与 IAB 自动化交互不稳，getJsDialog 接的框未落到页面 confirm），直打 /api/skillstore op=uninstall 成功清盘——卸载 API 链路有 e2e 覆盖（s57），GUI 点击链 s57 已验，判定自动化假象非产品缺陷，留观。
+- IAB 截图能力本会话失效一次（"activity capture failed for guest"），几何断言法替代（chip 不换行/无横向溢出）。
