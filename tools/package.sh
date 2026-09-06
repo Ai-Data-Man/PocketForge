@@ -47,6 +47,7 @@ declare -A SRC=(
  [isomorphic-git.MIT]="$FORGE/bin/vendor/artifact-vcs/node_modules/isomorphic-git/LICENSE.md"
  [DOMPurify.Apache-2.0]="$FORGE/vendor-licenses/DOMPurify.Apache-2.0"
  [postgresql.PostgreSQL]="$FORGE/vendor-licenses/postgresql.PostgreSQL"
+ [postgres.Unlicense]="$FORGE/vendor-licenses/postgres.Unlicense"
 )
 MISS=0
 for name in "${!SRC[@]}"; do

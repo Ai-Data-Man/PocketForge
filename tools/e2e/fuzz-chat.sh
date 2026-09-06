@@ -45,6 +45,10 @@ k=d.get('errorsByType',{}).get('upstreamByKind')
 if k is not None:
     assert isinstance(k,dict) and all(isinstance(k.get(x),(int,float)) for x in ('unauthorized','rate','timeout','server')), k
 "; ck "stats upstreamByKind shape" $?
+# s73 切片1（裁决 2026-09-06-pg-forge-backend）: 桥状态存储层——pg 字段形状 + 真写入 + 假端口回落路径
+curl -s "$B/api/stats" | python -c "import sys,json;d=json.load(sys.stdin);assert d['pg'] in ('off','connecting','pg','file'), d['pg']"; ck "stats pg mode field enum (s73)" $?
+node "$(dirname "$0")/pgstore-poll.js" "$B"; ck "pg mode establish + forge_bridge row via vendored client (s73)" $?
+node "$(dirname "$0")/pgstore-probe.js"; ck "pgstore fake-port fallback probe (s73)" $?
 # s50b: db/overview 不收参数——垃圾 query 不影响响应形状（端点无用户输入面）
 curl -s "$B/api/db/overview?ws=../../etc" | python -c "import sys,json;d=json.load(sys.stdin);assert 'services' in d"; ck "db overview traversal query ignored" $?
 curl -s "$B/api/db/overview?service=x%27" | python -c "import sys,json;d=json.load(sys.stdin);assert 'services' in d"; ck "db overview quote query ignored" $?

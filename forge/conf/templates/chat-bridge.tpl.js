@@ -147,6 +147,7 @@ function statsFlushDebounced() {
             .then(() => fsp.writeFile(tmp, JSON.stringify(stats, null, 2)))
             .then(() => fsp.rename(tmp, file))
             .catch(() => { try { fsp.unlink(tmp).catch(() => {}); } catch {} });
+        pgUsageFlush(); // 存储层落点：pg 态双写 forge_bridge；file/off 态纯文件（现状）并 lazy 触发首连
     }, 2000);
     if (statsFlushT.unref) statsFlushT.unref();
 }
@@ -164,6 +165,146 @@ function statsFlushDebounced() {
         } else statsFlush();
     } catch {}
 })();
+
+// ---- 桥状态存储层（裁决 2026-09-06-pg-forge-backend §4）：桥内唯一 PG 触点 ----
+// 模式机 off→connecting→pg|file：pg=写 forge_bridge+文件镜像双写（回落无缝）；file=纯文件（与切片前逐位一致，永久支持态）；
+// off=树内无 PG（不探测、无人话）。lazy：首个防抖 flush 触发首连 + 30s 后台重探（unref）；connect_timeout 2s（research/10 实测语义）。
+// 硬线：桥启动绝不等待 PG（pc 编排零 depends_on 不变）；连接/迁移/写入错误全部 catch 降级，绝不抛进主流程。
+// PF_PG_PORT：测试专用端口覆盖（fuzz 假端口路径，不真停 pg）。
+const PG_PORT_FILE = path.join(ROOT, 'data', 'pg.port');
+const PG_DUMPS_DIR = path.join(ROOT, 'data', 'pg-dumps');
+const PG_DUMP_EXE = path.join(ROOT, 'bin', 'pg', 'bin', 'pg_dump.exe');
+// 代码侧 MIGRATIONS 注册表（phase-2 §5）：forward-only、事务包裹、apply 前 pg_dump 留档；库版本新于代码=拒写
+const PG_MIGRATIONS = [
+    { v: 1, name: 'usage_daily', sql: 'CREATE TABLE IF NOT EXISTS usage_daily (date text PRIMARY KEY, payload jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())' },
+];
+const pgStore = { mode: 'off', sql: null, blocked: false };
+function pgPort() {
+    const p = Number(process.env.PF_PG_PORT) || 0;
+    if (p > 0) return p;
+    try { const v = Number(FSS.readFileSync(PG_PORT_FILE, 'utf8').trim()); return v > 0 ? v : 0; } catch { return 0; }
+}
+function pgExpected() { try { return FSS.statSync(path.join(ROOT, 'data', 'pg', 'PG_VERSION')).isFile(); } catch { return false; } }
+const PG_WARN = '数据库存储：';
+function pgWarn(text) { // 维护唯一一条 PG 人话（text=null 撤除；「正在用/没连上」两态，裁决 §7 切片1）
+    for (let i = stateWarnings.length - 1; i >= 0; i--) if (stateWarnings[i].indexOf(PG_WARN) === 0) stateWarnings.splice(i, 1);
+    if (text) stateWarnings.push(text);
+}
+function pgClose() {
+    const s = pgStore.sql; pgStore.sql = null;
+    if (s) { try { s.end({ timeout: 1 }).catch(() => {}); } catch {} }
+}
+function pgDowngrade(warn) { // 任何失败→file 态（现状行为），30s 重探自愈
+    pgStore.mode = 'file';
+    pgClose();
+    pgWarn(warn);
+    console.warn(warn);
+}
+function pgErrWarn(e) { // 失败原因人话化（不泄漏连接串/内部路径）
+    const msg = String((e && e.message) || e || '');
+    if (/DB_VERSION_NEWER/.test(msg)) return PG_WARN + '数据库由更新版本创建，为防数据损坏已用本地文件保存';
+    if (/PG_DUMP_FAILED/.test(msg)) return PG_WARN + '没做成数据库备份，暂不改动数据库，已用本地文件保存，稍后自动重试';
+    if (/MIGRATE_FAILED/.test(msg)) return PG_WARN + '数据库表结构不对，已用本地文件保存，稍后自动重试';
+    const code = String((e && e.code) || '');
+    if (code === 'ECONNREFUSED' || /CONNECT_TIMEOUT|ETIMEDOUT|ECONNRESET|Connection terminated/i.test(msg)) return PG_WARN + '没连上数据库，已用本地文件保存，恢复后自动切回';
+    return PG_WARN + '数据库暂时用不了，已用本地文件保存，稍后自动重试';
+}
+function pgDumpBefore() { // 导出先行：迁移 apply 前 pg_dump forge_bridge 到 data/pg-dumps（keep 3，与每日备份同目录同轮换语义）
+    return new Promise(resolve => {
+        const port = pgPort();
+        if (!port || !FSS.existsSync(PG_DUMP_EXE)) return resolve(false);
+        let file = '';
+        try {
+            FSS.mkdirSync(PG_DUMPS_DIR, { recursive: true });
+            file = path.join(PG_DUMPS_DIR, 'forge-bridge-pre-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.sql');
+            require('child_process').execFile(PG_DUMP_EXE, ['-h', '127.0.0.1', '-p', String(port), '-U', 'postgres', '-d', 'forge_bridge', '-Fp', '-f', file], { timeout: 10000, windowsHide: true }, err => {
+                if (err) { try { FSS.unlinkSync(file); } catch {} return resolve(false); } // 残缺 dump 不留
+                try {
+                    const olds = FSS.readdirSync(PG_DUMPS_DIR).filter(f => /^forge-bridge-pre-.*\.sql$/.test(f)).sort();
+                    while (olds.length > 3) FSS.unlinkSync(path.join(PG_DUMPS_DIR, olds.shift()));
+                } catch {}
+                resolve(true);
+            });
+        } catch { resolve(false); }
+    });
+}
+async function pgMigrate(sql, freshDb) { // schema_migrations 注册表（version,name,applied_at）+ 有序幂等 apply
+    await sql`CREATE TABLE IF NOT EXISTS schema_migrations (version int PRIMARY KEY, name text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`;
+    const rows = [...await sql`SELECT version FROM schema_migrations ORDER BY version`];
+    const dbMax = rows.length ? Number(rows[rows.length - 1].version) : 0;
+    if (dbMax > PG_MIGRATIONS.length) { pgStore.blocked = true; throw new Error('DB_VERSION_NEWER'); } // 倒挂：拒写且不再重试
+    const applied = new Set(rows.map(r => Number(r.version)));
+    if (!PG_MIGRATIONS.some(m => !applied.has(m.v))) return;
+    if (!freshDb && !(await pgDumpBefore())) throw new Error('PG_DUMP_FAILED'); // 导出先行失败=本次不 apply
+    for (const m of PG_MIGRATIONS) {
+        if (applied.has(m.v)) continue;
+        try {
+            await sql.begin(async t => {
+                await t.unsafe(m.sql);
+                await t`INSERT INTO schema_migrations (version, name) VALUES (${m.v}, ${m.name}) ON CONFLICT (version) DO NOTHING`;
+            });
+        } catch (e) { throw new Error('MIGRATE_FAILED: ' + ((e && e.message) || e)); }
+    }
+}
+function pgUsageWrite() { // pg 态写路径：日聚合一行 UPSERT（payload=stats 全对象，贴现有形状）
+    const sql = pgStore.sql;
+    if (!sql || pgStore.mode !== 'pg' || !stats.date) return;
+    // 注意：参数须传对象——postgres.js 对 ::jsonb 显式转型的字符串会再包一层引号（双编码，实测）；对象直传由驱动自动 JSON 化
+    sql`INSERT INTO usage_daily (date, payload) VALUES (${stats.date}, ${stats}) ON CONFLICT (date) DO UPDATE SET payload = EXCLUDED.payload, updated_at = now()`
+        .catch(e => { console.warn('pg usage write failed:', (e && e.message) || e); pgDowngrade(pgErrWarn(e)); });
+}
+function pgUsageBackfill() { // pg 态确立后台一次：当日内存整体回迁（file 态期间文件必然不旧于 PG，覆盖方向确定）+ 存量文件幂等导入
+    const sql = pgStore.sql;
+    if (!sql) return;
+    (async () => {
+        try {
+            await sql`INSERT INTO usage_daily (date, payload) VALUES (${stats.date}, ${stats}) ON CONFLICT (date) DO UPDATE SET payload = EXCLUDED.payload, updated_at = now()`;
+            let n = 0;
+            for (const f of FSS.readdirSync(STATS_DIR).filter(f => /^usage-\d{8}\.json$/.test(f)).sort()) {
+                const j = readJson(path.join(STATS_DIR, f), null);
+                if (!j || typeof j.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(j.date)) continue;
+                await sql`INSERT INTO usage_daily (date, payload) VALUES (${j.date}, ${j}) ON CONFLICT (date) DO NOTHING`; // 幂等：已入库日期绝不回退
+                n++;
+            }
+            console.log('pg usage backfill ok (' + n + ' files)');
+        } catch (e) { console.warn('pg usage backfill failed:', (e && e.message) || e); }
+    })();
+}
+function pgUsageFlush() { // statsFlushDebounced 的存储层落点：pg=双写 forge_bridge；file/off=纯文件（现状）并 lazy 触发首连
+    if (pgStore.mode === 'pg') return pgUsageWrite();
+    if (pgStore.mode === 'off' && pgExpected()) pgTryConnect(); // lazy：首次写用时连（file 态重试只走 30s 重探，不随 flush 加压）
+}
+function pgTryConnect() {
+    const port = pgPort();
+    if (!port) return pgDowngrade(PG_WARN + '没找到数据库端口，已用本地文件保存');
+    pgStore.mode = 'connecting';
+    (async () => {
+        let boot = null;
+        try {
+            const postgres = require(path.join(ROOT, 'bin', 'vendor', 'pgstore', 'node_modules', 'postgres')); // 3.4.9 vendored 零依赖（research/10 VERIFIED-RUN）
+            boot = postgres({ host: '127.0.0.1', port, user: 'postgres', database: 'postgres', max: 1, connect_timeout: 2 });
+            const have = [...await boot`SELECT 1 FROM pg_database WHERE datname = 'forge_bridge'`];
+            let fresh = false;
+            if (!have.length) { await boot.unsafe('CREATE DATABASE forge_bridge'); fresh = true; } // doctrine：每应用一库 forge_<app>
+            await boot.end({ timeout: 1 }); boot = null;
+            const sql = postgres({ host: '127.0.0.1', port, user: 'postgres', database: 'forge_bridge', max: 1, connect_timeout: 2 });
+            await sql`SELECT 1`; // postgres.js lazy 建连：首查询才真连
+            await pgMigrate(sql, fresh);
+            pgStore.sql = sql; pgStore.mode = 'pg';
+            pgWarn(PG_WARN + '正在用 PostgreSQL');
+            console.log('pg store ready: forge_bridge on 127.0.0.1:' + port);
+            pgUsageBackfill();
+        } catch (e) {
+            if (boot) { try { await boot.end({ timeout: 1 }); } catch {} }
+            pgDowngrade(pgErrWarn(e));
+        }
+    })().catch(() => { pgDowngrade(pgErrWarn(null)); });
+}
+// 30s 后台重探（unref；pg 态空转，file 态自愈重连；树内无 PG 时 off 态恒静默）
+setInterval(() => {
+    if (pgStore.blocked || pgStore.sql || pgStore.mode === 'connecting' || !pgExpected()) return;
+    pgTryConnect();
+}, 30000).unref();
 // ---- 状态 schema 迁移管线（ADR-0009）：自描述 _schema + 顺序幂等步骤 + 迁移前留档 ----
 // qa返工(P2-2): 第二源内置默认（62c7e54 市场文案已承诺双源）——首启生成即双源；迁移步骤与 okSrc 共用同一定义（单一真相源，置于 STATE_SCHEMAS 之前避开 TDZ）
 const BAOYU_SKILLS = { repo: 'JimLiu/baoyu-skills', branch: 'main', subdir: 'skills' };
@@ -2119,8 +2260,9 @@ const ext = path.extname(f).toLowerCase();
     }
     else if (url === '/api/stats') {
         // P31-③: 当日匿名使用统计（只读；Origin 校验走 handleHttp 顶部全局规则，与 /api/memory 等同级）
+        // pg 字段=存储层模式机现态（off/connecting/pg/file），人话两态由 stateWarnings 承载；payload 文件形状不变
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify(stats));
+        res.end(JSON.stringify({ ...stats, pg: pgStore.mode }));
     }
     else if (url === '/api/report') {
         // 只读诊断报告（GET）：采集→脱敏→atomicWrite 到 data/reports/；失败回人话错误

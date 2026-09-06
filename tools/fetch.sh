@@ -43,16 +43,26 @@ n=$(find "$BIN/pg/bin" -name '*.exe' | wc -l)
 dl https://get.enterprisedb.com/postgresql/postgresql-17.11-1-windows-x64-binaries.zip "$DL/edb-pg-17.11-1-windows-x64-binaries.zip"
 echo "6eabdf00d2893713b75db4336a23c3fdf505f056e217ec6e2e95d901750cfea3  $DL/edb-pg-17.11-1-windows-x64-binaries.zip" | sha256sum -c -
 mkdir -p "$DL/edb-pg-17.11-1"
-unzip -oq "$DL/edb-pg-17.11-1-windows-x64-binaries.zip" "pgsql/bin/pg_dump.exe" -d "$DL/edb-pg-17.11-1"
+unzip -oq "$DL/edb-pg-17.11-1-windows-x64-binaries.zip" "pgsql/bin/pg_dump.exe" "pgsql/bin/psql.exe" -d "$DL/edb-pg-17.11-1"
+# psql = 恢复工具（裁决 2026-09-06-pg-forge-backend 切片1 三件套；闭包与 pg_dump 同款 8 DLL，树内已具）
 cp "$DL/edb-pg-17.11-1/pgsql/bin/pg_dump.exe" "$BIN/pg/bin/pg_dump.exe"
-# 同源断言：pg_dump 依赖闭包 8 DLL，zip 内与树内（zonky 抽取结果）逐一哈希一致
+cp "$DL/edb-pg-17.11-1/pgsql/bin/psql.exe" "$BIN/pg/bin/psql.exe"
+# 同源断言：pg_dump/psql 依赖闭包 8 DLL，zip 内与树内（zonky 抽取结果）逐一哈希一致
 for dll in libcrypto-3-x64.dll libiconv-2.dll libintl-9.dll liblz4.dll libpq.dll libssl-3-x64.dll libwinpthread-1.dll libzstd.dll; do
   z="$(unzip -p "$DL/edb-pg-17.11-1-windows-x64-binaries.zip" "pgsql/bin/$dll" | sha256sum | cut -d' ' -f1)"
   t="$(sha256sum "$BIN/pg/bin/$dll" | cut -d' ' -f1)"
   [ "$z" = "$t" ] || { echo "FATAL: $dll zip($z) 与树内($t) 哈希不一致（非同源）"; exit 1; }
 done
 n=$(find "$BIN/pg/bin" -name '*.exe' | wc -l)
-[ "$n" = "4" ] || { echo "FATAL: bin/pg/bin 应恰 4 个 exe(initdb/pg_ctl/postgres/pg_dump)，实得 $n（渠道污染）"; exit 1; }
+[ "$n" = "5" ] || { echo "FATAL: bin/pg/bin 应恰 5 个 exe(initdb/pg_ctl/postgres/pg_dump/psql)，实得 $n（渠道污染）"; exit 1; }
+
+# postgres.js 3.4.9 vendored（裁决 2026-09-06-pg-forge-backend 切片1：桥状态存储层唯一 PG 客户端；
+# 零传递依赖 research/10 VERIFIED-RUN；npm tarball 直接抽取，不走 npm install）
+dl https://registry.npmjs.org/postgres/-/postgres-3.4.9.tgz "$DL/postgres-3.4.9.tgz"
+echo "4964056ae6b672361557f738532a20ad29d54cff0b146cb66d67d7155d66761e  $DL/postgres-3.4.9.tgz" | sha256sum -c -
+rm -rf "$BIN/vendor/pgstore/node_modules/postgres"
+mkdir -p "$BIN/vendor/pgstore/node_modules/postgres"
+tar -xzf "$DL/postgres-3.4.9.tgz" -C "$BIN/vendor/pgstore/node_modules/postgres" --strip-components=1
 
 # license texts (raw)
 for r in "F1bonacc1/process-compose/APACHE-2.0.txt" "nats-io/nats-server/LICENSE" "nats-io/natscli/LICENSE" "aaif-goose/goose/LICENSE"; do
@@ -63,12 +73,16 @@ curl -sL -x "$PROXY" --retry 3 -o "$LIC/faucetdb_faucet_LICENSE" "https://raw.gi
 curl -sL -x "$PROXY" --retry 3 -o "$LIC/faucetdb_faucet_LICENSE-MIT" "https://raw.githubusercontent.com/faucetdb/faucet/main/LICENSE-MIT" || true
 curl -sL -x "$PROXY" --retry 3 -o "$LIC/postgresql.PostgreSQL" "https://raw.githubusercontent.com/postgres/postgres/REL_17_11/COPYRIGHT" || true
 [ -s "$LIC/postgresql.PostgreSQL" ] || { echo "MISSING LICENSE: postgresql.PostgreSQL"; exit 1; }
+# postgres.js 客户端许可证（Unlicense=公有领域奉献；包内无 LICENSE 文件，取仓库 UNLICENSE 原文）
+curl -sL -x "$PROXY" --retry 3 -o "$LIC/postgres.Unlicense" "https://raw.githubusercontent.com/porsager/postgres/master/UNLICENSE" || true
+[ -s "$LIC/postgres.Unlicense" ] || { echo "MISSING LICENSE: postgres.Unlicense"; exit 1; }
 
 # checksums (s67 口径统一: 本表=fetch.sh 产物档案, 仓库根相对路径+二进制(*)标记, regen 幂等。
-# 范围=本脚本下载的归档 + 其解压出的 bin exe; node/python 不归本脚本管, 不进表。
+# 范围=本脚本下载的归档 + 其解压出的 bin exe + pgstore vendor; node/python 不归本脚本管, 不进表。
 # 新增资产须同步补下面两处列举。)
 ( cd "$ROOT" && \
-  sha256sum -b downloads/pc.zip downloads/nats-server.zip downloads/nats-cli.zip downloads/faucet.zip downloads/goose.zip downloads/zonky-pg-17.11.0.jar downloads/edb-pg-17.11-1-windows-x64-binaries.zip && \
-  find forge/bin/pc forge/bin/nats-server forge/bin/nats-cli forge/bin/faucet forge/bin/goose forge/bin/pg -type f -name '*.exe' -exec sha256sum -b {} + \
+  sha256sum -b downloads/pc.zip downloads/nats-server.zip downloads/nats-cli.zip downloads/faucet.zip downloads/goose.zip downloads/zonky-pg-17.11.0.jar downloads/edb-pg-17.11-1-windows-x64-binaries.zip downloads/postgres-3.4.9.tgz && \
+  find forge/bin/pc forge/bin/nats-server forge/bin/nats-cli forge/bin/faucet forge/bin/goose forge/bin/pg -type f -name '*.exe' -exec sha256sum -b {} + && \
+  find forge/bin/vendor/pgstore -type f -exec sha256sum -b {} + \
 ) > "$ROOT/tools/checksums.txt"
 cat "$ROOT/tools/checksums.txt"
