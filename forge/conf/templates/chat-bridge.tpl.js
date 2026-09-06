@@ -2546,25 +2546,6 @@ const ext = path.extname(f).toLowerCase();
         console.log('workspace created:', id, '<->', sid.slice(0, 8));
         res.end(JSON.stringify({ ok: true, ws: id }));
     }
-    else if (url === '/api/ws/bind') {
-        // 「引入」：把一个已有工作区绑到当前会话（强保证 = 之后 @ 引用的完整路径 agent 一定能读）
-        const chunks = [];
-        let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
-        req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
-        req.on('end', () => {
-            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-            try {
-                    const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-                    if (!wsValidId(b.ws) || !FSS.existsSync(wsDir(b.ws))) throw new Error('工作区不存在');
-                    if (!sidValid(b.sid)) throw new Error('缺 sid');
-                const map = readWsMap();
-                map[b.ws] = { sid: b.sid, boundAt: Date.now(), introduced: true };
-                writeWsMap(map);
-                console.log('workspace introduced:', b.ws, '->', String(b.sid).slice(0, 8));
-                res.end(JSON.stringify({ ok: true }));
-            } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
-        });
-    }
     else if (url === '/api/artifacts') {
         // 某个工作区的文件列表（递归，跳过 .git）
         const qs = new URL(req.url, 'http://x').searchParams;
