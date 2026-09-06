@@ -1246,6 +1246,36 @@ function faucetRows(svc, tbl, port, key) {
         } catch { resolve(null); }
     });
 }
+// IA-3（裁决 2026-09-07-ia-root-cure §6-d，主控修正版）：表说明唯一真相源=各应用库自带的 forge_table_info 表
+// （tbl, description, created_at），由 agent 建表时用已有 faucet 工具写入；桥经 _table 通道只读。
+// agent 写的数据按不可信输入处理：缺 tbl 的行跳过、desc 非字符串跳过、超长截断 200 字符。
+const TINFO_TBL = 'forge_table_info';
+function faucetTableInfo(svc, port, key) {
+    return new Promise(resolve => {
+        let rq;
+        try {
+            rq = require('http').get({ hostname: '127.0.0.1', port, path: '/api/v1/' + svc + '/_table/' + TINFO_TBL + '?max_results=200', headers: { 'X-API-Key': key }, timeout: 4000 }, r => {
+                let b = '';
+                r.on('data', c => b += c);
+                r.on('end', () => {
+                    try {
+                        const rows = JSON.parse(b).resource;
+                        if (!Array.isArray(rows)) return resolve(null); // 表不存在/读不到 → 无说明，静默降级
+                        const m = new Map();
+                        for (const row of rows) {
+                            if (!row || typeof row !== 'object') continue;
+                            if (typeof row.tbl !== 'string' || typeof row.description !== 'string') continue;
+                            m.set(row.tbl, row.description.length > 200 ? row.description.slice(0, 200) : row.description);
+                        }
+                        resolve(m.size ? m : null);
+                    } catch { resolve(null); }
+                });
+            });
+            rq.on('error', () => resolve(null));
+            rq.on('timeout', () => { rq.destroy(); resolve(null); });
+        } catch { resolve(null); }
+    });
+}
 async function dbOverview() {
     let list;
     try { list = JSON.parse(await faucetCli(['db', 'list', '--json']) || 'x'); } catch { return { ok: false }; }
@@ -1264,12 +1294,15 @@ async function dbOverview() {
         try { names = ((JSON.parse(await faucetCli(['db', 'schema', svc]) || 'x') || {}).tables || []).map(t => (t && t.name) || '').filter(x => DB_NAME_RE.test(x)); } catch {}
         for (const nm of names) {
             if (n >= 50) { truncated++; continue; }
-            entry.tables.push({ name: nm, rows: null }); n++;
+            entry.tables.push({ name: nm, rows: null, desc: null }); n++;
         }
     }
     if (port && key) {
         const jobs = [];
-        for (const en of services) for (const t of en.tables) jobs.push(faucetRows(en.service, t.name, port, key).then(c => { t.rows = c; }));
+        for (const en of services) {
+            for (const t of en.tables) jobs.push(faucetRows(en.service, t.name, port, key).then(c => { t.rows = c; }));
+            jobs.push(faucetTableInfo(en.service, port, key).then(m => { if (m) for (const t of en.tables) { const d = m.get(t.name); if (d !== undefined) t.desc = d; } })); // IA-3：与行数取数同轮并发，每库一次请求
+        }
         await Promise.all(jobs);
     }
     const out = { ok: true, services };

@@ -57,6 +57,12 @@ node "$(dirname "$0")/pgstore-p34-probe.js"; ck "pg slice2: P3-4 newer-PG-row no
 # s50b: db/overview 不收参数——垃圾 query 不影响响应形状（端点无用户输入面）
 curl -s "$B/api/db/overview?ws=../../etc" | python -c "import sys,json;d=json.load(sys.stdin);assert 'services' in d"; ck "db overview traversal query ignored" $?
 curl -s "$B/api/db/overview?service=x%27" | python -c "import sys,json;d=json.load(sys.stdin);assert 'services' in d"; ck "db overview quote query ignored" $?
+# IA-3（裁决 docs/verdicts/2026-09-07-ia-root-cure.md §6-d 主控修正版）: 表说明读链——plm 库造 forge_table_info（含坏值行）
+# → desc 带出+超长截断+坏值跳过 → 删表降级 desc=null 不炸（探针自建自清 plm.db，失败也兜底清理）
+# 探针用 node:sqlite 造数：钉包内 node（dev PATH node 24 有 node:sqlite 退出期 libuv 断言崩溃，22.21.1 无）
+FRX="$(cd "$(dirname "$0")/../.." && pwd)/forge"
+command -v cygpath >/dev/null 2>&1 && FRX="$(cygpath -u "$FRX" 2>/dev/null || echo "$FRX")"
+"$FRX/bin/node-v22/node-v22.21.1-win-x64/node.exe" "$(dirname "$0")/ia3-tinfo-probe.js" "$B"; ck "db overview desc carry + bad-value skip + drop degrade (IA-3)" $?
 # s51(FIND-3): _schema 白名单钉子——非法名必须命中 DB_NAME_RE 拒绝分支（区别于「表不存在」的 ok:false）
 curl -s --get "$B/api/db/_schema" --data-urlencode "svc=../etc" --data-urlencode "tbl=passwd" | grep -q '表名不对'; ck "db/_schema whitelist branch (bad name msg)" $?
 curl -s "$B/api/db/_schema?svc=x%27%20OR%201%3D1&tbl=t--" | grep -q '表名不对'; ck "db/_schema whitelist branch (injection-ish)" $?
