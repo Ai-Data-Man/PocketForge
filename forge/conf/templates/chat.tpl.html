@@ -608,19 +608,17 @@ function connect(){
     if(m.sys==='provider_switched'){ addInfo('✅ 已切到 '+m.provider+'（默认模型 '+m.model+'）。'); loadSessions(); if(pendingRetry){ subscribe(null); return; } return; } // s51c: 重发挂到 subscribed（新会话 ready 后才发，见上方消费点）
     if(m.sys==='session_deleted'){ clearTimeout(delRefreshT); delRefreshT=null; loadSessions(); return; } // #4: 删除回执（桥已发 session_deleted）驱动列表刷新，替代盲等 800ms
     if(m.sys==='saved_config'){ note('已保存'); return; }
+    if(m.sys==='tool_explanation_delta'){ // 流式增量：追加进气泡（思考期桥不转发，故收到即首字）
+      const card=toolCards.get(m.id); if(!card) return;
+      clearTimeout(card._exp12); clearInterval(card._exptick); const b=card.querySelector('.expbtn'); if(b) b.textContent='想想…';
+      showExpPop(card,'💡 '+(card._exptext=(card._exptext||'')+m.text));
+      return;
+    }
     if(m.sys==='tool_explanation'){
       const card=toolCards.get(m.id); if(!card) return;
+      clearTimeout(card._exp12); clearInterval(card._exptick); // 收尾帧（含缓存命中/超时/失败兜底文本）：停掉等待计时
+      showExpPop(card,'💡 '+m.text);
       const b=card.querySelector('.expbtn');
-      let pop=card._exppop;
-      if(!pop){ pop=document.createElement('div'); pop.className='expl-pop'; document.body.appendChild(pop); card._exppop=pop; }
-      pop.textContent='💡 '+m.text;
-      const anchor=b||card.querySelector('summary');
-      const r=anchor.getBoundingClientRect();
-      pop.style.position='fixed'; pop.style.left=r.left+'px'; pop.style.top=(r.bottom+6)+'px'; pop.style.right='auto';
-      const ph=pop.offsetHeight; if(r.bottom+6+ph>innerHeight) pop.style.top=Math.max(8,innerHeight-ph-8)+'px'; // s69 P2-5: 越过视口下缘时上翻
-      pop.onclick=(ev)=>ev.stopPropagation();
-      const close=(ev)=>{ if(pop.parentNode && !pop.contains(ev.target)){ pop.remove(); card._exppop=null; document.removeEventListener('click',close); } };
-      setTimeout(()=>document.addEventListener('click',close),50);
       if(b){ b.disabled=false; b.textContent='这是干啥？'; }
       return;
     }
@@ -948,6 +946,18 @@ function endStream(){ if(streamEl){
   }
   streamEl=null;
 } }
+function showExpPop(card,text){ // 解释气泡：定位到按钮下方，越下缘上翻（s69 P2-5），点外部关闭
+  let pop=card._exppop;
+  if(!pop){ pop=document.createElement('div'); pop.className='expl-pop'; document.body.appendChild(pop); card._exppop=pop; }
+  pop.textContent=text;
+  const anchor=card.querySelector('.expbtn')||card.querySelector('summary');
+  const r=anchor.getBoundingClientRect();
+  pop.style.position='fixed'; pop.style.left=r.left+'px'; pop.style.top=(r.bottom+6)+'px'; pop.style.right='auto';
+  const ph=pop.offsetHeight; if(r.bottom+6+ph>innerHeight) pop.style.top=Math.max(8,innerHeight-ph-8)+'px';
+  pop.onclick=(ev)=>ev.stopPropagation();
+  const close=(ev)=>{ if(pop.parentNode && !pop.contains(ev.target)){ pop.remove(); card._exppop=null; document.removeEventListener('click',close); } };
+  setTimeout(()=>document.addEventListener('click',close),50);
+}
 function toolCard(upd){
   const stick=nearBottom(); // s69 P2-7
   const id=upd.toolCallId;
@@ -991,9 +1001,19 @@ function toolCard(upd){
       b.title='让小 forge 用大白话解释这一步';
       b.onclick=(ev)=>{
         ev.stopPropagation();
-        b.disabled=true; b.textContent='想想…';
+        b.disabled=true; b.textContent='它正在想…（0 秒）';
+        card._exptext='';
+        clearInterval(card._exptick); clearTimeout(card._exp12);
+        let n=0;
+        card._exptick=setInterval(()=>{ n++; b.textContent='它正在想…（'+n+' 秒）'; },1000);
         wssend({type:'explain_tool', id, title:ttl.textContent.split('\n')[0], output:(card._out||'').slice(-600), model:lastKnownModel});
-        setTimeout(()=>{ b.disabled=false; b.textContent='这是干啥？'; },20000);
+        card._exp12=setTimeout(()=>{ // 12s 无首字：就地显示工具卡自带大白话，按钮恢复可点
+          if(card._exptext) return;
+          clearInterval(card._exptick);
+          showExpPop(card,'💡 '+ttl.textContent+'\n（详细解释没赶出来，可再点一次）');
+          b.disabled=false; b.textContent='这是干啥？';
+        },12000);
+        setTimeout(()=>{ b.disabled=false; b.textContent='这是干啥？'; clearInterval(card._exptick); },20000);
       };
       card.querySelector('summary').appendChild(b);
     }

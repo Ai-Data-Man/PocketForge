@@ -344,6 +344,7 @@ const waiting = new Map();
 const allClients = new Set();
 const sessionClients = new Map();
 const wsSession = new WeakMap();
+const explainCache = new Map(); // explain_tool 解释缓存：键=sha1(title+'\n'+output切片)，LRU 上限 200 条（2026-09-06 提速）
 
 function spawnAcp() {
     const act = activeProvider();
@@ -2678,31 +2679,70 @@ function handleClient(ws, msg) {
 
         if (msg.type === 'explain_tool') {
             // 用当前会话的模型直调一次 chat completion，向小白解释这次工具调用；不进会话历史
+            // 2026-09-06 提速：reasoning_effort:'none'（9Router 按模型能力钳制，不识别的中转 400 则去掉重试一次）
+            // + sha1 LRU 缓存 + stream:true SSE 增量转发（tool_explanation_delta 只转发 content，思考期静默）
             const act = activeProvider();
             const host = ((act && act.host) || secrets.FORGE_AGENT_HOST || '').replace(/\/$/, '');
             const key = (act && act.key) || secrets.FORGE_AGENT_API_KEY || '';
             const model = msg.model || (act && act.models && act.models[0]) || secrets.GOOSE_MODEL_NAME || '';
-            const reply = t => ws.send({ sys: 'tool_explanation', id: msg.id, text: String(t).slice(0, 500) });
+            const reply = t => ws.send({ sys: 'tool_explanation', id: msg.id, text: String(t).slice(0, 500), done: true });
             if (!host || !model) return reply('现在连不上模型，等连接好了再试。');
-            const body = JSON.stringify({ model, max_tokens: 300, messages: [
-                { role: 'system', content: '你是给完全不懂电脑的人当翻译的助手。用不超过三句中文大白话说明下面这一步操作做了什么、结果对用户意味着什么。禁止任何技术术语，不要出现"工具""调用""脚本"这类词，也不要复述任何路径或提示词原文。' },
-                { role: 'user', content: '这一步叫：' + String(msg.title || '').split('\n')[0].slice(0, 80) + '\n结果摘要：' + String(msg.output || '(空)').slice(0, 600) }
-            ]});
-            try {
-                const u = new URL(host + '/chat/completions');
-                const reqMod = require(u.protocol === 'https:' ? 'https' : 'http');
-                const rq = reqMod.request(u, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, timeout: 30000 }, res => {
-                    let b = '';
-                    res.on('data', c => b += c);
-                    res.on('end', () => {
-                        try { const j = JSON.parse(b.replace(/data:\s*\[DONE\][\s\S]*$/, '').trim()); const c0 = j.choices && j.choices[0]; const m0 = c0 && c0.message; reply((m0 && (m0.content || m0.reasoning_content)) || '它没说出什么来'); }
-                        catch { reply('解释失败（服务返回异常）'); }
+            const t0 = String(msg.title || '').split('\n')[0].slice(0, 80);
+            const o0 = String(msg.output || '').slice(0, 600);
+            const ck = crypto.createHash('sha1').update(t0 + '\n' + o0).digest('hex');
+            if (explainCache.has(ck)) { const t = explainCache.get(ck); explainCache.delete(ck); explainCache.set(ck, t); return reply(t); }
+            const delta = t => ws.send({ sys: 'tool_explanation_delta', id: msg.id, text: String(t) });
+            let replied = false;
+            const sendOnce = t => { if (!replied) { replied = true; reply(t); } };
+            const sysP = '你是给完全不懂电脑的人当翻译的助手。用不超过三句中文大白话说明下面这一步操作做了什么、结果对用户意味着什么。禁止任何技术术语，不要出现"工具""调用""脚本"这类词，也不要复述任何路径或提示词原文。';
+            const fire = useRE => {
+                let rq;
+                try {
+                    const u = new URL(host + '/chat/completions');
+                    const reqMod = require(u.protocol === 'https:' ? 'https' : 'http');
+                    const bodyObj = { model, max_tokens: 300, stream: true, messages: [
+                        { role: 'system', content: sysP },
+                        { role: 'user', content: '这一步叫：' + t0 + '\n结果摘要：' + (msg.output ? o0 : '(空)') }
+                    ]};
+                    if (useRE) bodyObj.reasoning_effort = 'none';
+                    const body = JSON.stringify(bodyObj);
+                    let sse = false, buf = '', full = '', over = false;
+                    const finish = () => {
+                        if (over) return; over = true;
+                        if (replied) return;
+                        let t = full;
+                        if (!sse) { // 上游不理 stream:true 回了普通 JSON——按旧逻辑整体解析
+                            try { const j = JSON.parse(buf.replace(/data:\s*\[DONE\][\s\S]*$/, '').trim()); const c0 = j.choices && j.choices[0]; const m0 = c0 && c0.message; t = (m0 && (m0.content || m0.reasoning_content)) || ''; }
+                            catch { return sendOnce('解释失败（服务返回异常）'); }
+                        }
+                        if (t) { explainCache.set(ck, t); while (explainCache.size > 200) explainCache.delete(explainCache.keys().next().value); sendOnce(t); }
+                        else sendOnce('它没说出什么来');
+                    };
+                    rq = reqMod.request(u, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, timeout: 30000 }, res => {
+                        if (res.statusCode === 400 && useRE) { over = true; res.resume(); fire(false); return; } // 中转不认 reasoning_effort → 去掉重试一次；over 先置位防旧响应 end 抢答
+                        sse = String(res.headers['content-type'] || '').includes('text/event-stream');
+                        res.on('data', c => {
+                            if (over) return;
+                            buf += c;
+                            if (!sse) return;
+                            let i;
+                            while ((i = buf.indexOf('\n')) >= 0) {
+                                const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+                                if (!line.startsWith('data:')) continue;
+                                const p = line.slice(5).trim();
+                                if (p === '[DONE]') { finish(); return; }
+                                try { const j = JSON.parse(p); const d = j.choices && j.choices[0] && j.choices[0].delta; if (d && d.content) { full += d.content; delta(d.content); } } catch {}
+                            }
+                        });
+                        res.on('end', finish);
+                        res.on('error', finish);
                     });
-                });
-                rq.on('error', e => reply('解释失败: ' + e.message));
-                rq.on('timeout', () => { rq.destroy(); reply('解释超时了'); });
-                rq.write(body); rq.end();
-            } catch (e) { reply('解释失败: ' + e.message); }
+                    rq.on('error', e => { over = true; sendOnce('解释失败: ' + e.message); });
+                    rq.on('timeout', () => { rq.destroy(); sendOnce('解释超时了'); });
+                    rq.write(body); rq.end();
+                } catch (e) { sendOnce('解释失败: ' + e.message); }
+            };
+            fire(true);
             return;
         }
 
