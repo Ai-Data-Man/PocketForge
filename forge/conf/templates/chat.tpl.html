@@ -362,11 +362,13 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 <div id="skills-modal" class="modal-bg"><div class="panel-box" role="dialog" aria-modal="true" aria-label="小 forge 的技能（它学会的本领）">
   <h3>🧩 小 forge 的技能（它学会的本领）<button class="mclose" title="关闭" aria-label="关闭" onclick="$('skills-modal').classList.remove('on')">✕</button></h3>
   <div class="fnote" style="margin-bottom:10px">这些是它积累的操作手册。聊天时说相关的活儿它就会自动用；也可以点「让它现在用」。</div>
+  <input id="store-q" placeholder="搜可添加的技能…（只搜下面🛒清单）" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
   <div id="skills-list"></div>
+  <div id="skills-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 0 6px"></div>
   <h3 style="margin:18px 0 8px">🛒 可添加的技能</h3>
   <div class="fnote" style="margin-bottom:10px">来源：本机技能库 + 🌐 Anthropic 官方开源技能库 + 🌐 宝玉开源技能库。装之前先点「先看内容」过一眼，确认没问题再添加。添加后立刻生效。</div>
-  <input id="store-q" placeholder="搜技能…" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:6px">
   <div id="store-list"></div>
+  <div id="store-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 0 6px"></div>
   <div class="fnote" id="store-note" style="display:none">中文说明整理中，稍后重开可见。</div>
 </div></div>
 <div id="manage-modal" class="modal-bg"><div class="panel-box" role="dialog" aria-modal="true" aria-label="管理小 forge">
@@ -406,6 +408,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
     <h3 style="margin:0 0 8px">官方 MCP（扩展插件）</h3>
     <div class="fnote" style="margin-bottom:10px">这些是官方出品的增强插件，装好后重启数字员工生效。</div>
     <div id="mcp-list" style="max-height:340px;overflow-y:auto"></div>
+    <div id="mcp-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:4px 0"></div>
   </div>
   <div class="mpane" id="mpane-guard" style="display:none">
     <h3 style="margin:0 0 8px">安全护栏</h3>
@@ -1140,7 +1143,7 @@ function showMtab(name){
   if(t&&!t[1]){ t[1]=true; window[t[0]](); }
 }
 document.querySelectorAll('#manage-modal .mtab').forEach(b=>b.onclick=()=>showMtab(b.dataset.pane));
-$('open-manage').onclick=()=>{ $('manage-modal').classList.add('on'); for(const k in mtabs) mtabs[k][1]=false; showMtab('ext'); }; // s51: 重开即重拉，防陈旧清单
+$('open-manage').onclick=()=>{ $('manage-modal').classList.add('on'); for(const k in mtabs) mtabs[k][1]=false; listPage.mcp=1; showMtab('ext'); }; // s51: 重开即重拉，防陈旧清单; s71: 插件页回第 1 页
 // s46: MCP 市场 UI（安装是后台异步，轮询状态直到 done/error）
 let mcpPollTimer=null;
 async function loadMcpUI(){
@@ -1148,8 +1151,9 @@ async function loadMcpUI(){
   let list;
   try { list = await apiJSON('/api/mcpstore'); } catch(e){ box.innerHTML='<div class="fnote">读取失败：'+esc(e.message)+'</div>'; return; }
   box.innerHTML='';
+  const ps=pageSlice(list,'mcp'); // s71: 目录配置化会增长，同款分页（≤SKILL_N 零机制）；安装轮询复调时保留当前页
   let needPoll=false;
-  for(const m of list){
+  for(const m of ps.rows){
     const row=document.createElement('div');
     row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line)';
     row.innerHTML='<div style="flex:1"><div style="font-size:.85rem;font-weight:600">'+esc(m.name)+(m.installed?' <span class="fnote">'+(m.enabled===false?'已停用':'已启用')+'</span>':'')+'</div>'+
@@ -1182,6 +1186,7 @@ async function loadMcpUI(){
     }
     box.appendChild(row);
   }
+  pagerPaint('mcp-pager',listPage.mcp,ps.pages,ps.total,p=>{ listPage.mcp=p; loadMcpUI(); });
   if(needPoll){ clearTimeout(mcpPollTimer); mcpPollTimer=setTimeout(loadMcpUI, 5000); }
 }
 async function installMcp(id){
@@ -1614,29 +1619,54 @@ function renderAtMenu(q){
 }
 $('open-skills').onclick=async()=>{
   $('skills-modal').classList.add('on');
+  listPage.ins=1; listPage.store=1; // s71: 重开弹窗回第 1 页
   try{
-    const r=await fetch('/api/skills'); const list=await r.json();
-    const box=$('skills-list'); box.innerHTML='';
-    if(!list.length){ box.innerHTML='<div class="fnote">还没有技能。让它干活时说「记住这个做法」，它就会自己学。</div>'; return; }
-    for(const sk of list){
-      const el=document.createElement('div'); el.className='skill';
-      el.innerHTML='<div class="nm">'+esc(sk.name)+skillOriginBadge(sk)+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
-      const ops=document.createElement('div'); ops.className='ops';
-      const use=document.createElement('button'); use.className='mini'; use.textContent='让它现在用';
-      use.onclick=()=>{ $('skills-modal').classList.remove('on'); $('txt').value='请按技能 '+sk.name+' 的流程来做'; $('txt').focus(); };
-      const view=document.createElement('button'); view.className='mini'; view.textContent='看内容';
-      view.onclick=()=>{
-        const pre=el.querySelector('pre');
-        if(pre) pre.remove();
-        else { const pre=document.createElement('pre'); pre.textContent=sk.body; el.appendChild(pre); }
-      };
-      ops.appendChild(use); ops.appendChild(view); el.appendChild(ops); box.appendChild(el);
-    }
-  }catch(e){ $('skills-list').innerHTML='<div class="fnote">读取失败：'+e.message+'</div>'; }
+    const r=await fetch('/api/skills'); installedAll=await r.json(); paintInstalled();
+  }catch(e){ $('skills-list').innerHTML='<div class="fnote">读取失败：'+e.message+'</div>'; pagerPaint('skills-pager',1,1,0,null); }
   loadSkillStore();
 };
+let installedAll=[]; // s71: 已装清单缓存——open 弹窗与装/卸刷新共用数据源，各自按原样渲染
+function paintInstalled(){ // s71: 自 open-skills 内联渲染提升为具名函数以支持翻页重渲染；渲染内容与原内联逐行一致
+  const box=$('skills-list'); if(!box) return;
+  box.innerHTML='';
+  if(!installedAll.length){ box.innerHTML='<div class="fnote">还没有技能。让它干活时说「记住这个做法」，它就会自己学。</div>'; pagerPaint('skills-pager',1,1,0,null); return; }
+  const ps=pageSlice(installedAll,'ins'); // >SKILL_N 才出现翻页器，阈值内零机制
+  for(const sk of ps.rows){
+    const el=document.createElement('div'); el.className='skill';
+    el.innerHTML='<div class="nm">'+esc(sk.name)+skillOriginBadge(sk)+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
+    const ops=document.createElement('div'); ops.className='ops';
+    const use=document.createElement('button'); use.className='mini'; use.textContent='让它现在用';
+    use.onclick=()=>{ $('skills-modal').classList.remove('on'); $('txt').value='请按技能 '+sk.name+' 的流程来做'; $('txt').focus(); };
+    const view=document.createElement('button'); view.className='mini'; view.textContent='看内容';
+    view.onclick=()=>{
+      const pre=el.querySelector('pre');
+      if(pre) pre.remove();
+      else { const pre=document.createElement('pre'); pre.textContent=sk.body; el.appendChild(pre); }
+    };
+    ops.appendChild(use); ops.appendChild(view); el.appendChild(ops); box.appendChild(el);
+  }
+  pagerPaint('skills-pager',listPage.ins,ps.pages,ps.total,p=>{ listPage.ins=p; paintInstalled(); });
+}
 // s42/s45/s56: 技能商店（本地 skills-repo + 远程缓存；搜索过滤；中文说明优先）
 let storeAll=[]; // 当前可装列表（avail），供搜索过滤
+// s71 技能/插件市场分页：技能卡约 120px 高，每页 12 条≈两屏；切片模式对齐 renderAllPane 的 PAGE_N 先例
+const SKILL_N=12;
+const listPage={ins:1,store:1,mcp:1}; // 各列表当前页；仅重开弹窗时重置（loadSkills2/loadMcpUI 会被操作回调与安装轮询复调，不得在函数内重置）
+function pageSlice(arr,key){
+  const pages=Math.max(1,Math.ceil(arr.length/SKILL_N));
+  if(listPage[key]>pages) listPage[key]=pages;
+  return {rows:arr.slice((listPage[key]-1)*SKILL_N,listPage[key]*SKILL_N),pages:pages,total:arr.length};
+}
+function pagerPaint(id,page,pages,total,go){ // pages<=1 时整块不渲染（≤阈值不分页零机制）；‹›按钮热区≥32px
+  const pager=$(id); if(!pager) return;
+  pager.innerHTML='';
+  if(pages<=1) return;
+  const mk=(tx,aria,dis,fn)=>{const b=document.createElement('button');b.className='mini';b.textContent=tx;b.style.cssText='min-width:36px;min-height:32px';b.setAttribute('aria-label',aria);b.disabled=dis;b.onclick=fn;return b;};
+  pager.appendChild(mk('‹','上一页',page<=1,()=>go(page-1)));
+  const st=document.createElement('span'); st.className='fnote'; st.textContent='第 '+page+'/'+pages+' 页 · 共 '+total+' 条';
+  pager.appendChild(st);
+  pager.appendChild(mk('›','下一页',page>=pages,()=>go(page+1)));
+}
 function skillDesc(sk){ return sk.desc_zh || sk.description || '（无说明）'; }
 function skillOriginBadge(sk){ // s70 切片A: 来源徽标——市场=🌐+源短名 / 自己攒的=✍ / 本机随包=无标
   const o=sk.origin;
@@ -1650,8 +1680,9 @@ function storePaint(){
   const q=(($('store-q')||{}).value||'').trim().toLowerCase();
   const avail=storeAll.filter(s=>!q || (s.name||'').toLowerCase().includes(q) || (s.description||'').toLowerCase().includes(q) || (s.desc_zh||'').toLowerCase().includes(q));
   box.innerHTML='';
-  if(!avail.length){ box.innerHTML='<div class="fnote">'+(q?'没找到带「'+esc(q)+'」的技能。':'没有可添加的新技能了。')+'</div>'; return; }
-  for(const sk of avail){
+  if(!avail.length){ box.innerHTML='<div class="fnote">'+(q?'没有找到「'+esc(q)+'」':'没有可添加的新技能了。')+'</div>'; pagerPaint('store-pager',1,1,0,null); return; }
+  const ps=pageSlice(avail,'store'); // s71: 商店恒分页（双源会持续增长）
+  for(const sk of ps.rows){
     const el=document.createElement('div'); el.className='skill';
     el.innerHTML='<div class="nm">'+(sk.remote?'🌐 ':'')+esc(sk.name)+'</div><div class="ds">'+esc(skillDesc(sk))+'</div>';
     const ops=document.createElement('div'); ops.className='ops';
@@ -1680,6 +1711,7 @@ function storePaint(){
     };
     ops.appendChild(view); ops.appendChild(inst); el.appendChild(ops); box.appendChild(el);
   }
+  pagerPaint('store-pager',listPage.store,ps.pages,ps.total,p=>{ listPage.store=p; storePaint(); });
 }
 let storeQT=null;
 async function loadSkillStore(){
@@ -1696,8 +1728,9 @@ async function loadSkillStore(){
   storePaint();
 }
 async function loadSkills2(){
-  try{ const r=await fetch('/api/skills'); const list=await r.json(); const box=$('skills-list'); box.innerHTML='';
-    for(const sk of list){
+  try{ const r=await fetch('/api/skills'); const list=await r.json(); installedAll=list; const box=$('skills-list'); box.innerHTML='';
+    const ps=pageSlice(list,'ins'); // s71: 同款分页（>SKILL_N 才见翻页器）
+    for(const sk of ps.rows){
       const el=document.createElement('div'); el.className='skill';
       el.innerHTML='<div class="nm">'+esc(sk.name)+skillOriginBadge(sk)+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
       // s57: 卸载已装技能（删 .agents/skills/<dir>）
@@ -1714,11 +1747,12 @@ async function loadSkills2(){
       };
       ops.appendChild(del); el.appendChild(ops); box.appendChild(el);
     }
+    pagerPaint('skills-pager',listPage.ins,ps.pages,ps.total,p=>{ listPage.ins=p; loadSkills2(); });
   }catch(e){}
 }
 $('skills-modal').onclick=e=>{ if(e.target.id==='skills-modal') e.target.classList.remove('on'); };
 // s56: 技能商店搜索（防抖 200ms，过滤 name/description/desc_zh）
-$('store-q').oninput=()=>{ clearTimeout(storeQT); storeQT=setTimeout(storePaint,200); };
+$('store-q').oninput=()=>{ clearTimeout(storeQT); storeQT=setTimeout(()=>{ listPage.store=1; storePaint(); },200); }; // s71: 过滤变化重置回第 1 页
 
 // 消息操作：复制 / 重发
 document.getElementById('chat').addEventListener('click', async e=>{
