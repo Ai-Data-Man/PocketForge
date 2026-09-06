@@ -74,3 +74,15 @@
 - 好消息：data/ 用户数据完好；s67 缺陷2「升级后假成功」窗口在本通道不复现（runner healthz 按版本匹配判定）；护栏四新面经模板重建全部送达（never_allow/CONTEXT_FILE_NAMES/smart_approve/两步向导）。
 - 新账入 v0.9.11 台账：升级器静默挂死 1 次（stop 后 17min 进程消失，未复现，P1——落盘日志+心跳+总超时回滚为修复候选）；main() 未 await stopStack()（清杀与重启并发竞态，P2）；MCP 商店安装裸 npm.cmd 依赖 PATH（打包栈受限令牌必失败，真机 PATH 注入覆盖与否待验证，P2）；package.sh 排除 .playwright-mcp 残留（0bb9852，重打包 28,955 文件，新 sha d3f0df26…6c98）。
 - 发布就绪结论：v0.9.10 预览包（重打包版）+ 发布说明诚实版 + 护航须知齐备；**是否发布/打 tag 归用户拍板**。
+
+### 追加（同日下午）：用户四点批评全部落地（s73 波次）
+用户批评：①擅自停工（20:00 底线）②分页不理会③源配置无入口④PG 未作 forge 后端且无回应。全部接受并当日落地：
+- **分页**（09d5e59，用户点名推翻切片 D 挂起）：技能/插件市场三列表分页（SKILL_N=12，42 条=4 页）+搜索框置顶+「没有找到」空态；附带修掉空已装清单看不到商店的旧 bug。
+- **源/目录配置入口**（1c9aad7，推翻否决项 4）：/api/config/market GET/POST（六 op，同门校验+原子写+守卫）+管理面板插件页「数据源与目录管理」两栏区块（闸门责任声明）；过程自纠两自产缺陷（mcp-remove 丢 splice 假成功/skill-add 容 .. 穿越）。
+- **PG 作 forge 后端**（ddc4e92 裁决推翻 marketplace-S5 + 5e970eb 切片 1）：桥存储层单模块（lazy ≤2s/30s 重探/四态失败面闭合）+forge_bridge 库（schema_migrations+迁移前 pg_dump）+usage 统计首迁（双写文件先行、读路径零 PG、回迁幂等）+psql/postgres.js vendored+forge-backup 扩 pg-bridge-* dump+管理面板「数据存储」三态人话块（edf1192）。八条验收全过（含恢复演练/双态冷启/连接超时 2006ms 实测）。切片 2-4 路线在裁决书。
+- **「这是干啥」提速**（3f81354，用户点名慢）：根因=复用主对话推理模型（实测思考 3358 字符/23.5s）+非流式+无缓存；9Router 源码确认 deepseek-v4-flash thinkingCanDisable:false（reasoning_effort:none 钳 minimal 实测有效）；修复=reasoning_effort:'none'+LRU 缓存 200+SSE 流式增量+思考秒数反馈+12s 兜底。实测首字 11.7s（模型上限）→重复点击 1ms。
+- qa 第三轮返工（c47e357）：流式监听器泄漏（一泡一监听器）/skillSyncDirty 补跑（源变更撞在途 sync 不再丢）/坏源降级跳过+stateWarnings 人话告警（假源→告警→自愈全链实景）+四 P3。
+- 死端点清理（664181b）：/api/ws/bind（s14 遗留，前端实际用 /api/ws/link）——挖掘自查产物。
+- e2e 断言修正（ab5ba53）：PG 切片 1 三族 dump 共存使旧 keep-3 glob 误红，收窄 pg-[0-9]*。
+- 终态回归：**e2e-chat 46/46 + fuzz 138/138**。
+- 挖掘模式内化：user-excavation-mode 记忆（五条自查清单）+端点孤儿自查。
