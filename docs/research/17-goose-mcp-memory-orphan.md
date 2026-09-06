@@ -55,6 +55,15 @@ taskkill /T 树杀输出显示：每个 session 滞留的不只 memory 一对，
 3. **每会话 ≈7 进程的内存/句柄成本未定量**（本机 goose.exe mcp memory 单实例工作集未测）——若修复按「滞留无害」裁决，此项应补测再翻案。
 4. pc Windows 进程树回收（s69 遗留③）：本轮 A 实验侧证 restart 路径回收干净（桥树无残留），但 postgres 族仍未复验，观察项保留。
 
+## s75 修复落地与栈外验证（VERIFIED-RUN，2026-09-07；工程师会话）
+
+1. **栈外前置验证（修复建议 a 项）**：独立 acp（tmp/s75-close-verify.js）建 3 会话 → 后代进程 33（每会话 11：memory cmd+conhost+goose、faucet-db+conhost、browser/seq-think/fetch node+conhost）→ 逐个发 `session/close` → **1 秒内 33→0**，`goose mcp memory` 对同步消失。**close 回收进程成立**。
+2. **close 容错事实**：对已不存在的 sid 发 close 返回 `{"result":{}}` 空 result 无 error（on_close_session 只做 HashSet insert+remove，源码 server.rs:2234-2263）；故 fire-and-forget 重发无害。close 后同 sid 再 session/load 会被 closed_session_ids 守卫拒（resource_not_found）——delete_session 硬删行后无此路径。
+3. **桥侧修复（首选档落地）**：chat-bridge.tpl.js delete_session 在硬删 DB 的同时向 acp.stdin 写 `session/close`（id 自增不注册 waiting，响应落 onAcpData 未匹配分支被静默忽略；写失败 try/catch 吞掉不阻断删除）。范围红线遵守：未碰 unsubscribe/openSession/归档，未动 goose。
+4. **端到端实景**：pc restart chat-bridge 后——单会话建 11 进程 → delete → 回基线 0；fuzz 一轮 5 会话 55 进程 → 5 次产品路径 delete → **descendants=0**（≤5s）。healthz 200。e2e 新增 11b 节 ws-close-reclaim.js（自相对断言：基线→建会话增长→删→回基线，1s 有界轮询），e2e-chat **48/48**、fuzz **143/143**。
+5. **工具转正**：tmp/s74-kill-orphan-mcp.ps1 → tools/clean-orphan-mcp.ps1（匹配收紧：`goose-package[\\/]goose\.exe"?\s+mcp\s+memory`——实测命令行为带引号 `"goose.exe"  mcp memory` 形态；只杀父死）；tmp/s74-goose-procs.ps1 → tools/list-goose-procs.ps1。
+6. **残余滞留面（裁决已知）**：普通会话闲置不删仍滞留（ unsubscribe 不发 close，主控裁不做）——回收兜底=桥重启/acp 死整树回收（实验 A/F）；孤儿形态清扫兜底=tools/clean-orphan-mcp.ps1。
+
 ## 现场恢复记录
 
 实验造数已全清：45（B/D/C/E/F）+5（复验 fuzz）个会话经产品路径 `delete_session` 删除（tmp/s74-cleanup-sessions.js，dry-run 复核归零）；滞留进程对经两次 `pc process restart chat-bridge` 清零；探针 node 进程已杀；终态快照（02:15:07）孤儿=0、滞留=0、bridge healthz 200 ok（node 直连）、fuzz 复验 143/143 绿。主控入睡前状态完整保持。
