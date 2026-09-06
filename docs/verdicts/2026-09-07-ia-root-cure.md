@@ -246,3 +246,9 @@
 
 ## 10. 主控实施修正（2026-09-07 派工时裁决）
 §5 IA-3 的 forge_table_info 原定放 forge_bridge PG 库（STATE_SCHEMAS v4）——**该写通道 agent 够不着**（agent 的 faucet/raw_sql 工具只打应用库），软约束执行率会归零。修正：forge_table_info = 每个应用库内的普通表（tbl TEXT PK, description TEXT, created_at TEXT），agent 用已有工具维护（hints 建表义务），桥经既有 `_table` HTTP 通道读（max_results=200，坏值容错：desc 非字符串跳过/截 200）。PG/file 模式对称（faucet 应用库恒 SQLite）。已随 7ede8c2 实施。
+
+## 11. 实施收口记录（s74，主控）
+- IA-1 35a2e69 / IA-2 840b0f0 / IA-3 桥侧 7ede8c2 / IA-3 UI afed0cd（该 commit 因同文件并行编辑卷入 IA-1 返工 3 行 mktLoaded 懒加载，主控裁接受现状，署名以本节为准）。
+- **agent 软约束 VERIFIED-RUN**：真实会话建 ia3test/inventory_test，无任何「写说明」提示下发，agent 自发写 forge_table_info（desc=「测试用库存表：货架号 shelf_no + 数量 qty，共 2 行示例数据」），/api/db/overview desc 全链带出，UI 分组呈现直证（观察窗指标「建表带说明率」首数据点=1/1）。
+- **R2 carve-out（qa 首次实战走查产出，主控采纳）**：R2「>100 条先分组」仅适用于**有天然分组边界**的实体（如数据表按应用分库）；无天然分组边界的单实体清单（如归档对话），搜索+分页即满足找回，不强制造分组维度。AGENTS.md 收编版 R2 已含本 carve-out。
+- qa P3×2（归档早退残留翻页器/技能过滤空集静默空白）修复后收口；存量清单规模声明见 AGENTS.md §7 附表。

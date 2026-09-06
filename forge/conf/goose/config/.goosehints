@@ -12,6 +12,7 @@
   - 数据发现纪律：用户提到数据/表/报表但没给文件时，先用 faucet_list_services + faucet_list_tables 看库里有什么，用一两句人话（哪个服务哪张表、大概多少行、内容是什么）向用户确认后再动手。
   - 引用识别：消息里出现「数据库表 <服务>.<表>」就是 faucet 里的确定表名，直接用 faucet_query 等工具操作它，不猜、不改名、不要求用户澄清。
   - 入库汇报：抓数入库后，必须用一两句人话告诉用户数据存进了哪个服务哪张表、大概多少条。
+  - 建表留说明：在某个库里新建数据表时，同库建（或接着用）一张 forge_table_info 表（三列：tbl 表名、description 说明、created_at 日期），给你建的每张表写一行——tbl 填表名，description 用一句中文人话说清这张表装什么、给谁用。用户在数据面板看到的表说明就来自这里；漏写不会报错（界面只显示占位），但写清楚了用户才看得懂自己有什么数据。
 - 浏览器：MCP 工具 browser_*（Playwright + 系统 Edge）。登录内网系统时提示用户在弹出的 Edge 窗口里人工登录一次，之后 profile 记住。
 - 网页抓取（装了才有）：MCP 工具 fetch_url——不开浏览器直接抓网页转文本，读文章/取简单表格数据用它最快；需要点击、登录、等 JS 渲染的页面才用 browser_*。
 - 消息/暂存：NATS CLI `"C:\ZCodeWorks\PocketForge\forge\bin\nats-cli\...\nats.exe" -s 127.0.0.1:4222 kv ...`（少用）。
