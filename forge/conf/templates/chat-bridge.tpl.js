@@ -1646,6 +1646,54 @@ async function buildReport() {
     return { ok: true, path: file };
 }
 
+// s75：桥端升级前自备份（s69 遗留①/s73 阻断实证的机制化兜底）。
+// 存量升级由旧版 runner 执行（运行中不换代码），PROTECTED 保全只对「由新版 runner 执行的
+// 升级」生效——v0.9.8/9 存量路径实测 config.yaml/custom_providers/memory 被删重建。桥是
+// 触发升级时机器上正在跑的代码，由它在 spawn runner 前同步快照用户态配置，不依赖 runner 版本。
+// 落点 data/backups/pre-upgrade-<ts>/（package.sh 已排除，不进升级包）；keep 3 与 pg-dumps/
+// forge-backup 轮换同语义。失败面与 PROTECTED 家族一致：磁盘满等失败只 warn 进 /api/update/
+// status 的 warnings，升级照常——备份是兜底不是闸门（runner 侧「写入失败不得让升级失败」同款）。
+function preUpgradeBackup(pkg) {
+    function countFiles(d) { let n = 0; for (const ent of FSS.readdirSync(d, { withFileTypes: true })) { if (ent.isDirectory()) n += countFiles(path.join(d, ent.name)); else if (ent.isFile()) n++; } return n; }
+    const bdir = path.join(ROOT, 'data', 'backups');
+    try {
+        FSS.mkdirSync(bdir, { recursive: true }); // 全新机器可能尚无该目录（首次每日备份前），缺失≠备份失败
+        // 幂等：同一包（名字+字节或下载地址）重复触发不堆积——最新一份 manifest 记的就是它则复用
+        const olds = FSS.readdirSync(bdir).filter(n => /^pre-upgrade-/.test(n)).sort();
+        if (olds.length) {
+            const man = readJson(path.join(bdir, olds[olds.length - 1], 'manifest.json'), null);
+            if (man && man.pkg === pkg) { console.log('pre-upgrade backup: same pkg, reuse ' + olds[olds.length - 1]); return; }
+        }
+        const name = 'pre-upgrade-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const dst = path.join(bdir, name);
+        const items = {};
+        for (const rel of ['conf/goose/config', 'data/config']) { // s73 丢失清单全体 + data/config（skill-sources/mcp-catalog）
+            const src = path.join(ROOT, rel.split('/').join(path.sep));
+            let n = 0;
+            if (FSS.existsSync(src)) { FSS.cpSync(src, path.join(dst, rel.split('/').join(path.sep)), { recursive: true, force: true }); n = countFiles(src); }
+            items[rel] = n;
+        }
+        FSS.writeFileSync(path.join(dst, 'manifest.json'), JSON.stringify({ pkg, from: APP_VERSION, ts: Date.now(), items }, null, 2));
+        FSS.writeFileSync(path.join(dst, '恢复说明.txt'),
+            '这是升级前的自动备份（PocketForge 生成，最多保留 3 份，旧的会被清掉）。\r\n' +
+            '来源版本：' + APP_VERSION + '\r\n' +
+            '备份内容：conf 下的 config = 模型服务商、能力开关、长期记忆、权限规则、配方；data 下的 config = 技能源与 MCP 商店设置。\r\n' +
+            '什么时候用：升级后发现「它能什么」开关、服务商、记忆或技能源丢了，就按下面步骤放回。\r\n' +
+            '恢复步骤：\r\n' +
+            '  1. 运行「停止数字员工.cmd」完全退出\r\n' +
+            '  2. 把本文件夹里 conf 下的 config 文件夹，整个复制到安装目录的 conf\\goose\\ 下覆盖\r\n' +
+            '  3. 把本文件夹里 data 下的 config 文件夹，整个复制到安装目录的 data\\ 下覆盖\r\n' +
+            '  4. 双击「启动数字员工.cmd」\r\n');
+        const all = FSS.readdirSync(bdir).filter(n => /^pre-upgrade-/.test(n)).sort();
+        while (all.length > 3) FSS.rmSync(path.join(bdir, all.shift()), { recursive: true, force: true });
+        console.log('pre-upgrade backup: ' + name + ' ' + JSON.stringify(items));
+    } catch (e) {
+        const msg = '升级前自动备份失败（升级会继续）：' + (e.message || e) + '。如需保险，请先手动复制 conf\\goose\\config 文件夹';
+        if (!stateWarnings.includes(msg)) stateWarnings.push(msg);
+        console.warn(msg);
+    }
+}
+
 async function handleHttp(req, res) {
     const url = (req.url || '/').split('?')[0];
     // R2-C1b(审查s17): WS 层有 Origin 校验，HTTP 层没有——恶意网页可跨站 POST
@@ -1842,6 +1890,8 @@ async function handleHttp(req, res) {
                     if (!cfg.repo || !String(b.url).startsWith('https://github.com/' + cfg.repo + '/releases/download/')) throw new Error('下载地址不在配置的升级源内');
                     runnerArgs.push('--url', String(b.url));
                 } else throw new Error('缺少升级包');
+                // s75: 升级前自备份——spawn 前同步完成，保证先于 runner 的任何文件改动；同包幂等
+                preUpgradeBackup(b.staged ? 'zip:' + b.staged + ':' + FSS.statSync(path.join(ROOT, 'data', 'updates', b.staged)).size : 'url:' + b.url);
                 FSS.mkdirSync(path.join(ROOT, 'data', 'updates'), { recursive: true });
                 FSS.writeFileSync(path.join(ROOT, 'data', 'updates', 'status.json'), JSON.stringify({ stage: 'starting', ok: false, msg: '升级器启动中…', ts: Date.now() }));
                 spawn(process.execPath, [path.join(ROOT, 'bin', 'update-runner.js'), ...runnerArgs], { detached: true, stdio: 'ignore' }).unref();
