@@ -206,6 +206,13 @@ node "$ROOT/tools/e2e/ia-logic-probe.js" > /tmp/ia-logic-probe.log 2>&1; ck "ia-
 grep -E "^ia-logic-probe" /tmp/ia-logic-probe.log
 rm -f /tmp/ia-logic-probe.log
 
+# ---------- 16) scheduler 漂移守卫桩测（s75 cf5f250 转交项；详见 tools/e2e/sched-drift-probe.js） ----------
+# GET /api/schedules drift 字段两态回归钉子：源配方↔注册副本对账（basename 命中两态/title 兜底/静默 false 家族），
+# 临时目录夹具秒级无桥无网络；提取锚点=稳定标记正则（模板漂移显式 NOT FOUND，不误报）
+node "$ROOT/tools/e2e/sched-drift-probe.js" > /tmp/sched-drift-probe.log 2>&1; ck "sched-drift probe 15 ck (driftOf two-state + title fallback + silent-false family)" $?
+grep -E "^sched-drift-probe" /tmp/sched-drift-probe.log
+rm -f /tmp/sched-drift-probe.log
+
 rm -f /tmp/e2e-v1.md
 echo "=============================="
 echo "chat-link E2E: PASS=$PASS FAIL=$FAIL"
