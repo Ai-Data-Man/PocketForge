@@ -434,6 +434,7 @@ details.tz[open]>summary::before{content:'▾ '}
     </div>
     <h3 style="margin:0 0 8px">库里的数据</h3>
     <div class="fnote" style="margin-bottom:10px">数据库里现在存着这些表。点表名能看里面装了什么。想让小 forge 用哪张，聊天里打 @ 选「库里的数据」就行。</div>
+    <input id="db-q" placeholder="🔍 在数据里找…（表名/说明）" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
     <div id="db-list" style="max-height:340px;overflow-y:auto"></div>
   </div>
   <div class="mpane" id="mpane-mem" style="display:none">
@@ -1298,12 +1299,14 @@ async function installMcp(id){
   loadMcpUI();
 }
 // s72: 数据源与目录管理（技术用户配置面）——改动即刻生效：技能源变更后台重拉市场清单后刷商店，目录变更刷插件列表
+let mktLoaded=false; // IA-1 返工: 首次成功拉取标记——技能弹窗首开拉一次；此后增/删/改操作自会复调本函数刷新，不重复拉
 async function loadMarketUI(){
   const sl=$('mkt-src-list'), cl=$('mkt-cat-list'); if(!sl||!cl) return;
   let d;
   try { d = await apiJSON('/api/config/market'); }
   catch(e){ sl.innerHTML=cl.innerHTML='<div class="fnote">读取失败：'+esc(e.message)+'</div>'; return; }
   if(!d.ok){ sl.innerHTML=cl.innerHTML='<div class="fnote">读取失败：'+esc(d.err||'')+'</div>'; return; }
+  mktLoaded=true;
   sl.innerHTML='';
   for(const s of d.skillSources){
     const row=document.createElement('div');
@@ -1571,56 +1574,85 @@ async function pgNoteSync(){
   const r=pgStateRender(mode);
   dot.className='dot '+r.dot; txt.textContent=r.text;
 }
+// IA-3（裁决 2026-09-07-ia-root-cure §4.4/§5 IA-3 UI）：按应用分库分组 + 表说明（desc）+ 系统表折叠 + 搜索
+function dbRowEl(svc,t){ // 单表行：表名+说明（无说明占位）+行数；点开=列级人话+样例（s51 原样不动）
+  const row=document.createElement('div');
+  row.style.cssText='border-bottom:1px dashed var(--line);font-size:.82rem';
+  const head=document.createElement('div');
+  head.style.cssText='display:flex;align-items:baseline;gap:8px;padding:7px 4px;cursor:pointer';
+  const descPart=t.desc?'<span style="flex:1;word-break:break-all">'+esc(t.desc)+'</span>':'<span class="fnote" style="flex:1">（还没说明——点开看结构）</span>';
+  head.innerHTML='<span style="word-break:break-all;text-decoration:underline dotted">'+esc(t.name)+'</span>'+descPart+'<span class="fnote" style="white-space:nowrap">'+(t.rows==null?'－':t.rows+' 条')+'</span><span class="fnote">▾</span>';
+  const det=document.createElement('div');
+  det.style.display='none'; det.style.padding='2px 4px 8px 14px';
+  head.onclick=async()=>{
+    if(det.style.display==='none'){
+      det.style.display='';
+      if(!det.dataset.loaded){
+        det.dataset.loaded='1';
+        det.innerHTML='<div class="fnote">正在看这张表…</div>';
+        let d=null;
+        try{ d=await apiJSON('/api/db/_schema?svc='+encodeURIComponent(svc)+'&tbl='+encodeURIComponent(t.name)); }catch(e){ d={ok:false,err:e.message}; }
+        if(det.dataset.loaded!=='1') return; // 行已被重渲染清掉
+        if(!d||!d.ok){ det.innerHTML='<div class="fnote">'+esc((d&&d.err)||'取不了表结构')+'</div>'; return; }
+        let h='<table class="mdtab" style="font-size:.78rem"><thead><tr><th>列</th><th>装什么</th><th>样子（实际数据举例）</th></tr></thead><tbody>';
+        const cols=d.columns||[];
+        for(const c of cols){
+          const ex=d.samples&&d.samples[0]?cutVal(d.samples[0][c.name]):'';
+          h+='<tr><td>'+esc(c.name)+(c.pk?' <span class="fnote">唯一</span>':'')+'</td><td>'+esc(typeZh(c.raw_type))+'</td><td class="fnote">'+esc(ex)+'</td></tr>';
+        }
+        h+='</tbody></table>';
+        det.innerHTML=cols.length?h:'<div class="fnote">这张表还没有列定义。</div>';
+        if(d.samples&&!d.samples.length){ const e2=document.createElement('div'); e2.className='fnote'; e2.textContent='（空表，还没存过数据）'; det.appendChild(e2); }
+      }
+    } else { det.style.display='none'; }
+  };
+  row.appendChild(head); row.appendChild(det);
+  return row;
+}
+let lastDbOv=null, dbQT=null; // IA-3: 分组渲染数据源（重开标签重拉）+ 搜索防抖句柄
+function dbPaint(){
+  if(!lastDbOv) return;
+  const box=$('db-list'); if(!box) return;
+  const q=(($('db-q')||{}).value||'').trim().toLowerCase();
+  box.innerHTML='';
+  let shown=0;
+  for(const s of lastDbOv.services){
+    const hit=t=>!q||t.name.toLowerCase().includes(q)||(t.desc||'').toLowerCase().includes(q)||s.service.toLowerCase().includes(q);
+    const biz=[], sys=[];
+    for(const t of s.tables) (t.name.indexOf('forge_')===0?sys:biz).push(t); // forge_* 系统表（如 forge_table_info）不混业务表
+    const bL=biz.filter(hit), sL=sys.filter(hit);
+    if(!bL.length&&!sL.length) continue; // 过滤后组空 → 整组隐藏
+    const g=document.createElement('div');
+    const gh=document.createElement('div');
+    gh.style.cssText='display:flex;align-items:center;gap:6px;padding:6px 4px;font-weight:600;font-size:.8rem;border-bottom:1px solid var(--line)';
+    gh.innerHTML='📦 '+esc(s.service)+' <span class="fnote">· '+(bL.length+sL.length)+' 张表</span>';
+    g.appendChild(gh);
+    for(const t of bL) g.appendChild(dbRowEl(s.service,t));
+    if(sL.length){ // 系统表折叠组（details.tz 同款折叠，默认收起）
+      const dz=document.createElement('details'); dz.className='tz'; dz.style.margin='2px 0 6px 4px';
+      const su=document.createElement('summary'); su.textContent='系统表 · '+sL.length+' 张'; dz.appendChild(su);
+      for(const t of sL) dz.appendChild(dbRowEl(s.service,t));
+      g.appendChild(dz);
+    }
+    box.appendChild(g); shown+=bL.length+sL.length;
+  }
+  if(!shown) box.innerHTML='<div class="fnote">'+(q?'没找到跟“'+esc(q)+'”有关的表。换个词试试，或直接在聊天里问小 forge。':'还没存数据。让小 forge 抓数时说一声存进数据库就行。')+'</div>';
+  if(lastDbOv.truncated){ // R2：截断必须留出路——先搜，搜不到聊天问小 forge
+    const tr=document.createElement('div');
+    tr.className='fnote'; tr.style.marginTop='6px';
+    tr.textContent='表很多，这里先列了一部分（不影响小 forge 使用）。想找哪张：先用上面的搜索框找；没搜到，直接在聊天里问小 forge。';
+    box.appendChild(tr);
+  }
+}
 async function loadDbUI(){
   pgNoteSync(); // s73: 随「数据」标签懒加载刷新（管理面板重开即重拉，无需轮询）
   const box=$('db-list'); if(!box) return;
   box.innerHTML='<div class="fnote">正在看数据库…</div>';
-  const ov=await dbOverview();
-  if(!ov){ box.innerHTML='<div class="fnote">数据库没在跑，看不到明细。</div>'; return; }
-  box.innerHTML='';
-  let n=0;
-  for(const s of ov.services) for(const t of s.tables){
-    n++;
-    const row=document.createElement('div');
-    row.style.cssText='border-bottom:1px dashed var(--line);font-size:.82rem';
-    const head=document.createElement('div');
-    head.style.cssText='display:flex;align-items:center;gap:8px;padding:7px 4px;cursor:pointer';
-    head.innerHTML='<b style="color:var(--acc);font-size:.72rem;margin-right:2px">'+esc(s.service)+'</b><span style="color:var(--mut)">·</span><span style="flex:1;word-break:break-all;text-decoration:underline dotted">'+esc(t.name)+'</span><span class="fnote">'+(t.rows==null?'－':t.rows+' 条')+'</span><span class="fnote">▾</span>';
-    const det=document.createElement('div');
-    det.style.display='none'; det.style.padding='2px 4px 8px 14px';
-    head.onclick=async()=>{
-      if(det.style.display==='none'){
-        det.style.display='';
-        if(!det.dataset.loaded){
-          det.dataset.loaded='1';
-          det.innerHTML='<div class="fnote">正在看这张表…</div>';
-          let d=null;
-          try{ d=await apiJSON('/api/db/_schema?svc='+encodeURIComponent(s.service)+'&tbl='+encodeURIComponent(t.name)); }catch(e){ d={ok:false,err:e.message}; }
-          if(det.dataset.loaded!=='1') return; // 行已被重渲染清掉
-          if(!d||!d.ok){ det.innerHTML='<div class="fnote">'+esc((d&&d.err)||'取不了表结构')+'</div>'; return; }
-          let h='<table class="mdtab" style="font-size:.78rem"><thead><tr><th>列</th><th>装什么</th><th>样子（实际数据举例）</th></tr></thead><tbody>';
-          const cols=d.columns||[];
-          for(const c of cols){
-            const ex=d.samples&&d.samples[0]?cutVal(d.samples[0][c.name]):'';
-            h+='<tr><td>'+esc(c.name)+(c.pk?' <span class="fnote">唯一</span>':'')+'</td><td>'+esc(typeZh(c.raw_type))+'</td><td class="fnote">'+esc(ex)+'</td></tr>';
-          }
-          h+='</tbody></table>';
-          det.innerHTML=cols.length?h:'<div class="fnote">这张表还没有列定义。</div>';
-          if(d.samples&&!d.samples.length){ const e2=document.createElement('div'); e2.className='fnote'; e2.textContent='（空表，还没存过数据）'; det.appendChild(e2); }
-        }
-      } else { det.style.display='none'; }
-    };
-    row.appendChild(head); row.appendChild(det);
-    box.appendChild(row);
-  }
-  if(!n) box.innerHTML='<div class="fnote">还没存数据。让小 forge 抓数时说一声存进数据库就行。</div>';
-  if(ov.truncated){
-    const tr=document.createElement('div');
-    tr.className='fnote'; tr.style.marginTop='6px';
-    tr.textContent='表太多了，还有 '+ov.truncated+' 张没列出来（不影响小 forge 使用它们）。';
-    box.appendChild(tr);
-  }
+  lastDbOv=await dbOverview();
+  if(!lastDbOv){ box.innerHTML='<div class="fnote">数据库没在跑，看不到明细。</div>'; return; }
+  dbPaint();
 }
+$('db-q').oninput=()=>{ clearTimeout(dbQT); dbQT=setTimeout(dbPaint,200); }; // IA-3: 搜索防抖（store-q 同款 200ms），过滤组空整组隐藏
 
 
 $('prov-add').onclick=()=>{
@@ -1824,6 +1856,7 @@ $('open-skills').onclick=async()=>{
   $('skills-modal').classList.add('on');
   listPage.ins=1; listPage.store=1; // s71: 重开弹窗回第 1 页
   showStab('ins'); // IA-1: 每次打开默认落「我的技能」
+  if(!mktLoaded) loadMarketUI(); // IA-1 返工: 源列表随弹窗首开渲染（此前只有先访问过🔌插件页才有内容，违反裁决 IA-1 验收2 闭环）
   try{
     const r=await fetch('/api/skills'); installedAll=await r.json(); paintInstalled();
   }catch(e){ $('skills-list').innerHTML='<div class="fnote">读取失败：'+e.message+'</div>'; pagerPaint('skills-pager',1,1,0,null); }
