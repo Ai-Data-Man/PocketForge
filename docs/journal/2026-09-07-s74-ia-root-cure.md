@@ -52,3 +52,9 @@ dist/PocketForge-20260907-v0.9.10.zip = 326,141,506 B / 28,996 文件。沙盒�
 - 归档全生命周期：chat 视图 📥→chip 计数实时跳→归档视图定位→原生 confirm 删除→WS 回执→计数回落（中途一次删除丢失=研究员重启桥竞态，死套接字静默丢+重连后状态一致，非缺陷；wssend 无重试队列属已知可接受行为）。
 - 技能市场装/卸往返：folder-cleanup 安装入「我的技能」✅；GUI 卸载两次未成（原生 confirm 与 IAB 自动化交互不稳，getJsDialog 接的框未落到页面 confirm），直打 /api/skillstore op=uninstall 成功清盘——卸载 API 链路有 e2e 覆盖（s57），GUI 点击链 s57 已验，判定自动化假象非产品缺陷，留观。
 - IAB 截图能力本会话失效一次（"activity capture failed for guest"），几何断言法替代（chip 不换行/无横向溢出）。
+
+## 追加（同日凌晨终波）：P1 猎捕+终包二建
+- **P1 真缺陷（GUI 猎捕第二轮抓出）**：技能卸载钮在默认打开路径消失——#skills-list 双渲染器（paintInstalled 无✕ 被 open/搜索/翻页调用；loadSkills2 带✕ 仅商店安装回调触发），IA-1 工程师交付报告里标注的「未统一双渲染器（历史遗留）」实际是用户可见缺陷（卸载入口时隐时现）。修复 34de705：✕ 并入 paintInstalled 唯一渲染器（+14/-26 净删除），loadSkills2 收敛为取数+委托；桩测 10/10+真桥端到端（confirm 钩子法）+GUI 复核 5/5 卡全带✕。
+- **验证方法论**：原生 confirm 在 IAB 自动化不可靠（getJsDialog 接的框不落页面 confirm）——confirm 钩子覆盖法（页面上下文 window.confirm=()=>true 后真实点击）是可靠形态；「装→点✕→查磁盘目录消失」比 UI 断言硬。
+- **终包二建**：sha256 **25925ebd…bf35**（326,141,460B，含 P1 修复；一建 842150f9 作废）。沙盒三轮冷启：15/15+新面全证（技能卸载单渲染器以「skillstore uninstall 恰 1 处」断言）+二启幂等+真停零残留；dev 栈恢复后终态回归 **e2e-chat 48/48 + fuzz 143/143**。
+- 挖掘自查候选（backlog 观察项，不立项）：⚙️ 设置弹窗多实体混居（服务商/外观/升级）未过 R1 扫——低频域+各节紧凑，真机反馈驱动；@引用菜单（工作区文件列表）规模预期未声明——超 30 项需补搜索，挂 AGENTS.md §7 存量声明外的一角。
