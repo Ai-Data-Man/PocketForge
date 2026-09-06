@@ -45,7 +45,7 @@ GOOSE_PATH_ROOT 在 CLI+Desktop 双形态的收敛性；Desktop 免管理员运�
   3. Security 三连：`Permission denies take precedence`（#11477）/`Fail closed on malformed tool visibility`（#11474）/`Recognize Windows package runners`（#11466）——升级时重点回归权限卡链路 + .goosehints cmd 铁律。
   4. CLI `/new` 免重启新会话（#10767）——s50d 体验问题的参考解，已由人话文案覆盖。
   5. Z.ai GLM-5.2→GLM-5.3（#11226）——不动，内测期 pinned 栈。
-- 升级预案与不升级依据见 docs/research/goose-upstream-v1.48.md（同日，含四步沙盒升级流程）。**〔2026-09-05 s64 勘误：该预案文件实际不存在（ls+find 双查），引用失效；升级窗口前需重建预案或从 journal s50 恢复流程。〕**
+- 升级预案与不升级依据见 docs/research/goose-upstream-v1.48.md（同日，含四步沙盒升级流程）。**〔2026-09-05 s64 勘误：该预案文件当时不存在；同日 s65 已重建为 docs/research/goose-upgrade-playbook.md（abfbe3a，s69 S-D 又补面 6/7 与 G6 必验）——引用恢复有效，勘误闭环。〕**
 
 ## s64 上游情报（2026-09-05，VERIFIED-SOURCE/DOC：GitHub API + 双 tag source diff，未本机跑新版）
 - latest = **v1.49.0（2026-09-03）**；在用 v1.46.0；v2.0.0-rc 已停滞 4 个月（平台化整合期，非大版本前夜，~6.7 commits/天）。方法论警示：release note 正文是累积式（同一 PR 编号跨版本重复出现），**版本归属一律以 PR 合并日期 + compare API 为准**。
