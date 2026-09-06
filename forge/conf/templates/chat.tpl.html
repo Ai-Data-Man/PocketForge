@@ -226,6 +226,8 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 .msg.agent code{background:var(--hover);border-radius:4px;padding:1px 5px;font-size:.8rem}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--danger);display:inline-block}
 .dot.ok{background:#22c55e}
+.dot.warn{background:var(--warn-tx)}
+.dot.off{background:var(--mut-2)}
 
 /* ---------- 模态框 ---------- */
 #modal,.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:99;backdrop-filter:blur(2px)}
@@ -388,6 +390,10 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
     <div id="ext-list"></div>
   </div>
   <div class="mpane" id="mpane-db" style="display:none">
+    <div style="margin-bottom:12px">
+      <h3 style="margin:0 0 6px">数据存储</h3>
+      <div class="fnote" style="display:flex;align-items:center;gap:7px"><span class="dot off" id="pg-dot"></span><span id="pg-text">…</span></div>
+    </div>
     <h3 style="margin:0 0 8px">库里的数据</h3>
     <div class="fnote" style="margin-bottom:10px">数据库里现在存着这些表。点表名能看里面装了什么。想让小 forge 用哪张，聊天里打 @ 选「库里的数据」就行。</div>
     <div id="db-list" style="max-height:340px;overflow-y:auto"></div>
@@ -1508,7 +1514,22 @@ $('modal').onclick=e=>{ if(e.target.id==='modal'){ $('modal').classList.remove('
 const TYPE_ZH=[[/^(INT|BIGINT|SMALLINT|TINYINT|INTEGER|SERIAL)/i,'整数'],[/^(REAL|FLOAT|DOUBLE|DEC)/i,'小数'],[/^(NUMERIC|NUMBER)/i,'数字'],[/^(BOOL|BIT)/i,'是/否'],[/^(DATE|TIME|DATETIME|TIMESTAMP)/i,'日期时间'],[/^(BLOB|BINARY)/i,'附件'],[/^(CHAR|TEXT|CLOB|VARCHAR|NVARCHAR)/i,'文字']];
 function typeZh(raw){ for(const [re,zh] of TYPE_ZH) if(re.test(raw)) return zh; return raw||'文字'; }
 function cutVal(v){ const s=(v==null)?'空':String(v); return s.length>40?s.slice(0,40)+'…':s; }
+// s73 切片1: 「数据存储」三态人话——数据源 /api/stats 的 pg 字段（桥存储层模式机现态 off/connecting/pg/file）；
+// connecting 是 file 前的秒级过渡（此间数据照常写文件），并入黄点；off/缺字段/取失败一律灰点（未启用），面板零术语。
+function pgStateRender(mode){
+  if(mode==='pg') return {dot:'ok', text:'对话统计等重要数据存在电脑自带的数据库里，每天自动备份'};
+  if(mode==='file'||mode==='connecting') return {dot:'warn', text:'数据还是齐的，存在文件里；数据库恢复后自动切回'};
+  return {dot:'off', text:'当前以文件方式存储，完全够用'};
+}
+async function pgNoteSync(){
+  const dot=$('pg-dot'), txt=$('pg-text'); if(!dot||!txt) return;
+  let mode='';
+  try{ mode=(await apiJSON('/api/stats')||{}).pg||''; }catch(e){}
+  const r=pgStateRender(mode);
+  dot.className='dot '+r.dot; txt.textContent=r.text;
+}
 async function loadDbUI(){
+  pgNoteSync(); // s73: 随「数据」标签懒加载刷新（管理面板重开即重拉，无需轮询）
   const box=$('db-list'); if(!box) return;
   box.innerHTML='<div class="fnote">正在看数据库…</div>';
   const ov=await dbOverview();
