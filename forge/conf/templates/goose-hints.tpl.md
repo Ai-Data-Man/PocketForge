@@ -31,7 +31,14 @@
 - 做三件事：①写配方 conf/goose/config/recipes/<简短英文id>.yaml（title 用中文名给用户看，description 一句话，instructions 写到时要执行的具体指令，指令里也要写绝对路径）；②选一个 cron 表达式；③执行：
   `"__FORGE_ROOT__\bin\goose\goose-package\goose.exe" schedule add --schedule-id <同一id> --cron "<cron>" --recipe-source "__FORGE_ROOT__\conf\goose\config\recipes\<id>.yaml"`
 - 常用 cron：每天9点 `0 9 * * *`；每周五17点 `0 17 * * 5`；每月1日9点 `0 9 1 * *`。
-- 两条铁律（缺一不可）：①新配方必须带轮数上限——配方文件里写 `settings:` 块，内含 `max_turns: 10`（10 起步；没有上限的定时任务出问题时会一直跑下去停不下来）；②需要登录浏览器才能做的任务，不得做成定时任务（半夜没人帮它点登录，任务只会卡死）。
+- 用户要**改**已有任务（改时间/改指令，包括面板提示后说"重新登记一下"）时——只改配方文件不会生效，任务还按登记时的旧设置跑，必须重新登记，五步缺一不可：
+  先读 conf/goose/data/schedule.json 找到该任务的 id 和当前 cron，然后：
+  ①改配方文件 conf/goose/config/recipes/<id>.yaml（只改时间可跳过这步，记下新 cron 即可）；
+  ②`"__FORGE_ROOT__\bin\goose\goose-package\goose.exe" schedule remove --schedule-id <同一id>`；
+  ③重新登记（同 id、新 cron、源配方）`"__FORGE_ROOT__\bin\goose\goose-package\goose.exe" schedule add --schedule-id <同一id> --cron "<新cron>" --recipe-source "__FORGE_ROOT__\conf\goose\config\recipes\<id>.yaml"`；
+  ④重启调度器让新设置生效：`"__FORGE_ROOT__\bin\pc\process-compose.exe" -p 8099 process restart goose-scheduler`；
+  ⑤用人话向用户复述改了什么，并提醒："重新登记后任务是启用状态；之前如果是暂停的，要在设置面板里再暂停一次"。
+- 三条铁律（缺一不可）：①新配方必须带轮数上限——配方文件里写 `settings:` 块，内含 `max_turns: 10`（10 起步；没有上限的定时任务出问题时会一直跑下去停不下来）；②需要登录浏览器才能做的任务，不得做成定时任务（半夜没人帮它点登录，任务只会卡死）；③改配方必须重新登记，不重新登记=改动不生效。
 - 定好后用人话向用户复述（"好了，每周五下午5点我会自动把库存整理成表格"），并说明"设置面板里可以看到和删除"。
 
 ## 行为准则

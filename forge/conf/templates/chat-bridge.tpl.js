@@ -2087,11 +2087,34 @@ const ext = path.extname(f).toLowerCase();
         if (req.method === 'GET') {
             let list = [];
             try { list = JSON.parse(FSS.readFileSync(SCHED, 'utf8')); } catch {}
+            // s75: 源配方↔注册副本只读对账（裁决 docs/verdicts/2026-09-07-scheduler-drift-guard.md S1）。
+            // 触发读的是注册副本，改源配方不传导；副本文件名=schedule id ≠ 源配方名，basename 落空后按
+            // title 唯一匹配兜底；内容不等=drift。base_dir 缺失/无匹配/多匹配/源被删 → 静默 false（宁漏报不误报）。
+            function readIfOk(p) { try { return FSS.readFileSync(p, 'utf8'); } catch { return null; } }
+            function driftOf(j) {
+                try {
+                    if (!j || typeof j.source !== 'string' || typeof j.recipe_base_dir !== 'string') return false;
+                    const copy = readIfOk(j.source);
+                    if (copy === null) return false; // 副本是任务活体，读不到不算漂移
+                    const baseDir = j.recipe_base_dir.replace(/^\\\\\?\\/, '');
+                    let src = readIfOk(path.join(baseDir, path.basename(j.source)));
+                    if (src === null) { // basename 必失败是实态（副本名=id）→ title 兜底
+                        const t = readTitle(j.source);
+                        if (!t) return false;
+                        const hits = FSS.readdirSync(baseDir).filter(f => readTitle(path.join(baseDir, f)) === t);
+                        if (hits.length !== 1) return false; // 0=源已删 >1=同名歧义
+                        src = readIfOk(path.join(baseDir, hits[0]));
+                        if (src === null) return false;
+                    }
+                    return src !== copy;
+                } catch { return false; }
+            }
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify(list.map(j => ({
                 id: j.id, cron: j.cron, paused: !!j.paused,
                 title: readTitle(j.source) || j.id,
                 lastRun: j.last_run || null,
+                drift: driftOf(j),
             }))));
         } else if (req.method === 'POST') {
             // 删除经 goose CLI（比手改 json 安全：会同步清 store 里的 recipe）

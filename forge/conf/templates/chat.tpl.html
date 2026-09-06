@@ -1411,7 +1411,9 @@ async function loadSchedUI(){
     const row=document.createElement('div');
     row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line)';
     row.innerHTML='<div style="flex:1"><div style="font-size:.85rem;font-weight:600">'+esc(j.title)+'</div>'+
-      '<div class="fnote" style="margin-top:2px">'+esc(cronHuman(j.cron))+(j.paused?' · 已暂停':'')+'</div></div>';
+      '<div class="fnote" style="margin-top:2px">'+esc(cronHuman(j.cron))+(j.paused?' · 已暂停':'')+'</div>'+
+      (j.drift?'<div class="fnote" style="margin-top:2px;color:var(--warn-tx)">设置改过，改动还没生效。在聊天里跟它说「把〈'+esc(j.title)+'〉重新登记一下」就好。</div>':'')+
+      '</div>';
     const del=document.createElement('button');
     del.className='mini'; del.textContent='🗑'; del.title='删除这个定时任务';
     del.onclick=async()=>{
@@ -1427,6 +1429,8 @@ async function loadSchedUI(){
     const tog=document.createElement('button');
     tog.className='mini'; tog.textContent=j.paused?'▶':'⏸'; tog.title=j.paused?'恢复这个定时任务':'暂停这个定时任务';
     tog.onclick=async()=>{
+      // s75: 漂移任务恢复前置确认——▶ 是陈旧副本唯一复活入口，告警牌立在触发键旁必须拦一下
+      if(j.paused&&j.drift&&!confirm('「'+j.title+'」的设置改过，改动还没生效，现在恢复会按旧设置跑。\n在聊天里跟它说「把〈'+j.title+'〉重新登记一下」可以先用上新设置。\n\n仍要直接恢复吗？')) return;
       tog.disabled=true;
       try{
         const res=await apiJSON('/api/schedules',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:j.id,op:j.paused?'resume':'pause'})});
