@@ -172,11 +172,16 @@ function statsFlushDebounced() {
 // 硬线：桥启动绝不等待 PG（pc 编排零 depends_on 不变）；连接/迁移/写入错误全部 catch 降级，绝不抛进主流程。
 // PF_PG_PORT：测试专用端口覆盖（fuzz 假端口路径，不真停 pg）。
 const PG_PORT_FILE = path.join(ROOT, 'data', 'pg.port');
+// PF_PG_DB：测试专用库名隔离（fuzz P3-4 探针用独立库+独立 FORGE_ROOT，不碰共享数据；沿 PF_PG_PORT 先例）。产品路径恒 forge_bridge。
+const PG_DB_NAME = /^forge_[a-z0-9_]{1,50}$/.test(process.env.PF_PG_DB || '') ? process.env.PF_PG_DB : 'forge_bridge';
 const PG_DUMPS_DIR = path.join(ROOT, 'data', 'pg-dumps');
 const PG_DUMP_EXE = path.join(ROOT, 'bin', 'pg', 'bin', 'pg_dump.exe');
 // 代码侧 MIGRATIONS 注册表（phase-2 §5）：forward-only、事务包裹、apply 前 pg_dump 留档；库版本新于代码=拒写
 const PG_MIGRATIONS = [
     { v: 1, name: 'usage_daily', sql: 'CREATE TABLE IF NOT EXISTS usage_daily (date text PRIMARY KEY, payload jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())' },
+    // s73 切片2（裁决 2026-09-06-pg-forge-backend §7-切片2）: 无界增长族两表——自然键主键，业务时间戳列 + 行级 updated_at（P3-4 对账的方向依据）
+    { v: 2, name: 'forge_archive_index', sql: 'CREATE TABLE IF NOT EXISTS forge_archive_index (sid text PRIMARY KEY, archived_at bigint NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())' },
+    { v: 3, name: 'forge_workspace_map', sql: 'CREATE TABLE IF NOT EXISTS forge_workspace_map (ws text PRIMARY KEY, sid text NOT NULL, bound_at bigint NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())' },
 ];
 const pgStore = { mode: 'off', sql: null, blocked: false };
 function pgPort() {
@@ -253,12 +258,26 @@ function pgUsageWrite() { // pg 态写路径：日聚合一行 UPSERT（payload=
     sql`INSERT INTO usage_daily (date, payload) VALUES (${stats.date}, ${stats}) ON CONFLICT (date) DO UPDATE SET payload = EXCLUDED.payload, updated_at = now()`
         .catch(e => { console.warn('pg usage write failed:', (e && e.message) || e); pgDowngrade(pgErrWarn(e)); });
 }
-function pgUsageBackfill() { // pg 态确立后台一次：当日内存整体回迁（file 态期间文件必然不旧于 PG，覆盖方向确定）+ 存量文件幂等导入
-    // 切片2 接读者前必须改方向判断——qa P3-4（当日内存无条件覆盖 PG 的前提是「无并发读者」，接入读者后该方向不再恒成立）
+function pgUsageBackfill() { // pg 态确立后台一次：当日内存与 PG 逐计数器取大者合并 + 存量文件幂等导入
+    // P3-4 实修（s73 切片2，qa 强制）：当日行不再无条件 DO UPDATE——崩溃前 PG 已落、文件未落的计数会被旧内存冲掉。
+    // 当日计数日内单调（跨天归零由 statsBump 管），取大者合并使两侧都不回退：PG 较新→收编，内存较新（防抖未落）→保留。
     const sql = pgStore.sql;
     if (!sql) return;
     (async () => {
         try {
+            const today = [...await sql`SELECT payload FROM usage_daily WHERE date = ${stats.date}`];
+            const p = (today.length && today[0].payload && typeof today[0].payload === 'object') ? today[0].payload : null;
+            if (p) {
+                const mx = (a, b) => Math.max(Number(a) || 0, Number(b) || 0);
+                stats.sessionsCreated = mx(stats.sessionsCreated, p.sessionsCreated);
+                stats.messages = mx(stats.messages, p.messages);
+                stats.errors = mx(stats.errors, p.errors);
+                stats.artifactsGenerated = mx(stats.artifactsGenerated, p.artifactsGenerated);
+                for (const k of ['upstream', 'websocket', 'other']) stats.errorsByType[k] = mx(stats.errorsByType[k], (p.errorsByType || {})[k]);
+                for (const k of ['unauthorized', 'rate', 'timeout', 'server']) stats.errorsByType.upstreamByKind[k] = mx(stats.errorsByType.upstreamByKind[k], ((p.errorsByType || {}).upstreamByKind || {})[k]);
+                for (const k of ['shown', 'approved', 'denied', 'timeout']) stats.permissionCards[k] = mx(stats.permissionCards[k], (p.permissionCards || {})[k]);
+                console.log('pg usage backfill: max-merged today row (P3-4)');
+            }
             await sql`INSERT INTO usage_daily (date, payload) VALUES (${stats.date}, ${stats}) ON CONFLICT (date) DO UPDATE SET payload = EXCLUDED.payload, updated_at = now()`;
             let n = 0;
             for (const f of FSS.readdirSync(STATS_DIR).filter(f => /^usage-\d{8}\.json$/.test(f)).sort()) {
@@ -275,6 +294,90 @@ function pgUsageFlush() { // statsFlushDebounced 的存储层落点：pg=双写 
     if (pgStore.mode === 'pg') return pgUsageWrite();
     if (pgStore.mode === 'off' && pgExpected()) pgTryConnect(); // lazy：首次写用时连（file 态重试只走 30s 重探，不随 flush 加压）
 }
+
+// ---- PG 切片2（裁决 2026-09-06-pg-forge-backend §7-切片2）：无界增长族迁 PG——会话归档索引+工作区映射 ----
+// 读写口径（任务取舍，见汇报）：读=文件不变（write-through 下文件恒新鲜，读路径永不碰 PG）；写=文件先行（唯一真相）
+// + pg 态整表同步 PG（权威备份位；读写全切换挂切片 3）。file/off 态=纯文件，行为与切片前逐位一致。
+// P3-4 护栏（qa 强制）：导入/回迁绝不无条件覆盖 PG 较新行——
+//   双方都有该键：比业务时间戳（归档 archived_at / 映射 bound_at），PG 较新→文件收编，文件较新→回迁 PG；
+//   仅 PG 有该键：文件 mtime ≥ 行 updated_at → 文件态期间已删，PG 行随之删（§4 整体 upsert 方向）；PG 较新（文件被旧备份还原等）→收编。
+// 并发安全：收编只叠加键且仅当文件现值仍较旧（用户并发写不丢不回退）；整表同步在执行时重读文件（永远同步当下真相）。
+const pgStateQ = { arch: Promise.resolve(), wsmap: Promise.resolve() }; // 每表一条串行队列：对账先于其后任何用户同步
+function pgStateFileRows(kind, rawIn) { // 文件对象 → {自然键: {ts, val}}（过滤 _schema 等非业务键；坏形状行跳过不迁）
+    let raw = rawIn;
+    if (raw === undefined) raw = readJson(kind === 'arch' ? ARCH_FILE : WSMAP_FILE, {});
+    const out = {};
+    for (const k of Object.keys(raw || {})) {
+        if (kind === 'arch') {
+            if (k === '_schema' || !sidValid(k)) continue; // 注意 '_schema' 恰好匹配 sidValid，须显式排除
+            const ts = Number(raw[k]);
+            if (ts > 0) out[k] = { ts, val: ts };
+        } else {
+            if (!wsValidId(k)) continue; // _schema 等元键天然不匹配 ws-* 形状
+            const v = raw[k] || {};
+            if (!sidValid(v.sid)) continue;
+            const ts = Number(v.boundAt);
+            out[k] = { ts: ts > 0 ? ts : 0, val: { sid: v.sid, boundAt: ts > 0 ? ts : 0 } };
+        }
+    }
+    return out;
+}
+function pgStateSyncNow(kind) { // 整表同步：PG 表=当前文件（全量替换、事务包裹、幂等；执行时取 pgStore.sql 与文件最新态）
+    const sql = pgStore.sql;
+    if (!sql || pgStore.mode !== 'pg') return Promise.resolve();
+    const rows = pgStateFileRows(kind);
+    const keys = Object.keys(rows);
+    return sql.begin(async t => {
+        if (kind === 'arch') {
+            await t`DELETE FROM forge_archive_index`;
+            for (const sid of keys) await t`INSERT INTO forge_archive_index (sid, archived_at) VALUES (${sid}, ${rows[sid].ts})`;
+        } else {
+            await t`DELETE FROM forge_workspace_map`;
+            for (const ws of keys) await t`INSERT INTO forge_workspace_map (ws, sid, bound_at) VALUES (${ws}, ${rows[ws].val.sid}, ${rows[ws].val.boundAt})`;
+        }
+    });
+}
+function pgStateSync(kind) { // 双写漏斗挂点（writeArch/writeWsMap）：pg=排队整表同步；off=懒触发首连（与 usage 同一 lazy 策略）；file/connecting=纯文件
+    if (pgStore.mode === 'pg') {
+        pgStateQ[kind] = pgStateQ[kind].then(() => pgStateSyncNow(kind)).catch(e => {
+            console.warn('pg ' + kind + ' sync failed:', (e && e.message) || e);
+            pgDowngrade(pgErrWarn(e)); // 同步失败=PG 异常→回落文件（文件是真相，无损；30s 重探自愈后由对账补齐）
+        });
+    } else if (pgStore.mode === 'off' && pgExpected()) pgTryConnect();
+}
+function pgStateReconcile(kind) { // pg 态确立后台一次（入队，先于其后任何用户同步）：存量幂等导入+P3-4 对账
+    pgStateQ[kind] = pgStateQ[kind].then(async () => {
+        const sql = pgStore.sql;
+        if (!sql || pgStore.mode !== 'pg') return;
+        const file = kind === 'arch' ? ARCH_FILE : WSMAP_FILE;
+        const rows = pgStateFileRows(kind);
+        let fileMs = 0; try { fileMs = FSS.statSync(file).mtimeMs; } catch {}
+        const pgRows = kind === 'arch'
+            ? [...await sql`SELECT sid, archived_at, updated_at FROM forge_archive_index`]
+            : [...await sql`SELECT ws, sid, bound_at, updated_at FROM forge_workspace_map`];
+        const key = kind === 'arch' ? 'sid' : 'ws';
+        const adopted = []; // [自然键, 收编行]——PG 较新者不回退，写回文件
+        for (const r of pgRows) {
+            const k = r[key];
+            const ts = Number(kind === 'arch' ? r.archived_at : r.bound_at) || 0;
+            const f = rows[k];
+            const val = kind === 'arch' ? ts : { sid: r.sid, boundAt: ts };
+            if (f) { if (ts > f.ts) adopted.push([k, { ts, val }]); } // 双方都有：文件较新→下方全量同步回迁；PG 较新→收编
+            else if (fileMs < new Date(r.updated_at).getTime()) adopted.push([k, { ts, val }]); // 仅 PG 有且 PG 较新→收编（P3-4）；文件较新=已删→全量同步自会删该行
+        }
+        if (adopted.length) { // 收编写回文件：只叠加/仅当现值仍较旧才覆盖（并发用户写不丢）；绕过双写漏斗——本就在 PG 队列内，随后全量同步把同一状态写回 PG（幂等）
+            const cur = readJson(file, {});
+            for (const [k, a] of adopted) {
+                const cv = cur[k];
+                const curTs = kind === 'arch' ? Number(cv) : Number(cv && cv.boundAt);
+                if (!(curTs > a.ts)) cur[k] = a.val;
+            }
+            try { FSS.mkdirSync(path.dirname(file), { recursive: true }); atomicWrite(file, JSON.stringify(cur, null, 2)); } catch {}
+        }
+        console.log('pg ' + kind + ' reconcile: file=' + Object.keys(rows).length + ' pg=' + pgRows.length + ' adopted=' + adopted.length);
+        await pgStateSyncNow(kind); // 全量对齐 PG=文件：仅文件有的行在此导入（存量幂等导入；对账确定性=幂等，重跑零变化）
+    }).catch(e => { console.warn('pg ' + kind + ' reconcile failed:', (e && e.message) || e); });
+}
 function pgTryConnect() {
     const port = pgPort();
     if (!port) return pgDowngrade(PG_WARN + '没找到数据库端口，已用本地文件保存');
@@ -284,17 +387,19 @@ function pgTryConnect() {
         try {
             const postgres = require(path.join(ROOT, 'bin', 'vendor', 'pgstore', 'node_modules', 'postgres')); // 3.4.9 vendored 零依赖（research/10 VERIFIED-RUN）
             boot = postgres({ host: '127.0.0.1', port, user: 'postgres', database: 'postgres', max: 1, connect_timeout: 2 });
-            const have = [...await boot`SELECT 1 FROM pg_database WHERE datname = 'forge_bridge'`];
+            const have = [...await boot`SELECT 1 FROM pg_database WHERE datname = ${PG_DB_NAME}`];
             let fresh = false;
-            if (!have.length) { await boot.unsafe('CREATE DATABASE forge_bridge'); fresh = true; } // doctrine：每应用一库 forge_<app>
+            if (!have.length) { await boot.unsafe('CREATE DATABASE ' + PG_DB_NAME); fresh = true; } // doctrine：每应用一库 forge_<app>（PG_DB_NAME 已白名单校验）
             await boot.end({ timeout: 1 }); boot = null;
-            const sql = postgres({ host: '127.0.0.1', port, user: 'postgres', database: 'forge_bridge', max: 1, connect_timeout: 2 });
+            const sql = postgres({ host: '127.0.0.1', port, user: 'postgres', database: PG_DB_NAME, max: 1, connect_timeout: 2 });
             await sql`SELECT 1`; // postgres.js lazy 建连：首查询才真连
             await pgMigrate(sql, fresh);
             pgStore.sql = sql; pgStore.mode = 'pg';
             pgWarn(PG_WARN + '正在用 PostgreSQL');
-            console.log('pg store ready: forge_bridge on 127.0.0.1:' + port);
+            console.log('pg store ready: ' + PG_DB_NAME + ' on 127.0.0.1:' + port);
             pgUsageBackfill();
+            pgStateReconcile('arch');
+            pgStateReconcile('wsmap');
         } catch (e) {
             if (boot) { try { await boot.end({ timeout: 1 }); } catch {} }
             pgDowngrade(pgErrWarn(e));
@@ -392,7 +497,7 @@ function wsNewId() {
 }
 const WSMAP_FILE = path.join(ROOT, 'data', 'workspace-map.json');
 function readWsMap() { return readJson(WSMAP_FILE, {}); }
-function writeWsMap(m) { FSS.mkdirSync(path.dirname(WSMAP_FILE), { recursive: true }); atomicWrite(WSMAP_FILE, JSON.stringify(m, null, 2)); }
+function writeWsMap(m) { FSS.mkdirSync(path.dirname(WSMAP_FILE), { recursive: true }); atomicWrite(WSMAP_FILE, JSON.stringify(m, null, 2)); pgStateSync('wsmap'); } // s73 切片2: 文件先行 + pg 态整表同步镜像
 
 // ---- 工作区元数据(.forge,ADR-0008):附件身份等语义信息与存放路径解耦 ----
 function forgeFile(ws) { return path.join(wsDir(ws), '.forge'); }
@@ -402,7 +507,7 @@ function writeForgeMeta(ws, meta) { try { atomicWrite(forgeFile(ws), JSON.string
 // ---- 会话归档(data/session-archive.json):纯 UI 生命周期态 ----
 const ARCH_FILE = path.join(ROOT, 'data', 'session-archive.json');
 function readArch() { return readJson(ARCH_FILE, {}); }
-function writeArch(m) { FSS.mkdirSync(path.dirname(ARCH_FILE), { recursive: true }); atomicWrite(ARCH_FILE, JSON.stringify(m, null, 2)); }
+function writeArch(m) { FSS.mkdirSync(path.dirname(ARCH_FILE), { recursive: true }); atomicWrite(ARCH_FILE, JSON.stringify(m, null, 2)); pgStateSync('arch'); } // s73 切片2: 文件先行 + pg 态整表同步镜像
 function wsState(id, map, arch, sid, files, meta) {
     if (!sid) return 'orphan';
     if (arch[sid]) return 'archived';
@@ -2788,6 +2893,10 @@ function handleClient(ws, msg) {
                 let unbound = false;
                 for (const k of Object.keys(wsm)) if (wsm[k].sid === msg.sessionId) { delete wsm[k]; unbound = true; }
                 if (unbound) writeWsMap(wsm);
+                // s73 切片2: 硬删会话同步清归档索引行（裁决 §7-切片2「为切片4隐私红线预演同款机制」；
+                // 此前归档后被硬删的会话在索引里留死键——前端列表不可见但文件/PG 长存）
+                const arch = readArch();
+                if (arch[msg.sessionId] !== undefined) { delete arch[msg.sessionId]; writeArch(arch); }
                 // C2: 回执先发再断订阅者——请求者自己也在 subs 里，先 destroy 后 send 回执必被吞
                 // s62: 请求者 socket 改为回执 flush 回调里 destroy——同 tick destroy 会丢弃尚未冲刷到内核的写队列，小概率丢回执
                 writeFrame(ws.socket, { sys: 'session_deleted', sessionId: msg.sessionId, ok: r.changes > 0 }, () => { try { ws.socket.destroy(); } catch {} });

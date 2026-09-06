@@ -18,7 +18,8 @@ const SBB = path.join(__dirname, '.skill-sb-b');
 const PORT = 18795;
 const OLD_FETCHED = '2020-01-01T00:00:00.000Z';
 // qa返工(P2-2): 首启生成默认=双源（anthropics + baoyu，与桥端 dft() 对齐）
-const DFT_CFG = { _schema: 1, sources: [
+// f1a0383 对齐: 首启 stamp 跟 registry latest（=2），探针期望同步 1→2（此前 B-4 假红）
+const DFT_CFG = { _schema: 2, sources: [
     { repo: 'anthropics/skills', branch: 'main', subdir: 'skills', enabled: true },
     { repo: 'JimLiu/baoyu-skills', branch: 'main', subdir: 'skills', enabled: true },
 ] };

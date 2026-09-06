@@ -49,6 +49,11 @@ if k is not None:
 curl -s "$B/api/stats" | python -c "import sys,json;d=json.load(sys.stdin);assert d['pg'] in ('off','connecting','pg','file'), d['pg']"; ck "stats pg mode field enum (s73)" $?
 node "$(dirname "$0")/pgstore-poll.js" "$B"; ck "pg mode establish + forge_bridge row via vendored client (s73)" $?
 node "$(dirname "$0")/pgstore-probe.js"; ck "pgstore fake-port fallback probe (s73)" $?
+# s73 切片2（裁决 2026-09-06-pg-forge-backend §7-切片2）: 无界增长族迁 PG——双表形状/幂等导入 + 归档/映射行生命周期 + P3-4 方向
+node "$(dirname "$0")/pgstore-poll2.js" "$B"; ck "pg slice2: archive/wsmap table shape + idempotent import (s73b)" $?
+node "$(dirname "$0")/pgstore-arch-roundtrip.js" "$B"; ck "pg slice2: archive index row lifecycle write+delete (s73b)" $?
+node "$(dirname "$0")/pgstore-ws-roundtrip.js" "$B"; ck "pg slice2: workspace map row lifecycle write+delete (s73b)" $?
+node "$(dirname "$0")/pgstore-p34-probe.js"; ck "pg slice2: P3-4 newer-PG-row not clobbered on reconcile (s73b)" $?
 # s50b: db/overview 不收参数——垃圾 query 不影响响应形状（端点无用户输入面）
 curl -s "$B/api/db/overview?ws=../../etc" | python -c "import sys,json;d=json.load(sys.stdin);assert 'services' in d"; ck "db overview traversal query ignored" $?
 curl -s "$B/api/db/overview?service=x%27" | python -c "import sys,json;d=json.load(sys.stdin);assert 'services' in d"; ck "db overview quote query ignored" $?
