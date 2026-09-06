@@ -213,6 +213,12 @@ node "$ROOT/tools/e2e/sched-drift-probe.js" > /tmp/sched-drift-probe.log 2>&1; c
 grep -E "^sched-drift-probe" /tmp/sched-drift-probe.log
 rm -f /tmp/sched-drift-probe.log
 
+# ---------- 17) 升级前自备份探针（s75c 转正自 tmp/preupgrade-backup-test；详见 tools/e2e/preupgrade-backup-probe.js） ----------
+# 43eff60 的 28 断言：整树对账/幂等/keep3 轮转/失败注入 warn（真桥端点驱动，自带清理）
+node "$ROOT/tools/e2e/preupgrade-backup-probe.js" > /tmp/preupgrade-backup.log 2>&1; ck "preupgrade-backup probe 28 ck" $?
+grep -E "^RESULT" /tmp/preupgrade-backup.log
+rm -f /tmp/preupgrade-backup.log
+
 rm -f /tmp/e2e-v1.md
 echo "=============================="
 echo "chat-link E2E: PASS=$PASS FAIL=$FAIL"
