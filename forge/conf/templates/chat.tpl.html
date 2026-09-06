@@ -66,8 +66,8 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 #newchat:hover{filter:brightness(1.08)}
 #newchat:active{filter:brightness(.92)}
 #sessions{flex:0 1 auto;overflow-y:auto;padding:0 8px 8px;max-height:42%}
-#chat-search{margin:2px 0 4px;padding:8px 26px 8px 11px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;background:var(--panel);color:var(--tx);outline:none;box-sizing:border-box;width:100%}
-#chat-search:focus{border-color:var(--acc)}
+#chat-search,#arch-q{margin:2px 0 4px;padding:8px 26px 8px 11px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;background:var(--panel);color:var(--tx);outline:none;box-sizing:border-box;width:100%}
+#chat-search:focus,#arch-q:focus{border-color:var(--acc)}
 #search-results{flex:1 1 auto;overflow-y:auto;padding:0 8px 8px;border-top:1px solid var(--line);margin-top:2px}
 #search-results .sh{padding:8px 6px;border-bottom:1px dashed var(--line);cursor:pointer}
 #search-results .sh:hover{background:var(--hover)}
@@ -286,13 +286,21 @@ details.tz[open]>summary::before{content:'▾ '}
 <div id="side">
   <header><span class="dot" id="status" role="status" aria-label="连接中"></span>小 forge</header>
   <button id="newchat">＋ 新对话</button>
-  <div id="side-label-sess" style="padding:2px 14px;font-size:.68rem;color:var(--mut)">对话</div>
   <div style="position:relative;margin:2px 8px 4px">
     <input id="chat-search" placeholder="🔍 搜聊天记录…" autocomplete="off">
     <button id="chat-search-clear" title="清除搜索" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);border:none;background:var(--hover);color:var(--mut);border-radius:50%;width:20px;height:20px;line-height:1;cursor:pointer;font-size:.68rem;display:none">✕</button>
   </div>
+  <!-- IA-2: 视图切换恒驻侧栏头部——归档入口不再随列表长度沉降（取代旧尾部折叠头） -->
+  <div style="display:flex;gap:5px;padding:2px 8px 6px" role="tablist" aria-label="会话视图">
+    <button class="chip on" id="svw-chat" role="tab" aria-selected="true" style="flex:1">💬 对话</button>
+    <button class="chip" id="svw-arch" role="tab" aria-selected="false" style="flex:1">📦 归档</button>
+  </div>
+  <div style="position:relative;margin:2px 8px 4px;display:none" id="arch-q-row">
+    <input id="arch-q" placeholder="🔍 在归档里找…" autocomplete="off">
+  </div>
   <div id="search-results" style="display:none"></div>
   <div id="sessions"></div>
+  <div id="arch-pager" style="display:none;gap:10px;justify-content:center;align-items:center;padding:2px 8px"></div>
   <footer>
     <button class="icobtn" id="refresh-sessions" title="刷新会话列表">⟳</button>
     <button class="icobtn" id="open-skills" title="技能">🧩</button>
@@ -670,7 +678,7 @@ function onRpc(d){
 }
 function loadSessions(){ rpc2('session/list').then(d=>{ const s=(d.result&&d.result.sessions)||[]; lastSessions=s; renderSessions(s); }).catch(()=>{}); }
 let currentSid=null;
-let archOpen=false;
+let sideView='chat', archCount=0; // IA-2: 侧栏视图切换（对话/归档）——旧尾部折叠头机制被视图取代；archCount 喂「📦 归档 N」计数
 function tsLocal(s){ // goose 两种时间串：ACP 带 +00:00 后缀、sessions.db 是无时区 UTC 裸串；统一转本地，失败回落原串
   if(!s) return null;
   let t=String(s).replace(' ','T');
@@ -704,21 +712,39 @@ function renderSessions(list){
   const byNew=s=>{const d=tsLocal(s.updatedAt);return d?d.getTime():0;}; // s64: 解析失败按 0 沉底；sort 稳定，时间相同保持原序
   const act=real.filter(s=>!archSet[s.sessionId]).sort((a,b)=>byNew(b)-byNew(a));
   const arc=real.filter(s=>archSet[s.sessionId]).sort((a,b)=>byNew(b)-byNew(a));
+  archCount=arc.length; paintSideChips(); // IA-2: 归档计数跟随列表刷新
   if(!act.length&&!arc.length){ box.innerHTML='<div style="padding:12px;font-size:.75rem;color:var(--mut)">还没有对话。点上面「＋ 新对话」开始。</div>'; return; }
   const trunc=txt=>{ const t=document.createElement('div'); t.className='fnote'; t.style.padding='4px 10px'; t.textContent=txt; box.appendChild(t); };
+  if(sideView==='arch'){ // IA-2: 归档视图=全量清单+搜索+行型分页（30/页）——30 截断从此有出路（R2）
+    if(!arc.length){ box.innerHTML='<div style="padding:12px;font-size:.75rem;color:var(--mut)">还没有归档的对话。日常对话右边的 📥 点一下就会收进这里。</div>'; return; }
+    const q=($('arch-q').value||'').trim().toLowerCase();
+    const shown=arc.filter(s=>!q||String(s.title||'').toLowerCase().includes(q));
+    if(!shown.length){ box.innerHTML='<div class="fnote" style="padding:8px 10px">没找到带「'+esc(q)+'」的归档对话。</div>'; return; }
+    const ps=pageSlice(shown,'arch',PAGE_N);
+    for(const s of ps.rows) box.appendChild(sessItem(s,true)); // 既有语义原样迁移：仅归档内可删、↩ 还原到活跃
+    pagerPaint('arch-pager',listPage.arch,ps.pages,ps.total,p=>{ listPage.arch=p; renderSessions(lastSessions); });
+    return;
+  }
   for(const s of act.slice(0,40)) box.appendChild(sessItem(s,false));
   if(act.length>40) trunc('还有 '+(act.length-40)+' 个更早对话没显示，用上面搜索或归档查看');
-  if(arc.length){
-    const h=document.createElement('div'); h.style.cssText='padding:7px 10px;font-size:.68rem;color:var(--mut);cursor:pointer;user-select:none';
-    h.textContent=(archOpen?'▾':'▸')+' 已归档 '+arc.length;
-    h.onclick=()=>{ archOpen=!archOpen; renderSessions(list); };
-    box.appendChild(h);
-    if(archOpen){
-      for(const s of arc.slice(0,30)) box.appendChild(sessItem(s,true));
-      if(arc.length>30) trunc('已归档共 '+arc.length+' 个，显示最近 30 个');
-    }
-  }
 }
+function paintSideChips(){ // IA-2: chip 态与计数（mtab 同款 aria-selected 写法）
+  const c=$('svw-chat'), a=$('svw-arch'); if(!c||!a) return;
+  c.classList.toggle('on',sideView==='chat'); c.setAttribute('aria-selected',sideView==='chat');
+  a.classList.toggle('on',sideView==='arch'); a.setAttribute('aria-selected',sideView==='arch');
+  a.textContent='📦 归档'+(archCount?' '+archCount:'');
+}
+function showSideView(v){
+  sideView=v;
+  $('arch-q-row').style.display=v==='arch'?'block':'none';
+  $('arch-pager').style.display=v==='arch'?'flex':'none';
+  paintSideChips();
+  renderSessions(lastSessions);
+}
+$('svw-chat').onclick=()=>showSideView('chat');
+$('svw-arch').onclick=()=>showSideView('arch');
+let archQT=null; // IA-2: 归档搜索（store-q 同款防抖 200ms；过滤变化回第 1 页）
+$('arch-q').oninput=()=>{ clearTimeout(archQT); archQT=setTimeout(()=>{ listPage.arch=1; renderSessions(lastSessions); },200); };
 function subscribe(sid){ pendingForNew=!sid; lastOrig=null; wssend({type:'subscribe',sessionId:sid,model:lastKnownModel||undefined}); chat.innerHTML=''; toolCards.clear(); if(!sid){ addMsg('你好！我是小 forge。想做什么直接打字告诉我。','agent'); addQuickPrompts(); } }
 // s33: 开场快捷任务——小白不用想"该说什么"，点一下就发
 const QUICK_PROMPTS=[
@@ -1831,11 +1857,12 @@ function paintInstalled(){ // s71: 自 open-skills 内联渲染提升为具名�
 let storeAll=[]; // 当前可装列表（avail），供搜索过滤
 // s71 技能/插件市场分页：技能卡约 120px 高，每页 12 条≈两屏；切片模式对齐 renderAllPane 的 PAGE_N 先例
 const SKILL_N=12;
-const listPage={ins:1,store:1,mcp:1}; // 各列表当前页；仅重开弹窗时重置（loadSkills2/loadMcpUI 会被操作回调与安装轮询复调，不得在函数内重置）
-function pageSlice(arr,key){
-  const pages=Math.max(1,Math.ceil(arr.length/SKILL_N));
+const listPage={ins:1,store:1,mcp:1,arch:1}; // 各列表当前页；仅重开弹窗时重置（loadSkills2/loadMcpUI 会被操作回调与安装轮询复调，不得在函数内重置）；arch=侧栏归档视图（IA-2）
+function pageSlice(arr,key,n){ // IA-2: 可选页大小（缺省 SKILL_N；行型清单传 PAGE_N=30，对齐 renderAllPane 先例）
+  const per=n||SKILL_N;
+  const pages=Math.max(1,Math.ceil(arr.length/per));
   if(listPage[key]>pages) listPage[key]=pages;
-  return {rows:arr.slice((listPage[key]-1)*SKILL_N,listPage[key]*SKILL_N),pages:pages,total:arr.length};
+  return {rows:arr.slice((listPage[key]-1)*per,listPage[key]*per),pages:pages,total:arr.length};
 }
 function pagerPaint(id,page,pages,total,go){ // pages<=1 时整块不渲染（≤阈值不分页零机制）；‹›按钮热区≥32px
   const pager=$(id); if(!pager) return;
