@@ -254,6 +254,7 @@ function pgUsageWrite() { // pg 态写路径：日聚合一行 UPSERT（payload=
         .catch(e => { console.warn('pg usage write failed:', (e && e.message) || e); pgDowngrade(pgErrWarn(e)); });
 }
 function pgUsageBackfill() { // pg 态确立后台一次：当日内存整体回迁（file 态期间文件必然不旧于 PG，覆盖方向确定）+ 存量文件幂等导入
+    // 切片2 接读者前必须改方向判断——qa P3-4（当日内存无条件覆盖 PG 的前提是「无并发读者」，接入读者后该方向不再恒成立）
     const sql = pgStore.sql;
     if (!sql) return;
     (async () => {
@@ -689,14 +690,22 @@ function parseSkillMeta(raw, fallbackName) {
 const SKILL_CACHE = path.join(ROOT, 'data', 'cache', 'skills');
 function readSkillManifest() { return readJson(path.join(SKILL_CACHE, 'manifest.json'), null); }
 function writeSkillManifest(m) { FSS.mkdirSync(SKILL_CACHE, { recursive: true }); atomicWrite(path.join(SKILL_CACHE, 'manifest.json'), JSON.stringify(m, null, 2)); }
-let skillSyncBusy = false; // 后台重拉/翻译防抖标志
-async function fetchAllRemoteSkills() {
+let skillSyncBusy = false, skillSyncDirty = false; // 后台重拉/翻译防抖标志；dirty=busy 期间又来了 sync 请求（qa P2-2：收尾补跑一轮，不丢）
+// qa P2-3: sync 收尾统一写/清「失败源」人话警告——repo 短名+固定话术（不泄内部路径/上游错误）；成功轮自动清旧条目（同进程自愈，同 readSkillSources P3-3 门）
+function warnSkillFetchFailures(failed) {
+    for (let i = stateWarnings.length - 1; i >= 0; i--) if (/^技能源 .+ 拉取失败/.test(stateWarnings[i])) stateWarnings.splice(i, 1);
+    for (const repo of failed) { const msg = '技能源 ' + repo + ' 拉取失败：可能是地址写错了或网络不通（好的源不受影响，下轮自动重试）'; if (!stateWarnings.includes(msg)) stateWarnings.push(msg); }
+}
+async function fetchAllRemoteSkills(failedOut) {
     // s70 切片B: 遍历 enabled 源合并清单（源顺序=配置顺序）；同名 dir 先到保留、后到跳过（留痕一行）
-    // 条目带 source{repo,branch}（源身份，切片A origin.json 同构）；某源不可达即整轮失败→保留旧缓存（出网失败路径）
+    // 条目带 source{repo,branch}（源身份，切片A origin.json 同构）；qa P2-3: 单源失败降级=跳过该源+收集清单（原整轮 throw，一个坏源毒化全部）；
+    // 全部源都失败才保留整轮失败语义（疑似断网非配置问题，沿用旧缓存静默）
     const skills = [];
-    for (const src of readSkillSources().filter(s => s.enabled)) {
+    const enabled = readSkillSources().filter(s => s.enabled);
+    let okSrc = 0;
+    for (const src of enabled) {
         const listing = await ghJson('https://api.github.com/repos/' + src.repo + '/contents/' + src.subdir + '?ref=' + src.branch);
-        if (!Array.isArray(listing)) throw new Error('技能源不可达: ' + src.repo);
+        if (!Array.isArray(listing)) { if (failedOut) failedOut.push(src.repo); continue; }
         for (const e of listing.filter(x => x.type === 'dir')) {
             // qa-P2: 上游 GitHub 返回的目录名与用户输入同门——白名单外跳过（防源被攻破写出缓存树之外）
             if (!/^[\w\-]{1,64}$/.test(e.name) || !fileNameSafe(e.name)) continue;
@@ -709,7 +718,9 @@ async function fetchAllRemoteSkills() {
             atomicWrite(path.join(ddir, 'SKILL.md'), body);
             skills.push({ dir: e.name, name: meta.name, description: meta.description, desc_zh: null, source: { repo: src.repo, branch: src.branch, subdir: src.subdir } });
         }
+        okSrc++;
     }
+    if (enabled.length && !okSrc) throw new Error('技能源全部不可达');
     return skills;
 }
 function mergeSkillManifest(oldM, skills) {
@@ -763,17 +774,20 @@ async function translateSkillManifest(manifest) {
     writeSkillManifest(manifest);
 }
 async function syncRemoteSkills() {
-    if (skillSyncBusy) return;
+    if (skillSyncBusy) { skillSyncDirty = true; return; } // qa P2-2: busy 期间来的请求置脏即返回（原直接丢，源变更撞在途 sync 会静默丢失）
     skillSyncBusy = true;
+    const failed = []; // qa P2-3: 失败源清单，收尾写 stateWarnings
     try {
-        const merged = mergeSkillManifest(readSkillManifest(), await fetchAllRemoteSkills());
+        const merged = mergeSkillManifest(readSkillManifest(), await fetchAllRemoteSkills(failed));
         writeSkillManifest(merged);
         await translateSkillManifest(merged).catch(() => {});
         // 补翻完成（或失败）后盖 fetched_at：下次 GET 走 fresh 路径，不再重复触发重拉
         merged.fetched_at = new Date().toISOString();
         writeSkillManifest(merged);
-    } catch {} // 拉取失败静默保留旧缓存
+    } catch {} // 拉取失败静默保留旧缓存（全部源失败=疑似断网，下次窗口再试）
+    warnSkillFetchFailures(failed); // 收尾统一写（含坏源被跳过的半程成功轮）；成功轮清旧条目
     skillSyncBusy = false;
+    if (skillSyncDirty) { skillSyncDirty = false; syncRemoteSkills(); } // qa P2-2: 补跑一轮；第二轮运行中再来的真请求会重新置脏（不活锁）
 }
 function skillCacheFresh(m) { return m && Array.isArray(m.skills) && m.fetched_at && (Date.now() - Date.parse(m.fetched_at)) < 24 * 3600 * 1000; }
 // s59: 定时预热（用户主线：agent/基础设施预取数据预先翻译，用户零等待）——启动即后台 sync 一次，此后每 24h 主动重拉。
@@ -796,7 +810,9 @@ async function listRemoteSkills(installedSet, res) {
         syncRemoteSkills();
         return;
     }    try { // 首次无缓存：同步拉一次
-        const merged = mergeSkillManifest(null, await fetchAllRemoteSkills());
+        const failed = [];
+        const merged = mergeSkillManifest(null, await fetchAllRemoteSkills(failed));
+        warnSkillFetchFailures(failed); // qa P2-3: 首拉路径同门（坏源跳过、警告照写）
         writeSkillManifest(merged);
         translateSkillManifest(merged).catch(() => {});
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
@@ -1044,6 +1060,7 @@ function marketMutate(b) {
                 // 但 UI 写入面禁 '..'（repo/branch 拼进 GitHub URL，存进用户配置文件不能带穿越形态）
                 if (!SKILL_REPO_RE.test(repo) || repo.indexOf('..') >= 0) return bad('仓库名需形如「用户名/仓库名」，例如 anthropics/skills');
                 if (!SKILL_BRANCH_RE.test(branch) || !branch || branch.indexOf('..') >= 0) return bad('分支名只能用字母数字和 ._-/，例如 main');
+                if (branch.length > 64) return bad('分支名太长了（最多 64 个字符）'); // qa P3-3: 写侧收紧 {1,64}（读取器容错不动，存量长配置仍可读）
                 const subdir = typeof b.subdir === 'string' ? b.subdir.trim() : '';
                 if (subdir && !subdirSafe(subdir)) return bad('子目录不合法：不能以 / 开头或结尾，不能包含 .. 或盘符');
                 if (list.some(same)) return bad('这个源已经在列表里（同仓库同分支不重复添加）');
@@ -2835,7 +2852,9 @@ function handleClient(ws, msg) {
                         if (replied) return;
                         let t = full;
                         if (!sse) { // 上游不理 stream:true 回了普通 JSON——按旧逻辑整体解析
-                            try { const j = JSON.parse(buf.replace(/data:\s*\[DONE\][\s\S]*$/, '').trim()); const c0 = j.choices && j.choices[0]; const m0 = c0 && c0.message; t = (m0 && (m0.content || m0.reasoning_content)) || ''; }
+                            try { const j = JSON.parse(buf.replace(/data:\s*\[DONE\][\s\S]*$/, '').trim());
+                                if (j && j.error) { const em = (j.error && typeof j.error.message === 'string') ? j.error.message : String(j.error); return sendOnce('解释失败: ' + em.slice(0, 150)); } // qa P3-6: 错误响应不再误报「它没说出什么来」
+                                const c0 = j.choices && j.choices[0]; const m0 = c0 && c0.message; t = (m0 && (m0.content || m0.reasoning_content)) || ''; }
                             catch { return sendOnce('解释失败（服务返回异常）'); }
                         }
                         if (t) { explainCache.set(ck, t); while (explainCache.size > 200) explainCache.delete(explainCache.keys().next().value); sendOnce(t); }

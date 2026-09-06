@@ -264,7 +264,6 @@ async function main() {
         if (!ok) throw new Error('升级后服务未能启动');
 
         ST.ok = true; ST.stage = 'done'; ST.msg = '已升级到 ' + ST.to + '。备份在 ' + backupRel;
-        try { fs.rmSync(unpack, { recursive: true, force: true }); } catch {} // 解压临时目录用完即清
         writeStatus(ST);
         console.log('upgrade complete ->', ST.to);
     } catch (e) {
@@ -300,6 +299,9 @@ async function main() {
         }
         writeStatus(ST);
         process.exitCode = 1;
+    } finally {
+        // qa P3-5: 解压临时树（data/updates/unpack，可达数百 MB）成功/失败/回滚/dry-run 全路径用完即清——运行时残留非用户数据
+        try { fs.rmSync(path.join(UPD, 'unpack'), { recursive: true, force: true }); } catch {}
     }
 }
 main();

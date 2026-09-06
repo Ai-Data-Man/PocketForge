@@ -954,15 +954,17 @@ function endStream(){ if(streamEl){
 } }
 function showExpPop(card,text){ // 解释气泡：定位到按钮下方，越下缘上翻（s69 P2-5），点外部关闭
   let pop=card._exppop;
-  if(!pop){ pop=document.createElement('div'); pop.className='expl-pop'; document.body.appendChild(pop); card._exppop=pop; }
+  if(!pop){ // qa P2-1: document click 只在气泡创建时挂一次；流式 delta 多帧复用同一气泡不再叠加监听（关闭时摘除，重开仍是 1 个）
+    pop=document.createElement('div'); pop.className='expl-pop'; document.body.appendChild(pop); card._exppop=pop;
+    const close=(ev)=>{ if(pop.parentNode && !pop.contains(ev.target)){ pop.remove(); card._exppop=null; document.removeEventListener('click',close); } };
+    setTimeout(()=>document.addEventListener('click',close),50);
+  }
   pop.textContent=text;
   const anchor=card.querySelector('.expbtn')||card.querySelector('summary');
   const r=anchor.getBoundingClientRect();
   pop.style.position='fixed'; pop.style.left=r.left+'px'; pop.style.top=(r.bottom+6)+'px'; pop.style.right='auto';
   const ph=pop.offsetHeight; if(r.bottom+6+ph>innerHeight) pop.style.top=Math.max(8,innerHeight-ph-8)+'px';
   pop.onclick=(ev)=>ev.stopPropagation();
-  const close=(ev)=>{ if(pop.parentNode && !pop.contains(ev.target)){ pop.remove(); card._exppop=null; document.removeEventListener('click',close); } };
-  setTimeout(()=>document.addEventListener('click',close),50);
 }
 function toolCard(upd){
   const stick=nearBottom(); // s69 P2-7
@@ -1866,7 +1868,7 @@ function storePaint(){
         const body={name:sk.dir||sk.name}; if(sk.remote) body.remote=true;
         const r=await apiJSON('/api/skillstore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
         if(!r.ok) throw new Error(r.err||'失败');
-        storeAll=storeAll.filter(s=>s!==sk); el.remove(); loadSkills2();
+        storeAll=storeAll.filter(s=>s!==sk); storePaint(); loadSkills2(); // qa P3-1: 整块重绘（原 el.remove() 不动分页器，翻页切片留旧账）
       }catch(e){ inst.disabled=false; alert('没装成：'+e.message); }
     };
     ops.appendChild(view); ops.appendChild(inst); el.appendChild(ops); box.appendChild(el);
@@ -1902,7 +1904,7 @@ async function loadSkills2(){
         try{
           const res=await apiJSON('/api/skillstore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:sk.name,op:'uninstall'})});
           if(!res.ok) throw new Error(res.err||'失败');
-          el.remove(); loadSkillStore(); // qa-s57(P3): 已装列表与商店面板同步（卸载后该技能回到可装列表）
+          loadSkills2(); loadSkillStore(); // qa-s57(P3): 商店面板同步 + qa P3-1: 已装列表整体重绘（原 el.remove() 不动 installedAll 与分页器）
         }catch(e){ del.disabled=false; alert('没卸成：'+e.message); }
       };
       ops.appendChild(del); el.appendChild(ops); box.appendChild(el);

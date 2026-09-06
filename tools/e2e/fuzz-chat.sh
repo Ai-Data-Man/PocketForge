@@ -193,6 +193,8 @@ assert t and t[0]['origin'] and '<img' in t[0]['origin']['repo'] and '\"' in t[0
 "; ck "evil repo survives /api/skills raw (json layer, P2-1)" $?
 rm -rf "$INST/fuzz-xss-tmp"
 node "$(dirname "$0")/badge-esc-probe.js"; ck "badge esc neutralizes quote+img vector + obadge truncation css (P2-1)" $?
+# qa 2026-09-06 三轮返工桩测：exppop 监听器恒1（30 delta 帧+关后再开）/ sync dirty 补跑不活锁 / 坏源降级+人话警告自愈 / P3-6 P3-5 源码钉子
+node "$(dirname "$0")/qa3-round3-probe.js"; ck "qa3 round3: exppop single-listener + sync dirty-replay + bad-source degrade/warn + nails (21 asserts)" $?
 rm -rf "$REPO/fuzz-gate-tmp" "$INST/fuzz-gate-tmp" "$INST/fuzz-swap-tmp" "$INST/fuzz-swap-tmp.tmp" "$INST/fuzz-swap-tmp.bak" "$INST/fuzz-walk-tmp" "$INST/fuzz-xss-tmp" "$CACHE/fuzz-swap-tmp"; trap - EXIT
 [ ! -d "$INST/fuzz-swap-tmp" ] && [ ! -d "$CACHE/fuzz-swap-tmp" ]; ck "P2-2/P3-4 fuzz temp skills cleaned up" $?
 # s70 切片B: 技能市场源配置化——沙盒自拉桥探针（明细随本日志留痕）
@@ -285,6 +287,13 @@ d=json.load(open(sys.argv[1],encoding='utf-8'))
 assert d['_schema']==2, d['_schema']
 " "$SS"; ck "market skill-add persisted at latest schema (s72)" $?
 mp '{"op":"skill-add","repo":"fuzz-org/fuzz-repo","branch":"main"}' | grep -q '已经在列表里'; ck "market skill-add duplicate rejected (s72)" $?
+# qa 三轮返工 P3-3：branch 长度 {1,64} 写侧收紧——64 收（落盘+随删恢复）、65/200 拒（读取器容错不动，存量长配置仍可读）
+BR64=$(python -c "print('b'*64)")
+mp "{\"op\":\"skill-add\",\"repo\":\"fuzz-org/branch-cap\",\"branch\":\"$BR64\"}" | grep -q '"ok":true'; ck "market skill-add 64-char branch boundary accepted (qa3 P3-3)" $?
+grep -q "\"branch\": \"$BR64\"" "$SS"; ck "market 64-char branch persisted to config (qa3 P3-3)" $?
+mp "{\"op\":\"skill-remove\",\"repo\":\"fuzz-org/branch-cap\",\"branch\":\"$BR64\"}" | grep -q '"ok":true'; ck "market branch-cap source removed (qa3 P3-3 cleanup)" $?
+mp "{\"op\":\"skill-add\",\"repo\":\"fuzz-org/fuzz-repo2\",\"branch\":\"$(python -c "print('b'*65)")\"}" | grep -q '分支名太长'; ck "market skill-add 65-char branch rejected (qa3 P3-3)" $?
+mp "{\"op\":\"skill-add\",\"repo\":\"fuzz-org/fuzz-repo2\",\"branch\":\"$(python -c "print('b'*200)")\"}" | grep -q '分支名太长'; ck "market skill-add 200-char branch rejected (qa3 P3-3)" $?
 mp '{"op":"skill-toggle","repo":"anthropics/skills","branch":"main","enabled":false}' | grep -q '"ok":true'; ck "market skill-toggle disable ok (s72)" $?
 curl -s "$B/api/config/market" | python -c "
 import sys,json
