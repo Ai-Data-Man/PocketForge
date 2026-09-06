@@ -714,13 +714,13 @@ function renderSessions(list){
   const act=real.filter(s=>!archSet[s.sessionId]).sort((a,b)=>byNew(b)-byNew(a));
   const arc=real.filter(s=>archSet[s.sessionId]).sort((a,b)=>byNew(b)-byNew(a));
   archCount=arc.length; paintSideChips(); // IA-2: 归档计数跟随列表刷新
-  if(!act.length&&!arc.length){ box.innerHTML='<div style="padding:12px;font-size:.75rem;color:var(--mut)">还没有对话。点上面「＋ 新对话」开始。</div>'; return; }
+  if(!act.length&&!arc.length){ box.innerHTML='<div style="padding:12px;font-size:.75rem;color:var(--mut)">还没有对话。点上面「＋ 新对话」开始。</div>'; pagerPaint('arch-pager',1,1,0,null); return; } // qa P3: 全空早退同样清翻页器（归档视图下逐条删光可达）
   const trunc=txt=>{ const t=document.createElement('div'); t.className='fnote'; t.style.padding='4px 10px'; t.textContent=txt; box.appendChild(t); };
   if(sideView==='arch'){ // IA-2: 归档视图=全量清单+搜索+行型分页（30/页）——30 截断从此有出路（R2）
-    if(!arc.length){ box.innerHTML='<div style="padding:12px;font-size:.75rem;color:var(--mut)">还没有归档的对话。日常对话右边的 📥 点一下就会收进这里。</div>'; return; }
+    if(!arc.length){ box.innerHTML='<div style="padding:12px;font-size:.75rem;color:var(--mut)">还没有归档的对话。日常对话右边的 📥 点一下就会收进这里。</div>'; pagerPaint('arch-pager',1,1,0,null); return; } // qa P3: 早退清翻页器，防旧「第 N/M 页」残留
     const q=($('arch-q').value||'').trim().toLowerCase();
     const shown=arc.filter(s=>!q||String(s.title||'').toLowerCase().includes(q));
-    if(!shown.length){ box.innerHTML='<div class="fnote" style="padding:8px 10px">没找到带「'+esc(q)+'」的归档对话。</div>'; return; }
+    if(!shown.length){ box.innerHTML='<div class="fnote" style="padding:8px 10px">没找到带「'+esc(q)+'」的归档对话。</div>'; pagerPaint('arch-pager',1,1,0,null); return; } // qa P3: 同上
     const ps=pageSlice(shown,'arch',PAGE_N);
     for(const s of ps.rows) box.appendChild(sessItem(s,true)); // 既有语义原样迁移：仅归档内可删、↩ 还原到活跃
     pagerPaint('arch-pager',listPage.arch,ps.pages,ps.total,p=>{ listPage.arch=p; renderSessions(lastSessions); });
@@ -1971,6 +1971,7 @@ async function loadSkills2(){
   try{ const r=await fetch('/api/skills'); const list=await r.json(); installedAll=list; const box=$('skills-list'); box.innerHTML='';
     const q=(($('skills-q')||{}).value||'').trim().toLowerCase(); // IA-1: 装卸后重绘同样吃已装区搜索
     const shown=list.filter(sk=>!q||String(sk.name||'').toLowerCase().includes(q)||String(sk.description||'').toLowerCase().includes(q));
+    if(!shown.length){ box.innerHTML='<div class="fnote">'+(q?('没有找到「'+esc(q)+'」'):'还没有技能。让它干活时说「记住这个做法」，它就会自己学。')+'</div>'; pagerPaint('skills-pager',1,1,0,null); return; } // qa P3: 镜像 paintInstalled 空态——搜索命中后卸载不再静默空白
     const ps=pageSlice(shown,'ins'); // s71: 同款分页（>SKILL_N 才见翻页器）
     for(const sk of ps.rows){
       const el=document.createElement('div'); el.className='skill';
