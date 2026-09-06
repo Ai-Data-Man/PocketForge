@@ -193,6 +193,12 @@ node "$ROOT/tools/e2e/ui-logic-probe.js" > /tmp/ui-logic-probe.log 2>&1; ck "ui-
 grep -E "^ui-logic-probe" /tmp/ui-logic-probe.log
 rm -f /tmp/ui-logic-probe.log
 
+# ---------- 15) IA 逻辑桩测（s74 转正自 qa tmp/s74-qa-archprobe；详见 tools/e2e/ia-logic-probe.js） ----------
+# 归档视图分页/空态清翻页器 + 技能过滤空态（IA-1/IA-2 缺陷家族回归钉子），同款模板提取桩测
+node "$ROOT/tools/e2e/ia-logic-probe.js" > /tmp/ia-logic-probe.log 2>&1; ck "ia-logic probe 7 ck (arch pager clear + skills empty state)" $?
+grep -E "^ia-logic-probe" /tmp/ia-logic-probe.log
+rm -f /tmp/ia-logic-probe.log
+
 rm -f /tmp/e2e-v1.md
 echo "=============================="
 echo "chat-link E2E: PASS=$PASS FAIL=$FAIL"
