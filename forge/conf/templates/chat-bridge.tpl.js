@@ -2914,13 +2914,17 @@ function handleClient(ws, msg) {
         }
 
         if (msg.type === 'delete_session') {
-            // ACP session/close 不删记录；硬删 sessions.db（messages + sessions 行）
+            // s75(research/17): 硬删 sessions.db 记录（messages + sessions 行）；同时发 ACP session/close
+            // 让 goose 卸载 Agent——否则每会话 ~7 个 extension 进程滞留到 acp 退出。栈外已验证 close 回收成立，
+            // 且对已不存在的 sid 重发 close 也返回空 result（无 error）
             try {
                 const { DatabaseSync } = require('node:sqlite');
                 const db = new DatabaseSync(path.join(ROOT, 'conf', 'goose', 'data', 'sessions', 'sessions.db'));
                 const m = db.prepare('DELETE FROM messages WHERE session_id = ?').run(msg.sessionId);
                 const r = db.prepare('DELETE FROM sessions WHERE id = ?').run(msg.sessionId);
                 db.close();
+                // fire-and-forget：id 不注册 waiting（响应落进 onAcpData 未匹配分支被静默忽略），写失败不阻断删除
+                try { acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: nextId++, method: 'session/close', params: { sessionId: msg.sessionId } }) + '\n'); } catch {}
                 // I1(审查s15): 会话删了就解除其工作区绑定，否则区卡在 active 态永远无法清理
                 const wsm = readWsMap();
                 let unbound = false;

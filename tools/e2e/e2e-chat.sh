@@ -129,6 +129,13 @@ node "$ROOT/tools/e2e/ws-delete-receipt.js" > /tmp/ws-delete-receipt.log 2>&1
 grep -q "PASS" /tmp/ws-delete-receipt.log; ck "ws delete_session receipt delivered before close" $?
 rm -f /tmp/ws-delete-receipt.log
 
+# ---------- 11b) delete_session 发 ACP session/close → extension 进程树回收（s75/research/17） ----------
+# 自相对断言（基线→建会话增长→删→回基线），1s 有界轮询；详见 tools/e2e/ws-close-reclaim.js
+node "$ROOT/tools/e2e/ws-close-reclaim.js" > /tmp/ws-close-reclaim.log 2>&1
+grep -q "PASS" /tmp/ws-close-reclaim.log; ck "ws delete_session reclaims extension process tree" $?
+grep -E "^PROBE-C" /tmp/ws-close-reclaim.log || true
+rm -f /tmp/ws-close-reclaim.log
+
 # ---------- 12) 报告 v2 探针（s65 转正自 s64 tmp 探针；详见 tools/e2e/report-probe.sh） ----------
 # static=39 ck 秒级；sandbox=29 ck 自建沙箱真桥（端口 18790/18799，不碰 dev 栈 8790），实测增量约 31-47s < 90s 门槛 → 挂进全量
 bash "$ROOT/tools/e2e/report-probe.sh" static > /tmp/report-probe-e2e.log 2>&1; ck "report v2 static probe 39 ck" $?
