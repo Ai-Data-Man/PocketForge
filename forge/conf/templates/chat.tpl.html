@@ -1882,7 +1882,18 @@ function paintInstalled(){ // s71: 自 open-skills 内联渲染提升为具名�
       if(pre) pre.remove();
       else { const pre=document.createElement('pre'); pre.textContent=sk.body; el.appendChild(pre); }
     };
-    ops.appendChild(use); ops.appendChild(view); el.appendChild(ops); box.appendChild(el);
+    // s74 P1: 卸载钮并入唯一渲染器——原先只在 loadSkills2 的渲染分支里，默认打开路径（paintInstalled）不出，入口时隐时现
+    const del=document.createElement('button'); del.className='mini'; del.textContent='✕'; del.title='卸载这个技能';
+    del.onclick=async()=>{
+      if(!confirm('卸载技能「'+sk.name+'」？')) return;
+      del.disabled=true;
+      try{
+        const res=await apiJSON('/api/skillstore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:sk.name,op:'uninstall'})});
+        if(!res.ok) throw new Error(res.err||'失败');
+        loadSkills2(); loadSkillStore(); // qa-s57(P3): 商店面板同步 + 已装列表重取重绘（loadSkills2 已收敛为取数+委托）
+      }catch(e){ del.disabled=false; alert('没卸成：'+e.message); }
+    };
+    ops.appendChild(use); ops.appendChild(view); ops.appendChild(del); el.appendChild(ops); box.appendChild(el);
   }
   pagerPaint('skills-pager',listPage.ins,ps.pages,ps.total,p=>{ listPage.ins=p; paintInstalled(); });
 }
@@ -1967,31 +1978,8 @@ async function loadSkillStore(){
   $('store-note').style.display = (translating && remote.some(s=>!s.installed)) ? '' : 'none';
   storePaint();
 }
-async function loadSkills2(){
-  try{ const r=await fetch('/api/skills'); const list=await r.json(); installedAll=list; const box=$('skills-list'); box.innerHTML='';
-    const q=(($('skills-q')||{}).value||'').trim().toLowerCase(); // IA-1: 装卸后重绘同样吃已装区搜索
-    const shown=list.filter(sk=>!q||String(sk.name||'').toLowerCase().includes(q)||String(sk.description||'').toLowerCase().includes(q));
-    if(!shown.length){ box.innerHTML='<div class="fnote">'+(q?('没有找到「'+esc(q)+'」'):'还没有技能。让它干活时说「记住这个做法」，它就会自己学。')+'</div>'; pagerPaint('skills-pager',1,1,0,null); return; } // qa P3: 镜像 paintInstalled 空态——搜索命中后卸载不再静默空白
-    const ps=pageSlice(shown,'ins'); // s71: 同款分页（>SKILL_N 才见翻页器）
-    for(const sk of ps.rows){
-      const el=document.createElement('div'); el.className='skill';
-      el.innerHTML='<div class="nm">'+esc(sk.name)+skillOriginBadge(sk)+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
-      // s57: 卸载已装技能（删 .agents/skills/<dir>）
-      const ops=document.createElement('div'); ops.className='ops';
-      const del=document.createElement('button'); del.className='mini'; del.textContent='✕'; del.title='卸载这个技能';
-      del.onclick=async()=>{
-        if(!confirm('卸载技能「'+sk.name+'」？')) return;
-        del.disabled=true;
-        try{
-          const res=await apiJSON('/api/skillstore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:sk.name,op:'uninstall'})});
-          if(!res.ok) throw new Error(res.err||'失败');
-          loadSkills2(); loadSkillStore(); // qa-s57(P3): 商店面板同步 + qa P3-1: 已装列表整体重绘（原 el.remove() 不动 installedAll 与分页器）
-        }catch(e){ del.disabled=false; alert('没卸成：'+e.message); }
-      };
-      ops.appendChild(del); el.appendChild(ops); box.appendChild(el);
-    }
-    pagerPaint('skills-pager',listPage.ins,ps.pages,ps.total,p=>{ listPage.ins=p; loadSkills2(); });
-  }catch(e){}
+async function loadSkills2(){ // s74 P1: 收敛为「重取数据+委托渲染」——#skills-list 唯一渲染器是 paintInstalled（过滤/空态/分页/卸载钮全在它），双渲染器内容分歧就此消除
+  try{ const r=await fetch('/api/skills'); installedAll=await r.json(); paintInstalled(); }catch(e){}
 }
 $('skills-modal').onclick=e=>{ if(e.target.id==='skills-modal') e.target.classList.remove('on'); };
 // IA-1: 技能弹窗双 tab 切换（管理面板 mtab 同款：rtab 样式 + role=tab/aria-selected，button 天然键盘可达）
