@@ -86,3 +86,9 @@
 - e2e 断言修正（ab5ba53）：PG 切片 1 三族 dump 共存使旧 keep-3 glob 误红，收窄 pg-[0-9]*。
 - 终态回归：**e2e-chat 46/46 + fuzz 138/138**。
 - 挖掘模式内化：user-excavation-mode 记忆（五条自查清单）+端点孤儿自查。
+
+### 追加（同日深夜，中断续办）：PG 切片 2 收口 + 终版包终验
+- **PG 切片 2**（890c2df，三人接力两次会话中断后收干净）：归档索引+workspace-map 双表迁 PG（forge_archive_index/forge_workspace_map 自然键主键，migrations v2/v3）；文件先行双写+pg 态整表同步（真实数据 archive=158/wsmap=126 对账吻合）；**P3-4 实修**（PG 较新行文件收编不覆盖+usage 逐计数器取大合并——切片 1 遗留护栏兑现）；硬删会话同步清归档行；四态失败面沿用（pgdown 抽测 10/10）。fuzz **142/142**（+4）。
+- 接手过程实修真 bug：p34 探针 junction 整树 conf 致探针桥与 dev 栈**双 goose 并发写同一 sessions.db**（假红家族根因，改静态拷贝隔离，连跑两轮全绿）；中断会话曾把 config/permission.yaml 写成 NTFS INDX 垃圾（同尺寸异内容——**会话中断的文件系统级破坏首次实录，git checkout 还原**）。
+- 口径偏差记档：切片 2 落地=「文件真相+PG 镜像」，读写全切 PG 主挂切片 3（与切片 1 usage 同构，保守正确）。
+- 终版包 36917748 首启探针 **15/15**（stamp 修复真冷启 VERIFIED-RUN，f1a0383 探针 S2 物化前置）；打包坑留痕：必须显式 RELEASE_TAG（裸跑 git describe 落旧 tag v0.9.8）。
