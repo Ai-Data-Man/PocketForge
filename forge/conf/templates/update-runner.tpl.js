@@ -22,7 +22,30 @@ function writeStatus(st) {
 }
 let ST = { stage: 'starting', ok: false, msg: '', pct: 0 };
 writeStatus(ST);
-function say(stage, msg, pct) { ST.stage = stage; if (msg !== undefined) ST.msg = msg; if (pct !== undefined) ST.pct = pct; console.log('[upd]', stage, msg || '', pct != null ? pct + '%' : ''); writeStatus(ST); }
+// ---- P1（s69 遗留①）：落盘日志 + 阶段心跳 + 总超时 ----
+// runner 是 detached+stdio:ignore 的孤进程，stdout 无人接收——挂死时零痕迹（s73 实录 1 次：
+// stop 后 17min 无输出无日志进程消失）。全程关键输出 append 到 data/logs/update-runner.log
+// （data/ 属 PROTECTED 永不入差量）；写入失败静默降级——磁盘满/权限不得让升级本身失败。
+const LOG_FILE = path.join(ROOT, 'data', 'logs', 'update-runner.log');
+function flog(line) {
+    try { fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true }); fs.appendFileSync(LOG_FILE, new Date().toISOString() + ' ' + line + '\n'); } catch {}
+}
+// 总超时上限 20 分钟：325MB 级包+慢盘下下载/解压/逐文件 hash 实测可超 10min，取一倍余量；
+// 超时经 catch→既有回滚路径恢复备份。检测用阶段间检查点累计（每阶段完成打点时核对），零新依赖。
+const UPGRADE_TIMEOUT_MS = 20 * 60 * 1000;
+const T0 = Date.now();
+function checkpoint(stage) {
+    flog('heartbeat: ' + stage + ' 完成 +' + ((Date.now() - T0) / 1000).toFixed(1) + 's');
+    if (Date.now() - T0 > UPGRADE_TIMEOUT_MS) throw new Error('升级总耗时超过 ' + Math.round(UPGRADE_TIMEOUT_MS / 60000) + ' 分钟上限（阶段 ' + stage + '），主动回滚');
+}
+let lastFlogKey = '', lastFlogTs = 0;
+function say(stage, msg, pct) {
+    ST.stage = stage; if (msg !== undefined) ST.msg = msg; if (pct !== undefined) ST.pct = pct;
+    console.log('[upd]', stage, msg || '', pct != null ? pct + '%' : '');
+    const key = stage + '|' + (msg || ''); // 下载进度同 key 5s 节流落盘，防逐 chunk 刷爆日志
+    if (key !== lastFlogKey || Date.now() - lastFlogTs >= 5000) { lastFlogKey = key; lastFlogTs = Date.now(); flog('[upd] ' + stage + ' ' + (msg || '') + (pct != null ? ' ' + pct + '%' : '')); }
+    writeStatus(ST);
+}
 
 // ---- 参数 ----
 const args = process.argv.slice(2);
@@ -207,8 +230,11 @@ async function main() {
     try {
         localVer = (fs.readFileSync(path.join(ROOT, 'VERSION'), 'utf8').trim()) || 'dev';
         ST.from = localVer;
+        flog('=== 升级开始 ' + localVer + ' -> ?' + (STAGED ? '（离线包 ' + STAGED + '）' : '') + ' ===');
         const zipFile = await locateZip();
+        checkpoint('下载');
         verifySha(zipFile);
+        checkpoint('校验');
         const unpack = unzip(zipFile);
         // 新树根 = 解压目录下若只有单一 forge-pkg 内容则直接是它
         const newRoot = unpack;
@@ -243,7 +269,8 @@ async function main() {
         }
         fs.writeFileSync(path.join(backupDir, 'manifest.json'), JSON.stringify({ ts, from: localVer, to: ST.to, applied, added, deleted }, null, 2));
 
-        stopStack();
+        await stopStack(); // P2（s69 遗留①）：原未 await——差量替换与栈收杀并发，清杀/重启竞态
+        checkpoint('停栈');
 
         // 应用
         say('apply', '写入新版本文件…');
@@ -257,20 +284,27 @@ async function main() {
             try { fs.rmSync(path.join(ROOT, rel.split('/').join(path.sep)), { force: true }); } catch {}
         }
 
+        checkpoint('差量替换');
+
         // 重启 + 健康检查（90 秒）
         say('restart', '重启数字员工…');
         startStack();
         const ok = await healthz(90000, ST.to);
         if (!ok) throw new Error('升级后服务未能启动');
+        checkpoint('重启');
 
         ST.ok = true; ST.stage = 'done'; ST.msg = '已升级到 ' + ST.to + '。备份在 ' + backupRel;
         writeStatus(ST);
         console.log('upgrade complete ->', ST.to);
+        flog('=== 升级完成 ' + localVer + ' -> ' + ST.to + ' ===');
     } catch (e) {
         console.error('UPGRADE FAILED:', e.message);
+        flog('UPGRADE FAILED@' + ST.stage + ': ' + (e.message || e));
         // 回滚：还原备份并重启旧版
+        // P1 总超时可在 stop 之后任一检查点触发——此时栈已停（文件可能未动），同样须恢复+重启；
+        // stop 段恢复=同字节回写无副作用（备份在停栈前已落）
         try {
-            if (ST.stage === 'apply' || ST.stage === 'restart') {
+            if (ST.stage === 'stop' || ST.stage === 'apply' || ST.stage === 'restart') {
                 say('rollback', '失败，正在回滚…');
                 const bd = fs.readdirSync(UPD).filter(n => n.startsWith('backup-')).sort().pop();
                 if (bd) {
@@ -291,6 +325,7 @@ async function main() {
                 startStack();
                 await healthz(60000, localVer);
                 ST.ok = false; ST.rolledBack = true; ST.msg = '升级失败已自动回滚到原版本: ' + (e.message || e);
+                flog('=== 已回滚并重启 ' + localVer + ' ===');
             } else {
                 ST.ok = false; ST.msg = String(e.message || e);
             }
