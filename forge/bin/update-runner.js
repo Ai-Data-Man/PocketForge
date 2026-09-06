@@ -36,7 +36,7 @@ const UPGRADE_TIMEOUT_MS = 20 * 60 * 1000;
 const T0 = Date.now();
 function checkpoint(stage) {
     flog('heartbeat: ' + stage + ' 完成 +' + ((Date.now() - T0) / 1000).toFixed(1) + 's');
-    if (Date.now() - T0 > UPGRADE_TIMEOUT_MS) throw new Error('升级总耗时超过 ' + Math.round(UPGRADE_TIMEOUT_MS / 60000) + ' 分钟上限（阶段 ' + stage + '），主动回滚');
+    if (Date.now() - T0 > UPGRADE_TIMEOUT_MS) throw new Error('升级总耗时超过 ' + Math.ceil(UPGRADE_TIMEOUT_MS / 60000) + ' 分钟上限（阶段 ' + stage + '），主动回滚');
 }
 let lastFlogKey = '', lastFlogTs = 0;
 function say(stage, msg, pct) {
@@ -81,36 +81,50 @@ function walkMap(dir, baseDir, out) {
 }
 
 // ---- HTTP(S)，支持可选 http 代理（CONNECT 隧道）----
+// 双超时（qa s75 实锤：原实现零超时——TCP 建链/正文停滞时 promise 永不 settle，
+// 20min 总超时检查点在该窗口不可达=死信）：连接 30s=建链（含代理 CONNECT 握手）到
+// 响应头到达；空闲 120s=正文相邻 chunk 间隔上限（325MB 级包+慢盘/弱网实测间隔秒级，
+// 只拦停滞不误伤慢速）。超时统一 destroy(error)→既有 error 监听 reject→catch/回滚，零新依赖。
+const CONNECT_TIMEOUT_MS = 30 * 1000;
+const IDLE_TIMEOUT_MS = 120 * 1000;
 function fetchBuf(url, redirects) {
     redirects = redirects || 0;
     return new Promise((resolve, reject) => {
         const u = new URL(url);
         const mod = u.protocol === 'https:' ? https : http;
         const opts = { hostname: u.hostname, port: u.port || (u.protocol === 'https:' ? 443 : 80), path: u.pathname + u.search, headers: { 'user-agent': 'PocketForge-Updater' } };
+        let live = null; // 现役请求句柄：连接钟到点 destroy 触发其 error→reject
+        const connT = setTimeout(() => live.destroy(new Error('连接超时：' + Math.ceil(CONNECT_TIMEOUT_MS / 1000) + 's 未收到响应头')), CONNECT_TIMEOUT_MS);
         const done = (res) => {
+            clearTimeout(connT);
             if ([301, 302, 307, 308].includes(res.statusCode)) {
                 res.resume();
                 if (redirects > 4) return reject(new Error('重定向过多'));
                 return resolve(fetchBuf(res.headers.location, redirects + 1));
             }
             if (res.statusCode !== 200) { res.resume(); return reject(new Error('HTTP ' + res.statusCode)); }
+            const sock = res.socket; // 'end' 时 res.socket 可能已被 agent 回收置 null——钉住引用（drill 实锤）
+            sock.setTimeout(IDLE_TIMEOUT_MS, () => res.destroy(new Error('下载停滞：' + Math.ceil(IDLE_TIMEOUT_MS / 1000) + 's 无新数据'))); // socket 有数据自动复零
             const chunks = [];
             let got = 0; const total = Number(res.headers['content-length'] || 0);
             res.on('data', c => { chunks.push(c); got += c.length; if (total) say('download', '下载中', Math.round(got / total * 100)); });
-            res.on('end', () => resolve(Buffer.concat(chunks)));
+            res.on('end', () => { sock.setTimeout(0); resolve(Buffer.concat(chunks)); });
             res.on('error', reject);
         };
         if (PROXY && u.protocol === 'https:') {
             const pu = new URL(PROXY);
             const preq = http.request({ hostname: pu.hostname, port: pu.port || 80, method: 'CONNECT', path: u.hostname + ':443' });
+            live = preq;
             preq.on('connect', (res2, sock) => {
                 if (res2.statusCode !== 200) { sock.destroy(); return reject(new Error('代理连接失败 ' + res2.statusCode)); }
                 const req = https.request(Object.assign({}, opts, { socket: sock, agent: false }), done);
+                live = req;
                 req.on('error', reject); req.end();
             });
             preq.on('error', reject); preq.end();
         } else {
             const req = mod.request(opts, done);
+            live = req;
             req.on('error', reject); req.end();
         }
     });
