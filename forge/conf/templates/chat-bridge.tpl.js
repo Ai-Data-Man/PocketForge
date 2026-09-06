@@ -638,7 +638,7 @@ function readSkillSources() {
     const warnOnce = msg => { if (!stateWarnings.includes(msg)) stateWarnings.push(msg); console.warn(msg); };
     let raw = null;
     try { raw = FSS.readFileSync(SKILL_SOURCES_FILE, 'utf8'); } catch {
-        try { FSS.mkdirSync(path.dirname(SKILL_SOURCES_FILE), { recursive: true }); atomicWrite(SKILL_SOURCES_FILE, JSON.stringify({ _schema: 1, sources: dft() }, null, 2)); } catch {}
+        try { FSS.mkdirSync(path.dirname(SKILL_SOURCES_FILE), { recursive: true }); atomicWrite(SKILL_SOURCES_FILE, JSON.stringify({ _schema: STATE_SCHEMAS['config/skill-sources.json'].latest, sources: dft() }, null, 2)); } catch {} // s73: stamp 跟 registry latest（f6ec76a 漏改致首启 1/二启迁移空转+残备份）
         return dft();
     }
     let j = null; try { j = JSON.parse(raw.replace(/^\uFEFF/, '')); } catch {}

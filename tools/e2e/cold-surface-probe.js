@@ -118,6 +118,8 @@ function parseUserBlock(raw) {
     console.log('  S2 sources: ' + ss.sources.map(s => s.repo).join(', '));
 
     // ---------- ③mcp-catalog 3 条 ----------
+    // s73 实证：目录文件懒落盘（readMcpCatalog 首次被调才生成；冷启无 UI 交互时不存在）——先走 API 物化再读文件（ENOENT 即红）
+    await get(BRIDGE_PORT, '/api/config/market');
     const mc = readJson('data/config/mcp-catalog.json');
     ck('S3: mcp-catalog _schema:1 with exactly 3 fully-formed entries', () => {
         if (mc._schema !== 1) throw new Error('_schema=' + mc._schema);
