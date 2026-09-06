@@ -165,7 +165,8 @@ wait_backup_done 'backup ok' || true   # 完成门：backup.log 每次 pc 重跑
 if grep -q 'pg_dump ok' "$FORGE/data/logs/backup.log"; then ck "backup state-A: pg_dump ok into data/pg-dumps (PG present)" 0; else ck "backup state-A: pg_dump ok into data/pg-dumps (PG present)" 1; fi
 NEWU=$(ls -t "$FORGE/data/pg-dumps/"pg-*.sql | head -1)
 if grep -q 'PostgreSQL database dump' "$NEWU"; then ck "backup state-A: newest dump has PostgreSQL dump marker" 0; else ck "backup state-A: newest dump has PostgreSQL dump marker" 1; fi
-[ "$(ls "$FORGE/data/pg-dumps/"pg-*.sql | wc -l)" = "3" ] && [ ! -f "$FORGE/data/pg-dumps/pg-1999-01-01T00-00-00.sql" ]; A3=$?
+# s73: glob 收窄为 pg-[0-9]*（PG 切片1 起 pg-dumps 目录共存三族——每日主库 pg-YYYYMMDD/桥库 pg-bridge-*/迁移留档 forge-bridge-pre-*，各族独立 keep-3，见 5e970eb）
+[ "$(ls "$FORGE/data/pg-dumps/"pg-[0-9]*.sql | wc -l)" = "3" ] && [ ! -f "$FORGE/data/pg-dumps/pg-1999-01-01T00-00-00.sql" ]; A3=$?
 ck "backup state-A: keep-3 pruned oldest dump" "$A3"
 NEWZ=$(ls -t "$FORGE/data/backups/"forge-backup-*.zip | head -1)
 unzip -l "$NEWZ" > /tmp/e2e-ziplist.txt 2>&1   # 落地再 grep：grep -q 早退会 SIGPIPE unzip，pipefail 下中止全量（s65 同族）
