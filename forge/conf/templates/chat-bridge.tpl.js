@@ -94,7 +94,7 @@ function upErr(e, msg) { const o = { ok: false, err: msg }; const t = e && (e.ty
 // s50e: strip UTF-8 BOM——记事本默认带 BOM 保存，不剥则 JSON.parse 抛错、配置"消失"
 function readJson(f, dft) { try { return JSON.parse(FSS.readFileSync(f, 'utf8').replace(/^\uFEFF/, '')); } catch { return dft; } }
 // ---- P31-③ 匿名本地使用统计 v1：仅写本地 data/stats/usage-YYYYMMDD.json，无外传、无 UI ----
-// permissionCards.timeout v1 恒 0：前端 60s 超时兜底同样发 acp_reply（s71 G2 起为 reject_once），桥内与手动选择不可区分、计入 denied（口径漂移记录在案）
+// permissionCards.timeout：前端 60s 超时兜底同样发 acp_reply（s71 G2 起为 reject_once），桥内按「回包距 shown ≥60s」判超时计 timeout（s75 口径修正）；存量旧文件按旧口径累计（denied 含超时拒绝），读侧不回改
 // artifactsGenerated v1 恒 0：gen-xlsx 走 goose 扩展不经过桥，无侵入的工作区 diff 扫描代价大，先只占位
 const STATS_DIR = path.join(ROOT, 'data', 'stats');
 const S26_ERR_RE = /Ran into this error|Server error|rate limit|timed? out|ECONN|fetch failed|could not connect|network error/i; // 与前端 endStream(s26) 同款上游故障正则
@@ -106,7 +106,7 @@ function classifyUpstream(txt) { // s50e: 上游错误细分（401=Key 没配好
     if (/timed out|timeout/i.test(s)) return 'timeout';
     return 'server';
 }
-const permKinds = new Map(); // request_permission callId -> (optionId -> kind)，供 acp_reply 分类
+const permKinds = new Map(); // request_permission callId -> {m: optionId->kind, t: shown 时间戳}，供 acp_reply 分类+超时判定
 const turnText = new Map();  // sessionId -> 当轮 agent 文本累计（s26 流内报错检测用）
 function statsDay() { const d = new Date(), p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
 function statsFlush() {
@@ -649,7 +649,7 @@ function onAcpData(chunk) {
                 try {
                     const m = new Map();
                     for (const o of ((msg.params && msg.params.options) || [])) m.set(o.optionId, o.kind);
-                    permKinds.set(msg.id, m);
+                    permKinds.set(msg.id, { m, t: Date.now() });
                     if (permKinds.size > 200) permKinds.clear();
                 } catch {}
             }
@@ -3111,11 +3111,13 @@ function handleClient(ws, msg) {
         }
 
         if (msg.type === 'acp_reply') {
-            // P31-③: 权限卡选择分类（kind 由 shown 时的映射还原；超时兜底与手动选择桥内不可区分，不计 timeout）
+            // P31-③: 权限卡选择分类（kind 由 shown 时的映射还原）。超时兜底与手动点击的消息形态一致（chat.tpl 同走 settle），
+            // 唯一可区分信号=到达时间：前端 done 闸门保证手动回包距 shown <60s、超时兜底 ≥60s——据此计 timeout，不再混入 denied（s75）
             try {
-                const km = permKinds.get(msg.callId); permKinds.delete(msg.callId);
-                const kind = km && km.get(msg.option);
-                if (kind === 'allow_once' || kind === 'allow_always') statsBump('permissionCards.approved');
+                const ke = permKinds.get(msg.callId); permKinds.delete(msg.callId);
+                const kind = ke && ke.m.get(msg.option);
+                if (ke && Date.now() - ke.t >= 60000) statsBump('permissionCards.timeout');
+                else if (kind === 'allow_once' || kind === 'allow_always') statsBump('permissionCards.approved');
                 else if (kind === 'reject_once' || kind === 'reject_always') statsBump('permissionCards.denied');
             } catch {}
             acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: msg.callId, result: { outcome: { outcome: 'selected', optionId: msg.option } } }) + '\n');
