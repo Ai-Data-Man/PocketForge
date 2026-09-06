@@ -107,6 +107,10 @@ function parseUserBlock(raw) {
         if (!/第 2 步：校验文件（\.sha256）/.test(page)) throw new Error('step-2 label missing');
     });
 
+    // s73 实证：skill-sources/mcp-catalog 均懒落盘（readSkillSources/readMcpCatalog 首次被调才生成；冷启无 UI 交互时不存在，
+    // S2 直读会与 +15s 定时预热物化赛跑 ENOENT）——S2/S3 统一先走 /api/config/market 产品物化路径再读文件（ENOENT 即红）
+    await get(BRIDGE_PORT, '/api/config/market');
+
     // ---------- ②skill-sources 双源首启 ----------
     const ss = readJson('data/config/skill-sources.json');
     ck('S2: skill-sources _schema:2 first-boot defaults with exactly 2 enabled distinct sources', () => {
@@ -118,8 +122,6 @@ function parseUserBlock(raw) {
     console.log('  S2 sources: ' + ss.sources.map(s => s.repo).join(', '));
 
     // ---------- ③mcp-catalog 3 条 ----------
-    // s73 实证：目录文件懒落盘（readMcpCatalog 首次被调才生成；冷启无 UI 交互时不存在）——先走 API 物化再读文件（ENOENT 即红）
-    await get(BRIDGE_PORT, '/api/config/market');
     const mc = readJson('data/config/mcp-catalog.json');
     ck('S3: mcp-catalog _schema:1 with exactly 3 fully-formed entries', () => {
         if (mc._schema !== 1) throw new Error('_schema=' + mc._schema);
