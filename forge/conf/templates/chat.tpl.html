@@ -255,6 +255,11 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 /* s69 P2-6: 模态头部可见关闭钮（.mini 同族方形缩小版） */
 .mclose{float:right;width:30px;height:30px;padding:0;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);cursor:pointer;font-size:.8rem;color:var(--tx-2);transition:all .12s}
 .mclose:hover{border-color:var(--acc);color:var(--acc)}
+/* IA-1: 技能源技术区折叠容器（R3 同域不同层；details 原生键盘可达） */
+details.tz>summary{list-style:none;cursor:pointer;font-size:.85rem;font-weight:600;color:var(--tx-2);user-select:none}
+details.tz>summary::-webkit-details-marker{display:none}
+details.tz>summary::before{content:'▸ '}
+details.tz[open]>summary::before{content:'▾ '}
 .prov{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--line);border-radius:var(--r-m);margin-bottom:6px;font-size:.8rem;cursor:pointer;transition:border-color .12s}
 .prov:hover{border-color:var(--line-strong)}
 .prov.active{border-color:var(--acc);background:var(--acc-softer);border-width:2px}
@@ -364,14 +369,39 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 <div id="skills-modal" class="modal-bg"><div class="panel-box" role="dialog" aria-modal="true" aria-label="小 forge 的技能（它学会的本领）">
   <h3>🧩 小 forge 的技能（它学会的本领）<button class="mclose" title="关闭" aria-label="关闭" onclick="$('skills-modal').classList.remove('on')">✕</button></h3>
   <div class="fnote" style="margin-bottom:10px">这些是它积累的操作手册。聊天时说相关的活儿它就会自动用；也可以点「让它现在用」。</div>
-  <input id="store-q" placeholder="搜可添加的技能…（只搜下面🛒清单）" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
-  <div id="skills-list"></div>
-  <div id="skills-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 0 6px"></div>
-  <h3 style="margin:18px 0 8px">🛒 可添加的技能</h3>
-  <div class="fnote" style="margin-bottom:10px">来源：本机技能库 + 🌐 Anthropic 官方开源技能库 + 🌐 宝玉开源技能库。装之前先点「先看内容」过一眼，确认没问题再添加。添加后立刻生效。</div>
-  <div id="store-list"></div>
-  <div id="store-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 0 6px"></div>
-  <div class="fnote" id="store-note" style="display:none">中文说明整理中，稍后重开可见。</div>
+  <!-- IA-1: R1 同实体两阶段 tab 化——已装/可装各自独立清单，不再同滚堆叠 -->
+  <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:8px" role="tablist">
+    <button class="rtab on stab" data-pane="ins" role="tab" aria-selected="true">我的技能</button>
+    <button class="rtab stab" data-pane="store" role="tab" aria-selected="false">＋ 添加新技能</button>
+  </div>
+  <div class="spane" id="spane-ins">
+    <input id="skills-q" placeholder="🔍 在我的技能里找…" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
+    <div id="skills-list"></div>
+    <div id="skills-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 0 6px"></div>
+  </div>
+  <div class="spane" id="spane-store" style="display:none">
+    <input id="store-q" placeholder="🔍 搜可添加的技能…" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
+    <div class="fnote" style="margin-bottom:10px">来源：本机技能库 + 🌐 Anthropic 官方开源技能库 + 🌐 宝玉开源技能库。装之前先点「先看内容」过一眼，确认没问题再添加。添加后立刻生效。</div>
+    <div id="store-list"></div>
+    <div id="store-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 0 6px"></div>
+    <div class="fnote" id="store-note" style="display:none">中文说明整理中，稍后重开可见。</div>
+    <!-- IA-1: R3 同域不同层——技能源配置从管理面板🔌插件页搬入其使用域（改源→来市场看货），折叠收起默认不可见 -->
+    <details class="tz" style="border-top:1px solid var(--line);margin-top:12px;padding-top:10px">
+      <summary>技术设置：技能从哪进货（默认收起）</summary>
+      <div class="fnote" style="margin:8px 0">技能市场从这些仓库进货（给懂技术的你，平时不用动）。<b>技能源规矩</b>：公开开源仓库、许可证在白名单内（MIT / Apache-2.0 等）、添加前先去仓库把内容过目一遍。</div>
+      <div style="flex:1;min-width:270px">
+        <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">技能源</div>
+        <div id="mkt-src-list" style="max-height:190px;overflow-y:auto"></div>
+        <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">
+          <input id="mkt-src-repo" placeholder="用户名/仓库名" style="flex:2;min-width:120px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
+          <input id="mkt-src-branch" value="main" placeholder="分支" style="flex:1;min-width:56px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
+          <input id="mkt-src-subdir" placeholder="子目录(可选)" style="flex:1;min-width:84px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
+          <button id="mkt-src-add" class="mini">添加</button>
+        </div>
+        <div class="fnote" id="mkt-src-note"></div>
+      </div>
+    </details>
+  </div>
 </div></div>
 <div id="manage-modal" class="modal-bg"><div class="panel-box" role="dialog" aria-modal="true" aria-label="管理小 forge">
   <h3>🧠 管理小 forge<button class="mclose" title="关闭" aria-label="关闭" onclick="$('manage-modal').classList.remove('on');clearTimeout(mcpPollTimer)">✕</button></h3>
@@ -415,38 +445,23 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
     <div class="fnote" style="margin-bottom:10px">这些是官方出品的增强插件，装好后重启数字员工生效。</div>
     <div id="mcp-list" style="max-height:340px;overflow-y:auto"></div>
     <div id="mcp-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:4px 0"></div>
+    <!-- IA-1: 左栏（mkt-src）已随使用域搬入技能弹窗；残区单栏化，名实相符 -->
     <div style="border-top:1px solid var(--line);margin-top:12px;padding-top:10px">
-      <h3 style="margin:0 0 6px">数据源与目录管理</h3>
-      <div class="fnote" style="margin-bottom:8px">这里是技能市场「从哪进货」、插件目录「有哪些货」的配置面（给懂技术的你，平时不用动）。<b>技能源规矩</b>：公开开源仓库、许可证在白名单内（MIT / Apache-2.0 等）、添加前先去仓库把内容过目一遍。<b>插件目录新条目四道闸门</b>：① 许可证在白名单内 ② 装好后真实调用过一次 ③ npm 上有包、有维护方 ④ 注意 MCP 协议大版本不兼容风险。自己加的货自己负责。</div>
-      <div style="display:flex;gap:18px;flex-wrap:wrap">
-        <div style="flex:1;min-width:270px">
-          <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">技能源</div>
-          <div id="mkt-src-list" style="max-height:190px;overflow-y:auto"></div>
-          <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">
-            <input id="mkt-src-repo" placeholder="用户名/仓库名" style="flex:2;min-width:120px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
-            <input id="mkt-src-branch" value="main" placeholder="分支" style="flex:1;min-width:56px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
-            <input id="mkt-src-subdir" placeholder="子目录(可选)" style="flex:1;min-width:84px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
-            <button id="mkt-src-add" class="mini">添加</button>
-          </div>
-          <div class="fnote" id="mkt-src-note"></div>
-        </div>
-        <div style="flex:1;min-width:270px">
-          <div style="font-weight:600;font-size:.85rem;margin-bottom:4px">插件目录</div>
-          <div id="mkt-cat-list" style="max-height:130px;overflow-y:auto"></div>
-          <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">
-            <input id="mkt-cat-id" placeholder="标识(字母数字-)" style="flex:1;min-width:96px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
-            <input id="mkt-cat-name" placeholder="显示名称" style="flex:1;min-width:96px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
-            <input id="mkt-cat-license" placeholder="许可证 如 MIT" style="flex:1;min-width:88px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
-          </div>
-          <div style="display:flex;gap:5px;margin-top:5px;flex-wrap:wrap">
-            <input id="mkt-cat-pkg" placeholder="npm 包名" style="flex:2;min-width:120px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
-            <input id="mkt-cat-entry" placeholder="入口 node_modules/包/dist/index.js" style="flex:2;min-width:140px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
-          </div>
-          <div style="display:flex;gap:5px;margin-top:5px;flex-wrap:wrap">
-            <input id="mkt-cat-desc" placeholder="一句话说明" style="flex:1;min-width:140px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
-            <button id="mkt-cat-add" class="mini">添加</button>
-          </div>
-        </div>
+      <h3 style="margin:0 0 6px">插件目录（技术）</h3>
+      <div class="fnote" style="margin-bottom:8px">这里是插件目录「有哪些货」的配置面（给懂技术的你，平时不用动）。<b>插件目录新条目四道闸门</b>：① 许可证在白名单内 ② 装好后真实调用过一次 ③ npm 上有包、有维护方 ④ 注意 MCP 协议大版本不兼容风险。自己加的货自己负责。</div>
+      <div id="mkt-cat-list" style="max-height:130px;overflow-y:auto"></div>
+      <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">
+        <input id="mkt-cat-id" placeholder="标识(字母数字-)" style="flex:1;min-width:96px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
+        <input id="mkt-cat-name" placeholder="显示名称" style="flex:1;min-width:96px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
+        <input id="mkt-cat-license" placeholder="许可证 如 MIT" style="flex:1;min-width:88px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
+      </div>
+      <div style="display:flex;gap:5px;margin-top:5px;flex-wrap:wrap">
+        <input id="mkt-cat-pkg" placeholder="npm 包名" style="flex:2;min-width:120px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
+        <input id="mkt-cat-entry" placeholder="入口 node_modules/包/dist/index.js" style="flex:2;min-width:140px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
+      </div>
+      <div style="display:flex;gap:5px;margin-top:5px;flex-wrap:wrap">
+        <input id="mkt-cat-desc" placeholder="一句话说明" style="flex:1;min-width:140px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
+        <button id="mkt-cat-add" class="mini">添加</button>
       </div>
     </div>
   </div>
@@ -1782,6 +1797,7 @@ function renderAtMenu(q){
 $('open-skills').onclick=async()=>{
   $('skills-modal').classList.add('on');
   listPage.ins=1; listPage.store=1; // s71: 重开弹窗回第 1 页
+  showStab('ins'); // IA-1: 每次打开默认落「我的技能」
   try{
     const r=await fetch('/api/skills'); installedAll=await r.json(); paintInstalled();
   }catch(e){ $('skills-list').innerHTML='<div class="fnote">读取失败：'+e.message+'</div>'; pagerPaint('skills-pager',1,1,0,null); }
@@ -1791,8 +1807,10 @@ let installedAll=[]; // s71: 已装清单缓存——open 弹窗与装/卸刷新
 function paintInstalled(){ // s71: 自 open-skills 内联渲染提升为具名函数以支持翻页重渲染；渲染内容与原内联逐行一致
   const box=$('skills-list'); if(!box) return;
   box.innerHTML='';
-  if(!installedAll.length){ box.innerHTML='<div class="fnote">还没有技能。让它干活时说「记住这个做法」，它就会自己学。</div>'; pagerPaint('skills-pager',1,1,0,null); return; }
-  const ps=pageSlice(installedAll,'ins'); // >SKILL_N 才出现翻页器，阈值内零机制
+  const q=($('skills-q').value||'').trim().toLowerCase(); // IA-1: 已装区搜索（R2 9-30 档，仿 store-q）
+  const shown=installedAll.filter(sk=>!q||String(sk.name||'').toLowerCase().includes(q)||String(sk.description||'').toLowerCase().includes(q));
+  if(!shown.length){ box.innerHTML='<div class="fnote">'+(q?('没有找到「'+esc(q)+'」'):'还没有技能。让它干活时说「记住这个做法」，它就会自己学。')+'</div>'; pagerPaint('skills-pager',1,1,0,null); return; }
+  const ps=pageSlice(shown,'ins'); // >SKILL_N 才出现翻页器，阈值内零机制
   for(const sk of ps.rows){
     const el=document.createElement('div'); el.className='skill';
     el.innerHTML='<div class="nm">'+esc(sk.name)+skillOriginBadge(sk)+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
@@ -1891,7 +1909,9 @@ async function loadSkillStore(){
 }
 async function loadSkills2(){
   try{ const r=await fetch('/api/skills'); const list=await r.json(); installedAll=list; const box=$('skills-list'); box.innerHTML='';
-    const ps=pageSlice(list,'ins'); // s71: 同款分页（>SKILL_N 才见翻页器）
+    const q=(($('skills-q')||{}).value||'').trim().toLowerCase(); // IA-1: 装卸后重绘同样吃已装区搜索
+    const shown=list.filter(sk=>!q||String(sk.name||'').toLowerCase().includes(q)||String(sk.description||'').toLowerCase().includes(q));
+    const ps=pageSlice(shown,'ins'); // s71: 同款分页（>SKILL_N 才见翻页器）
     for(const sk of ps.rows){
       const el=document.createElement('div'); el.className='skill';
       el.innerHTML='<div class="nm">'+esc(sk.name)+skillOriginBadge(sk)+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
@@ -1913,8 +1933,16 @@ async function loadSkills2(){
   }catch(e){}
 }
 $('skills-modal').onclick=e=>{ if(e.target.id==='skills-modal') e.target.classList.remove('on'); };
+// IA-1: 技能弹窗双 tab 切换（管理面板 mtab 同款：rtab 样式 + role=tab/aria-selected，button 天然键盘可达）
+function showStab(name){
+  document.querySelectorAll('#skills-modal .stab').forEach(b=>{const on=b.dataset.pane===name;b.classList.toggle('on',on);b.setAttribute('aria-selected',on);});
+  document.querySelectorAll('#skills-modal .spane').forEach(p=>p.style.display=p.id==='spane-'+name?'':'none');
+}
+document.querySelectorAll('#skills-modal .stab').forEach(b=>b.onclick=()=>showStab(b.dataset.pane));
 // s56: 技能商店搜索（防抖 200ms，过滤 name/description/desc_zh）
 $('store-q').oninput=()=>{ clearTimeout(storeQT); storeQT=setTimeout(()=>{ listPage.store=1; storePaint(); },200); }; // s71: 过滤变化重置回第 1 页
+let skillsQT=null; // IA-1: 已装区搜索（同款防抖；过滤变化回第 1 页）
+$('skills-q').oninput=()=>{ clearTimeout(skillsQT); skillsQT=setTimeout(()=>{ listPage.ins=1; paintInstalled(); },200); };
 
 // 消息操作：复制 / 重发
 document.getElementById('chat').addEventListener('click', async e=>{
