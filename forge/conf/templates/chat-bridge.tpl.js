@@ -603,7 +603,8 @@ function spawnAcp() {
         // s71(G1): 不注入 GOOSE_MODE——回落 config.yaml 的 smart_approve（env 会压 config，base.rs get_param），
         // permission.yaml 的 ask_before/never_allow 自此真实生效（auto 分支根本不查询）
         GOOSE_PROVIDER: 'openai',
-        GOOSE_MODEL: (act && act.models && act.models[0]) || secrets.GOOSE_MODEL_NAME || 'myopencode/glm-5.2',
+        // 末级回落=种子（可选池首模型）；2026-09-08 myopencode 线路已死（服务商侧 404），s76 遗留①清理
+        GOOSE_MODEL: (act && act.models && act.models[0]) || secrets.GOOSE_MODEL_NAME || 'deepseek-v4-flash',
         OPENAI_API_KEY: (act && act.key) || secrets.FORGE_AGENT_API_KEY || process.env.OPENAI_API_KEY,
         OPENAI_HOST: (act && act.host) || secrets.FORGE_AGENT_HOST || process.env.OPENAI_HOST,
         OPENAI_BASE_PATH: 'chat/completions',

@@ -1,6 +1,7 @@
 # 由启动器生成（__FORGE_ROOT__ 占位）——goose 不会展开 ${VAR}，必须写入绝对路径
 GOOSE_PROVIDER: openai
-GOOSE_MODEL: myopencode/glm-5.2
+# 种子=可选池首模型（现行唯一可选池模型）；2026-09-08 myopencode 线路已死（服务商侧 404），s76 遗留①清理
+GOOSE_MODEL: deepseek-v4-flash
 GOOSE_MODE: smart_approve
 # T1（裁决书 S-B）：hints 只认 .goosehints，不再吸入 AGENTS.md（dev 仓库工作契约/用户域文件泄漏面）
 CONTEXT_FILE_NAMES: ['.goosehints']
