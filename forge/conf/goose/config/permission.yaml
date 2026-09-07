@@ -4,6 +4,7 @@ smart_approve:
   - faucet-db__faucet_raw_sql
   - load_skill
   - memory__retrieve_memories
+  - memory__remember_memory
   - browser__browser_click
   - browser__browser_close
   - browser__browser_drag
