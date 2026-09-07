@@ -72,9 +72,17 @@ if (Test-Path $hintsPath) {
 # 模板只负责新装首启种子，之后文件归 goose 运行时演化（与 config.yaml 逐启重写/.goosehints 逐启覆盖刻意不同）。
 $permTplPath = Join-Path $ForgeRoot 'conf\templates\permission.tpl.yaml'
 $permPath    = Join-Path $ForgeRoot 'conf\goose\config\permission.yaml'
-if ((Test-Path $permTplPath) -and (-not (Test-Path $permPath))) {
-    Copy-Item $permTplPath $permPath
-    Write-Host '[bootstrap] permission.yaml seeded from template (first run)'
+if (Test-Path $permTplPath) {
+    if (-not (Test-Path $permPath)) {
+        Copy-Item $permTplPath $permPath
+        Write-Host '[bootstrap] permission.yaml seeded from template (first run)'
+    } elseif (-not (Select-String -Path $permPath -Pattern '^user:' -Quiet)) {
+        # qa P2-2：存在但内容无效（空文件/缺 user: 块）——goose 缺键 panic 家族；守卫+留档模式同 1b-2 .goosehints
+        $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+        Copy-Item $permPath (Join-Path $ForgeRoot "data\logs\permission-corrupt-$stamp.bak") -Force
+        Copy-Item $permTplPath $permPath -Force
+        Write-Host '[bootstrap] permission.yaml invalid (no user: block), archived and re-seeded from template'
+    }
 }
 
 # 1c) memory junction：goose-mcp 硬编码 %APPDATA%\Block\goose\config\memory（无视 GOOSE_PATH_ROOT，
