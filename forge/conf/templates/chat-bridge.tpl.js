@@ -686,6 +686,10 @@ const SESSION_NF_RE = /session\s*not\s*found/i;
 // qa s76 P3-2: 成因中立——同一文案也用于 provider 切换/acp 慢等非删除成因的救援失败，不能点名「删除对话」
 const TURN_LOST_TEXT = '这一轮没能完成，可能是刚才的会话出了点异常，或者线路一时不稳。请再发一次试试，还不行就点左侧「＋ 新对话」重新开始。';
 const wsFirstPrompt = new WeakMap(); // ws→当前绑定是否还没发过 prompt（仅首轮救援；中轮 sid 丢失不静默迁移，避免无声丢上下文）
+// qa s76 P3-3: 双客户端绑同一死 sid 且都在首轮→各自救援→两个重复新会话。会话级 Set 去重：救援触发即记，
+// 已记的 sid 不再建新会话、走人话错误。无 TTL/清理——桥重启即清，且重启同时杀 acp（全部 goose sid 作废），跨重启去重无意义。
+const rescuedSids = new Set();
+const SID_RESCUED_TEXT = '这个对话的通道已失效，自动恢复也已经尝试过了。点左侧「＋ 新对话」重新开始，把想做的事再说一遍就行。';
 function sendTurn(ws, sid, text, allowRescue) {
     const id = nextId++;
     waiting.set(id, { ws, resolve: () => {
@@ -702,6 +706,8 @@ function sendTurn(ws, sid, text, allowRescue) {
         if (S26_ERR_RE.test(etxt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(etxt)); }
         else statsBump('errorsByType.other');
         if (allowRescue && SESSION_NF_RE.test(etxt)) {
+            if (rescuedSids.has(sid)) { ws.send({ sys: 'error', text: SID_RESCUED_TEXT }); return; } // P3-3 去重命中
+            rescuedSids.add(sid); // 触发即记不回滚：sid 已死，救援成败与否重试都只会再撞同一守卫
             console.log('session/prompt rejected by goose, single rescue:', etxt);
             try { rescueSession(ws, text); return; } catch (er) { console.error('rescue failed:', er); }
         }
