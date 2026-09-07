@@ -405,6 +405,8 @@ PYEOF
 ck "s50c oversized non-upload POST still rejected, upload exemption not leaked (v0.9.10)" $?
 rm -rf "$UPD/$UZ" "$UPD/$UZ".*.part "$UPD/$US" "$UZT" "$UPD/$UZD"; trap - EXIT
 [ ! -e "$UPD/$UZ" ] && [ ! -e "$UPD/$US" ] && [ -z "$(ls "$UPD/$UZ".*.part 2>/dev/null)" ]; ck "v0.9.10 upload fuzz cleaned up" $?
+# s76: vision --set-model 注入矩阵收编（qa P2-1 转正探针，F1-F7 七断言逐案计数；探针自含沙盒零副作用）
+for vf in F1 F2 F3 F4 F5 F6 F7; do node "$(dirname "$0")/vision-fuzz-probe.js" "$vf" >/dev/null 2>&1; ck "vision-fuzz $vf set-model injection (s76)" $?; done
 echo "=============================="
 echo "fuzz: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" = "0" ]
