@@ -420,7 +420,6 @@ details.tz[open]>summary::before{content:'▾ '}
     <button class="rtab mtab" data-pane="mem" role="tab" aria-selected="false">💭 记忆</button>
     <button class="rtab mtab" data-pane="sched" role="tab" aria-selected="false">⏰ 定时</button>
     <button class="rtab mtab" data-pane="mcp" role="tab" aria-selected="false">🔌 插件</button>
-    <button class="rtab mtab" data-pane="guard" role="tab" aria-selected="false">🛡 护栏</button>
   </div>
   <div class="mpane" id="mpane-ext">
     <h3 style="margin:0 0 8px">它会什么（本事开关）</h3>
@@ -473,11 +472,6 @@ details.tz[open]>summary::before{content:'▾ '}
         <button id="mkt-cat-add" class="mini">添加</button>
       </div>
     </div>
-  </div>
-  <div class="mpane" id="mpane-guard" style="display:none">
-    <h3 style="margin:0 0 8px">安全护栏</h3>
-    <div class="fnote" style="margin-bottom:6px">顶栏的「工作模式」就是护栏档位：<b>重要操作问我</b>= 推荐；<b>自动干活</b>= 熟练后用；<b>每步都问我</b>= 最稳；<b>只聊天不动手</b>= 不碰文件网页。</div>
-    <div class="fnote">在「重要操作问我」档下，这些动作会<b>先问您再动</b>：执行命令、改写/新建文件、删改数据库内容、打开或点击网页。<b>只读不写</b>的动作（看看文件、查查数据）不用问，直接做。</div>
   </div>
 </div></div>
 <div id="modal"><div id="panel" role="dialog" aria-modal="true" aria-label="服务商连接">
@@ -611,7 +605,7 @@ function connect(){
       modes=(m.modes&&m.modes.availableModes)||[]; configOptions=m.configOptions||[];
     let cur=(m.modes&&m.modes.currentModeId); const saved=localStorage.getItem('pf_mode');
     if(saved&&cur&&saved!==cur){ rpc2('session/set_mode',{sessionId:m.sessionId,modeId:saved}); cur=saved; }
-    if(cur)$('mode').value=cur;
+    if(cur){ $('mode').value=cur; paintModeTip(); } // 恢复路径静默：只同步 select 与 title，不弹提示
       renderModelLabel();
       ensureWs();
       return;
@@ -673,7 +667,7 @@ function onRpc(d){
   if(r&&r.configOptions){
     configOptions=r.configOptions;
     if(!lastKnownModel){ const m0=r.configOptions.find(o=>o.id==='model'); if(m0&&m0.currentValue) lastKnownModel=m0.currentValue; }
-    if(r.modes){ const cur=r.modes.currentModeId; if(cur)$('mode').value=cur; }
+    if(r.modes){ const cur=r.modes.currentModeId; if(cur){ $('mode').value=cur; paintModeTip(); } }
     renderModelLabel();
   }
 }
@@ -1241,11 +1235,25 @@ $('report-issue').onclick=async()=>{
   }finally{ btn.disabled=false; }
 };
 $('burger').onclick=()=>$('side').classList.toggle('hidden');
-$('mode').onchange=e=>{ localStorage.setItem('pf_mode',e.target.value);
-  if(sessionId) rpc2('session/set_mode',{sessionId,modeId:e.target.value}).catch(()=>addErr('模式切换失败')); };
+// 护栏 tab 已拿掉（pm裁决 2026-09-07-user-six-lines-batch1 B，取代 ia-root-cure §4.2 六标签）：
+// 四档人话解释迁到使用现场（R3）——title=悬停兜底，切换成功 addInfo 一句反馈；恢复路径静默（非用户决策时刻）
+const MODE_TIPS={
+  auto:'自动干活：它不再逐项问您，重要操作做完会说明',
+  smart_approve:'重要操作问我（推荐）：执行命令、改写文件、动数据库、开网页会先问您；只读的事直接做',
+  approve:'每步都问我：它每做一步都先问您再动',
+  chat:'只聊天不动手：它只回答，不碰文件和网页'
+};
+function paintModeTip(){ const m=$('mode').value; $('mode').title=MODE_TIPS[m]||'工作模式'; } // title 永远跟当前档位
+$('mode').onchange=e=>{
+  const v=e.target.value;
+  localStorage.setItem('pf_mode',v); paintModeTip();
+  if(sessionId) rpc2('session/set_mode',{sessionId,modeId:v})
+    .then(()=>addInfo('已切到'+MODE_TIPS[v])) // 切换成功才弹一句；失败只报错（取消/失败路径不弹成功语）
+    .catch(()=>addErr('模式切换失败'));
+};
 $('open-settings').onclick=()=>{ $('modal').classList.add('on'); loadProvidersUI(); };
-// s43: 管理面板——本事/记忆/定时任务/护栏从设置迁出，一级入口
-// s51: 六区块→标签页，懒加载（首次切到该 tab 才拉，拉过缓存不重复拉）
+// s43: 管理面板——本事/记忆/定时任务从设置迁出，一级入口
+// s51: 区块→标签页，懒加载（首次切到该 tab 才拉，拉过缓存不重复拉）
 const mtabs={ext:['loadExtUI',false],db:['loadDbUI',false],mem:['loadMemUI',false],sched:['loadSchedUI',false],mcp:['loadMcpUI',false]};
 function showMtab(name){
   document.querySelectorAll('#manage-modal .mtab').forEach(b=>{const on=b.dataset.pane===name;b.classList.toggle('on',on);b.setAttribute('aria-selected',on);});
@@ -1482,7 +1490,7 @@ $('chat-search').oninput=e=>{
 $('chat-search-clear').onclick=()=>{ closeSearch(); };
 $('chat-search').onkeydown=e=>{ if(e.key==='Escape'){ e.stopPropagation(); closeSearch(); } };
 
-// ---- s17: 能力开关 + 记忆管理（小白视角；护栏=permission.yaml ask_before 的大白话） ----
+// ---- s17: 能力开关 + 记忆管理（小白视角） ----
 async function apiJSON(url, opt){
   const r = await fetch(url, opt);
   try { return await r.json(); } catch(e){ throw new Error('接口异常 '+r.status); }
