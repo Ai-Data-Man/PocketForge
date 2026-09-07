@@ -1,4 +1,4 @@
-# goose 升级预案（沙盒四步流程；2026-09-05 重建版）
+# goose 升级预案（沙盒四步流程；2026-09-05 重建版，s76c 对齐）
 
 > 背景：research/04-goose.md 曾引用本文档但文件从未落档（s64 勘误）。本版依据 tools/fetch.sh 现行机制 + s47/s53 沙盒冒烟流程 + research/04 s64 情报回归五面清单重建。升级目标与时机裁决见 research/04 s64 节（等 v1.50 或退 v1.48.0；不追 v1.49.0）。
 
@@ -28,9 +28,11 @@
 5. **真实任务**：GOOSE_PATH_ROOT 下跑一个真实任务（读文件+生成 xlsx），确认 agent 适应 #11537 单行 cmd 约束（多行命令被拒不再静默截断）。
 6. **生产转储巡检**（T2；方法 = research/12 §2.1）：升级后跑一次最小会话（prompt 只求「回复ok」控 token），读 `conf/goose/state/logs/llm_request.*.jsonl`（恒开轮换 10 份；取 mtime 最新的带 tools 请求，0 号可能是标题生成请求）核对模型实际看到什么：system prompt 的 Extensions 段（apps/summon/extensionmanager/analyze 应缺席——G3 否定块仍生效）、工具清单数量与名字（S-B 后基线 47）、Global Hints（手册）在而 Project Hints 段为空（CONTEXT_FILE_NAMES 仍生效）。装新 MCP 后当场再巡检一次。
 7. **G7 上游观察项**（升级窗口重评，不阻塞 PASS/FAIL 判定）：RepetitionInspector 注册 `new(None)` 无重复上限、SecurityScanner `SECURITY_PROMPT_ENABLED` 默认关——产品侧均无配置键，当前没有熔断/扫描在役；v1.50 核对上游是否新增配置化开关，顺带评估开启后内网浏览器场景误报率。核实点行号出自 v1.46.0（agent.rs:748、security/mod.rs:65-73），新版须重对。
+8. **会话号语义与救援面**（s76 新增，research/18 补记）：新版 session_manager 的「当日 MAX+1」编号语义若变（前缀/tombstone），桥端救援路径的触发面前提要重对；**goose 对 closed/不存在 sid 的 prompt 错误措辞若引入差异化 closed 文案**（v1.46.0 仅 resource_not_found+"Session not found" 单源），该类场景将从救援面掉出——仍非静默（人话错误），但 e2e 第 18 节断言的救援路径要复验。
+9. **permission.yaml 升级语义**（s76c 新增）：运行时副本已 PROTECTED（update-runner 精确条目），升级应零触碰——升级实录里核对升级前后 permission.yaml 逐字节不变（含 goose 学习性 ask_before 条目存活）；新装面=bootstrap 1b-7 种子（copy-if-missing+空文件守卫）。若上游改 permission.yaml 结构（三键 panic 家族），种子模板 conf/templates/permission.tpl.yaml 与 1b-7 守卫同步修。
 
 ### 第 4 步：收尾
-- 全部 PASS → commit components.yaml/fetch.sh/checksums.txt（message 引用 research/04 与本预案）；STATE 版本表回写；dev 栈换新二进制重跑 e2e 33/33 + fuzz 44/44。
+- 全部 PASS → commit components.yaml/fetch.sh/checksums.txt（message 引用 research/04 与本预案）；STATE 版本表回写；dev 栈换新二进制重跑全量回归（当前基线 e2e-chat 53/53 + fuzz 150/150，以 STATE 终态行为准）。
 - 任一面 FAIL → 回滚沙盒二进制，commit 停在下载层或整体回滚；失败面取证（pf-researcher）后重评目标版本。
 - 沙盒清理：`停止数字员工.cmd` 后删沙盒目录（零污染自证顺带完成）。
 
