@@ -4,7 +4,7 @@
 #      + 护栏：当前会话区不可删。纯 HTTP 断言，不依赖 LLM。
 # 前置：栈已在跑（chat-bridge :8790）
 set -euo pipefail
-# s76 遗留⑧: set -e 下探针/grep -q 断言非零退出会中止全套件（首红杀全量，摘要只在全绿出现）——探针调用与 grep -q 断言一律 rc 捕获（rc=0; cmd || rc=$?），失败计数不中止
+# s76 遗留⑧: set -e 下探针/grep -q 断言非零退出会中止全套件（首红杀全量，摘要只在全绿出现）——探针调用、grep -q 断言、[ ] 测试式断言与命令替换赋值行（VAR=$(...)）一律 rc 捕获（rc=0; cmd || rc=$?），失败计数不中止
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 FORGE="$ROOT/forge"
 PASS=0; FAIL=0
@@ -17,10 +17,10 @@ SID="e2e-chat-$(date +%s)"
 J() { python -c "import sys,json;d=json.load(sys.stdin);print(json.dumps(d,ensure_ascii=False))"; }
 
 # ---------- 1) 工作区创建（幂等性一并验证） ----------
-W1=$(curl -s "$B/api/ws/new?sid=$SID" | python -c "import sys,json;print(json.load(sys.stdin).get('ws',''))")
-[ -n "$W1" ]; ck "ws/new creates workspace ($W1)" $?
-W2=$(curl -s "$B/api/ws/new?sid=$SID" | python -c "import sys,json;d=json.load(sys.stdin);print(d.get('ws','')+'|'+str(d.get('existed',False)))")
-[ "$W2" = "$W1|True" ]; ck "ws/new idempotent for same sid" $?
+rc=0; W1=$(curl -s "$B/api/ws/new?sid=$SID" | python -c "import sys,json;print(json.load(sys.stdin).get('ws',''))") || rc=$?
+[ -n "$W1" ] || rc=$?; ck "ws/new creates workspace ($W1)" $rc
+rc=0; W2=$(curl -s "$B/api/ws/new?sid=$SID" | python -c "import sys,json;d=json.load(sys.stdin);print(d.get('ws','')+'|'+str(d.get('existed',False)))") || rc=$?
+[ "$W2" = "$W1|True" ] || rc=$?; ck "ws/new idempotent for same sid" $rc
 
 # ---------- 2) 文件管理：新建→改名（触发自动快照）→目录树 ----------
 rc=0; curl -s -X POST "$B/api/fs/new" -H 'content-type: application/json' -d "{\"ws\":\"$W1\",\"path\":\"report.md\",\"type\":\"file\"}" | grep -q '"ok":true' || rc=$?; ck "fs/new file" $rc
@@ -30,15 +30,15 @@ rc=0; curl -s -X POST "$B/api/fs/rename" -H 'content-type: application/json' -d 
 rc=0; curl -s "$B/api/ws/tree?ws=$W1" | grep -q 'note-v2.md' || rc=$?; ck "ws/tree shows renamed file" $rc
 
 # ---------- 3) 版本管理：log/blob/restore ----------
-N=$(curl -s "$B/api/vcs/log?ws=$W1&file=note-v2.md" | python -c "import sys,json;print(len(json.load(sys.stdin).get('versions',[])))")
-[ "$N" -ge 1 ]; ck "vcs/log has >=1 version (got $N)" $?
-OID=$(curl -s "$B/api/vcs/log?ws=$W1&file=note-v2.md" | python -c "import sys,json;print(json.load(sys.stdin)['versions'][0]['oid'])")
-BODY=$(curl -s "$B/api/vcs/blob?ws=$W1&file=note-v2.md&oid=$OID")
+rc=0; N=$(curl -s "$B/api/vcs/log?ws=$W1&file=note-v2.md" | python -c "import sys,json;print(len(json.load(sys.stdin).get('versions',[])))") || rc=$?
+[ "$N" -ge 1 ] || rc=$?; ck "vcs/log has >=1 version (got $N)" $rc
+rc=0; OID=$(curl -s "$B/api/vcs/log?ws=$W1&file=note-v2.md" | python -c "import sys,json;print(json.load(sys.stdin)['versions'][0]['oid'])") || rc=$?
+rc=0; BODY=$(curl -s "$B/api/vcs/blob?ws=$W1&file=note-v2.md&oid=$OID") || rc=$?
 rc=0; echo "$BODY" | grep -q "第一版内容" || rc=$?; ck "vcs/blob roundtrip content" $rc
 rc=0; curl -s -X POST "$B/api/vcs/restore" -H 'content-type: application/json' -d "{\"ws\":\"$W1\",\"file\":\"note-v2.md\",\"oid\":\"$OID\"}" | grep -q '"ok":true' || rc=$?; ck "vcs/restore to snapshot" $rc
 
 # ---------- 4) 附件身份（.forge 与改名联动） ----------
-A=$(curl -s "$B/api/ws/tree?ws=$W1" | python -c "import sys,json;print(json.load(sys.stdin).get('attachments',[]).__str__())")
+rc=0; A=$(curl -s "$B/api/ws/tree?ws=$W1" | python -c "import sys,json;print(json.load(sys.stdin).get('attachments',[]).__str__())") || rc=$?
 rc=0; echo "$A" | grep -q "note-v2.md" || rc=$?; ck "attachment identity follows rename" $rc
 
 # ---------- 5) 生命周期：归档后可删 / 活跃护栏 ----------
@@ -46,7 +46,7 @@ rc=0; curl -s -X POST "$B/api/sessions/archive" -H 'content-type: application/js
 # 绑定归档会话的区：不带 curSid 可删（前端活跃会话才带）
 rc=0; curl -s -X POST "$B/api/ws/delete" -H 'content-type: application/json' -d "{\"ws\":\"$W1\"}" | grep -q '"ok":true' || rc=$?; ck "delete archived-bound workspace" $rc
 # 活跃护栏：新建区并声明它是当前会话的区 → 删除必须被拒
-W3=$(curl -s "$B/api/ws/new?sid=$SID-act" | python -c "import sys,json;print(json.load(sys.stdin).get('ws',''))")
+rc=0; W3=$(curl -s "$B/api/ws/new?sid=$SID-act" | python -c "import sys,json;print(json.load(sys.stdin).get('ws',''))") || rc=$?
 rc=0; curl -s -X POST "$B/api/ws/delete" -H 'content-type: application/json' -d "{\"ws\":\"$W3\",\"sid\":\"$SID-act\"}" | grep -q '不能删' || rc=$?; ck "active workspace delete refused" $rc
 rc=0; curl -s -X POST "$B/api/ws/delete" -H 'content-type: application/json' -d "{\"ws\":\"$W3\"}" | grep -q '"ok":true' || rc=$?; ck "cleanup: delete without curSid" $rc
 
@@ -84,8 +84,8 @@ for s in d['services']:
     for t in s['tables']: assert t['rows'] is None or isinstance(t['rows'],int)
 print('db-overview-ok')" | grep -q db-overview-ok || rc=$?
 ck "db/overview 200 ok:true with plm+tables" $rc
-CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/db/overview")
-[ "$CODE" = "405" ]; ck "db/overview POST refused 405 (got $CODE)" $?
+rc=0; CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/db/overview") || rc=$?
+[ "$CODE" = "405" ] || rc=$?; ck "db/overview POST refused 405 (got $CODE)" $rc
 rc=0; curl -s "$B/api/db/overview" | grep -qviE 'apikey|X-API-Key' || rc=$?; ck "db/overview no apikey leak" $rc
 
 # ---------- 9) 单表结构+样例（s51 /api/db/_schema） ----------
@@ -100,19 +100,19 @@ assert cols['id']['raw_type']=='INTEGER'
 for c in d['columns']: assert set(c)>={'name','raw_type','pk'}
 print('dbschema-ok')" | grep -q dbschema-ok || rc=$?
 ck "db/_schema returns columns+samples with pk" $rc
-CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/db/_schema")
-[ "$CODE" = "405" ]; ck "db/_schema POST refused 405 (got $CODE)" $?
+rc=0; CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/db/_schema") || rc=$?
+[ "$CODE" = "405" ] || rc=$?; ck "db/_schema POST refused 405 (got $CODE)" $rc
 rc=0; curl -s "$B/api/db/_schema?svc=plm&tbl=no_such_tbl" | grep -q '"ok":false' || rc=$?; ck "db/_schema unknown table ok:false" $rc
 rc=0; curl -s --get "$B/api/db/_schema" --data-urlencode "svc=../etc" --data-urlencode "tbl=passwd" | grep -q '"ok":false' || rc=$?; ck "db/_schema rejects path-ish names" $rc
 rc=0; curl -s --get "$B/api/db/_schema" --data-urlencode "svc=plm" --data-urlencode "tbl=parts" | grep -qviE 'apikey|X-API-Key' || rc=$?; ck "db/_schema no apikey leak" $rc
 
 # ---------- 10) 诊断报告（/api/report） ----------
 # S1: 端点要求自定义头 X-PF-Report: 1（缺失→403），本节所有 curl 必须带头
-R=$(curl -s --max-time 30 -H 'X-PF-Report: 1' "$B/api/report")
+rc=0; R=$(curl -s --max-time 30 -H 'X-PF-Report: 1' "$B/api/report") || rc=$?
 rc=0; echo "$R" | grep -q '"ok":true' || rc=$?; ck "api/report ok:true" $rc
-RP=$(echo "$R" | python -c "import sys,json;print(json.load(sys.stdin).get('path',''))" 2>/dev/null)
+rc=0; RP=$(echo "$R" | python -c "import sys,json;print(json.load(sys.stdin).get('path',''))" 2>/dev/null) || rc=$?
 RPU=${RP//\\//}
-[ -n "$RPU" ] && [ -f "$RPU" ]; ck "api/report file exists on disk ($RP)" $?
+[ -n "$RPU" ] && [ -f "$RPU" ] || rc=$?; ck "api/report file exists on disk ($RP)" $rc
 rc=0; grep -q 'VERSION' "$RPU" || rc=$?; ck "report contains version section" $rc
 if grep -qE '\bsk-[A-Za-z0-9][A-Za-z0-9_-]{3,}' "$RPU"; then ck "report sanitized: no sk- keys" 1; else ck "report sanitized: no sk- keys" 0; fi
 # memory 内容特征：memory/ 目录绝不读取（目录有内容则 grep 其特征；空目录退化为路径特征）
@@ -126,8 +126,8 @@ fi
 FAKE="$FORGE/data/stats/usage-20990101.json"
 mkdir -p "$FORGE/data/stats"
 printf '{\n  "note": "GH_TOKEN=ghp_e2esanitizerprobe000000"\n}\n' > "$FAKE"
-R2=$(curl -s --max-time 30 -H 'X-PF-Report: 1' "$B/api/report")
-RP2=$(echo "$R2" | python -c "import sys,json;print(json.load(sys.stdin).get('path',''))" 2>/dev/null)
+rc=0; R2=$(curl -s --max-time 30 -H 'X-PF-Report: 1' "$B/api/report") || rc=$?
+rc=0; RP2=$(echo "$R2" | python -c "import sys,json;print(json.load(sys.stdin).get('path',''))" 2>/dev/null) || rc=$?
 RPU2=${RP2//\\//}
 if [ -f "$RPU2" ] && ! grep -q 'ghp_e2esanitizerprobe000000' "$RPU2" && grep -q '<已脱敏>' "$RPU2"; then ck "report sanitized: GH_TOKEN plaintext dropped" 0; else ck "report sanitized: GH_TOKEN plaintext dropped" 1; fi
 rm -f "$FAKE"
@@ -181,13 +181,13 @@ for s in 01 02 03; do printf 'e2e-seed\n' > "$FORGE/data/pg-dumps/pg-1999-01-${s
 PCRUN process start daily-backup >/dev/null
 wait_backup_done 'backup ok' || true   # 完成门：backup.log 每次 pc 重跑即重建，末行 backup ok=本轮收尾
 if grep -q 'pg_dump ok' "$FORGE/data/logs/backup.log"; then ck "backup state-A: pg_dump ok into data/pg-dumps (PG present)" 0; else ck "backup state-A: pg_dump ok into data/pg-dumps (PG present)" 1; fi
-NEWU=$(ls -t "$FORGE/data/pg-dumps/"pg-*.sql | head -1)
+rc=0; NEWU=$(ls -t "$FORGE/data/pg-dumps/"pg-*.sql | head -1) || rc=$?
 if grep -q 'PostgreSQL database dump' "$NEWU"; then ck "backup state-A: newest dump has PostgreSQL dump marker" 0; else ck "backup state-A: newest dump has PostgreSQL dump marker" 1; fi
 # s73: glob 收窄为 pg-[0-9]*（PG 切片1 起 pg-dumps 目录共存三族——每日主库 pg-YYYYMMDD/桥库 pg-bridge-*/迁移留档 forge-bridge-pre-*，各族独立 keep-3，见 5e970eb）
-[ "$(ls "$FORGE/data/pg-dumps/"pg-[0-9]*.sql | wc -l)" = "3" ] && [ ! -f "$FORGE/data/pg-dumps/pg-1999-01-01T00-00-00.sql" ]; A3=$?
+A3=0; [ "$(ls "$FORGE/data/pg-dumps/"pg-[0-9]*.sql | wc -l)" = "3" ] && [ ! -f "$FORGE/data/pg-dumps/pg-1999-01-01T00-00-00.sql" ] || A3=$?
 ck "backup state-A: keep-3 pruned oldest dump" "$A3"
-NEWZ=$(ls -t "$FORGE/data/backups/"forge-backup-*.zip | head -1)
-unzip -l "$NEWZ" > /tmp/e2e-ziplist.txt 2>&1   # 落地再 grep：grep -q 早退会 SIGPIPE unzip，pipefail 下中止全量（s65 同族）
+rc=0; NEWZ=$(ls -t "$FORGE/data/backups/"forge-backup-*.zip | head -1) || rc=$?
+unzip -l "$NEWZ" > /tmp/e2e-ziplist.txt 2>&1 || true   # 落地再 grep：grep -q 早退会 SIGPIPE unzip，pipefail 下中止全量（s65 同族）；|| true 同款守卫，红由下断言计
 # zip 条目分隔符随 Compress-Archive 可能是 \ 或 /，用 . 通配
 if grep -q 'pg-dumps[\\/]pg-' /tmp/e2e-ziplist.txt; then ck "backup state-A: zip contains pg-dumps entry" 0; else ck "backup state-A: zip contains pg-dumps entry" 1; fi
 rm -f /tmp/e2e-ziplist.txt
