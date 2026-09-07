@@ -88,7 +88,8 @@ if (-not (Test-Path $secrets)) {
         'FAUCET_ADMIN_PW=' + (& $chars).Substring(0,24),
         'FORGE_AGENT_API_KEY=',
         'FORGE_AGENT_HOST=http://127.0.0.1:20128/v1/',
-        'GOOSE_MODEL_NAME=myopencode/glm-5.2'
+        # 种子=可选池首模型；2026-09-08 myopencode 线路已死（服务商侧 404），s76 遗留①收尾（幂等补键同此种子）
+        'GOOSE_MODEL_NAME=deepseek-v4-flash'
     )
     [IO.File]::WriteAllLines($secrets, $lines)
 } else {
@@ -97,7 +98,7 @@ if (-not (Test-Path $secrets)) {
     $have = @{}
     foreach ($l in $existing) { $k = $l.Split('=')[0]; $have[$k] = $true }
     $add = @()
-    if (-not $have['GOOSE_MODEL_NAME']) { $add += 'GOOSE_MODEL_NAME=myopencode/glm-5.2' }
+    if (-not $have['GOOSE_MODEL_NAME']) { $add += 'GOOSE_MODEL_NAME=deepseek-v4-flash' }
     if (-not $have['FORGE_AGENT_API_KEY']) { $add += 'FORGE_AGENT_API_KEY=' }
     if (-not $have['FORGE_AGENT_HOST']) { $add += 'FORGE_AGENT_HOST=http://127.0.0.1:20128/v1/' }
     if ($add.Count -gt 0) { Add-Content $secrets ($add -join [Environment]::NewLine) }
