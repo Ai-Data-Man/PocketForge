@@ -219,6 +219,14 @@ node "$ROOT/tools/e2e/preupgrade-backup-probe.js" > /tmp/preupgrade-backup.log 2
 grep -E "^RESULT" /tmp/preupgrade-backup.log
 rm -f /tmp/preupgrade-backup.log
 
+# ---------- 18) 断点①回归钉子（research/18 Z1，s76b 修复）：删当天最新会话→新建（号段回退复用已 close 的 sid）→prompt 必须有回文 ----------
+# 修复前=error 帧被桥当成功 resolve→「发消息秒回空、零报错」僵尸；修复后=救援成功/人话错误/直连回答三者其一，静默空 stop=红。
+# 依赖 LLM 连通（真实回答路径）；详见 tools/e2e/sid-reuse-rescue-probe.js。探针留下含测试文本的会话行（故意不删，防重造号段陷阱）
+node "$ROOT/tools/e2e/sid-reuse-rescue-probe.js" > /tmp/sid-reuse-rescue.log 2>&1
+grep -q "PASS" /tmp/sid-reuse-rescue.log; ck "delete-latest sid-reuse prompt non-silent (rescue/human-error)" $?
+grep -E "^SID_A|^RESCUE|^SYS-ERROR" /tmp/sid-reuse-rescue.log || true
+rm -f /tmp/sid-reuse-rescue.log
+
 rm -f /tmp/e2e-v1.md
 echo "=============================="
 echo "chat-link E2E: PASS=$PASS FAIL=$FAIL"

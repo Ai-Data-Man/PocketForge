@@ -632,6 +632,10 @@ function onAcpData(chunk) {
         let msg; try { msg = JSON.parse(line); } catch { continue; }
         if (msg.id !== undefined && (msg.result !== undefined || msg.error !== undefined) && waiting.has(msg.id)) {
             const w = waiting.get(msg.id); waiting.delete(msg.id);
+            // research/18 断点①: error 帧此前一律 resolve(整帧)——session/prompt 被 goose 守卫拒绝时也当成功收尾，
+            // 前端收到假 stop reason=end「秒回空、零报错」。带 reject 的调用方（prompt/initialize）改走 reject；
+            // 只有 resolve 的调用方（session/new 的 B1 分支、switch_model，自解整帧 error）维持原语义
+            if (msg.error !== undefined && w.reject) { w.reject(msg.error); continue; }
             if (w.resolve) { w.resolve(msg.result !== undefined ? msg.result : msg); }
             else if (w.ws && w.ws.alive) {
                 // I8: 带回客户端关联 id
@@ -671,6 +675,60 @@ function onAcpData(chunk) {
             else for (const ws of allClients) ws.send(obj);
         }
     }
+}
+
+// ---- research/18 断点①：prompt 错误帧人话化 + 首轮单次救援 ----
+// 场景：删掉当天最新会话后 goose 按 当日_MAX(库内序号)+1 发号（session_manager.rs:1591），删行致序号回退复用
+// 已 close 的 sid，session/prompt 被 closed_session_ids 守卫以 error 帧拒绝（Z1 三次活体复现）。底线=reject 走
+// 人话错误（不再秒回空僵尸）；救援=首轮 prompt 撞 Session-not-found 时新建会话重放一次（模式同 subscribe(null)/
+// switch_model 既有的 session/new+rebind+subscribed 消费点）。
+const SESSION_NF_RE = /session\s*not\s*found/i;
+const TURN_LOST_TEXT = '这场对话打不开了（删除对话后的一个小概率后遗症）。点左侧「＋ 新对话」重新开始，把想做的事再说一遍就行。';
+const wsFirstPrompt = new WeakMap(); // ws→当前绑定是否还没发过 prompt（仅首轮救援；中轮 sid 丢失不静默迁移，避免无声丢上下文）
+function sendTurn(ws, sid, text, allowRescue) {
+    const id = nextId++;
+    waiting.set(id, { ws, resolve: () => {
+        // s50e 修复：goose 上游故障以 agent_message_chunk 文本随正常 turn 结束返回（session/prompt 正常 resolve，非 reject），
+        // 故在 turn 结束处对当轮累计文本跑 s26 正则（:349 的 stop 通知分支 goose ACP 模式从不发，为死代码）
+        const txt = turnText.get(sid) || '';
+        turnText.delete(sid);
+        if (S26_ERR_RE.test(txt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(txt)); }
+        ws.send({ agent: { method: 'stop', params: { sessionId: sid, reason: 'end' } } });
+    }, reject: (e) => {
+        // P31-③: turn 失败按 s26 正则归类上游故障
+        // goose 的 JSON-RPC error：message=错误类（如 Resource not found），具体原因在 data（如 Session not found: <sid>）——拼接后供匹配
+        const etxt = String((e && e.message) || e) + ' ' + String((e && e.data) || '');
+        if (S26_ERR_RE.test(etxt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(etxt)); }
+        else statsBump('errorsByType.other');
+        if (allowRescue && SESSION_NF_RE.test(etxt)) {
+            console.log('session/prompt rejected by goose, single rescue:', etxt);
+            try { rescueSession(ws, text); return; } catch (er) { console.error('rescue failed:', er); }
+        }
+        ws.send({ sys: 'error', text: SESSION_NF_RE.test(etxt) ? TURN_LOST_TEXT : 'turn failed: ' + String(e.message || e) });
+    } });
+    // reject 回调可能来自 onAcpData 栈（不在 handleClient try 内），acp 写失败必须就地接住
+    try {
+        acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/prompt', params: { sessionId: sid, prompt: [{ type: 'text', text }] } }) + '\n');
+    } catch (e) { waiting.delete(id); ws.send({ sys: 'error', text: '服务忙不过来（对话引擎没响应），稍等几秒再发一次。' }); }
+}
+function rescueSession(ws, text) {
+    const rid = nextId++;
+    const fail = () => ws.send({ sys: 'error', text: TURN_LOST_TEXT });
+    const timer = setTimeout(() => { if (waiting.delete(rid)) fail(); }, 30000); // 救援 30s 不到=人话收场，不留新僵尸
+    waiting.set(rid, { ws, resolve: (res) => {
+        clearTimeout(timer);
+        if (!(res && res.sessionId)) return fail();
+        statsBump('sessionsCreated');
+        wsSession.set(ws, res.sessionId);
+        if (!sessionClients.has(res.sessionId)) sessionClients.set(res.sessionId, new Set());
+        sessionClients.get(res.sessionId).add(ws);
+        // 前端 subscribed 处理器会更新 sessionId/currentSid（与 hotRestart 后 rebind 同款），用户表现为「继续聊」
+        ws.send({ sys: 'subscribed', sessionId: res.sessionId, newSession: true, modes: res.modes || [], configOptions: res.configOptions || [] });
+        sendTurn(ws, res.sessionId, text, false); // 单次守卫：重放不救援
+    }, reject: () => { clearTimeout(timer); fail(); } });
+    try {
+        acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: rid, method: 'session/new', params: { cwd: ROOT, mcpServers: [] } }) + '\n');
+    } catch (e) { clearTimeout(timer); waiting.delete(rid); fail(); }
 }
 
 async function init() {
@@ -2923,6 +2981,7 @@ function handleClient(ws, msg) {
             if (msg.sessionId !== undefined && msg.sessionId !== null && !sidValid(String(msg.sessionId))) return ws.send({ sys: 'error', text: '会话标识不对，请从左侧列表重新选择对话。' });
             if (msg.sessionId) {
                 wsSession.set(ws, msg.sessionId);
+                wsFirstPrompt.set(ws, true); // research/18 断点①: 每次绑定（重）开允许首轮救援
                 if (!sessionClients.has(msg.sessionId)) sessionClients.set(msg.sessionId, new Set());
                 sessionClients.get(msg.sessionId).add(ws);
                 ws.send({ sys: 'subscribed', sessionId: msg.sessionId, modes: [], configOptions: [] });
@@ -2931,6 +2990,7 @@ function handleClient(ws, msg) {
                 waiting.set(id, { ws: null, resolve: (res) => {
                     if (res && res.sessionId) {
                         statsBump('sessionsCreated'); // P31-③
+                        wsFirstPrompt.set(ws, true); // research/18 断点①: 新绑定首轮允许救援
                         wsSession.set(ws, res.sessionId);
                         if (!sessionClients.has(res.sessionId)) sessionClients.set(res.sessionId, new Set());
                         sessionClients.get(res.sessionId).add(ws);
@@ -2964,22 +3024,9 @@ function handleClient(ws, msg) {
             if (typeof msg.text !== 'string' || !msg.text.trim()) return ws.send({ sys: 'error', text: '想让我做的事不能是空的。' });
             if (msg.text.length > 262144) return ws.send({ sys: 'error', text: '这条消息太长了，拆成几条发吧。' });
             statsBump('messages'); // P31-③: 用户发出 prompt 计数（agent 回复不计）
-            const id = nextId++;
-            waiting.set(id, { ws, resolve: () => {
-                // s50e 修复：goose 上游故障以 agent_message_chunk 文本随正常 turn 结束返回（session/prompt 正常 resolve，非 reject），
-                // 故在 turn 结束处对当轮累计文本跑 s26 正则（:349 的 stop 通知分支 goose ACP 模式从不发，为死代码）
-                const txt = turnText.get(sid) || '';
-                turnText.delete(sid);
-                if (S26_ERR_RE.test(txt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(txt)); }
-                ws.send({ agent: { method: 'stop', params: { sessionId: sid, reason: 'end' } } });
-            }, reject: (e) => {
-                // P31-③: turn 失败按 s26 正则归类上游故障
-                const etxt = String((e && e.message) || e);
-                if (S26_ERR_RE.test(etxt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(etxt)); }
-                else statsBump('errorsByType.other');
-                ws.send({ sys: 'error', text: 'turn failed: ' + String(e.message || e) });
-            } });
-            acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/prompt', params: { sessionId: sid, prompt: [{ type: 'text', text: msg.text }] } }) + '\n');
+            const firstTurn = wsFirstPrompt.get(ws) !== false;
+            wsFirstPrompt.set(ws, false);
+            sendTurn(ws, sid, msg.text, firstTurn); // research/18 断点①: 错误帧→reject 人话/首轮单次救援（sendTurn）
             return;
         }
 
@@ -3229,6 +3276,7 @@ function handleClient(ws, msg) {
                     waiting.set(nid, { ws, resolve: (res) => {
                         if (res && res.sessionId) {
                             statsBump('sessionsCreated'); // P31-③
+                            wsFirstPrompt.set(ws, true); // research/18 断点①: 新绑定首轮允许救援
                             wsSession.set(ws, res.sessionId);
                             if (!sessionClients.has(res.sessionId)) sessionClients.set(res.sessionId, new Set());
                             sessionClients.get(res.sessionId).add(ws);
