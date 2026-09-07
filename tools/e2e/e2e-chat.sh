@@ -283,10 +283,10 @@ ck "delete-latest sid-reuse prompt non-silent (rescue/human-error)" $rc
 grep -E "^SID_A|^RESCUE|^SYS-ERROR" /tmp/sid-reuse-rescue.log || true
 rm -f /tmp/sid-reuse-rescue.log
 
-# ---------- 18b) 救援判据守卫桩测（qa s76 P2-A）：畸形 reject 载荷不崩桥/去重/alive 门，模板提取零网络 ----------
+# ---------- 18b) 救援判据守卫桩测（qa s76 P2-A）：畸形 reject 载荷不崩桥/去重/alive 门 + 非 NF 失败三档人话（s76 遗留⑦），模板提取零网络 ----------
 rc=0; node "$ROOT/tools/e2e/rescue-guard-probe.js" > /tmp/rescue-guard.log 2>&1 || rc=$?
 grep -q "FAIL=0" /tmp/rescue-guard.log || rc=$?
-ck "rescue guard probe 20 ck (null/string/{} payload + dedup + alive gate)" $rc
+ck "rescue guard probe 22 ck (null/string/{} payload + dedup + alive gate + non-NF humanized x3)" $rc
 grep -E "^rescue-guard-probe" /tmp/rescue-guard.log || true
 rm -f /tmp/rescue-guard.log
 

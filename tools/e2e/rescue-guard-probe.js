@@ -1,6 +1,6 @@
 // 救援判据守卫桩测（qa s76 P2-A 转正，原 tmp/qa-s76-rescue-extract.js）：从桥模板原文切 SESSION_NF_RE..rescueSession 块，
 // 注入 mock（waiting/nextId/turnText/acp/statsBump）后逐场景断言。零网络、零进程副作用。
-// 覆盖：null/字符串/空对象 reject 载荷（:715 null 守卫）、救援去重、ws.alive 门、首轮门。
+// 覆盖：null/字符串/空对象 reject 载荷（null 守卫）、救援去重、ws.alive 门、首轮门、非 NF 失败三档人话（s76 遗留⑦：未归类/unauthorized/S26 命中）。
 const fs = require('fs');
 const src = fs.readFileSync(__dirname + '/../../forge/conf/templates/chat-bridge.tpl.js', 'utf8');
 const start = src.indexOf('const SESSION_NF_RE');
@@ -11,14 +11,14 @@ const block = src.slice(start, end);
 let pass = 0, fail = 0;
 const ck = (n, ok) => { console.log((ok ? 'PASS: ' : 'FAIL: ') + n); ok ? pass++ : fail++; };
 
-function makeEnv() {
+function makeEnv(s26re, classify) { // s76c: 可注入 S26 正则/归类桩（默认永不命中/'unknown'），供非 NF 三档人话分支覆盖
     const acp = { stdin: { writes: [], write(s) { const o = JSON.parse(s); this.writes.push(o); return true; } } };
     const env = {
         waiting: new Map(),
         nextId: 1,
         turnText: new Map(),
-        S26_ERR_RE: /(?!)/,
-        classifyUpstream: () => 'unknown',
+        S26_ERR_RE: s26re || /(?!)/,
+        classifyUpstream: classify || (() => 'unknown'),
         statsCalls: [],
         statsBump(k) { this.statsCalls.push(k); },
         acp,
@@ -124,7 +124,7 @@ const NF = { message: 'resource_not_found', data: 'Session not found: SID' };
     api.sendTurn(wsG, 'D7', 'hi', true);
     let crashed = null;
     try { env.waiting.get(env.acp.stdin.writes[0].id).reject(null); } catch (e) { crashed = e; }
-    ck('S8a reject(null) 不崩（:715 String(e.message||e) 缺 null 守卫）', crashed === null && errsOf(wsG).length === 1 && errsOf(wsG)[0].indexOf('turn failed:') === 0);
+    ck('S8a reject(null) 不崩（etxt 构造处 null 守卫）且走通用人话', crashed === null && errsOf(wsG).length === 1 && errsOf(wsG)[0] === '这一轮没完成，请再发一次试试。');
     if (crashed) console.log('   S8a crash: ' + crashed.message);
     api.sendTurn(wsG, 'D8', 'hi', true);
     env.waiting.get(env.acp.stdin.writes[env.acp.stdin.writes.length - 1].id).reject({ data: 'Session not found: D8' });
@@ -137,14 +137,33 @@ const NF = { message: 'resource_not_found', data: 'Session not found: SID' };
     api.sendTurn(wsG, 'D8e', 'hi', true);
     let crashed3 = null;
     try { env.waiting.get(env.acp.stdin.writes[env.acp.stdin.writes.length - 1].id).reject({}); } catch (e) { crashed3 = e; }
-    ck('S8d 空对象载荷不崩走通用错误', crashed3 === null && errsOf(wsG).some(t => t.startsWith('turn failed:')));
+    const e8 = errsOf(wsG); // S8a 已产 1 条通用人话，S8b/S8c 走救援零报错——此处必须恰为第 2 条（防 .some 被 S8a 顶包）
+    ck('S8d 空对象载荷不崩走通用人话', crashed3 === null && e8.length === 2 && e8[1] === '这一轮没完成，请再发一次试试。');
 }
-// S9 非 NF 上游错误 → 原样透传 turn failed（既有语义，防回归观察点）
+// S9-S11 非 NF 上游错误三档人话（s76 遗留⑦：不再 'turn failed: '+英文原文透传）；归类桩注入，覆盖未归类/unauthorized/S26 命中三分支
+// S9 未归类（S26 不命中、归类非 unauthorized）→ 通用重发人话，英文原文零透出，不救援
 {
     const { env, api } = makeEnv(); const wsH = mkWs();
     api.sendTurn(wsH, 'D9', 'hi', true);
     env.waiting.get(env.acp.stdin.writes[0].id).reject({ message: 'provider switching' });
-    ck('S9 非 NF 错误原样透传（既有语义）', errsOf(wsH)[0] === 'turn failed: provider switching' && newsCount(env) === 0);
+    const t9 = errsOf(wsH)[0] || '';
+    ck('S9 非 NF 未归类走通用人话，不透英文原文', t9 === '这一轮没完成，请再发一次试试。' && !/provider switching|turn failed/.test(t9) && newsCount(env) === 0);
+}
+// S10 归类 unauthorized → Key 指引人话（S26 正则本不含 401，归类门先于 S26 门才能命中）
+{
+    const { env, api } = makeEnv(undefined, () => 'unauthorized'); const wsI = mkWs();
+    api.sendTurn(wsI, 'D10', 'hi', true);
+    env.waiting.get(env.acp.stdin.writes[0].id).reject({ message: 'Request failed: 401 Unauthorized' });
+    const t10 = errsOf(wsI)[0] || '';
+    ck('S10 unauthorized 走 Key 指引人话，不透英文', t10.startsWith('这家服务商的 Key 没配上或不对') && !/401|Unauthorized/.test(t10) && newsCount(env) === 0);
+}
+// S11 S26 命中且归类 timeout（rate/server 同分支）→ 服务商暂时不通人话
+{
+    const { env, api } = makeEnv(/timed? out|rate limit|Server error/i, () => 'timeout'); const wsJ = mkWs();
+    api.sendTurn(wsJ, 'D11', 'hi', true);
+    env.waiting.get(env.acp.stdin.writes[0].id).reject({ message: 'upstream request timed out' });
+    const t11 = errsOf(wsJ)[0] || '';
+    ck('S11 timeout 走服务商暂时不通人话，不透英文', t11.startsWith('看起来是大模型服务商那边暂时不通') && !/timed out/.test(t11) && newsCount(env) === 0);
 }
 console.log('rescue-guard-probe: PASS=' + pass + ' FAIL=' + fail);
 process.exit(fail ? 1 : 0);
