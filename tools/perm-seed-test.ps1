@@ -71,6 +71,14 @@ Assert 'S3 invalid file re-seeded' ($t.Contains('user:'))
 Assert 'S3 archive created' ($null -ne $baks -and $baks.Count -ge 1)
 Assert 'S3 archive preserves old (empty) content' ($baks.Count -ge 1 -and [IO.File]::ReadAllText($baks[0].FullName).Length -eq 0)
 
+# S4 template missing AND target missing -> red warning, no crash, rc still 0
+$root = New-Sandbox
+$out = Invoke-Block $root
+$noTarget = -not (Test-Path (Join-Path $root 'conf\goose\config\permission.yaml'))
+Assert 'S4 warning emitted' ($out -match 'WARNING')
+Assert 'S4 no target created' $noTarget
+Assert 'S4 exit code 0 (warn does not block startup)' ($script:rc -eq 0)
+
 Write-Host "PERM-SEED-TEST: $pass/$total"
 foreach ($r in $roots) { try { Remove-Item $r -Recurse -Force } catch {} }
 if ($pass -eq $total) { exit 0 } else { exit 1 }

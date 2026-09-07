@@ -83,6 +83,9 @@ if (Test-Path $permTplPath) {
         Copy-Item $permTplPath $permPath -Force
         Write-Host '[bootstrap] permission.yaml invalid (no user: block), archived and re-seeded from template'
     }
+} elseif (-not (Test-Path $permPath)) {
+    # qa P3-1：模板与目标双缺——显式红字告警，不再静默 rc=0
+    Write-Host '[bootstrap] WARNING: permission.yaml missing AND template missing - goose may fail to start; restore conf\templates\permission.tpl.yaml and relaunch' -ForegroundColor Red
 }
 
 # 1c) memory junction：goose-mcp 硬编码 %APPDATA%\Block\goose\config\memory（无视 GOOSE_PATH_ROOT，
