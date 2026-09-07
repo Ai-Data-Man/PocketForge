@@ -104,3 +104,30 @@ node C:\ZCodeWorks\PocketForge\tmp\pfr18-cleanup.js       # 面板API清理+删�
 2. 断点①在 GUI 上的实际表现未做浏览器级复现（WS 探针已等价覆盖前端消息形态：stop reason=end + 空 chunk）；工程师修复时补 GUI 断言即可。
 3. chatrecall 层（历史召回）不在本轮范围；「查旧事先用记忆工具」的教学与权限卡的组合成本未评估。
 4. 本机 7 个滞留 `goose.exe mcp memory` 进程对（research/17 已知残余）随本轮两次 pc restart 全部清零，终态：acp 主进程+scheduler 孤立运行，孤儿=0，healthz 200（node 直连），memory 目录空，sessions 库余 20260907_1/_2/_3（_3 为本轮占号用的空会话，桥启动自会清理 >1 天的空 acp 会话）。
+
+## s76 修复后的救援触发面边界（2026-09-08 补记）
+
+s76 已落地断点①桥侧修复：ff0a092（onAcpData error 帧改走 reject + prompt 首轮单次救援；e2e 第 18 节「删当天最新→新建→prompt 必须有回文」钉子转正）+ P3 小批 df80876（TURN_LOST_TEXT 成因中立文案）/1ddff47（rescuedSids 救援去重）/d539ebb（rescueSession ws.alive 门）。主场景活体实证：E1 探针 REUSED=true（_7 删后复用）→ 守卫拒 → RESCUE newSid=_8 → 回复「收到」；pc.log 留存 6 条 `session/prompt rejected by goose, single rescue: … Session not found: …` 实录。**VERIFIED-RUN**（s76 实施工程师活体，2026-09-08；探针 tools/e2e/sid-reuse-rescue-probe.js、tmp/pfr18b-zombie-fix-probe.js）。
+
+### 勘误：转述的「closed 类文案不匹配 SESSION_NF_RE」与实测不符
+
+主控转述的边界事实称：「对已 session/close 但行仍在的 sid 发 prompt，goose 返回 closed 类文案，不匹配 SESSION_NF_RE，因此不进救援」。**本研究员独立对照实验证伪该措辞机制**（实验 C1，VERIFIED-RUN，2026-09-08，tmp/pfr18c-acp-wording.js，独立 acp 实例单词对照）：
+
+| 场景 | goose 返回（逐字） | NF_MATCH |
+|---|---|---|
+| close 且行仍在 | `resource_not_found` + data `"Session not found: 20260907_30"` | **true** |
+| close 且行已删 | 同上，逐字相同 | **true** |
+
+佐证：v1.46.0 acp 源码 grep 全库无任何 closed 类 prompt 错误文案——closed 守卫（server.rs:1541/1577）只发 `resource_not_found`+NF 形态；桥侧 reject 带完整 error 对象，`etxt = message + ' ' + data`（tpl.js:639、:704-709），两场景均命中 `SESSION_NF_RE`。
+
+「close 未删行」不救援的**真解释**（同样成立，但机制不同）：
+1. **产品路径上该场景不可自然发生**：桥只有 delete_session 发 session/close，且必同时硬删行（tpl.js:2992+）；「close 未删行」只能由绕过桥的 ACP 直访或未来代码路径制造。
+2. **救援有首轮门**（tpl.js:2993 + 重放 `allowRescue=false` 单次守卫）：sid 在**中轮**死亡（无论何种成因），即便命中 NF 也只发 TURN_LOST_TEXT 人话错误，不迁移——P3 注释明言「中轮 sid 丢失不静默迁移，避免无声丢上下文」。工程师观察到的「人话错误提示重试/新建、非静默」用户表现与此一致，予以保留；但其归因（措辞差异）不成立。
+
+### 修订后的救援触发面口径（三条，VERIFIED-RUN）
+
+1. **首轮门**：仅每绑定首轮 prompt 允许救援一次（重放不救援、多客户端去重、30s 超时人话收场）。
+2. **形态门**：仅 `Session-not-found` 形态触发；provider/上游类错误走 s26 上游分类文案，不救援（合理——换会话救不了线路故障）。
+3. **措辞单源**：NF 形态是 v1.46.0 goose 对「closed 守卫/行不存在」的唯一措辞，今天恰好覆盖两类场景。**升级必查**：goose 若引入差异化 closed 文案（如 "session is closed"），「closed 未删行」类场景将从救援面掉出（仍保底为人话错误，非静默）——建议并入 research/04 升级回归清单（对 ask_before/never_allow 前缀命中检查同族）。
+
+勘误声明：原底稿对断点①因果链（删行→序号回退→复用→NF 拒绝→桥吞错）与修复建议的描述经此实验全部维持成立，无需更正；本节为触发面边界的精化与转述勘误，非翻案。根治项（自有 sid 前缀/tombstone 防序号回退）仍按 journal s76 裁决挂起，触发器=救援路径实录失败或 goose 升级改变编号语义。
