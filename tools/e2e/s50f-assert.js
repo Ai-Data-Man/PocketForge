@@ -6,7 +6,7 @@ function ok(cond, name) { if (cond) { pass++; console.log('PASS ' + name); } els
 
 // ===== 修复 3：401 正则三组用例（提取模板真实正则）=====
 const tpl = fs.readFileSync(path.join(__dirname, '..', '..', 'forge', 'conf', 'templates', 'chat.tpl.html'), 'utf8');
-const m401 = tpl.match(/if\((\/401[^/]*\/i)\.test\(txt\)\)/);
+const m401 = tpl.match(/if\((\/401[^/]*\/i)\.test\(txt\w*\)\)/); // s50e 把局部变量改名 txtRaw，锚点放宽到 txt\w*（s76：存量红修复）
 ok(m401, '修复3: 模板中找到收窄后的 401 正则');
 const re401 = new RegExp(m401[1].slice(1, -2), 'i');
 ok(re401.test('Ran into this error: Authentication error: ... 401 Unauthorized') === true, '修复3: 401 Unauthorized 报错 → 401 分支');

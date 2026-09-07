@@ -974,10 +974,10 @@ function endStream(){ if(streamEl){
     const orig=lastOrig||txtRaw; // s50e: 重发原文（提示词注入前的用户输入；原 dataset.orig 写在 addMsg 之后恒为死代码，改用模块级 lastOrig）
     const el=document.createElement('div'); el.className='msg agent info';
     if(/401\s*(unauthorized|invalid|forbidden)?[^\n]{0,40}(unauthorized|invalid|api[ _-]?key)|api[ _-]?key|unauthorized/i.test(txtRaw)){ // s50f: 裸 401 须伴随上下文词，避免「共 401 条记录」误报
-      el.textContent='💡 这家服务商的 Key 没配上或不对。到 ⚙️ 设置 → 服务商档案，填好 Key 再回来点重发。';
+      el.textContent='💡 这家服务商的 Key 没配上或不对。到 ⚙️ 设置 → 服务商档案，填好 Key 再回来，点这条消息下方的「取回修改」检查后发送。'; // s76: 操作条「重发」已改名「取回修改」（裁决 batch1-C），文案同步，行为零改动
       chat.appendChild(el);
     } else {
-      el.textContent='💡 看起来是大模型服务商那边暂时不通（不是你的操作问题）。等一两分钟，点「重发」再试一次；老不行就换个模型（点上面的模型名字）。';
+      el.textContent='💡 看起来是大模型服务商那边暂时不通（不是你的操作问题）。等一两分钟，点这条消息下方的「取回修改」再发送一次；老不行就换个模型（点上面的模型名字）。'; // s76: 同上，纯文案
       const spare=(providerList||[]).find(p=>!p.active);
       if(spare){
         const b=document.createElement('button'); b.className='msgbtn'; b.textContent='换备用线路再试';
