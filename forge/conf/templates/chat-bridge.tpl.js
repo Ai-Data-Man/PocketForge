@@ -726,6 +726,7 @@ function rescueSession(ws, text) {
         clearTimeout(timer);
         if (!(res && res.sessionId)) return fail();
         statsBump('sessionsCreated');
+        if (!ws.alive) return; // qa s76 P3-4: 救援窗口内客户端已断开（drop 已清各表）——不再回挂死连接/续发重放（rpc 直通 alive 门同款）
         wsSession.set(ws, res.sessionId);
         if (!sessionClients.has(res.sessionId)) sessionClients.set(res.sessionId, new Set());
         sessionClients.get(res.sessionId).add(ws);
