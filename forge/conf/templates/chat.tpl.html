@@ -2012,16 +2012,16 @@ $('store-q').oninput=()=>{ clearTimeout(storeQT); storeQT=setTimeout(()=>{ listP
 let skillsQT=null; // IA-1: 已装区搜索（同款防抖；过滤变化回第 1 页）
 $('skills-q').oninput=()=>{ clearTimeout(skillsQT); skillsQT=setTimeout(()=>{ listPage.ins=1; paintInstalled(); },200); };
 
-// 消息操作：复制 / 重发
+// 消息操作：复制 / 取回修改
 document.getElementById('chat').addEventListener('click', async e=>{
   const btn=e.target.closest('.msgbtn'); if(!btn) return;
   const msg=btn.closest('.msg');
   if(btn.dataset.act==='copy'){ await navigator.clipboard.writeText(msgText(msg)); btn.textContent='已复制✓'; setTimeout(()=>btn.textContent='复制',1200); }
-  if(btn.dataset.act==='retry'){ $('txt').value=msgText(msg); submit(); } // s62/P3: 元素级剥操作条取正文，替代正则（正则会误裁以「重发/复制」结尾的正文）
+  if(btn.dataset.act==='retry'){ $('txt').value=msgText(msg); $('txt').focus(); const L=$('txt').value.length; $('txt').setSelectionRange(L,L); } // s62/P3: 元素级剥操作条取正文; pm裁决2026-09-07-batch1 C: 取回修改=载入+聚焦+光标到末尾，不自动发送（自动重发语义只属于错误卡闭包 s50e/s50f，红线区）
 });
 function msgButtons(){
   const bar=document.createElement('div'); bar.className='mbar';
-  for(const [act,label] of [['copy','复制'],['retry','重发']]){
+  for(const [act,label] of [['copy','复制'],['retry','取回修改']]){
     const b=document.createElement('button'); b.className='msgbtn'; b.dataset.act=act; b.textContent=label; bar.appendChild(b);
   }
   return bar;

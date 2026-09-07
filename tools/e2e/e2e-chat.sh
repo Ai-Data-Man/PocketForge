@@ -200,6 +200,50 @@ node "$ROOT/tools/e2e/ui-logic-probe.js" > /tmp/ui-logic-probe.log 2>&1; ck "ui-
 grep -E "^ui-logic-probe" /tmp/ui-logic-probe.log
 rm -f /tmp/ui-logic-probe.log
 
+# ---------- 14b) 操作条「取回修改」桩测（pm裁决 2026-09-07-user-six-lines-batch1 C） ----------
+# 断言：取回后输入框有剥操作条原文且未自动发送（submit 哨兵=0）；聚焦+光标到末尾；连点幂等；
+# 标签同步「取回修改」；红线=错误卡闭包自动重发路径（s50e/s50f）原样在场。手法同 ia-logic-probe（模板提取+DOM 桩）。
+cat > /tmp/pf-retry-probe.js <<'PROBE'
+'use strict';
+const fs = require('fs');
+const html = fs.readFileSync(process.env.PF_ROOT + '/forge/conf/templates/chat.tpl.html', 'utf8');
+let pass = 0, fail = 0;
+const ck = (n, ok) => { console.log((ok ? 'PASS: ' : 'FAIL: ') + n); ok ? pass++ : fail++; };
+const m = html.match(/if\(btn\.dataset\.act==='retry'\)\{[^\n]*\}/);
+if (!m) { console.error('NOT FOUND: retry branch（模板结构漂移，先改探针）'); process.exit(1); }
+const branch = m[0];
+ck('D1: retry 分支载入 msgText 剥操作条原文', /\$\('txt'\)\.value=msgText\(msg\)/.test(branch));
+ck('D2: retry 分支不自动发送（无 submit()）', !/\bsubmit\(\)/.test(branch));
+ck('D3: retry 分支聚焦+光标到末尾', /\$\('txt'\)\.focus\(\)/.test(branch) && /setSelectionRange\(L,L\)/.test(branch));
+ck('D4: 按钮标签=「取回修改」（标签跟行为走）', /\['retry','取回修改'\]/.test(html));
+ck('D5: 旧自动提交形态（msgText(msg); submit()）零残留', !/msgText\(msg\); submit\(\)/.test(html));
+ck('D6: 红线——错误卡闭包自动重发原样在场（txt.value=orig; submit()）', /pendingRetry=\(\)=>\{[^\n]*txt\.value=orig; submit\(\);/.test(html));
+// DOM 桩执行：行为级验证（载入原文/不发送/聚焦/光标末尾/幂等）
+function runOnce(calls) {
+  const txtStub = { value: '', focus: () => calls.focus++, setSelectionRange: (a, b) => { calls.sel = [a, b]; } };
+  new Function('$', 'msgText', 'msg', 'btn', 'submit', branch)(
+    id => id === 'txt' ? txtStub : null,
+    () => '剥操作条后的原文',
+    {},
+    { dataset: { act: 'retry' } },
+    () => calls.submit++);
+  return txtStub;
+}
+const c1 = { focus: 0, sel: null, submit: 0 };
+const t1 = runOnce(c1);
+ck('D7: 桩执行——输入框有原文', t1.value === '剥操作条后的原文');
+ck('D8: 桩执行——未触发发送（submit 哨兵=0，无 ws send/busy 变化）', c1.submit === 0);
+ck('D9: 桩执行——聚焦且光标在末尾', c1.focus === 1 && !!c1.sel && c1.sel[0] === t1.value.length && c1.sel[1] === t1.value.length);
+const c2 = { focus: 0, sel: null, submit: 0 };
+const t2 = runOnce(c2); runOnce(c2);
+ck('D10: 连点两次幂等——值不变、仍零发送', t2.value === '剥操作条后的原文' && c2.submit === 0);
+console.log('retry-probe: PASS=' + pass + ' FAIL=' + fail);
+process.exit(fail ? 1 : 0);
+PROBE
+PF_ROOT="$ROOT" node /tmp/pf-retry-probe.js > /tmp/pf-retry-probe.log 2>&1; ck "retry probe 10 ck (取回修改: load-no-send + red line intact)" $?
+grep -E "^(PASS|FAIL|retry-probe)" /tmp/pf-retry-probe.log
+rm -f /tmp/pf-retry-probe.log /tmp/pf-retry-probe.js
+
 # ---------- 15) IA 逻辑桩测（s74 转正自 qa tmp/s74-qa-archprobe；详见 tools/e2e/ia-logic-probe.js） ----------
 # 归档视图分页/空态清翻页器 + 技能过滤空态（IA-1/IA-2 缺陷家族回归钉子），同款模板提取桩测
 node "$ROOT/tools/e2e/ia-logic-probe.js" > /tmp/ia-logic-probe.log 2>&1; ck "ia-logic probe 7 ck (arch pager clear + skills empty state)" $?
