@@ -683,7 +683,8 @@ function onAcpData(chunk) {
 // 人话错误（不再秒回空僵尸）；救援=首轮 prompt 撞 Session-not-found 时新建会话重放一次（模式同 subscribe(null)/
 // switch_model 既有的 session/new+rebind+subscribed 消费点）。
 const SESSION_NF_RE = /session\s*not\s*found/i;
-const TURN_LOST_TEXT = '这场对话打不开了（删除对话后的一个小概率后遗症）。点左侧「＋ 新对话」重新开始，把想做的事再说一遍就行。';
+// qa s76 P3-2: 成因中立——同一文案也用于 provider 切换/acp 慢等非删除成因的救援失败，不能点名「删除对话」
+const TURN_LOST_TEXT = '这一轮没能完成，可能是刚才的会话出了点异常，或者线路一时不稳。请再发一次试试，还不行就点左侧「＋ 新对话」重新开始。';
 const wsFirstPrompt = new WeakMap(); // ws→当前绑定是否还没发过 prompt（仅首轮救援；中轮 sid 丢失不静默迁移，避免无声丢上下文）
 function sendTurn(ws, sid, text, allowRescue) {
     const id = nextId++;
