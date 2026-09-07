@@ -295,12 +295,12 @@ details.tz[open]>summary::before{content:'▾ '}
     <button class="chip on" id="svw-chat" role="tab" aria-selected="true" style="flex:1">💬 对话</button>
     <button class="chip" id="svw-arch" role="tab" aria-selected="false" style="flex:1">📦 归档</button>
   </div>
-  <div style="position:relative;margin:2px 8px 4px;display:none" id="arch-q-row">
-    <input id="arch-q" placeholder="🔍 在归档里找…" autocomplete="off">
+  <div style="position:relative;margin:2px 8px 4px" id="arch-q-row">
+    <input id="arch-q" placeholder="🔍 在对话列表里找…" autocomplete="off">
   </div>
   <div id="search-results" style="display:none"></div>
   <div id="sessions"></div>
-  <div id="arch-pager" style="display:none;gap:10px;justify-content:center;align-items:center;padding:2px 8px"></div>
+  <div id="arch-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 8px"></div>
   <footer>
     <button class="icobtn" id="refresh-sessions" title="刷新会话列表">⟳</button>
     <button class="icobtn" id="open-skills" title="技能">🧩</button>
@@ -715,7 +715,6 @@ function renderSessions(list){
   const arc=real.filter(s=>archSet[s.sessionId]).sort((a,b)=>byNew(b)-byNew(a));
   archCount=arc.length; paintSideChips(); // IA-2: 归档计数跟随列表刷新
   if(!act.length&&!arc.length){ box.innerHTML='<div style="padding:12px;font-size:.75rem;color:var(--mut)">还没有对话。点上面「＋ 新对话」开始。</div>'; pagerPaint('arch-pager',1,1,0,null); return; } // qa P3: 全空早退同样清翻页器（归档视图下逐条删光可达）
-  const trunc=txt=>{ const t=document.createElement('div'); t.className='fnote'; t.style.padding='4px 10px'; t.textContent=txt; box.appendChild(t); };
   if(sideView==='arch'){ // IA-2: 归档视图=全量清单+搜索+行型分页（30/页）——30 截断从此有出路（R2）
     if(!arc.length){ box.innerHTML='<div style="padding:12px;font-size:.75rem;color:var(--mut)">还没有归档的对话。日常对话右边的 📥 点一下就会收进这里。</div>'; pagerPaint('arch-pager',1,1,0,null); return; } // qa P3: 早退清翻页器，防旧「第 N/M 页」残留
     const q=($('arch-q').value||'').trim().toLowerCase();
@@ -726,8 +725,15 @@ function renderSessions(list){
     pagerPaint('arch-pager',listPage.arch,ps.pages,ps.total,p=>{ listPage.arch=p; renderSessions(lastSessions); });
     return;
   }
-  for(const s of act.slice(0,40)) box.appendChild(sessItem(s,false));
-  if(act.length>40) trunc('还有 '+(act.length-40)+' 个更早对话没显示，用上面搜索或归档查看');
+  // 活跃视图=同款清单+搜索+行型分页（pm裁决 2026-09-07-user-six-lines-batch1 项1；取代 act.slice(0,40)+死提示出口）。
+  // 规模预期（AGENTS.md §7 义务）：单机个人使用，活跃会话终态预期 ≤100 条（更早对话自然沉淀进归档视图）；
+  // 当前落 R2 31-100 档=分页+搜索；超 100 条即复审归档引导。
+  const q=($('arch-q').value||'').trim().toLowerCase();
+  const shown=act.filter(s=>!q||String(s.title||'').toLowerCase().includes(q));
+  if(!shown.length){ box.innerHTML='<div class="fnote" style="padding:8px 10px">'+(q?'没找到带「'+esc(q)+'」的对话。':'还没有对话。点上面「＋ 新对话」开始。')+'</div>'; pagerPaint('arch-pager',1,1,0,null); return; } // qa P3: 早退清翻页器，同归档分支
+  const ps=pageSlice(shown,'chat',PAGE_N);
+  for(const s of ps.rows) box.appendChild(sessItem(s,false));
+  pagerPaint('arch-pager',listPage.chat,ps.pages,ps.total,p=>{ listPage.chat=p; renderSessions(lastSessions); });
 }
 function paintSideChips(){ // IA-2: chip 态与计数（mtab 同款 aria-selected 写法）
   const c=$('svw-chat'), a=$('svw-arch'); if(!c||!a) return;
@@ -737,15 +743,16 @@ function paintSideChips(){ // IA-2: chip 态与计数（mtab 同款 aria-selecte
 }
 function showSideView(v){
   sideView=v;
-  $('arch-q-row').style.display=v==='arch'?'block':'none';
-  $('arch-pager').style.display=v==='arch'?'flex':'none';
+  $('arch-q-row').style.display='block'; // 项1(pm裁决2026-09-07-batch1): 搜索行两视图恒驻——同一输入框按当前视图过滤对应列表（R2 出路必须真实存在）
+  $('arch-pager').style.display='flex'; // 两视图各自分页，共用同一翻页器容器
+  $('arch-q').placeholder=v==='arch'?'🔍 在归档里找…':'🔍 在对话列表里找…';
   paintSideChips();
   renderSessions(lastSessions);
 }
 $('svw-chat').onclick=()=>showSideView('chat');
 $('svw-arch').onclick=()=>showSideView('arch');
 let archQT=null; // IA-2: 归档搜索（store-q 同款防抖 200ms；过滤变化回第 1 页）
-$('arch-q').oninput=()=>{ clearTimeout(archQT); archQT=setTimeout(()=>{ listPage.arch=1; renderSessions(lastSessions); },200); };
+$('arch-q').oninput=()=>{ clearTimeout(archQT); archQT=setTimeout(()=>{ listPage.arch=1; listPage.chat=1; renderSessions(lastSessions); },200); }; // 项1: 两视图共用搜索词，各自回第 1 页
 function subscribe(sid){ pendingForNew=!sid; lastOrig=null; wssend({type:'subscribe',sessionId:sid,model:lastKnownModel||undefined}); chat.innerHTML=''; toolCards.clear(); if(!sid){ addMsg('你好！我是小 forge。想做什么直接打字告诉我。','agent'); addQuickPrompts(); } }
 // s33: 开场快捷任务——小白不用想"该说什么"，点一下就发
 const QUICK_PROMPTS=[
@@ -1905,7 +1912,7 @@ function paintInstalled(){ // s71: 自 open-skills 内联渲染提升为具名�
 let storeAll=[]; // 当前可装列表（avail），供搜索过滤
 // s71 技能/插件市场分页：技能卡约 120px 高，每页 12 条≈两屏；切片模式对齐 renderAllPane 的 PAGE_N 先例
 const SKILL_N=12;
-const listPage={ins:1,store:1,mcp:1,arch:1}; // 各列表当前页；仅重开弹窗时重置（loadSkills2/loadMcpUI 会被操作回调与安装轮询复调，不得在函数内重置）；arch=侧栏归档视图（IA-2）
+const listPage={ins:1,store:1,mcp:1,arch:1,chat:1}; // 各列表当前页；仅重开弹窗时重置（loadSkills2/loadMcpUI 会被操作回调与安装轮询复调，不得在函数内重置）；arch/chat=侧栏归档/活跃视图（IA-2 + pm裁决2026-09-07-batch1 项1）
 function pageSlice(arr,key,n){ // IA-2: 可选页大小（缺省 SKILL_N；行型清单传 PAGE_N=30，对齐 renderAllPane 先例）
   const per=n||SKILL_N;
   const pages=Math.max(1,Math.ceil(arr.length/per));
