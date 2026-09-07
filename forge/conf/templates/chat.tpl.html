@@ -1171,7 +1171,7 @@ txt.onkeydown=e=>{
   }
 };
 stopBtn.onclick=()=>{ wssend({type:'cancel'}); setBusy(false); };
-$('newchat').onclick=()=>{ if(busy){ addInfo('它正忙着呢——等这步干完，或点 ⏹ 停止再开新的。'); return; } subscribe(null); $('search-results').style.display='none'; $('sessions').style.display=''; $('chat-search').value=''; }; // s69 P2-9: 忙碌态护栏（对齐 openSession）
+$('newchat').onclick=()=>{ if(busy){ addInfo('它正忙着呢——等这步干完，或点 ⏹ 停止再开新的。'); return; } subscribe(null); $('search-results').style.display='none'; $('sessions').style.display=''; $('chat-search').value=''; $('arch-q').value=''; listPage.arch=1; listPage.chat=1; renderSessions(lastSessions); }; // s69 P2-9: 忙碌态护栏（对齐 openSession）; s76 qa P3-6: 清 arch-q 残留过滤词+两视图回第 1 页再重渲染（残留过滤词会让新建会话不在列表；与 arch-q oninput 同款复位）
 // 导出当前对话（小白：存成 txt 给别人看）
 window.exportChat=()=>{
   const NL=String.fromCharCode(10);
