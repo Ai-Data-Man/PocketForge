@@ -57,7 +57,8 @@ if (cmd === '--list-models') {
     req.end();
 } else if (cmd === '--set-model') {
     const m = (argv[1] || '').trim();
-    if (!m || m.startsWith('--')) { console.error('用法：node vision.js --set-model <模型名>（模型名用 --list-models 查到的原样 id）'); process.exit(2); }
+    // qa P2-1：换行/CRLF 会把第二行注入 secrets.env（伪造任意键），必须拒——模型 id 单行
+    if (!m || m.startsWith('--') || /[\r\n]/.test(m)) { console.error('用法：node vision.js --set-model <模型名>（模型名用 --list-models 查到的原样 id，单行）'); process.exit(2); }
     let lines = [];
     try { lines = fs.readFileSync(SECRETS, 'utf8').split(/\r?\n/).filter(l => l !== '' && !/^FORGE_VISION_MODEL=/.test(l.trim())); } catch {}
     lines.push('FORGE_VISION_MODEL=' + m);
