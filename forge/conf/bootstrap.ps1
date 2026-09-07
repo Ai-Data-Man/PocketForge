@@ -159,6 +159,11 @@ $xlsxTpl = Join-Path $ForgeRoot 'conf\templates\gen-xlsx.tpl.js'
 $xlsxOut = Join-Path $ForgeRoot 'bin\gen-xlsx.js'
 if (Test-Path $xlsxTpl) { Copy-Item $xlsxTpl $xlsxOut -Force }
 
+# 5f) vision 看图工具生成（真相源入库；此前住在仓库根 tools/ 不进包，交付物里 see-image 技能指向的文件不存在）
+$visTpl = Join-Path $ForgeRoot 'conf\templates\vision.tpl.js'
+$visOut = Join-Path $ForgeRoot 'bin\vision.js'
+if (Test-Path $visTpl) { Copy-Item $visTpl $visOut -Force }
+
 # 5c) 首启欢迎页（仅首次：data/welcome.done 不存在时生成 html 并由启动器打开）
 $done = Join-Path $ForgeRoot 'data\welcome.done'
 if (-not (Test-Path $done)) {
