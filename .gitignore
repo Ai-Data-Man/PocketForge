@@ -22,4 +22,6 @@ forge/apps/*.yaml
 forge/conf/apps.env.yaml
 conf/apps.env.yaml
 forge/conf/goose/config/memory/
+# goose 运行时演化物不入库（裁决 2026-09-08-permission-yaml-untrack）：种子=conf/templates/permission.tpl.yaml
+forge/conf/goose/config/permission.yaml
 forge/conf/diag.ps1
