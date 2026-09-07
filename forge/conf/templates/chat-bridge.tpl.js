@@ -712,7 +712,7 @@ function sendTurn(ws, sid, text, allowRescue) {
             console.log('session/prompt rejected by goose, single rescue:', etxt);
             try { rescueSession(ws, text); return; } catch (er) { console.error('rescue failed:', er); }
         }
-        ws.send({ sys: 'error', text: SESSION_NF_RE.test(etxt) ? TURN_LOST_TEXT : 'turn failed: ' + String(e.message || e) });
+        ws.send({ sys: 'error', text: SESSION_NF_RE.test(etxt) ? TURN_LOST_TEXT : 'turn failed: ' + String((e && e.message) || e) }); // qa s76 P2-A: e 与 :706 同款 null 守卫——畸形帧 error:null 曾在此 TypeError 打死桥（reject 回调在无 try 的 onAcpData 栈）
     } });
     // reject 回调可能来自 onAcpData 栈（不在 handleClient try 内），acp 写失败必须就地接住
     try {
@@ -767,6 +767,7 @@ async function hotRestartProvider() {
     for (const [, w] of waiting) { if (w.reject) { try { w.reject(new Error('provider switching')); } catch {} } }
     waiting.clear();
     sessionClients.clear();
+    rescuedSids.clear(); // qa s76 P3-A: 热重启同样杀 acp（全部旧 sid 作废），去重集合必须随行清，否则热重启前的死 sid 被拦在救援外
     acp = spawnAcp();
     await init();
     for (const ws of allClients) ws.send({ sys: 'provider_switched', provider: (activeProvider() || {}).name, model: env0Model() });

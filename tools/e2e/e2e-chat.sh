@@ -271,6 +271,12 @@ grep -q "PASS" /tmp/sid-reuse-rescue.log; ck "delete-latest sid-reuse prompt non
 grep -E "^SID_A|^RESCUE|^SYS-ERROR" /tmp/sid-reuse-rescue.log || true
 rm -f /tmp/sid-reuse-rescue.log
 
+# ---------- 18b) 救援判据守卫桩测（qa s76 P2-A）：畸形 reject 载荷不崩桥/去重/alive 门，模板提取零网络 ----------
+node "$ROOT/tools/e2e/rescue-guard-probe.js" > /tmp/rescue-guard.log 2>&1
+grep -q "FAIL=0" /tmp/rescue-guard.log; ck "rescue guard probe 20 ck (null/string/{} payload + dedup + alive gate)" $?
+grep -E "^rescue-guard-probe" /tmp/rescue-guard.log || true
+rm -f /tmp/rescue-guard.log
+
 rm -f /tmp/e2e-v1.md
 echo "=============================="
 echo "chat-link E2E: PASS=$PASS FAIL=$FAIL"

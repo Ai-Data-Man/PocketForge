@@ -233,10 +233,14 @@ let child = null;
         // 场景1 布景：pc.log 单行 250KB；backup.log 29 行 x 9KB；stats 7 天 x 60KB（带 day 标记）
         FSS.writeFileSync(J(SBB, ['data', 'logs', 'pc.log']), 'HUGE ' + 'x'.repeat(250 * 1024) + ' EADDRINUSE-marker\n');
         FSS.writeFileSync(J(SBB, ['data', 'logs', 'backup.log']), Array.from({ length: 29 }, (_, i) => 'bak ' + i + ' ' + 'y'.repeat(9000)).join('\n') + '\n');
+        // s76c 勘误：种子日期改为相对「今天」动态生成（原写死 2026-09-01..07 与桥自写当日 usage 文件耦合——
+        // 跨午夜后桥多写一个当日文件使 slice(-7) 窗口前移，种子最旧保留日被挤出 → 断言红。测试钟表 bug，非产品缺陷）
+        const DAY = 24 * 3600 * 1000;
+        const dstr = off => { const t = new Date(Date.now() - off * DAY); return t.getFullYear() + String(t.getMonth() + 1).padStart(2, '0') + String(t.getDate()).padStart(2, '0'); };
         for (let d = 1; d <= 7; d++) {
-            const day = '2026-09-0' + d;
-            FSS.writeFileSync(J(SBB, ['data', 'stats', 'usage-' + day.replace(/-/g, '') + '.json']),
-                JSON.stringify({ date: day, errorsByType: { upstream: 1, upstreamByKind: { unauthorized: 0, rate: 0, timeout: 0, server: 1 } } }) + '\n"filler-day-' + d + ' ' + 'z'.repeat(60 * 1024) + '"');
+            const ymd = dstr(8 - d); // 今天-7 .. 今天-1（不含今天：今天那份由桥自己写，正是原缺陷耦合点）
+            FSS.writeFileSync(J(SBB, ['data', 'stats', 'usage-' + ymd + '.json']),
+                JSON.stringify({ date: ymd.slice(0, 4) + '-' + ymd.slice(4, 6) + '-' + ymd.slice(6, 8), errorsByType: { upstream: 1, upstreamByKind: { unauthorized: 0, rate: 0, timeout: 0, server: 1 } } }) + '\n"filler-day-' + d + ' ' + 'z'.repeat(60 * 1024) + '"');
         }
         FSS.writeFileSync(J(SBB, ['data', 'pc.port']), 'not-a-port\n'); // 乱码端口 → 未探测
         FSS.mkdirSync(J(SBB, ['bin', 'goose', 'goose-package']), { recursive: true });
@@ -252,10 +256,10 @@ let child = null;
         ck('场景1 截断标记出现 3 处（日志/备份/统计）', () => C.strictEqual((t1.match(/（已截断）/g) || []).length, 3, 'count=' + (t1.match(/（已截断）/g) || []).length));
         ck('场景1 日志节被清空且标记', () => C.ok(t1.includes('pc.log 尾部 0 行') && t1.includes('\n（已截断）')), '');
         ck('场景1 备份节被清空且标记', () => C.ok(/backup\.log 尾部 无/.test(t1)), '');
-        ck('场景1 统计「最新优先」：09-07 保留、09-01 被截', () => {
-            C.ok(t1.includes('usage-20260907.json'), '最新一天丢了');
-            C.ok(!t1.includes('usage-20260901.json') && !t1.includes('filler-day-1'), '最旧一天没截掉');
-            C.ok(!t1.includes('filler-day-4') && t1.includes('usage-20260905.json'), '保留集合与 slice(-3) 不符');
+        ck('场景1 统计「最新优先」：今天(' + dstr(0) + ') 保留、' + dstr(7) + ' 被截（slice(-3)=今/昨/前天）', () => {
+            C.ok(t1.includes('usage-' + dstr(0) + '.json'), '最新一天丢了');
+            C.ok(!t1.includes('usage-' + dstr(7) + '.json') && !t1.includes('filler-day-1'), '最旧一天没截掉');
+            C.ok(!t1.includes('filler-day-4') && t1.includes('usage-' + dstr(2) + '.json'), '保留集合与 slice(-3) 不符');
         });
         ck('场景1 诊断节/环境节/结构化短行完整', () => {
             for (const s of ['## 小forge自己看到的毛病', '## 快速判断', '## 环境', '- 数据盘剩余空间：', '- 膨胀点体积：', '- 定时任务：', '- MCP 扩展：', '## 请补充说明', '## GitHub issue 模板', '## 会话概况']) C.ok(t1.includes(s), s);
