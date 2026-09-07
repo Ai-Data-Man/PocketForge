@@ -65,7 +65,9 @@ const PROXY = CFG.proxy || '';
 // custom_providers/=用户自配的模型端点（交付时改 base_url 与 key）；memory/=memory MCP 用户记忆库
 // （升级包剔除该目录→差量把库文件判 deleted）。升级包不含、bootstrap 会重建的不保（.goosehints），
 // 种子交付优先的不保（conf/goose/config/recipes/——G4 max_turns 等种子修复靠升级送达，备份兜底）。
-const PROTECTED = ['data/', 'conf/goose/data/', 'conf/goose/state/', 'conf/goose/config/config.yaml', 'conf/goose/config/custom_providers/', 'conf/goose/config/memory/', 'conf/ports.env.yaml', 'conf/apps.env.yaml'];
+// permission.yaml=goose 运行时状态（回写可含 judge 缓存语义），升级永不删改；bootstrap 只管新装首种
+// （勘误 docs/verdicts/2026-09-08-permission-yaml-untrack §勘误：包不含→每次升级差量判 deleted，非一次性过渡）。
+const PROTECTED = ['data/', 'conf/goose/data/', 'conf/goose/state/', 'conf/goose/config/config.yaml', 'conf/goose/config/custom_providers/', 'conf/goose/config/memory/', 'conf/goose/config/permission.yaml', 'conf/ports.env.yaml', 'conf/apps.env.yaml'];
 
 function isProtected(rel) { return PROTECTED.some(p => rel === p.replace(/\/$/, '') || rel.startsWith(p)); }
 function sha256(buf) { return crypto.createHash('sha256').update(buf).digest('hex'); }

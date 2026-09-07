@@ -81,3 +81,9 @@
 ## 6. 取舍明示
 
 选 (a) 即对「git 历史里持续可见 goose 回写轨迹」说不——用 `git diff --no-index`+升级清单巡检替代，历史语义已沉淀 research/12；对 (b) 说是以自动化负担与审查噪声为代价，拒绝；对 (c) 说是以「治未发作的升级覆盖、放任每天发作的脏树」为代价，拒绝。信息架构检查：本裁决是同一问题（运行时演化 conf 文件）的第二次个案处理（第一次 config.yaml），按 AGENTS.md 关键规则 4 已核对是否需要重组——当前仅两例、机制同族已共用（模板+剥离+bootstrap 重建），不新建抽象；若出现第三例（如 custom_providers 出现运行时回写）再议统一框架。
+
+## 勘误 2026-09-08（qa 对 54ec3a3 审查 P2-1 实测复核后追加；上文为裁决原文，不改写）
+
+- **§2(a)「包不含=永不覆盖」有误**：update-runner 的 deleted 判定=「盘上有、新包无」（update-runner.js 主流程对 curMap 逐项查 newMap，不在即 deleted）。package.sh 剥离是每次打包都执行，故仅按 (a) 落地时**每次升级**都会把 permission.yaml 判 deleted 删盘→bootstrap 重建→judge 缓存每次升级清空一次。(a) 并不「天然包含 (c) 的升级免疫」，恰恰命中 (c) 要治的病。
+- **§4.5「一次性过渡」有误**：同理，不存在「此后各版升级该文件不在差量内=零触碰」——剥离持续发生，删盘+重建会随每次升级重复。
+- **§5.1 挂起项①（PROTECTED 化）已采纳落地**：`conf/goose/config/permission.yaml` 已入 update-runner PROTECTED 清单（文件路径式条目，同 config.yaml 形态；isProtected 对单文件走精确匹配分支）——差量 added/applied 与 deleted 两轮循环均 `continue`，该文件升级永不删改。触发器不再等待「权限卡重问增多」，qa P2-1 直接兑现。语义定版：permission.yaml=用户运行时状态，升级永不删改；bootstrap 只管新装首种（1b-7 copy-if-missing 不变）。
