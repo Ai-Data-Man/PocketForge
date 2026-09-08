@@ -1733,6 +1733,8 @@ function preUpgradeBackup(pkg) {
     function countFiles(d) { let n = 0; for (const ent of FSS.readdirSync(d, { withFileTypes: true })) { if (ent.isDirectory()) n += countFiles(path.join(d, ent.name)); else if (ent.isFile()) n++; } return n; }
     const bdir = path.join(ROOT, 'data', 'backups');
     try {
+        // stateWarnings 是内存态：失败族警告必须由下一次评估清除（含幂等复用路径），否则残留到桥重启
+        for (let i = stateWarnings.length - 1; i >= 0; i--) if (stateWarnings[i].indexOf('升级前自动备份失败') === 0) stateWarnings.splice(i, 1);
         FSS.mkdirSync(bdir, { recursive: true }); // 全新机器可能尚无该目录（首次每日备份前），缺失≠备份失败
         // 幂等：同一包（名字+字节或下载地址）重复触发不堆积——最新一份 manifest 记的就是它则复用
         const olds = FSS.readdirSync(bdir).filter(n => /^pre-upgrade-/.test(n)).sort();

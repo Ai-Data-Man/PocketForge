@@ -269,8 +269,8 @@ grep -E "^sched-drift-probe" /tmp/sched-drift-probe.log || true
 rm -f /tmp/sched-drift-probe.log
 
 # ---------- 17) 升级前自备份探针（s75c 转正自 tmp/preupgrade-backup-test；详见 tools/e2e/preupgrade-backup-probe.js） ----------
-# 43eff60 的 28 断言：整树对账/幂等/keep3 轮转/失败注入 warn（真桥端点驱动，自带清理）
-rc=0; node "$ROOT/tools/e2e/preupgrade-backup-probe.js" > /tmp/preupgrade-backup.log 2>&1 || rc=$?; ck "preupgrade-backup probe 28 ck" $rc
+# 43eff60 的 28 断言 + s77 D4 失败族警告清除 3 断言：整树对账/幂等/keep3 轮转/失败注入 warn/警告不残留（真桥端点驱动，自带清理）
+rc=0; node "$ROOT/tools/e2e/preupgrade-backup-probe.js" > /tmp/preupgrade-backup.log 2>&1 || rc=$?; ck "preupgrade-backup probe 31 ck" $rc
 grep -E "^RESULT" /tmp/preupgrade-backup.log || true
 rm -f /tmp/preupgrade-backup.log
 

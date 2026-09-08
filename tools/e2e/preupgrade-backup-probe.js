@@ -1,4 +1,4 @@
-// s75c 转正：桥端升级前自备份回归探针（43eff60 的 28 断言；真桥端点驱动，自带清理）
+// s75c 转正：桥端升级前自备份回归探针（43eff60 的 28 断言 + s77 D4 失败族警告清除 3 断言；真桥端点驱动，自带清理）
 // 断言面：内容逐位一致 / 幂等 / keep 3 轮转 / 失败注入 warn 不阻断 / runner 无害失败不停栈
 'use strict';
 const http = require('http');
@@ -127,6 +127,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         ok(await alive(), 'D3 桥仍存活');
         fs.rmSync(BDIR, { force: true });
         fs.renameSync(BDIR + '.testhold', BDIR);
+        // ---- D4. 失败族警告随下一次评估清除（s77：失败注入恢复后活体桥不得残留假警告）----
+        r = await post({ staged: Z3 });
+        ok(r.ok === true, 'D4a 恢复后同包 start ok:true (ok:' + r.ok + ')');
+        const stt2 = await getJson('/api/update/status');
+        ok(!Array.isArray(stt2.warnings) || !stt2.warnings.some(w => w.indexOf('升级前自动备份失败') === 0), 'D4b 失败族警告被清除，不再残留');
+        await sleep(1500);
+        ok(await alive(), 'D4c 桥仍存活');
 
         // ---- 清理 ----
         try { fs.rmSync(seedMem, { force: true }); } catch {}
