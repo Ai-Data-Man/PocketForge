@@ -18,7 +18,7 @@
 报告 v2 长期保护网：static（39 ck，静态/纯函数，秒级）+ sandbox（29 ck，自建沙箱真桥，端口 18790/18799，不碰 dev 栈，实测约 31-47s）。已挂进 e2e-chat.sh 第 12 节全量跑；也可单跑 `report-probe.sh static|sandbox`。
 
 ### tools/e2e/ui-logic-probe.js（s69 转正自 tmp p210-211-kbd-check + p22-close-path-check）
-UI JS 常备回归网，55 断言秒级（无桥无网络）：从 chat.tpl.html 原文逐字提取 handler + DOM 桩沙盒执行——键盘/IME 34 ck（model-pick 开合/Esc 还焦点、slash/at/Tab 三菜单环形高亮+Enter 选中含旧行为对照、IME 组合期不劫持含 Tab 唤起守卫、桥同款 new Function 全块语法）+ 模态关闭路径 10 ck（✕/Esc/背景点击三路复位 cfgKeyTouched+清半截 Key，含修复前对照组）+ 提示词面板/Tab 菜单 11 ck（用户五主线批2 e12：promptInsert 插入光标处不发送、promptNameOf name 兜底=首行前 20 字、📖 面板点外收起 isConnected 守卫——面板内同步重渲染点击不误关）。提取锚点=稳定标记字符串正则（非行号，模板漂移显式 NOT FOUND 报错而非误报）；断言失败输出带 [handler] 前缀定位。已挂进 e2e-chat.sh 第 14 节；也可单跑。
+UI JS 常备回归网，56 断言秒级（无桥无网络）：从 chat.tpl.html 原文逐字提取 handler + DOM 桩沙盒执行——键盘/IME 35 ck（model-pick 开合/Esc 还焦点、slash/at/Tab 三菜单环形高亮+Enter 选中含旧行为对照、IME 组合期不劫持含 Tab 唤起守卫、Esc 关 ✨ 优化预览卡主线3 e3a、桥同款 new Function 全块语法）+ 模态关闭路径 10 ck（✕/Esc/背景点击三路复位 cfgKeyTouched+清半截 Key，含修复前对照组）+ 提示词面板/Tab 菜单 11 ck（用户五主线批2 e12：promptInsert 插入光标处不发送、promptNameOf name 兜底=首行前 20 字、📖 面板点外收起 isConnected 守卫——面板内同步重渲染点击不误关）。提取锚点=稳定标记字符串正则（非行号，模板漂移显式 NOT FOUND 报错而非误报）；断言失败输出带 [handler] 前缀定位。已挂进 e2e-chat.sh 第 14 节；也可单跑。
 
 ### tools/e2e/toolcard-frames-probe.js（e4a 批，r19 R1-R5 解释链路断供修复）
 工具卡帧双形态回归钉，25 断言秒级（无桥无网络）：从 chat.tpl.html 原文逐字提取 toolCard 整函数 + DOM 桩沙盒执行——goose v1.46 数组形态 content 解析（修复前 `_out` 恒空→工具卡输出区从未显示过内容+explain 恒拿「(空)」捏造，帧形态内嵌自 tmp/r19-frames.jsonl 真帧）+ 旧对象 `.raw` 兜底 + rawOutput-only（acp-aware 成功工具）兜底 + live_output 帧不污染 + explain 载荷喂料扩容断言（rawInput/status/exitCode/toolName/trunc）+ 桥侧 explain_tool 措辞/缓存键静态钉（「(空)」歧义措辞防回潮）。已挂进 e2e-chat.sh 第 19 节；也可单跑。

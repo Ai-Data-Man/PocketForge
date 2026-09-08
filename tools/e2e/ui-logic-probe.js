@@ -69,13 +69,14 @@ function build2() {
     const tabMenu = mkMenu('tab-menu', [mkItem('t0'), mkItem('t1'), mkItem('t2')]); // 主线2：Tab 菜单（menuHl/Enter 语义与 slash/at 同款）
     const tabQ = { value: '', focused: 0, focus() { this.focused++; }, handlers: {}, addEventListener(t, h) { this.handlers[t] = h; } };
     const off = () => ({ classList: { contains: () => false } });
-    const els = { 'model-pick': pick, 'model-search': search, 'slash-menu': slashMenu, 'at-menu': atMenu, 'tab-menu': tabMenu, 'tab-q': tabQ, 'modal': off(), 'manage-modal': off(), 'skills-modal': off(), 'prompts-pop': { style: { display: 'none' } } };
+    const els = { 'model-pick': pick, 'model-search': search, 'slash-menu': slashMenu, 'at-menu': atMenu, 'tab-menu': tabMenu, 'tab-q': tabQ, 'modal': off(), 'manage-modal': off(), 'skills-modal': off(), 'prompts-pop': { style: { display: 'none' } }, 'opt-pop': { style: { display: 'none' } } };
     const txtStub = { value: '', onkeydown: null, focused: 0, focus() { this.focused++; }, addEventListener(t, h) { this.handlers[t] = h; }, handlers: {} };
     let built = 0, submits = 0;
     const api = new Function('$', 'txt', 'document', 'setTimeout', 'buildModelItems', 'submit', `
         let cfgKeyTouched=false, mcpPollTimer=null, slashCur=[{}], tabOpened=0;
         function tabMenuOpen(){ tabOpened++; $('tab-menu').style.display='block'; } // 桩：真身是异步取数+渲染，键盘契约只钉「Tab 分支调它且仅菜单未开时调」
         function tabMenuClose(){ $('tab-menu').style.display='none'; }
+        function optPopClose(){ $('opt-pop').style.display='none'; } // 主线3（e3a）：✨ 预览卡桩——Esc 同分支关闭
         ${menuHlSrc}
         ${mpOnclickSrc}
         ${mpKeydownSrc}
@@ -86,7 +87,7 @@ function build2() {
         return { mpKey: e => $('model-pick').handlers.keydown(e), esc: __esc, tabQKey: e => $('tab-q').handlers.keydown(e), tabOpened: () => tabOpened };
     `)(id => { if (!els[id]) throw new Error('no stub ' + id); return els[id]; }, txtStub,
         { addEventListener() {} }, () => {}, () => { built++; }, () => { submits++; });
-    return { api, txt: txtStub, pick, slashMenu, atMenu, search, tabMenu, tabQ, promPop: els['prompts-pop'],
+    return { api, txt: txtStub, pick, slashMenu, atMenu, search, tabMenu, tabQ, promPop: els['prompts-pop'], optPop: els['opt-pop'],
         counts: () => ({ built, submits }) };
 }
 const noPd = () => { throw new Error('preventDefault 不应被调用'); };
@@ -160,6 +161,10 @@ const noPd = () => { throw new Error('preventDefault 不应被调用'); };
     s.promPop.style.display = 'block';
     s.txt.handlers.keydown({ key: 'Escape', preventDefault: () => {} });
     ck('Esc closes prompts panel (wired into same branch)', s.promPop.style.display === 'none');
+    // 主线3（e3a）：同一 Esc 分支关 ✨ 优化预览卡
+    s.optPop.style.display = 'block';
+    s.txt.handlers.keydown({ key: 'Escape', preventDefault: () => {} });
+    ck('Esc closes optimize preview card (主线3 same branch)', s.optPop.style.display === 'none');
 }
 
 // —— qa返工(P2-1): IME 组合期按键不劫持——isComposing=true 时 ↑↓/Esc 归输入法（选字/取消组合），菜单不动 ——
@@ -313,7 +318,7 @@ const outsideClickArrow = grab(/e=>\{ const t=e\.target; const pop=\$\('prompts-
     const mkTxt = () => { const t = { value: '', selectionStart: 0, selectionEnd: 0, focused: 0, caret: null }; t.focus = () => { t.focused++; }; t.setSelectionRange = (a, b) => { t.caret = [a, b]; }; return t; };
     let submits = 0;
     // 每例独立沙盒（promptInsert 闭包捕获 txt；submit 哨兵证明不发送）
-    const build = () => { const t = mkTxt(); const f = new Function('txt', 'submit', `${promptInsertSrc} return promptInsert;`)(t, () => { submits++; }); return { t, f }; };
+    const build = () => { const t = mkTxt(); const f = new Function('txt', 'submit', 'optBtnSync', `${promptInsertSrc} return promptInsert;`)(t, () => { submits++; }, () => {}); return { t, f }; }; // optBtnSync=主线3 桩：插入后同步 ✨ 态
     SEC = 'promptInsert';
     {
         const { t, f } = build(); t.value = 'ABCD'; t.selectionStart = t.selectionEnd = 2; f('XY');

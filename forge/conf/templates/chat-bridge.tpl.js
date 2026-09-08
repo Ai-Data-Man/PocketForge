@@ -593,6 +593,7 @@ const allClients = new Set();
 const sessionClients = new Map();
 const wsSession = new WeakMap();
 const explainCache = new Map(); // explain_tool 解释缓存：键=sha1(title+'\n'+output切片)，LRU 上限 200 条（2026-09-06 提速）
+const optimizeCache = new Map(); // optimize_prompt 缓存：键=sha1(model+\0+text+\0+context)（裁决 batch2 §4.2-2 全载荷进键），LRU 上限 200 条
 
 function spawnAcp() {
     const act = activeProvider();
@@ -3167,12 +3168,12 @@ function handleClient(ws, msg) {
             const reply = t => ws.send({ sys: 'tool_explanation', id: msg.id, text: String(t).slice(0, 500), done: true });
             if (!host || !model) return reply('现在连不上模型，等连接好了再试。');
             const t0 = String(msg.title || '').split('\n')[0].slice(0, 80);
-            const o0 = String(msg.output || '').slice(0, 600);
+            const o0 = String(msg.output || '').slice(-600); // qa F1: 尾截与前端同向（裁决 batch2 §5.2.2），>600 直发载荷不再取头而谎称「只含最后600字」
             // r19 喂料扩容：rawInput 原文（R2）、status+exit_code（R3）、toolName（R5）——缓存键须含全部字段，否则旧键碰撞喂不出新料
             const i0 = String(msg.rawInput || '').slice(0, 1200);
             const stt = msg.status === 'failed' ? '失败' : msg.status === 'completed' ? '成功' : '';
             const ec = (typeof msg.exitCode === 'number' && isFinite(msg.exitCode)) ? msg.exitCode : '';
-            const ck = crypto.createHash('sha1').update(t0 + '\n' + o0 + '\n' + i0 + '\n' + stt + '\n' + ec + '\n' + String(msg.toolName || '')).digest('hex');
+            const ck = crypto.createHash('sha1').update([t0, o0, i0, stt, ec, String(msg.toolName || '')].join('\u0000')).digest('hex'); // qa P3-2: \0 分隔防跨字段拼接碰撞（\n join 时 (x,A\nB)=(x\nA,B) 同键）
             if (explainCache.has(ck)) { const t = explainCache.get(ck); explainCache.delete(ck); explainCache.set(ck, t); return reply(t); }
             const delta = t => ws.send({ sys: 'tool_explanation_delta', id: msg.id, text: String(t) });
             let replied = false;
@@ -3236,6 +3237,78 @@ function handleClient(ws, msg) {
                     rq.on('timeout', () => { rq.destroy(); sendOnce('解释超时了'); });
                     rq.write(body); rq.end();
                 } catch (e) { sendOnce('解释失败: ' + e.message); }
+            };
+            fire(true);
+            return;
+        }
+
+        if (msg.type === 'optimize_prompt') {
+            // 主线3（裁决 batch2 §4.2-2）：克隆 explain_tool 骨架——单次直调当前会话模型、流式、reasoning_effort:'none' 400 降级、
+            // 30s 超时、sha1 全载荷缓存（text+context 都进键，\0 分隔）、不进会话历史。结果不进 goose 会话，只回请求方
+            const act = activeProvider();
+            const host = ((act && act.host) || secrets.FORGE_AGENT_HOST || '').replace(/\/$/, '');
+            const key = (act && act.key) || secrets.FORGE_AGENT_API_KEY || '';
+            const model = msg.model || (act && act.models && act.models[0]) || secrets.GOOSE_MODEL_NAME || '';
+            const reply = (t, err) => ws.send({ sys: 'optimize_result', id: msg.id, text: String(t).slice(0, 4000), err: !!err, done: true });
+            if (!host || !model) return reply('现在连不上模型，等连接好了再试。', true);
+            const p0 = String(msg.text || '');
+            const cx0 = String(msg.context || '');
+            const ck = crypto.createHash('sha1').update([model, p0, cx0].join('\u0000')).digest('hex'); // 缓存键=全载荷（model+text+context），\0 分隔（P3-2 同款）
+            if (optimizeCache.has(ck)) { const t = optimizeCache.get(ck); optimizeCache.delete(ck); optimizeCache.set(ck, t); return reply(t); }
+            const delta = t => ws.send({ sys: 'optimize_delta', id: msg.id, text: String(t) }); // 前端只用作「首字已到」信号撤 12s 兜底，不渲染中间态
+            let replied = false;
+            const sendOnce = (t, err) => { if (!replied) { replied = true; reply(t, err); } };
+            // 裁决 §4.2-3：五条固定变换+硬禁令（不得新增用户未提出的任务目标/假设/背景）+双段式输出+语言跟随原文+保留原意不追求华丽
+            const sysP = '你是提示词优化器，把用户的提示词改写成模型更容易消化的形态。只做五类变换：①消歧——含糊的表述改清楚：指代不明就补出具体对象，笼统的动词换成具体动作；②补输出格式——原文没说结果要什么形态时补上（表格、清单、分段、文件等，按任务选最自然的）；③补长度与受众约束——原文没提篇幅和写给谁看时补上；④收窄范围——任务范围宽得没法一次完成时收窄；⑤去口语冗余——删口头废话，不删有效信息。硬禁令：不得新增用户未提出的任务目标、假设或背景；对话上下文只用来理解意图，优化稿里不得出现原文与上下文都没有的新事实。保留原意，不追求华丽。输出恰好两段、不写别的：<optimized>改写后的完整提示词</optimized><changes>逐条列出做了什么修改，一行一条</changes>语言跟随原文（中文进中文出）。';
+            const um = '待优化的提示词原文：\n' + p0 + '\n\n当前对话上下文（仅供理解意图，不是优化对象）：\n' + cx0;
+            const fire = useRE => {
+                let rq;
+                try {
+                    const u = new URL(host + '/chat/completions');
+                    const reqMod = require(u.protocol === 'https:' ? 'https' : 'http');
+                    const bodyObj = { model, max_tokens: 800, stream: true, messages: [
+                        { role: 'system', content: sysP },
+                        { role: 'user', content: um }
+                    ]};
+                    if (useRE) bodyObj.reasoning_effort = 'none';
+                    const body = JSON.stringify(bodyObj);
+                    let sse = false, buf = '', full = '', over = false;
+                    const finish = () => {
+                        if (over) return; over = true;
+                        if (replied) return;
+                        let t = full;
+                        if (!sse) { // 上游不理 stream:true 回了普通 JSON——按旧逻辑整体解析
+                            try { const j = JSON.parse(buf.replace(/data:\s*\[DONE\][\s\S]*$/, '').trim());
+                                if (j && j.error) { const em = (j.error && typeof j.error.message === 'string') ? j.error.message : String(j.error); return sendOnce('优化失败: ' + em.slice(0, 150), true); }
+                                const c0 = j.choices && j.choices[0]; const m0 = c0 && c0.message; t = (m0 && (m0.content || m0.reasoning_content)) || ''; }
+                            catch { return sendOnce('优化失败（服务返回异常），稍后再试一次。', true); }
+                        }
+                        if (t) { optimizeCache.set(ck, t); while (optimizeCache.size > 200) optimizeCache.delete(optimizeCache.keys().next().value); sendOnce(t); }
+                        else sendOnce('模型没说出什么来，再试一次。', true);
+                    };
+                    rq = reqMod.request(u, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, timeout: 30000 }, res => {
+                        if (res.statusCode === 400 && useRE) { over = true; res.resume(); fire(false); return; } // 中转不认 reasoning_effort → 去掉重试一次；over 先置位防旧响应 end 抢答
+                        sse = String(res.headers['content-type'] || '').includes('text/event-stream');
+                        res.on('data', c => {
+                            if (over) return;
+                            buf += c;
+                            if (!sse) return;
+                            let i;
+                            while ((i = buf.indexOf('\n')) >= 0) {
+                                const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+                                if (!line.startsWith('data:')) continue;
+                                const pj = line.slice(5).trim();
+                                if (pj === '[DONE]') { finish(); return; }
+                                try { const j = JSON.parse(pj); const d = j.choices && j.choices[0] && j.choices[0].delta; if (d && d.content) { full += d.content; delta(d.content); } } catch {}
+                            }
+                        });
+                        res.on('end', finish);
+                        res.on('error', finish);
+                    });
+                    rq.on('error', e => { over = true; sendOnce('优化失败: ' + e.message, true); });
+                    rq.on('timeout', () => { rq.destroy(); sendOnce('优化超时了，稍后再试一次。', true); });
+                    rq.write(body); rq.end();
+                } catch (e) { sendOnce('优化失败: ' + e.message, true); }
             };
             fire(true);
             return;

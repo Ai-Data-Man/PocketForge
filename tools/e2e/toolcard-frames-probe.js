@@ -149,7 +149,7 @@ if (require.main === module) {
     // 7) 桥侧静态钉（chat-bridge.tpl.js 喂料措辞与缓存键；活体路径由 e2e 真桥覆盖，此处防措辞回潮）
     ck('桥侧旧「(空)」歧义措辞未回潮', !bridgeSrc.includes("'\\n结果摘要：' + (msg.output ? o0 : '(空)')"));
     ck('桥侧空输出无歧义措辞在场', bridgeSrc.includes('（该步骤没有返回文字输出）'));
-    ck('桥侧缓存键含新喂料字段（防旧键碰撞喂不出新料）', /update\(t0 \+ '\\n' \+ o0 \+ '\\n' \+ i0 \+ '\\n' \+ stt \+ '\\n' \+ ec \+ '\\n' \+ String\(msg\.toolName \|\| ''\)\)/.test(bridgeSrc));
+    ck('桥侧缓存键含新喂料字段+\\0 安全分隔（防旧键碰撞/跨字段拼接碰撞）', /update\(\[t0, o0, i0, stt, ec, String\(msg\.toolName \|\| ''\)\]\.join\('\\u0000'\)\)/.test(bridgeSrc));
     ck('桥侧 user 消息改用拼装 um（rawInput/status/exit_code/toolName 入料）', bridgeSrc.includes("{ role: 'user', content: um }"));
 
     console.log('toolcard-frames-probe PASS=' + pass + ' FAIL=' + fail);

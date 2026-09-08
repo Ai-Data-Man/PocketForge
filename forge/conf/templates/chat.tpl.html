@@ -288,6 +288,10 @@ details.tz[open]>summary::before{content:'▾ '}
 #tab-menu .mi{padding:8px 14px;font-size:.82rem;cursor:pointer;display:flex;align-items:center;gap:8px}
 #tab-menu .mi:hover,#tab-menu .mi.hl{background:var(--hover)}
 #tab-menu .mi b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#opt-btn{font-size:1.05rem;padding:4px 10px;background:none;border:none;border-radius:var(--r-m);cursor:pointer;color:var(--tx-2);flex-shrink:0}
+#opt-btn:hover{background:var(--hover)}
+#opt-btn:disabled{opacity:.4;cursor:default}
+#opt-pop{display:none;position:absolute;bottom:100%;left:0;right:0;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-m);box-shadow:var(--shadow-3);z-index:50;margin-bottom:4px;max-height:420px;overflow-y:auto}
 #tab-list{max-height:220px;overflow-y:auto}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -346,6 +350,7 @@ details.tz[open]>summary::before{content:'▾ '}
   <div id="inputbar">
     <input id="txt" placeholder="想让我做什么？输入 @ 引用文件或数据表" autocomplete="off" aria-label="聊天输入框">
     <button id="prompts-btn" title="我的提示词：存住常用话术，一点就用" aria-label="打开我的提示词">📖</button>
+    <button id="opt-btn" title="先写点什么再优化" aria-label="优化输入框里的话术" disabled>✨</button>
     <button id="send">发送</button>
     <button id="stop">停止</button>
     <div id="at-menu"></div>
@@ -370,6 +375,20 @@ details.tz[open]>summary::before{content:'▾ '}
         <input id="tab-q" placeholder="🔍 输入几个字过滤，↑↓ 选，回车插到输入框" autocomplete="off" aria-label="过滤我的提示词" style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.8rem;outline:none">
       </div>
       <div id="tab-list"></div>
+    </div>
+    <!-- 主线3：✨ 提示词优化预览卡（裁决 §4.2-5 预览-接受-放弃：优化稿+逐条变更摘要；用不用你说了算，原文逐字不动直到点「用这版」） -->
+    <div id="opt-pop">
+      <div style="display:flex;align-items:center;gap:6px;padding:10px 12px 6px">
+        <b style="font-size:.85rem">✨ 优化建议</b>
+        <span class="fnote" style="flex:1;min-width:0">看一眼改了什么，用不用你说了算</span>
+        <button class="mclose" id="opt-close" title="关闭" aria-label="关闭" style="width:26px;height:26px">✕</button>
+      </div>
+      <div id="opt-out" style="margin:0 12px 6px;padding:8px 10px;white-space:pre-wrap;font-size:.82rem;border:1px solid var(--line);border-radius:8px;max-height:200px;overflow-y:auto"></div>
+      <div id="opt-chg" class="fnote" style="padding:0 12px 6px;white-space:pre-wrap"></div>
+      <div style="display:flex;gap:8px;padding:0 12px 10px">
+        <button id="opt-use" class="mini" style="padding:6px 16px">用这版</button>
+        <button id="opt-drop" class="mini" style="padding:6px 16px">不用</button>
+      </div>
     </div>
   </div>
 </div>
@@ -682,6 +701,8 @@ function connect(){
       if(b){ b.disabled=false; b.textContent='这是干啥？'; }
       return;
     }
+    if(m.sys==='optimize_delta'){ if(optBusy) clearTimeout(optT12); return; } // 主线3：首字已到，撤 12s 兜底（中间态不渲染，预览卡只在完整结果时出现）
+    if(m.sys==='optimize_result'){ optOnResult(m); return; }
     if(m.rpc){ onRpc(m.rpc); return; }
     if(m.agent){ onAgentEvent(m.agent); }
   };
@@ -1060,7 +1081,7 @@ function toolCard(upd){
   if(upd.title) ttl.textContent=upd.title;
   // 参数区：ACP rawInput（tool_call 或 tool_call_update 任一形态）
   const rin=(upd.rawInput!==undefined)?upd.rawInput:(upd.toolCallUpdate&&upd.toolCallUpdate.rawInput);
-  if(rin!==undefined&&rin!==null&&!card._inp){
+  if(rin!==undefined&&rin!==null&&card._inp===undefined){ // qa P3-3: 守卫改为「未设置过」——rawInput 为空串时序列化得 ''，旧 !card._inp 恒真导致参数区重复渲染
     let s=''; try{ s=(typeof rin==='string')?rin:JSON.stringify(rin,null,1); }catch(e){ s=String(rin); }
     card._inp=s; // r19 R2: 存序列化原文供 explain 喂料（展示仍截 1200）
     const sec=document.createElement('div'); sec.className='sec';
@@ -1203,7 +1224,7 @@ function submit(forced){
     hint=String.fromCharCode(10)+'（系统备注：'+loc+'覆盖前按版本管理技能先存一版。若该目录存在 须知.md，先读它并遵守其中的项目规矩）';
   }
   if(!wssend({type:'prompt',text:t+hint})) return; // C6: 未连上直接返回（wssend 已提示自动重连），消息留在输入框，不上墙不置 busy
-  addMsg(t,'user'); if(fromBox) txt.value=''; setBusy(true); // B2: 清空输入框仅在值来自输入框时发生
+  addMsg(t,'user'); if(fromBox){ txt.value=''; optBtnSync(); } setBusy(true); // B2: 清空输入框仅在值来自输入框时发生；主线3：清空后 ✨ 回 disabled
   lastOrig=t; // s50e: 记录用户原文（原写 streamEl.dataset.orig 在 addMsg user 分支置 null 之后，恒不执行），上游失败时「换备用线路再试」用它重发
 }
 send.onclick=()=>submit();
@@ -2229,6 +2250,7 @@ function slashHits(q,all){ // all 可注入（主线2 Tab 菜单喂提示词条�
 }
 let atQT=null; // #6: @ 菜单取数防抖（连续键入 180ms 内只发最后一次请求；写法对齐 search 框 300ms 防抖先例）
 txt.addEventListener('input',()=>{
+  optBtnSync(); // 主线3：✨ 按钮 disabled 态随输入同步（§4.2-1）
   const v=txt.value;
   const atM=v.match(/@([^@\s]*)$/);
   if(atM){ clearTimeout(atQT); const q=atM[1].toLowerCase(); atQT=setTimeout(()=>renderAtMenu(q),180); $('slash-menu').style.display='none'; slashCur=[]; tabMenuClose(); return; } // 主线2 §3.2-6：@ 协议接管（内容协议优先）；slash 同关——此前 '/x@' 形态 @ 早退会让 slash 菜单残留同屏（三菜单互斥补全）
@@ -2259,7 +2281,7 @@ txt.addEventListener('keydown',e=>{
   if((slOpen||atOpen)&&(e.key==='ArrowDown'||e.key==='ArrowUp')){
     e.preventDefault(); menuHl(slOpen?$('slash-menu'):$('at-menu'),e.key==='ArrowDown'?1:-1); return;
   }
-  if(e.key==='Escape'){ $('slash-menu').style.display='none'; $('at-menu').style.display='none'; $('prompts-pop').style.display='none'; slashCur=[]; tabMenuClose(); }
+  if(e.key==='Escape'){ $('slash-menu').style.display='none'; $('at-menu').style.display='none'; $('prompts-pop').style.display='none'; slashCur=[]; tabMenuClose(); optPopClose(); }
 });
 
 // ---- 文件树 + 上传 + @引用 + 复制 ----
@@ -2659,6 +2681,7 @@ function promptInsert(body){ // 选中语义=插入不发送（QUICK_PROMPTS 点
   txt.value=txt.value.slice(0,s)+body+txt.value.slice(e2);
   const pos=s+body.length;
   txt.focus(); txt.setSelectionRange(pos,pos); // 焦点回输入框+光标到插入末尾；发送权永远在 Enter
+  optBtnSync(); // 主线3：程序化改值同步 ✨ 态（input 事件对 value 赋值不触发）
 }
 // —— 📖 面板（R3：使用域=输入框近旁，非管理面板第六 tab）——
 function promptsPanelRender(){
@@ -2713,7 +2736,7 @@ function promptRow(p){
   return row;
 }
 function promptsPanelOpen(){
-  $('at-menu').style.display='none'; $('slash-menu').style.display='none'; tabMenuClose(); // 输入现场至多一个上弹面（主线2 起 @/slash/Tab 三菜单+面板互斥）
+  $('at-menu').style.display='none'; $('slash-menu').style.display='none'; tabMenuClose(); optPopClose(); // 输入现场至多一个上弹面（主线2 起 @/slash/Tab 三菜单+面板互斥；主线3 预览卡同域不叠层）
   const pop=$('prompts-pop');
   pop.style.display='block';
   $('prompts-note').textContent='';
@@ -2751,7 +2774,7 @@ function tabMenuClose(){
   $('tab-q').value='';
 }
 async function tabMenuOpen(){
-  $('at-menu').style.display='none'; $('slash-menu').style.display='none'; $('prompts-pop').style.display='none'; // 互斥
+  $('at-menu').style.display='none'; $('slash-menu').style.display='none'; $('prompts-pop').style.display='none'; optPopClose(); // 互斥
   tabMenuClose(); // 复位代际+清过滤框（幂等；先作废上一轮挂起渲染）
   $('tab-menu').style.display='block';
   $('tab-q').focus(); // 迷你过滤框自动聚焦（§3.2-2：输入框草稿不动，过滤在菜单内做——半句草稿当查询必失配，§3.1-2）
@@ -2799,6 +2822,62 @@ $('tab-q').addEventListener('keydown',e=>{
   if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); tabMenuClose(); txt.focus(); return; } // 关菜单，焦点回输入框（§3.2-4）
   if(e.key==='Tab'){ e.preventDefault(); } // 菜单开着再按 Tab=无操作：焦点留在过滤框不跳走（§3.2-1）
 });
+
+// ===== ✨ 提示词优化（用户五主线批2-主线3；裁决 2026-09-08-user-five-lines-batch2 §4）=====
+// 流程=预览-接受-放弃（§4.1-2：Cursor 实锤 enhance 会加用户没写的假设，静默替换=失去对最终文本的控制权）：
+// 点击→loading 禁重复→结果回来先过错位守卫（输入已变=弃结果）→预览卡（优化稿+逐条变更摘要）→「用这版」替换入输入框可继续编辑不发送 /「不用」原文逐字不动。
+// 不做（§4.3）：直接替换、自动发送、澄清分流、优化专用入库钮（「用这版」后 💾 存当前输入框即闭环）。
+const optBtn=$('opt-btn');
+let optBusy=false, optOrig=null, optT12=null;
+function optBtnSync(){ // 空框 disabled+title「先写点什么再优化」（§4.2-1）；输入事件与程序化改值点都调它同步态
+  const empty=!String(txt.value).trim();
+  optBtn.disabled=empty||optBusy;
+  optBtn.title=optBusy?'正在优化…':(empty?'先写点什么再优化':'优化这条话术（先预览，用不用你说了算）');
+}
+function optPopClose(){ $('opt-pop').style.display='none'; }
+function optDone(){ optBusy=false; optOrig=null; clearTimeout(optT12); optBtnSync(); }
+function optContext(){ // §4.2-4：输入框原文全文由 msg.text 承载；此处=当前会话最近消息摘要（msgText 提 role+正文，最新向前累计 ~1500 字截断）
+  const msgs=[...document.querySelectorAll('#chat .msg')].filter(m=>!m.classList.contains('info')); // info 行是状态播报非对话（exportChat 同款过滤）
+  if(!msgs.length) return '（新对话，暂无上文）';
+  const lines=[]; let n=0;
+  for(let i=msgs.length-1;i>=0;i--){
+    const line=(msgs[i].classList.contains('user')?'用户：':'小 forge：')+msgText(msgs[i]).trim();
+    if(n+line.length>1500) break;
+    lines.unshift(line); n+=line.length;
+  }
+  return lines.length?lines.join('\n'):'（新对话，暂无上文）';
+}
+function optOnResult(m){
+  if(!optBusy) return; // 迟到帧（12s 兜底已收场）：弃
+  const orig=optOrig;
+  optDone();
+  if(txt.value!==orig){ addInfo('输入已变，已放弃本次优化结果。'); return; } // 错位守卫（§4.2-6）：预览卡不出现，防错位替换
+  if(m.err||!m.text){ addErr(String(m.text||'这次优化没成，稍后再试一次。')); return; } // 失败人话+按钮已恢复，可重试（§4.2-7）
+  const t=String(m.text);
+  const oM=t.match(/<optimized>([\s\S]*?)<\/optimized>/), cM=t.match(/<changes>([\s\S]*?)<\/changes>/);
+  if(!oM||!String(oM[1]).trim()){ addErr('优化结果的格式没对上，可以再点一次 ✨ 重试。'); return; } // 双段式（§4.2-3）缺 optimized 段=不可用
+  $('opt-out').textContent=String(oM[1]).trim();
+  $('opt-chg').textContent=cM&&String(cM[1]).trim()?('改了什么：\n'+String(cM[1]).trim()):'';
+  $('opt-pop').style.display='block';
+}
+optBtn.onclick=()=>{
+  if(!String(txt.value).trim()){ addInfo('先写点什么，再点 ✨ 优化。'); return; } // 硬守卫：程序化改值致 disabled 态滞后时兜底
+  if(optBusy) return;
+  optBusy=true; optOrig=txt.value; optPopClose(); optBtnSync();
+  if(!wssend({type:'optimize_prompt', text:optOrig, context:optContext(), model:lastKnownModel})){ optDone(); return; } // 未连上：wssend 已提示，按钮即恢复
+  optT12=setTimeout(()=>{ // 12s 无首字兜底（explain 前端先例）：人话错误+按钮恢复+可重试（§4.2-7）
+    optDone();
+    addErr('优化这趟没赶出来（12 秒没等到回话），可以再点一次 ✨ 重试。');
+  },12000);
+};
+$('opt-use').onclick=()=>{ // 接受=替换入输入框，可继续编辑，不发送（发送权永远在 Enter）；「用这版」后 💾 存当前输入框即闭环（§4.2-8）
+  txt.value=$('opt-out').textContent;
+  optPopClose(); optBtnSync();
+  txt.focus(); const L=txt.value.length; txt.setSelectionRange(L,L); // 光标到末尾，接着改
+};
+$('opt-drop').onclick=()=>optPopClose(); // 放弃：原文逐字不动
+$('opt-close').onclick=()=>optPopClose();
+optBtnSync(); // 初态：空框 disabled
 
 </script>
 </body></html>
