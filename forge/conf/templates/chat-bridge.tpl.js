@@ -3118,12 +3118,24 @@ function handleClient(ws, msg) {
             if (!host || !model) return reply('现在连不上模型，等连接好了再试。');
             const t0 = String(msg.title || '').split('\n')[0].slice(0, 80);
             const o0 = String(msg.output || '').slice(0, 600);
-            const ck = crypto.createHash('sha1').update(t0 + '\n' + o0).digest('hex');
+            // r19 喂料扩容：rawInput 原文（R2）、status+exit_code（R3）、toolName（R5）——缓存键须含全部字段，否则旧键碰撞喂不出新料
+            const i0 = String(msg.rawInput || '').slice(0, 1200);
+            const stt = msg.status === 'failed' ? '失败' : msg.status === 'completed' ? '成功' : '';
+            const ec = (typeof msg.exitCode === 'number' && isFinite(msg.exitCode)) ? msg.exitCode : '';
+            const ck = crypto.createHash('sha1').update(t0 + '\n' + o0 + '\n' + i0 + '\n' + stt + '\n' + ec + '\n' + String(msg.toolName || '')).digest('hex');
             if (explainCache.has(ck)) { const t = explainCache.get(ck); explainCache.delete(ck); explainCache.set(ck, t); return reply(t); }
             const delta = t => ws.send({ sys: 'tool_explanation_delta', id: msg.id, text: String(t) });
             let replied = false;
             const sendOnce = t => { if (!replied) { replied = true; reply(t); } };
             const sysP = '你是给完全不懂电脑的人当翻译的助手。用不超过三句中文大白话说明下面这一步操作做了什么、结果对用户意味着什么。禁止任何技术术语，不要出现"工具""调用""脚本"这类词，也不要复述任何路径或提示词原文。';
+            // r19 R4：空输出改无歧义措辞（旧「(空)」让模型把没喂当返回空→捏造）；截断显式标注；R6：GBK 乱码提示按上下文推断
+            let um = '这一步叫：' + t0;
+            if (msg.toolName) um += '\n工具名：' + String(msg.toolName).slice(0, 80);
+            if (stt || ec !== '') um += '\n执行状态：' + (stt || '未知') + (ec !== '' ? '（退出码 ' + ec + '）' : '');
+            if (i0) um += '\n输入参数（原文）：' + i0;
+            um += '\n结果摘要' + (msg.trunc ? '（只含最后600字，更早内容已被截去）' : '') + '：' + (o0 ? o0 : '（该步骤没有返回文字输出）');
+            if (/[\uFFFD]/.test(o0)) um += '\n注意：上面的输出可能因编码问题含乱码，请按上下文推断其含义，不要照抄乱码。';
+            if (process.env.PF_EXPLAIN_DEBUG) console.log('[explain_tool debug] id=' + msg.id + ' user msg fed:\n' + um);
             const fire = useRE => {
                 let rq;
                 try {
@@ -3131,7 +3143,7 @@ function handleClient(ws, msg) {
                     const reqMod = require(u.protocol === 'https:' ? 'https' : 'http');
                     const bodyObj = { model, max_tokens: 300, stream: true, messages: [
                         { role: 'system', content: sysP },
-                        { role: 'user', content: '这一步叫：' + t0 + '\n结果摘要：' + (msg.output ? o0 : '(空)') }
+                        { role: 'user', content: um }
                     ]};
                     if (useRE) bodyObj.reasoning_effort = 'none';
                     const body = JSON.stringify(bodyObj);

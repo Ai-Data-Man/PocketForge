@@ -1025,15 +1025,25 @@ function toolCard(upd){
   // 参数区：ACP rawInput（tool_call 或 tool_call_update 任一形态）
   const rin=(upd.rawInput!==undefined)?upd.rawInput:(upd.toolCallUpdate&&upd.toolCallUpdate.rawInput);
   if(rin!==undefined&&rin!==null&&!card._inp){
-    card._inp=true;
     let s=''; try{ s=(typeof rin==='string')?rin:JSON.stringify(rin,null,1); }catch(e){ s=String(rin); }
+    card._inp=s; // r19 R2: 存序列化原文供 explain 喂料（展示仍截 1200）
     const sec=document.createElement('div'); sec.className='sec';
     const h=document.createElement('b'); h.className='sech'; h.textContent='参数'; sec.appendChild(h);
     const pre=document.createElement('pre'); pre.textContent=s.slice(0,1200); sec.appendChild(pre);
     body.appendChild(sec);
   }
-  // 输出区
-  const raw=(upd.content&&upd.content.raw!==undefined)?upd.content.raw:(upd.toolCallUpdate&&upd.toolCallUpdate.content&&upd.toolCallUpdate.content.raw);
+  // 工具真名（r19 R5）：title 可能被 goose 异步增强成英文短语丢掉参数——用 _meta 原始 toolName/extensionName 喂解释者
+  const gm=upd._meta&&upd._meta.goose&&upd._meta.goose.toolCall;
+  if(gm&&gm.toolName&&!card._tool) card._tool=(gm.extensionName?gm.extensionName+' · ':'')+gm.toolName;
+  // 输出区：content 双形态——goose v1.46 发数组 [{type:'content',content:{type:'text',text}}]（r19 真帧 #4/#8），
+  // 旧对象形态 .raw 兜底；帧无 content 时退 rawOutput（acp-aware 成功工具只发它）；exit_code 无论哪形态都记（R3）
+  const cU=(upd.content!==undefined)?upd.content:(upd.toolCallUpdate&&upd.toolCallUpdate.content);
+  const roU=(upd.rawOutput!==undefined)?upd.rawOutput:(upd.toolCallUpdate&&upd.toolCallUpdate.rawOutput);
+  if(roU&&typeof roU==='object'&&roU.exit_code!==undefined) card._exit=roU.exit_code;
+  let raw;
+  if(Array.isArray(cU)){ raw=cU.map(b=>(b&&b.content&&typeof b.content.text==='string')?b.content.text:'').join('\n'); }
+  else if(cU&&cU.raw!==undefined){ raw=cU.raw; }
+  else if(roU&&typeof roU==='object'){ raw=[roU.stdout,roU.stderr].filter(x=>typeof x==='string'&&x).join('\n'); }
   if(raw!==undefined&&raw!==null){ try{ card._out+=(typeof raw==='string'?raw:JSON.stringify(raw,null,1)); }catch(e){} }
   if(card._out!==undefined){
     let osec=card.querySelector('.sec-o');
@@ -1043,6 +1053,7 @@ function toolCard(upd){
   // ACP 两种形态都可能出现：tool_call 自带最终 status，或 tool_call_update 增量
   const st8=(upd.toolCallUpdate&&upd.toolCallUpdate.status)||upd.status;
   if(st8){
+    card._status=st8; // r19 R3: explain 喂料用（成功/失败是权威信号）
     st.className='st '+(st8==='completed'?'done':st8==='failed'?'err':'');
     st.textContent=st8==='completed'?'完成':st8==='failed'?'失败':(st8||'');
     if(st8==='completed'||st8==='in_progress') endStream();
@@ -1057,7 +1068,10 @@ function toolCard(upd){
         clearInterval(card._exptick); clearTimeout(card._exp12);
         let n=0;
         card._exptick=setInterval(()=>{ n++; b.textContent='它正在想…（'+n+' 秒）'; },1000);
-        wssend({type:'explain_tool', id, title:ttl.textContent.split('\n')[0], output:(card._out||'').slice(-600), model:lastKnownModel});
+        // r19 R2/R3/R4/R5：喂解释者 rawInput（命令原文）/status/exit_code/toolName；trunc 标记输出被截
+        wssend({type:'explain_tool', id, title:ttl.textContent.split('\n')[0], output:(card._out||'').slice(-600),
+          trunc:(card._out||'').length>600, rawInput:(card._inp||'').slice(0,1200),
+          status:card._status||'', exitCode:card._exit, toolName:card._tool||'', model:lastKnownModel});
         card._exp12=setTimeout(()=>{ // 12s 无首字：就地显示工具卡自带大白话，按钮恢复可点
           if(card._exptext) return;
           clearInterval(card._exptick);

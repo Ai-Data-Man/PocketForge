@@ -16,3 +16,4 @@ pf-pm 产出的执行裁决书归档于此：ADR 记"为什么"，本目录记"�
 | 2026-09-07 | 2026-09-07-scheduler-drift-guard.md | scheduler 注册副本漂移守卫裁决（cf5f250，s75） |
 | 2026-09-08 | 2026-09-08-permission-yaml-untrack.md | permission.yaml 停追踪+PROTECTED 化（s76c） |
 | 2026-09-08 | 2026-09-08-user-five-lines-batch2.md | 用户五主线批次2——提示词库/Tab唤起/✨优化/白话解释重写(三层)+撤回重写框架（s77，切片一至五串行） |
+| 2026-09-08 | 2026-09-08-message-rewrite-addendum.md | 消息撤回重写补篇——B型截断定案/七步手术协议/message_id方案A透传/边界写死/开工门=四实验复跑全绿（s77，实施批排五线批后） |

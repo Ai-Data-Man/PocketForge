@@ -290,6 +290,15 @@ ck "rescue guard probe 22 ck (null/string/{} payload + dedup + alive gate + non-
 grep -E "^rescue-guard-probe" /tmp/rescue-guard.log || true
 rm -f /tmp/rescue-guard.log
 
+# ---------- 19) 工具卡帧双形态桩测（e4a 批 r19 R1-R5；详见 tools/e2e/toolcard-frames-probe.js） ----------
+# 钉住解释链路断供修复：goose v1.46 数组形态 content 解析（修复前 _out 恒空→工具卡输出区从未显示+explain 恒「(空)」捏造）、
+# 旧对象 .raw 兜底、rawOutput-only 形态、live_output 不污染、explain 载荷喂料扩容（rawInput/status/exitCode/toolName/trunc）、桥侧措辞静态钉
+rc=0; node "$ROOT/tools/e2e/toolcard-frames-probe.js" > /tmp/toolcard-frames.log 2>&1 || rc=$?
+grep -q "FAIL=0" /tmp/toolcard-frames.log || rc=$?
+ck "toolcard frames probe 25 ck (dual-form content + rawOutput fallback + explain payload feeding)" $rc
+grep -E "^toolcard-frames-probe" /tmp/toolcard-frames.log || true
+rm -f /tmp/toolcard-frames.log
+
 rm -f /tmp/e2e-v1.md
 echo "=============================="
 echo "chat-link E2E: PASS=$PASS FAIL=$FAIL"
