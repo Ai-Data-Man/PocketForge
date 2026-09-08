@@ -90,3 +90,37 @@ node tmp/pfr21/acp-driver.js rollback <root> # 单进程全产品序列
 1. v1.49.0 的 sessions schema/load 行为未复核（升级窗口临近，按 §4-4 入预案）。
 2. fork 的 meta 剥离点未定位到 agent-client-protocol-schema 1.0.1 源行（本机无 cargo registry；二进制判别实验已足够定论）。若上游后续版本把 conversationBefore 放行，可替换手术路径为官方 fork——形态从「原地回滚」变「分叉新会话」，交互语义不同（sid 换号，workspace-map/归档要跟着迁）。
 3. 沙盒 tmp/pfr21 保留（30M）供复跑；fake-openai.js 已停。
+
+## 6. s77 前置验证：回放/直播帧的 user messageId（补篇裁决 §3.2 前置 0，2026-09-09，VERIFIED-RUN）
+
+任务：验证 session/load 重放的 user 文本 chunk 是否携带 goose messageId（补篇 §3.2 写死的实施批前置 0）。环境：同 §5 基建（goose.exe v1.46.0 AAIF、假 provider 127.0.0.1:18321、沙盒 root=tmp/pfr21/root-s77）；驱动=新增 tmp/pfr21/frame-capture.js（不改 acp-driver.js），两相分离抓档：直播相（新进程 new+3 轮 prompt+close）与重放相（**另一个全新 goose 进程** load 同 sid）。
+
+### 6.1 结论（先行）
+
+1. **档位=非 A/B/C 原文任一，是 B 的镜像**：**重放帧带且与 DB 全等；直播期根本不发射 user_message_chunk（无帧可谈）**。
+   - 重放：3/3 user 文本 chunk 均携带**两处冗余 id**——顶级 `update.messageId` 与 `update._meta.goose.messageId`，两处同值，且逐条等于 sessions.db messages 表该行 `message_id` 列（rowid 1/4/7 ↔ msg_03d55a54… / msg_9d5b6693… / msg_33305348…）。`_meta.goose.created` 亦等于该行 created_timestamp 秒值（帧↔行对应双锚点）。
+   - 直播：17 帧全档中 user_message_chunk=0（4 usage_update+1 available_commands_update+9 session_info_update+3 agent_message_chunk）。源码定因（VERIFIED-DOC，v1.46.0 tag）：正常文本轮 reply_impl 只持久化 user 消息、**从不 yield user 事件**（agent.rs:2046-2054 add_message 无 yield；仅斜杠命令早退路径 :2020 yield）；ensure_message_event_id（:1829）只是兜底赋 id，不创造事件。故直播无 user 帧=版本行为，非实验缺陷。
+2. **对补篇 §3.2 的意义：退化预案（桥旁路记录）未触发**——其触发条件是「回放帧无该 meta」，实测回放帧有（且字段名实为 `_meta`，与 research/19 工具帧 `_meta.goose` 同形；补篇原文写 `meta.goose` 系字段名笔误，两处 id 同值，读任一即可）。
+3. **新发现（实施批需补决策面，本任务只取证不实施）**：直播期刚发出的 user 消息没有服务端帧，前端本地回显的该消息在**下次 openSession（load 重放）之前**拿不到 goose messageId——透传 A 案对「当前视图内直播轮」的边界定位存在空洞（对「重开过会话的消息」全部成立）。补篇 §3.2 的旁路退化方案（按转发序计数）恰好只在这个局部有用武之地；取舍归实施批/PM，不在此裁决。
+4. 边缘观察（一行，不构成结论）：直播与重放的 agent_message_chunk 的 messageId=_meta.goose.messageId=provider 响应 id（本沙盒恒为 `chatcmpl-fake`），即 assistant 行 id 取自 provider；user 行 id 恒为 goose 自产 `msg_<uuid4>`（message.rs:1012-1014）。
+
+### 6.2 帧原文（tmp/s77m-replay.jsonl 首条，逐字）
+
+```json
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"20260908_1","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"s77-U1 石榴红"},"messageId":"msg_03d55a54-96b5-4885-9583-6377889acf7a","_meta":{"goose":{"created":1788897616,"messageId":"msg_03d55a54-96b5-4885-9583-6377889acf7a"}}}}}
+```
+
+DB 对照（tmp/s77m-db.json，node:sqlite 只读）：rowid 1, role=user, message_id=msg_03d55a54-96b5-4885-9583-6377889acf7a, ts=1788897616——与上帧两处 id 及 created 逐位相等。
+
+### 6.3 档案与复跑（全部本机 2026-09-09 跑通）
+
+```
+tmp/s77m-live.jsonl      直播相原始帧 17 条（含 0 条 user_message_chunk 的反证）
+tmp/s77m-replay.jsonl    重放相原始帧 8 条（3 user + 3 agent + 2 杂项）
+tmp/s77m-db.json         messages 行 dump（含 message_id/userVisible/turnContext）
+tmp/s77m-report.json     自动对照报告（7 项 checks）
+tmp/pfr21/frame-capture.js  抓档驱动；tmp/pfr21/root-s77  会话沙盒
+复跑：node tmp/pfr21/fake-openai.js（后台）→ node tmp/pfr21/frame-capture.js <root>（直播相，输出 sid）→ node tmp/pfr21/frame-capture.js <root> <sid>（重放相+报告）
+```
+
+方法论记录：首轮提取器误读字段名（查 `meta`，线上实为 `_meta`），已修正后从原始帧档重出报告——原始帧档为唯一事实源，教训与 research/19 工具帧先例互证。单变量纪律：直播相与重放相各自独立 goose 进程、帧档分离；假 provider 单实例全程。
