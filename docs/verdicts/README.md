@@ -12,3 +12,7 @@ pf-pm 产出的执行裁决书归档于此：ADR 记"为什么"，本目录记"�
 | 2026-09-06 | 2026-09-06-pg-forge-backend.md | PG 作 forge 后端裁决——推翻 marketplace-S5，切片 1-4 路线（usage 首迁已落，s73） |
 | 2026-09-06 | 2026-09-06-plan-mode-thaw.md | Plan Mode 解冻裁决——四触发器制，暂不解冻（research/14 §6 为重开起点） |
 | 2026-09-07 | 2026-09-07-ia-root-cure.md | 信息架构根治——R1-R4 规范+技能域归位+归档视图化+数据表分组与表说明机制（IA-1~4，s74；§10 主控修正 forge_table_info 写通道改应用库内） |
+| 2026-09-07 | 2026-09-07-user-six-lines-batch1.md | 用户六主线批次1验收基线（s76） |
+| 2026-09-07 | 2026-09-07-scheduler-drift-guard.md | scheduler 注册副本漂移守卫裁决（cf5f250，s75） |
+| 2026-09-08 | 2026-09-08-permission-yaml-untrack.md | permission.yaml 停追踪+PROTECTED 化（s76c） |
+| 2026-09-08 | 2026-09-08-user-five-lines-batch2.md | 用户五主线批次2——提示词库/Tab唤起/✨优化/白话解释重写(三层)+撤回重写框架（s77，切片一至五串行） |
