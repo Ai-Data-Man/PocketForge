@@ -276,6 +276,19 @@ details.tz[open]>summary::before{content:'▾ '}
 #at-menu .mi b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} /* s69 P3-8: 长文件名不再撑出横向滚动 */
 #slash-menu .mi{padding:9px 14px;cursor:pointer;border-radius:var(--r-s)} /* s69 P3-5: 容器样式统一走元素内联那份（挂 body、z-index:40），此处只留子项规则 */
 #slash-menu .mi:hover,#slash-menu .mi.hl{background:var(--hover)} /* s69 P2-10: 同上 */
+/* 用户五主线批2-主线1: 📖 提示词面板（R3 使用域=输入框近旁；上弹容器对齐 #at-menu 先例） */
+#prompts-btn{font-size:1.05rem;padding:4px 10px;background:none;border:none;border-radius:var(--r-m);cursor:pointer;color:var(--tx-2);flex-shrink:0}
+#prompts-btn:hover{background:var(--hover)}
+#prompts-pop{display:none;position:absolute;bottom:100%;left:0;right:0;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-m);box-shadow:var(--shadow-3);z-index:50;max-height:400px;overflow-y:auto;margin-bottom:4px}
+#prompts-pop .mi{padding:8px 14px;font-size:.82rem;cursor:default;display:flex;align-items:center;gap:8px}
+#prompts-pop .mi:hover{background:var(--hover)}
+#prompts-pop .mi b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 用户五主线批2-主线2: Tab 唤起提示词搜索菜单（上弹容器对齐 #at-menu 先例；顶部迷你过滤框+12 条上限行清单） */
+#tab-menu{display:none;position:absolute;bottom:100%;left:0;right:0;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-m);box-shadow:var(--shadow-3);z-index:50;margin-bottom:4px}
+#tab-menu .mi{padding:8px 14px;font-size:.82rem;cursor:pointer;display:flex;align-items:center;gap:8px}
+#tab-menu .mi:hover,#tab-menu .mi.hl{background:var(--hover)}
+#tab-menu .mi b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#tab-list{max-height:220px;overflow-y:auto}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:3px}
@@ -332,9 +345,32 @@ details.tz[open]>summary::before{content:'▾ '}
   <div class="typing" id="typing" role="status" style="display:none">小 forge 正在干活<span class="tdots"><i></i><i></i><i></i></span></div>
   <div id="inputbar">
     <input id="txt" placeholder="想让我做什么？输入 @ 引用文件或数据表" autocomplete="off" aria-label="聊天输入框">
+    <button id="prompts-btn" title="我的提示词：存住常用话术，一点就用" aria-label="打开我的提示词">📖</button>
     <button id="send">发送</button>
     <button id="stop">停止</button>
     <div id="at-menu"></div>
+    <!-- 主线1 面板：搜索+行型清单+分页器+存当前输入框+编辑/删除（管理动作同域收进面板，R3 同域不同层） -->
+    <div id="prompts-pop">
+      <div style="display:flex;align-items:center;gap:6px;padding:10px 12px 6px">
+        <b style="font-size:.85rem">📖 我的提示词</b>
+        <span class="fnote" style="flex:1;min-width:0">说一遍就留住的话术；点条目插到输入框，不会自动发送</span>
+        <button class="mclose" id="prompts-close" title="关闭" aria-label="关闭" style="width:26px;height:26px">✕</button>
+      </div>
+      <div style="display:flex;gap:6px;padding:0 12px 8px">
+        <input id="prompts-q" placeholder="🔍 在我的提示词里找…" autocomplete="off" style="flex:1;min-width:0;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none">
+        <button id="prompts-save" class="mini" title="保存当前输入框为提示词">💾 存当前输入框</button>
+      </div>
+      <div id="prompts-list"></div>
+      <div id="prompts-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 0 4px"></div>
+      <div class="fnote" id="prompts-note" style="padding:0 12px 10px"></div>
+    </div>
+    <!-- 主线2：Tab 唤起的提示词搜索菜单（迷你过滤框+行清单；键盘 ↑↓/Enter/Esc 在 #tab-q 上处理） -->
+    <div id="tab-menu">
+      <div style="padding:8px 10px;border-bottom:1px solid var(--line)">
+        <input id="tab-q" placeholder="🔍 输入几个字过滤，↑↓ 选，回车插到输入框" autocomplete="off" aria-label="过滤我的提示词" style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.8rem;outline:none">
+      </div>
+      <div id="tab-list"></div>
+    </div>
   </div>
 </div>
 <div id="rside">
@@ -1934,7 +1970,7 @@ function paintInstalled(){ // s71: 自 open-skills 内联渲染提升为具名�
 let storeAll=[]; // 当前可装列表（avail），供搜索过滤
 // s71 技能/插件市场分页：技能卡约 120px 高，每页 12 条≈两屏；切片模式对齐 renderAllPane 的 PAGE_N 先例
 const SKILL_N=12;
-const listPage={ins:1,store:1,mcp:1,arch:1,chat:1}; // 各列表当前页；仅重开弹窗时重置（loadSkills2/loadMcpUI 会被操作回调与安装轮询复调，不得在函数内重置）；arch/chat=侧栏归档/活跃视图（IA-2 + pm裁决2026-09-07-batch1 项1）
+const listPage={ins:1,store:1,mcp:1,arch:1,chat:1,pr:1}; // 各列表当前页；仅重开弹窗时重置（loadSkills2/loadMcpUI 会被操作回调与安装轮询复调，不得在函数内重置）；arch/chat=侧栏归档/活跃视图（IA-2 + pm裁决2026-09-07-batch1 项1）；pr=提示词面板（主线1）
 function pageSlice(arr,key,n){ // IA-2: 可选页大小（缺省 SKILL_N；行型清单传 PAGE_N=30，对齐 renderAllPane 先例）
   const per=n||SKILL_N;
   const pages=Math.max(1,Math.ceil(arr.length/per));
@@ -2182,12 +2218,12 @@ const SLASH=[
   {cmd:'/体检', alias:['check','tijian','自检'], desc:'给它做全身检查', run:()=>{$('txt').value='做个体检'; submit();}},
   {cmd:'/导出', alias:['export','daochu','保存对话'], desc:'把这段对话存成文本', run:()=>exportChat()},
 ];
-function slashHits(q){
-  const all=SLASH.concat(skillCmds);
-  if(!q) return all;
+function slashHits(q,all){ // all 可注入（主线2 Tab 菜单喂提示词条目映射，裁决 §3.2-3）；缺省=原行为
+  const list=all||SLASH.concat(skillCmds);
+  if(!q) return list;
   q=q.toLowerCase();
-  return all.filter(c=>{
-    const hay=(c.cmd.slice(1)+' '+(c.desc||'')+' '+(c.alias||[]).join(' ')).toLowerCase();
+  return list.filter(c=>{
+    const hay=((c.cmd.slice(0,1)==='/'?c.cmd.slice(1):c.cmd)+' '+(c.desc||'')+' '+(c.alias||[]).join(' ')).toLowerCase(); // 主线2：cmd 无前导 /（提示词名）不再砍首字
     return hay.split(/[\s\/·]+/).some(t=>t.startsWith(q)) || hay.includes(q);
   });
 }
@@ -2195,10 +2231,11 @@ let atQT=null; // #6: @ 菜单取数防抖（连续键入 180ms 内只发最后�
 txt.addEventListener('input',()=>{
   const v=txt.value;
   const atM=v.match(/@([^@\s]*)$/);
-  if(atM){ clearTimeout(atQT); const q=atM[1].toLowerCase(); atQT=setTimeout(()=>renderAtMenu(q),180); return; }
+  if(atM){ clearTimeout(atQT); const q=atM[1].toLowerCase(); atQT=setTimeout(()=>renderAtMenu(q),180); $('slash-menu').style.display='none'; slashCur=[]; tabMenuClose(); return; } // 主线2 §3.2-6：@ 协议接管（内容协议优先）；slash 同关——此前 '/x@' 形态 @ 早退会让 slash 菜单残留同屏（三菜单互斥补全）
   clearTimeout(atQT); $('at-menu').style.display='none'; // 离开 @ 输入态：撤销挂起的取数并收起菜单，防陈旧弹层
   const menu=$('slash-menu');
   if(v.startsWith('/')){
+    tabMenuClose(); // 主线2 §3.2-6：/ 开头自动切到 slash 菜单（同上）
     slashCur=slashHits(v.slice(1));
     menu.innerHTML='';
     for(const c of slashCur.slice(0,14)){
@@ -2213,13 +2250,16 @@ txt.addEventListener('input',()=>{
 txt.addEventListener('keydown',e=>{
   // qa返工(P2-1): IME 组合期 ↑↓/Esc 属输入法操作（选字翻页/取消组合），不劫持——守卫同 txt.onkeydown Enter 分支先例
   if(e.isComposing) return;
+  // 用户五主线批2-主线2（裁决 §3.2-1）：Tab 唤起提示词搜索菜单。IME 组合态不劫持（Tab 是部分输入法选字翻页键，归上面 isComposing 守卫管）；
+  // preventDefault 阻焦点跳走；菜单已开时再按 Tab=无操作（不重置过滤框，只拦焦点）
+  if(e.key==='Tab'){ e.preventDefault(); if($('tab-menu').style.display!=='block') tabMenuOpen(); return; }
   // s69 P2-10: slash/at 菜单开着时 ↑↓ 移动高亮（含环形回绕）；Esc 关闭（既有路径保留）
   const slOpen=txt.value.startsWith('/')&&$('slash-menu').style.display==='block';
   const atOpen=$('at-menu').style.display==='block';
   if((slOpen||atOpen)&&(e.key==='ArrowDown'||e.key==='ArrowUp')){
     e.preventDefault(); menuHl(slOpen?$('slash-menu'):$('at-menu'),e.key==='ArrowDown'?1:-1); return;
   }
-  if(e.key==='Escape'){ $('slash-menu').style.display='none'; $('at-menu').style.display='none'; slashCur=[]; }
+  if(e.key==='Escape'){ $('slash-menu').style.display='none'; $('at-menu').style.display='none'; $('prompts-pop').style.display='none'; slashCur=[]; tabMenuClose(); }
 });
 
 // ---- 文件树 + 上传 + @引用 + 复制 ----
@@ -2594,6 +2634,170 @@ document.addEventListener('drop',async e=>{
     }catch(err){}
   }
   if(names.length){ renderCurPane(); addInfo('收到 '+names.length+' 个文件（在「'+(selDir||'根目录')+'」）。消息里用 @ 引用即可让我处理。'); }
+});
+
+// ===== 提示词库（用户五主线批2-主线1；裁决 2026-09-08-user-five-lines-batch2 §2）=====
+// 手工收藏制：唯一入库动作=用户显式保存（「存当前输入框」+面板内编辑）。历史全量留存、QUICK_PROMPTS 种子=§2.3 明确不做。
+let promptsCache=null; // 拉一次+写后刷新（dbOvCache 60s 先例的简化版；CRUD 后失效重拉）
+async function promptsRefresh(){
+  try{ const r=await fetch('/api/prompts'); promptsCache=await r.json(); if(!Array.isArray(promptsCache)) promptsCache=[]; }
+  catch(e){ promptsCache=[]; }
+  return promptsCache;
+}
+function promptsEnsure(){ return promptsCache||promptsRefresh(); }
+async function promptsOp(payload){
+  let r; try{ r=await apiJSON('/api/prompts',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)}); }
+  catch(e){ r={ok:false,err:e.message}; }
+  if(r.ok) await promptsRefresh(); // 写后失效重拉
+  return r;
+}
+function promptNameOf(p){ return p.name||String(p.body||'').split('\n')[0].slice(0,20)||'（未命名）'; }
+function promptInsert(body){ // 选中语义=插入不发送（QUICK_PROMPTS 点击填入、取回修改两条先例的产品一致性；busy 不变、无 ws send）
+  body=String(body||'');
+  const s=txt.selectionStart==null?txt.value.length:txt.selectionStart;
+  const e2=txt.selectionEnd==null?s:txt.selectionEnd;
+  txt.value=txt.value.slice(0,s)+body+txt.value.slice(e2);
+  const pos=s+body.length;
+  txt.focus(); txt.setSelectionRange(pos,pos); // 焦点回输入框+光标到插入末尾；发送权永远在 Enter
+}
+// —— 📖 面板（R3：使用域=输入框近旁，非管理面板第六 tab）——
+function promptsPanelRender(){
+  const box=$('prompts-list'); if(!box) return;
+  // 规模预期（AGENTS.md §7 义务，声明格式对齐会话列表先例）：手工收藏制个人话术库，终态预期 ≤100 条
+  // （妻子侧 ≤30、硬核用户 10-50 为推断上界）→ 落 R2 31-100 档=分页（行型 30/页）+搜索；超 100 条靠搜索+分页找回，不强造分组。
+  const q=($('prompts-q').value||'').trim().toLowerCase(); // 前端过滤 lowercase includes 对 name+body（skills-q 同款）
+  const list=(promptsCache||[]).filter(p=>!q||String(p.name||'').toLowerCase().includes(q)||String(p.body||'').toLowerCase().includes(q));
+  box.innerHTML='';
+  if(!list.length){ box.innerHTML='<div class="fnote" style="padding:8px 12px">'+(q?'没找到带「'+esc(q)+'」的提示词。':'还没有存过提示词。在输入框打好一段话，点上面「存当前输入框」就能留住它。')+'</div>'; pagerPaint('prompts-pager',1,1,0,null); return; }
+  const ps=pageSlice(list,'pr',PAGE_N); // 行型 30/页；≤30 条时 pagerPaint 自动零机制
+  for(const p of ps.rows) box.appendChild(promptRow(p));
+  pagerPaint('prompts-pager',listPage.pr,ps.pages,ps.total,p=>{ listPage.pr=p; promptsPanelRender(); });
+}
+function promptRow(p){
+  const row=document.createElement('div'); row.className='mi';
+  const main=document.createElement('div');
+  main.style.cssText='flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;cursor:pointer';
+  main.innerHTML='<b>'+esc(promptNameOf(p))+'</b><span style="color:var(--mut);font-size:.68rem;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(String(p.body||'').replace(/\n/g,' ').slice(0,40))+'</span>';
+  main.title='点击插到输入框光标处（不会自动发送）';
+  main.onclick=()=>{ $('prompts-pop').style.display='none'; promptInsert(p.body); };
+  const ed=document.createElement('button'); ed.className='mini'; ed.style.cssText='padding:3px 9px;font-size:.72rem;flex-shrink:0'; ed.textContent='编辑';
+  ed.onclick=()=>{ // 行内编辑表单（R3 同域不同层；无 modal）
+    const form=document.createElement('div'); form.style.cssText='flex:1;min-width:0';
+    const nm=document.createElement('input'); nm.value=p.name||''; nm.placeholder='名字（不填=正文第一行前 20 字）';
+    nm.style.cssText='width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:4px';
+    const bd=document.createElement('textarea'); bd.value=p.body||'';
+    bd.style.cssText='width:100%;box-sizing:border-box;height:90px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;resize:vertical;font-family:inherit';
+    const bar=document.createElement('div'); bar.style.cssText='display:flex;gap:6px;margin-top:4px';
+    const ok=document.createElement('button'); ok.className='mini'; ok.textContent='保存';
+    const cc=document.createElement('button'); cc.className='mini'; cc.textContent='取消';
+    ok.onclick=async()=>{
+      ok.disabled=true;
+      const r=await promptsOp({op:'update',id:p.id,name:nm.value.trim(),body:bd.value});
+      if(!r.ok){ ok.disabled=false; alert('没保存成：'+(r.err||'')); return; }
+      promptsPanelRender();
+    };
+    cc.onclick=()=>promptsPanelRender();
+    bar.appendChild(ok); bar.appendChild(cc);
+    form.appendChild(nm); form.appendChild(bd); form.appendChild(bar);
+    row.innerHTML=''; row.appendChild(form); nm.focus();
+  };
+  const del=document.createElement('button'); del.className='mini'; del.style.cssText='padding:3px 9px;font-size:.72rem;flex-shrink:0'; del.textContent='删除';
+  del.onclick=async()=>{
+    if(del.dataset.armed!=='1'){ del.dataset.armed='1'; del.textContent='确认删'; del.style.color='var(--danger)'; return; } // 行内二次点击确认（「删除」→「确认删」），无 modal
+    del.disabled=true;
+    const r=await promptsOp({op:'delete',id:p.id});
+    if(!r.ok){ del.disabled=false; alert('没删成：'+(r.err||'')); return; }
+    promptsPanelRender();
+  };
+  row.appendChild(main); row.appendChild(ed); row.appendChild(del);
+  return row;
+}
+function promptsPanelOpen(){
+  $('at-menu').style.display='none'; $('slash-menu').style.display='none'; tabMenuClose(); // 输入现场至多一个上弹面（主线2 起 @/slash/Tab 三菜单+面板互斥）
+  const pop=$('prompts-pop');
+  pop.style.display='block';
+  $('prompts-note').textContent='';
+  $('prompts-q').value=''; // e12a 实锤修复：重开面板清残留搜索词——上次关面板时过滤词若已匹配不到条目（如刚删过），重开即空清单，存当前输入框后新条目也不显示，用户看到「没找到」实际库里有货
+  listPage.pr=1; // 重开回第 1 页
+  if(promptsCache) promptsPanelRender();
+  else { $('prompts-list').innerHTML='<div class="fnote" style="padding:8px 12px">正在读取…</div>'; pagerPaint('prompts-pager',1,1,0,null); promptsRefresh().then(promptsPanelRender); }
+  $('prompts-q').focus();
+}
+$('prompts-btn').onclick=()=>{ const pop=$('prompts-pop'); if(pop.style.display==='block'){ pop.style.display='none'; return; } promptsPanelOpen(); };
+$('prompts-close').onclick=()=>{ $('prompts-pop').style.display='none'; };
+$('prompts-save').onclick=async()=>{ // 入库动作 a：输入框当前草稿一键保存（面板主入口；草稿原文保留，不替用户清空）
+  const t=txt.value;
+  if(!t.trim()){ $('prompts-note').textContent='输入框是空的，先打一段话再存。'; return; }
+  const btn=$('prompts-save'); btn.disabled=true;
+  const r=await promptsOp({op:'add',body:t}); // name 缺省=首行前 20 字（桥端规则）
+  btn.disabled=false;
+  if(!r.ok){ alert('没存成：'+(r.err||'')); return; }
+  $('prompts-note').textContent='已存进提示词库（输入框原文保留，随时可发送）。';
+  promptsPanelRender();
+};
+let promptsQT=null;
+$('prompts-q').oninput=()=>{ clearTimeout(promptsQT); promptsQT=setTimeout(()=>{ listPage.pr=1; promptsPanelRender(); },200); }; // 搜索变化回第 1 页（skills-q 同款防抖）
+$('prompts-q').onkeydown=e=>{ if(e.key==='Escape'&&!e.isComposing){ e.stopPropagation(); $('prompts-pop').style.display='none'; txt.focus(); } };
+document.addEventListener('click',e=>{ const t=e.target; const pop=$('prompts-pop'); if(pop.style.display==='block'&&t.isConnected&&!t.closest('#prompts-pop')&&!t.closest('#prompts-btn')) pop.style.display='none'; }); // 点面板外收起（model-pick 先例）；isConnected 守卫：面板内点击若同步重渲染（翻页 pagerPaint、行内编辑 row.innerHTML=''），点击目标在冒泡到 document 前已被摘离 DOM，closest 返回 null 会误判「点在外面」把面板关掉（e12a GUI 实锤：翻页/点编辑后面板闪没）——离树目标不算点外
+
+// ===== Tab 唤起提示词搜索（用户五主线批2-主线2；裁决 2026-09-08-user-five-lines-batch2 §3）=====
+// 三菜单互斥（@/slash/Tab 同挂输入框上弹区，至多一个可见）：Tab 唤起时关其他两菜单+面板；
+// 输入协议命中（/ 开头→slash、@ 尾缀→@）由 txt input 监听反向关 Tab 菜单（内容协议优先于手动 Tab 菜单，§3.2-6）。
+// 数据源=主线1 同库同端点：promptsCache 拉一次+写后失效重拉（面板 CRUD 后 Tab 菜单下次唤起即见新数据，§3.2-7）。
+let tabQT=null, tabGen=0; // 过滤防抖 180ms + 代际守卫（atQT/atGen 同款：关菜单/被协议接管后，迟到的防抖渲染不得复活菜单）
+function tabMenuClose(){
+  tabGen++; clearTimeout(tabQT); // 作废挂起的防抖渲染（gen 变化后迟到回调自弃）
+  $('tab-menu').style.display='none';
+  $('tab-q').value='';
+}
+async function tabMenuOpen(){
+  $('at-menu').style.display='none'; $('slash-menu').style.display='none'; $('prompts-pop').style.display='none'; // 互斥
+  tabMenuClose(); // 复位代际+清过滤框（幂等；先作废上一轮挂起渲染）
+  $('tab-menu').style.display='block';
+  $('tab-q').focus(); // 迷你过滤框自动聚焦（§3.2-2：输入框草稿不动，过滤在菜单内做——半句草稿当查询必失配，§3.1-2）
+  if(promptsCache){ renderTabList(''); return; }
+  $('tab-list').innerHTML='<div class="fnote" style="padding:8px 14px">正在读取…</div>';
+  const gen=tabGen;
+  await promptsEnsure();
+  if(gen!==tabGen) return; // 读取期间菜单被关/被协议菜单接管：迟到回落
+  renderTabList($('tab-q').value);
+}
+function renderTabList(q){
+  // 匹配复用 slashHits（§3.2-3）：条目映射 {cmd:name, alias:[name], desc:正文前 200 字}——中文直接可搜
+  const hits=slashHits(q,(promptsCache||[]).map(p=>({cmd:String(p.name||''),alias:[String(p.name||'')],desc:String(p.body||'').slice(0,200),__p:p})));
+  const box=$('tab-list'); box.innerHTML='';
+  if(!hits.length){
+    box.innerHTML='<div class="fnote" style="padding:8px 14px">'+(!(promptsCache||[]).length
+      ?'还没有存过提示词。在输入框打好一段话，点 📖 存进去，以后按 Tab 就能搜出来用。'
+      :'没找到，换个词试试。完整的在 📖 我的提示词面板里搜。')+'</div>';
+    return;
+  }
+  for(const h of hits.slice(0,12)){ // 12 条上限（@ 菜单同款 R2 档）
+    const el=document.createElement('div'); el.className='mi';
+    el.innerHTML='<b>'+esc(h.cmd)+'</b><span style="color:var(--mut);font-size:.68rem;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(String(h.__p.body||'').replace(/\n/g,' ').slice(0,40))+'</span>';
+    el.title='回车或点击插到输入框光标处（不会自动发送）';
+    el.onclick=()=>{ tabMenuClose(); promptInsert(h.__p.body); }; // 选中=插入不发送（§3.2-5）：正文插光标处+焦点回输入框+光标到插入末尾，发送权永远在 Enter
+    box.appendChild(el);
+  }
+  if(hits.length>12){ // 溢出提示（R2 截断必须有出路：出路=主线1 面板完整搜索+分页）
+    const more=document.createElement('div'); more.className='fnote'; more.style.padding='6px 14px';
+    more.textContent='还有 '+(hits.length-12)+' 条没列出来，继续输入缩小范围（完整列表在 📖 我的提示词面板）';
+    box.appendChild(more);
+  }
+}
+$('tab-q').addEventListener('input',()=>{ // 过滤防抖 180ms（atQT 同款）；代际守卫防关菜单后迟到渲染复活
+  clearTimeout(tabQT);
+  const v=$('tab-q').value, gen=tabGen;
+  tabQT=setTimeout(()=>{ if(gen===tabGen) renderTabList(v); },180);
+});
+$('tab-q').addEventListener('keydown',e=>{
+  if(e.isComposing) return; // IME 组合期 ↑↓/Enter/Esc/Tab 归输入法（选字翻页/取消组合），不劫持（tpl 同款守卫）
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){ e.preventDefault(); menuHl($('tab-menu'),e.key==='ArrowDown'?1:-1); return; } // 环形移高亮（三菜单共用 menuHl）
+  if(e.key==='Enter'){ // 选中=点击高亮行（无高亮=第一条，slash 旧行为对齐）；行 onclick=插入不发送
+    e.preventDefault(); const hl=$('tab-menu').querySelector('.mi.hl')||$('tab-menu').querySelector('.mi'); if(hl) hl.click(); return;
+  }
+  if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); tabMenuClose(); txt.focus(); return; } // 关菜单，焦点回输入框（§3.2-4）
+  if(e.key==='Tab'){ e.preventDefault(); } // 菜单开着再按 Tab=无操作：焦点留在过滤框不跳走（§3.2-1）
 });
 
 </script>

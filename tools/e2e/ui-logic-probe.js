@@ -1,19 +1,22 @@
-// UI 逻辑桩测（s69 转正自 tmp p210-211-kbd-check + p22-close-path-check），33 ck，秒级，无桥无网络。
+// UI 逻辑桩测（s69 转正自 tmp p210-211-kbd-check + p22-close-path-check），秒级，无桥无网络。
 // 手法：从 chat.tpl.html 原文逐字提取 handler（正则锚点=稳定标记字符串，非行号——模板漂移时显式 NOT FOUND 报错，不误报），
 // 用最小 DOM 桩沙盒执行。覆盖：
-//   kbd 23 ck：model-pick 键盘开合/Esc 还焦点、slash/at 菜单环形高亮+Enter 选中（含旧行为对照组）、IME 组合期不劫持、
-//              桥同款 new Function 全块语法（chat.tpl + preview.html）
+//   kbd 24 ck：model-pick 键盘开合/Esc 还焦点、slash/at 菜单环形高亮+Enter 选中（含旧行为对照组）、IME 组合期不劫持、
+//              桥同款 new Function 全块语法（chat.tpl + preview.html）、Esc 关提示词面板（主线1 e12）
 //   close-path 10 ck：模态三条关闭路径（#panel .mclose ✕ / Esc / 背景点击）复位 cfgKeyTouched+清半截 Key，
 //              fillProvForm 清空门，含修复前对照（证明检查能区分修复前后）
+//   prompts 10 ck（主线1 e12）：promptInsert=光标处插入+选区替换+焦点回输入框+光标到插入末尾+不发送、
+//              promptNameOf name 兜底（首行前 20 字）、面板点外收起 handler 的 isConnected 守卫
+//              （e12a 实锤：面板内同步重渲染点击不得误关面板——翻页/行内编辑路径）
 // 断言失败输出带 [handler] 前缀定位到具体 handler。已挂 e2e-chat.sh 第 14 节；也可单跑 node tools/e2e/ui-logic-probe.js
 'use strict';
 const fs = require('fs');
 const html = fs.readFileSync(__dirname + '/../../forge/conf/templates/chat.tpl.html', 'utf8');
 function grab(re, label) { const m = html.match(re); if (!m) { console.error('NOT FOUND: ' + label); process.exit(1); } return m[0]; }
-let pass = 0, fail = 0, KP = 0, KF = 0, CP = 0, CF = 0, CUR = 'kbd';
+let pass = 0, fail = 0, KP = 0, KF = 0, CP = 0, CF = 0, PP = 0, PF = 0, CUR = 'kbd';
 function ck(name, cond) {
-    if (cond) { console.log('PASS [' + SEC + '] ' + name); pass++; if (CUR === 'kbd') KP++; else CP++; }
-    else { console.log('FAIL [' + SEC + '] ' + name); fail++; if (CUR === 'kbd') KF++; else CF++; }
+    if (cond) { console.log('PASS [' + SEC + '] ' + name); pass++; if (CUR === 'kbd') KP++; else if (CUR === 'close-path') CP++; else PP++; }
+    else { console.log('FAIL [' + SEC + '] ' + name); fail++; if (CUR === 'kbd') KF++; else if (CUR === 'close-path') CF++; else PF++; }
 }
 let SEC = '';
 
@@ -26,6 +29,7 @@ const mpKeydownSrc = grab(/\$\('model-pick'\)\.addEventListener\('keydown',e=>\{
 const escSrc = grab(/if\(e\.key==='Escape'&&!e\.ctrlKey&&!e\.metaKey\)\{[\s\S]+?\n  \}/, 'Esc branch');
 const txtOnkeydownSrc = grab(/txt\.onkeydown=e=>\{[\s\S]+?\n\};/, 'txt.onkeydown');
 const txtKdSrc = grab(/txt\.addEventListener\('keydown',e=>\{[\s\S]+?\n\}\);/, 'txt keydown listener');
+const tabQKdSrc = grab(/\$\('tab-q'\)\.addEventListener\('keydown',e=>\{[\s\S]+?\n\}\);/, 'tab-q keydown listener'); // 主线2：Tab 菜单过滤框键盘
 
 function mkItem(label) {
     const el = { label, clicked: 0, run: null };
@@ -62,22 +66,27 @@ function build2() {
     const search = { value: 'x', focus: () => {} };
     const slashMenu = mkMenu('slash-menu', [mkItem('s0'), mkItem('s1'), mkItem('s2')]);
     const atMenu = mkMenu('at-menu', [mkItem('a0'), mkItem('a1')]);
+    const tabMenu = mkMenu('tab-menu', [mkItem('t0'), mkItem('t1'), mkItem('t2')]); // 主线2：Tab 菜单（menuHl/Enter 语义与 slash/at 同款）
+    const tabQ = { value: '', focused: 0, focus() { this.focused++; }, handlers: {}, addEventListener(t, h) { this.handlers[t] = h; } };
     const off = () => ({ classList: { contains: () => false } });
-    const els = { 'model-pick': pick, 'model-search': search, 'slash-menu': slashMenu, 'at-menu': atMenu, 'modal': off(), 'manage-modal': off(), 'skills-modal': off() };
-    const txtStub = { value: '', onkeydown: null, addEventListener(t, h) { this.handlers[t] = h; }, handlers: {} };
+    const els = { 'model-pick': pick, 'model-search': search, 'slash-menu': slashMenu, 'at-menu': atMenu, 'tab-menu': tabMenu, 'tab-q': tabQ, 'modal': off(), 'manage-modal': off(), 'skills-modal': off(), 'prompts-pop': { style: { display: 'none' } } };
+    const txtStub = { value: '', onkeydown: null, focused: 0, focus() { this.focused++; }, addEventListener(t, h) { this.handlers[t] = h; }, handlers: {} };
     let built = 0, submits = 0;
     const api = new Function('$', 'txt', 'document', 'setTimeout', 'buildModelItems', 'submit', `
-        let cfgKeyTouched=false, mcpPollTimer=null, slashCur=[{}];
+        let cfgKeyTouched=false, mcpPollTimer=null, slashCur=[{}], tabOpened=0;
+        function tabMenuOpen(){ tabOpened++; $('tab-menu').style.display='block'; } // 桩：真身是异步取数+渲染，键盘契约只钉「Tab 分支调它且仅菜单未开时调」
+        function tabMenuClose(){ $('tab-menu').style.display='none'; }
         ${menuHlSrc}
         ${mpOnclickSrc}
         ${mpKeydownSrc}
         function __esc(e){ ${escSrc} }
         ${txtOnkeydownSrc}
         ${txtKdSrc}
-        return { mpKey: e => $('model-pick').handlers.keydown(e), esc: __esc };
+        ${tabQKdSrc}
+        return { mpKey: e => $('model-pick').handlers.keydown(e), esc: __esc, tabQKey: e => $('tab-q').handlers.keydown(e), tabOpened: () => tabOpened };
     `)(id => { if (!els[id]) throw new Error('no stub ' + id); return els[id]; }, txtStub,
         { addEventListener() {} }, () => {}, () => { built++; }, () => { submits++; });
-    return { api, txt: txtStub, pick, slashMenu, atMenu, search,
+    return { api, txt: txtStub, pick, slashMenu, atMenu, search, tabMenu, tabQ, promPop: els['prompts-pop'],
         counts: () => ({ built, submits }) };
 }
 const noPd = () => { throw new Error('preventDefault 不应被调用'); };
@@ -147,6 +156,10 @@ const noPd = () => { throw new Error('preventDefault 不应被调用'); };
     SEC = 'txt keydown (at Esc)';
     s.txt.handlers.keydown({ key: 'Escape', preventDefault: () => {} });
     ck('Esc hides both menus (existing path intact)', s.slashMenu.style.display === 'none' || true); // Esc 只改 display：桩上直接断言处理器不抛错即达意
+    // 主线1（e12 §2.4-2）：同一 Esc 分支关提示词面板（面板开→Esc→display:none）
+    s.promPop.style.display = 'block';
+    s.txt.handlers.keydown({ key: 'Escape', preventDefault: () => {} });
+    ck('Esc closes prompts panel (wired into same branch)', s.promPop.style.display === 'none');
 }
 
 // —— qa返工(P2-1): IME 组合期按键不劫持——isComposing=true 时 ↑↓/Esc 归输入法（选字/取消组合），菜单不动 ——
@@ -164,6 +177,43 @@ const noPd = () => { throw new Error('preventDefault 不应被调用'); };
     ck('IME composing Esc keeps menu open (cancel-composition belongs to IME)', s.slashMenu.style.display === 'block' && pd === 0);
     s.txt.handlers.keydown({ key: 'ArrowDown', isComposing: false, preventDefault: pde });
     ck('non-composing ArrowDown still highlights (guard is the discriminator)', s.slashMenu._items[0].classList.contains('hl') && pd === 1);
+}
+
+// —— 主线2（e12 §3.4-1/2，裁决 §3.2-1/§3.2-4）：Tab 唤起/已开无操作/IME 守卫/Esc 关菜单 ——
+{
+    const s = build2();
+    let pd = 0; const pde = () => { pd++; };
+    SEC = 'txt keydown (Tab invoke)';
+    s.txt.handlers.keydown({ key: 'Tab', preventDefault: pde });
+    ck('Tab (non-composing) opens prompt menu + preventDefault (focus kept)', s.tabMenu.style.display === 'block' && s.api.tabOpened() === 1 && pd === 1);
+    s.txt.handlers.keydown({ key: 'Tab', preventDefault: pde });
+    ck('Tab with menu open = no-op (not reopened/reset, focus still not jumped)', s.api.tabOpened() === 1 && pd === 2);
+    s.txt.handlers.keydown({ key: 'Escape', preventDefault: pde });
+    ck('txt Esc closes Tab menu (same branch as other menus)', s.tabMenu.style.display === 'none');
+    s.txt.handlers.keydown({ key: 'Tab', isComposing: true, preventDefault: pde });
+    ck('IME composing Tab not hijacked (no open, no preventDefault)', s.api.tabOpened() === 1 && pd === 2 && s.tabMenu.style.display === 'none');
+}
+// —— 主线2：Tab 菜单过滤框键盘（↑↓ 环形/Enter 选中插入不发送/Esc 焦点回输入框/IME 守卫/Tab 无操作） ——
+{
+    const s = build2();
+    s.tabMenu.style.display = 'block';
+    let pd = 0; const pde = () => { pd++; };
+    SEC = 'tab-q keydown (menu keys)';
+    s.api.tabQKey({ key: 'ArrowDown', preventDefault: pde });
+    ck('tab-q ArrowDown highlights first row (shared menuHl)', s.tabMenu._items[0].classList.contains('hl') && pd === 1);
+    s.tabMenu._items[0].run = () => { s.picked = true; };
+    s.api.tabQKey({ key: 'Enter', preventDefault: pde });
+    ck('tab-q Enter clicks highlighted row, NO submit (insert-not-send)', s.tabMenu._items[0].clicked === 1 && s.picked === true && s.counts().submits === 0);
+    s.tabMenu._items.forEach(i => i.classList.remove('hl')); // 清高亮，验证无高亮=第一条（slash 旧行为）
+    s.api.tabQKey({ key: 'Enter', preventDefault: pde });
+    ck('tab-q Enter without highlight picks FIRST row (slash precedent)', s.tabMenu._items[0].clicked === 2 && s.counts().submits === 0);
+    s.api.tabQKey({ key: 'Escape', preventDefault: pde, stopPropagation: () => {} });
+    ck('tab-q Esc closes menu + focus back to txt', s.tabMenu.style.display === 'none' && s.txt.focused === 1);
+    s.tabMenu.style.display = 'block';
+    s.api.tabQKey({ key: 'ArrowDown', isComposing: true, preventDefault: pde });
+    ck('tab-q IME composing ArrowDown inert (IME owns key)', s.tabMenu._items.every(i => !i.classList.contains('hl')) && pd === 4);
+    s.api.tabQKey({ key: 'Tab', preventDefault: pde });
+    ck('tab-q Tab = no-op (preventDefault only, menu stays for Esc)', s.tabMenu.style.display === 'block' && pd === 5);
 }
 
 // —— 全块语法：桥同款 new Function 解析 ——
@@ -252,7 +302,67 @@ scenario('NEW bg click      ', bgWrap(bgNew));
     ck('OLD Esc (control)| half key carried into next profile (pre-fix behavior)', st.touched === true && st.val === 'sk-half');
 }
 
+// ================================ prompts 10 ck（主线1 e12：插入不发送 / name 兜底 / 点外收起守卫） ================================
+CUR = 'prompts';
+const promptInsertSrc = grab(/function promptInsert\(body\)\{[\s\S]+?\n\}/, 'promptInsert');
+const promptNameOfSrc = grab(/function promptNameOf\(p\)\{[^\n]+\}/, 'promptNameOf');
+const outsideClickArrow = grab(/e=>\{ const t=e\.target; const pop=\$\('prompts-pop'\); if\(pop\.style\.display==='block'&&t\.isConnected[^\n]*?style\.display='none'; \}/, 'prompts outside-click arrow');
+
+// —— promptInsert：光标处插入/选区替换/焦点回输入框/光标到插入末尾/不发送 ——
+{
+    const mkTxt = () => { const t = { value: '', selectionStart: 0, selectionEnd: 0, focused: 0, caret: null }; t.focus = () => { t.focused++; }; t.setSelectionRange = (a, b) => { t.caret = [a, b]; }; return t; };
+    let submits = 0;
+    // 每例独立沙盒（promptInsert 闭包捕获 txt；submit 哨兵证明不发送）
+    const build = () => { const t = mkTxt(); const f = new Function('txt', 'submit', `${promptInsertSrc} return promptInsert;`)(t, () => { submits++; }); return { t, f }; };
+    SEC = 'promptInsert';
+    {
+        const { t, f } = build(); t.value = 'ABCD'; t.selectionStart = t.selectionEnd = 2; f('XY');
+        ck('insert at cursor: ABCD[2:2]+XY = ABXYCD', t.value === 'ABXYCD', t.value);
+    }
+    {
+        const { t, f } = build(); t.value = 'ABCD'; t.selectionStart = 1; t.selectionEnd = 3; f('X');
+        ck('selection replaced by insert (ABCD[1:3]+X = AXD)', t.value === 'AXD', t.value);
+    }
+    {
+        const { t, f } = build(); t.value = 'ABCD'; t.selectionStart = t.selectionEnd = 2; f('XY');
+        ck('focus back to txt + caret at end of inserted text', t.focused === 1 && t.caret && t.caret[0] === 4 && t.caret[1] === 4, JSON.stringify(t.caret));
+    }
+    {
+        const { t, f } = build(); t.value = 'AB'; t.selectionStart = t.selectionEnd = 2; f('正文');
+        ck('insert does NOT submit (发送权永远在 Enter)', t.value === 'AB正文' && submits === 0, 'submits=' + submits);
+    }
+}
+
+// —— promptNameOf：name 显式保留；缺省=body 首行前 20 字；多行取第一行 ——
+{
+    const nameOf = new Function(`${promptNameOfSrc} return promptNameOf;`)();
+    SEC = 'promptNameOf';
+    ck('explicit name kept', nameOf({ name: '周报话术', body: '正文' }) === '周报话术');
+    ck('fallback = first 20 chars of first line (26-char line truncated)', nameOf({ body: '一二三四五六七八九十甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳' }) === '一二三四五六七八九十甲乙丙丁戊己庚辛壬癸', nameOf({ body: '一二三四五六七八九十甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳' }));
+    ck('multiline body takes first line only (and empty → 未命名)', nameOf({ body: '首行话术\n第二行' }) === '首行话术' && nameOf({ body: '\n第二行' }) === '（未命名）');
+}
+
+// —— 面板点外收起 handler：isConnected 守卫（e12a 实锤修复钉住）——
+{
+    const h = new Function('$', `const h=${outsideClickArrow}; return h;`)(id => ({ style: { display: 'block' } }));
+    // 注意：$('prompts-pop') 每次调用返回同一个 style 对象才能观察变化
+    const popStyle = { display: 'block' };
+    const h2 = new Function('$', `const h=${outsideClickArrow}; return h;`)(id => ({ style: popStyle }));
+    const mkEv = (connected, closestHit) => ({ target: { isConnected: connected, closest: s => closestHit } });
+    SEC = 'prompts outside-click';
+    h2(mkEv(false, false));
+    ck('detached target (panel-internal re-render: paging/edit) does NOT close panel', popStyle.display === 'block');
+    h2(mkEv(true, false));
+    ck('real outside click (connected, not inside pop) closes panel', popStyle.display === 'none');
+    popStyle.display = 'block';
+    h2(mkEv(true, true));
+    ck('click inside panel (closest hits #prompts-pop) does NOT close', popStyle.display === 'block');
+    let threw = false; try { h(mkEv(false, false)); } catch (e) { threw = true; }
+    ck('outside-click handler runs clean on stub DOM', !threw);
+}
+
 console.log('ui-logic-probe kbd: PASS=' + KP + ' FAIL=' + KF);
 console.log('ui-logic-probe close-path: PASS=' + CP + ' FAIL=' + CF);
+console.log('ui-logic-probe prompts: PASS=' + PP + ' FAIL=' + PF);
 console.log('ui-logic-probe: PASS=' + pass + ' FAIL=' + fail);
 process.exit(fail ? 1 : 0);
