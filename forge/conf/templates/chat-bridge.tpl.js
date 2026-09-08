@@ -419,6 +419,7 @@ const stateWarnings = [];
 const STATE_SCHEMAS = {
     'workspace-map.json': { latest: 1, steps: {} },
     'session-archive.json': { latest: 1, steps: {} },
+    'prompts.json': { latest: 1, steps: {} }, // 用户五主线批2-主线1: 手工收藏制提示词库（裁决 2026-09-08-user-five-lines-batch2 §2.2）
     '.forge': { latest: 1, steps: {} },
     // s70 切片B: manifest v2 = 条目补 source{repo,branch}（存量默认 anthropics/skills；步骤内用字面量——迁移 IIFE 跑在下方 REMOTE_SKILLS 初始化之前，引用常量会 TDZ）
     'cache/skills/manifest.json': {
@@ -2557,6 +2558,55 @@ const ext = path.extname(f).toLowerCase();
                         if (i < 0) throw new Error('没找到这条记录');
                         items.splice(i, 1);
                         atomicWrite(f, serializeMem(items));
+                    } else throw new Error('未知操作');
+                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: true }));
+                } catch (e) {
+                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: false, err: e.message }));
+                }
+            });
+        } else { res.writeHead(405); res.end(); }
+    }
+    else if (url === '/api/prompts') {
+        // 用户五主线批2-主线1（裁决 2026-09-08-user-five-lines-batch2 §2.2）：手工收藏制提示词库 data/prompts.json。
+        // op 风格对齐 /api/memory；GET 全量（量级小，前端过滤+分页，skills 先例）；跨站 Origin 拒绝与 POST 预算由 handleHttp 顶部全局门自动覆盖。
+        const PROMPTS_FILE = path.join(ROOT, 'data', 'prompts.json');
+        function pfName(b) { // name 缺省=body 首行前 20 字（R4 兜底=结构性事实，不编造）
+            if (typeof b.name === 'string' && b.name.trim()) return b.name.trim();
+            const l = String(b.body).split('\n')[0].trim();
+            return (l || String(b.body).trim()).slice(0, 20);
+        }
+        function readPrompts() { const j = readJson(PROMPTS_FILE, {}); return Array.isArray(j.prompts) ? j.prompts : []; }
+        function writePrompts(list) { FSS.mkdirSync(path.dirname(PROMPTS_FILE), { recursive: true }); atomicWrite(PROMPTS_FILE, JSON.stringify({ _schema: 1, prompts: list }, null, 2)); }
+        if (req.method === 'GET') {
+            const list = readPrompts().sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || ''))); // updated_at 倒序（ISO 串字典序）
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify(list));
+        } else if (req.method === 'POST') {
+            const chunks = [];
+            let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
+            req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
+            req.on('end', () => {
+                try {
+                    const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                    const list = readPrompts();
+                    if (b.op === 'add') {
+                        if (typeof b.body !== 'string' || !b.body.trim()) throw new Error('提示词内容不能为空');
+                        const now = new Date().toISOString();
+                        list.push({ id: crypto.randomUUID(), name: pfName(b), body: b.body, created_at: now, updated_at: now });
+                        writePrompts(list);
+                    } else if (b.op === 'update') {
+                        const it = list.find(p => p.id === b.id);
+                        if (!it) throw new Error('没有这条提示词');
+                        if (typeof b.body !== 'string' || !b.body.trim()) throw new Error('提示词内容不能为空');
+                        it.name = pfName(b); it.body = b.body; it.updated_at = new Date().toISOString(); // add/update 刷 updated_at；name 缺省同 add 一条规则
+                        writePrompts(list);
+                    } else if (b.op === 'delete') {
+                        const i = list.findIndex(p => p.id === b.id);
+                        if (i < 0) throw new Error('没有这条提示词');
+                        list.splice(i, 1);
+                        writePrompts(list);
                     } else throw new Error('未知操作');
                     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ ok: true }));
