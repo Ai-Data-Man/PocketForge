@@ -30,6 +30,7 @@
 7. **G7 上游观察项**（升级窗口重评，不阻塞 PASS/FAIL 判定）：RepetitionInspector 注册 `new(None)` 无重复上限、SecurityScanner `SECURITY_PROMPT_ENABLED` 默认关——产品侧均无配置键，当前没有熔断/扫描在役；v1.50 核对上游是否新增配置化开关，顺带评估开启后内网浏览器场景误报率。核实点行号出自 v1.46.0（agent.rs:748、security/mod.rs:65-73），新版须重对。
 8. **会话号语义与救援面**（s76 新增，research/18 补记）：新版 session_manager 的「当日 MAX+1」编号语义若变（前缀/tombstone），桥端救援路径的触发面前提要重对；**goose 对 closed/不存在 sid 的 prompt 错误措辞若引入差异化 closed 文案**（v1.46.0 仅 resource_not_found+"Session not found" 单源），该类场景将从救援面掉出——仍非静默（人话错误），但 e2e 第 18 节断言的救援路径要复验。
 9. **permission.yaml 升级语义**（s76c 新增）：运行时副本已 PROTECTED（update-runner 精确条目），升级应零触碰——升级实录里核对升级前后 permission.yaml 逐字节不变（含 goose 学习性 ask_before 条目存活）；新装面=bootstrap 1b-7 种子（copy-if-missing+空文件守卫）。若上游改 permission.yaml 结构（三键 panic 家族），种子模板 conf/templates/permission.tpl.yaml 与 1b-7 守卫同步修。
+10. **messages 表与会话手术面**（s77 新增，撤回重写补篇 docs/verdicts/2026-09-08-message-rewrite-addendum.md §6）：升级后必须复核 messages 表 DDL（列名/秒级 created_timestamp/自增 id 语义）、get_conversation 排序谓词与 content_json 严格解析、load 对 closed/空会话语义——桥 rollback_rewrite 的 B 型谓词 `(created_timestamp,id)>=边界` 与七步手术协议锚定这些行为（全锚 v1.46.0）。**过门方法=research/21 实验矩阵 CTL/B/RB/NEG 四项在目标版本沙盒复跑全绿**（基建 tmp/pfr21 可复跑，fake provider 离线确定性）。**形态级风险（唯一）**：若上游把 session/fork 的 conversationBefore meta 放行（v1.46 被 schema 校验层剥离）→ 官方截断通道出现但形态=分叉新会话（sid 换号）≠ 原地回滚 → 撤回重写交互形态重开归约（补篇 §6-3），其余安全设计仍适用。
 
 ### 第 4 步：收尾
 - 全部 PASS → commit components.yaml/fetch.sh/checksums.txt（message 引用 research/04 与本预案）；STATE 版本表回写；dev 栈换新二进制重跑全量回归（当前基线 e2e-chat 53/53 + fuzz 150/150，以 STATE 终态行为准）。
