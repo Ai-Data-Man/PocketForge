@@ -24,11 +24,12 @@ function makeEnv(s26re, classify) { // s76c: 可注入 S26 正则/归类桩（�
         acp,
         wsSession: new WeakMap(),
         sessionClients: new Map(),
+        busySids: new Set(), // 主线5：sendTurn 在飞登记（桩内共享集合）
         console: { log() {}, error() {} },
     };
-    const factory = new Function('waiting', '__nid', 'turnText', 'S26_ERR_RE', 'classifyUpstream', 'statsBump', 'acp', 'console', 'ROOT', 'wsSession', 'sessionClients',
+    const factory = new Function('waiting', '__nid', 'turnText', 'S26_ERR_RE', 'classifyUpstream', 'statsBump', 'acp', 'console', 'ROOT', 'wsSession', 'sessionClients', 'busySids',
         block.replace(/nextId\+\+/g, '__nid()') + '\nreturn { sendTurn, rescueSession };');
-    const api = factory(env.waiting, () => env.nextId++, env.turnText, env.S26_ERR_RE, env.classifyUpstream, k => env.statsBump(k), env.acp, env.console, 'C:/PF-ROOT', env.wsSession, env.sessionClients);
+    const api = factory(env.waiting, () => env.nextId++, env.turnText, env.S26_ERR_RE, env.classifyUpstream, k => env.statsBump(k), env.acp, env.console, 'C:/PF-ROOT', env.wsSession, env.sessionClients, env.busySids);
     return { env, api };
 }
 const mkWs = () => ({ alive: true, sends: [], send(o) { this.sends.push(o); } });

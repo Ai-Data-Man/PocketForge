@@ -290,6 +290,16 @@ ck "rescue guard probe 22 ck (null/string/{} payload + dedup + alive gate + non-
 grep -E "^rescue-guard-probe" /tmp/rescue-guard.log || true
 rm -f /tmp/rescue-guard.log
 
+# ---------- 18c) 撤回重写全链（主线5，补篇裁决 2026-09-08 §5 验收 1-4/7+§1.1-2；详见 tools/e2e/ws-rollback-probe.js） ----------
+# 沙盒自建（FORGE_ROOT=tmp/pfr18c-e2e-<pid>，桥/假 provider 端口自选），绝不碰 dev 活体会话。
+# 覆盖：B 型截断 DB 断言（U2 轮消失/U1 原样/usage 逐位不变）/load 重放无原句/改写后上下文回显/失败分支（tombstone 注入+边界缺
+# 失→DB 逐位原样）/busy 门（流式拒绝+收尾成功）/tombstone 恢复演练+keep-3/双客户端广播/未订阅拒绝/空会话撤回不砖
+rc=0; node "$ROOT/tools/e2e/ws-rollback-probe.js" > /tmp/ws-rollback.log 2>&1 || rc=$?
+grep -q "FAIL=0" /tmp/ws-rollback.log || rc=$?
+ck "ws-rollback probe 31 ck (B-type surgery + fail-closed + busy gate + tombstone/keep-3 + broadcast + empty-session)" $rc
+grep -E "^ws-rollback-probe" /tmp/ws-rollback.log || true
+rm -f /tmp/ws-rollback.log
+
 # ---------- 19) 工具卡帧双形态桩测（e4a 批 r19 R1-R5；详见 tools/e2e/toolcard-frames-probe.js） ----------
 # 钉住解释链路断供修复：goose v1.46 数组形态 content 解析（修复前 _out 恒空→工具卡输出区从未显示+explain 恒「(空)」捏造）、
 # 旧对象 .raw 兜底、rawOutput-only 形态、live_output 不污染、explain 载荷喂料扩容（rawInput/status/exitCode/toolName/trunc）、桥侧措辞静态钉

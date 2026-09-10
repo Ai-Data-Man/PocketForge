@@ -43,7 +43,7 @@ UI JS 常备回归网，56 断言秒级（无桥无网络）：从 chat.tpl.html
 GET /healthz /api/skills /api/schedules /api/extensions /api/memory /api/search?q= /api/workspaces /api/ws/tree /api/artifacts /api/vcs/log|blob /api/update/status /api/stats（s49 当日匿名使用计数，落 data/stats/usage-YYYYMMDD.json）
 POST /api/extensions {id,enabled} /api/memory {op,category[,text]} /api/schedules {id} /api/fs/new|rename|delete /api/ws/new|bind|unlink|delete /api/upload?ws=&dir=&name= /api/vcs/restore /api/update/*
 安全：非本源 Origin 的写请求 403（s17）；删除/变更类无二次确认头，依赖前端 confirm。
-断言基线：e2e-chat 54（e4a 批起 +第 19 节 toolcard-frames 1 ck；此前基线 46 为 s69 快照，后经 15/16/17/18/18b 各节累加未同步）+ fuzz 102（s49 起 fuzz 含 /api/stats 形状断言）。
+断言基线：e2e-chat 55（主线5 批起 +第 18c 节 ws-rollback 1 ck；54=e4a 批 +第 19 节 toolcard-frames；更早基线 46 为 s69 快照，后经 15/16/17/18/18b 各节累加未同步）+ fuzz 150（s76b 起 143→150 含 vision 7 案）。
 另（s47 取证沉淀）：agent shell 命令经 cmd /C 原样执行——行首引号 + 整行引号 >2 会被 cmd 剥引号报废；教法与模板见 conf/templates/goose-hints.tpl.md 的两条铁律。
 
 ## 已知外部依赖风险

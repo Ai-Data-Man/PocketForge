@@ -686,6 +686,16 @@ function connect(){
     if(m.sys==='provider_switching'){ addInfo('正在切换到「'+m.to+'」…大约 5 秒，稍等提示。'); return; }
     if(m.sys==='provider_switched'){ addInfo('✅ 已切到 '+m.provider+'（默认模型 '+m.model+'）。'); loadSessions(); if(pendingRetry){ subscribe(null); return; } return; } // s51c: 重发挂到 subscribed（新会话 ready 后才发，见上方消费点）
     if(m.sys==='session_deleted'){ clearTimeout(delRefreshT); delRefreshT=null; loadSessions(); return; } // #4: 删除回执（桥已发 session_deleted）驱动列表刷新，替代盲等 800ms
+    if(m.sys==='rollback_done'){ // 主线5：手术回执（先于广播刷新到达）——预填原文进输入框+聚焦，不自动发送
+      if(!m.ok){ rollbackPrefill=null; addErr(m.text||'撤回没做成，请再试一次。'); if(!busy&&m.sessionId&&m.sessionId===currentSid) openSession(m.sessionId); return; } // 失败恢复（补篇 §2）：失败手术已 session/close——重跑 openSession 由 load 复活（G6），视图即原史；busy 拒绝未 close，不重载
+      if(rollbackPrefill!=null){ txt.value=rollbackPrefill; rollbackPrefill=null; txt.focus(); const L=txt.value.length; txt.setSelectionRange(L,L); }
+      addInfo('已撤回 '+m.removed+' 条记录，你的原话已放回输入框——改完直接发送。');
+      return;
+    }
+    if(m.sys==='session_rolled_back'){ // 主线5：广播刷新（含请求者；多客户端最终一致，补篇 §4）——清聊天区+重跑 openSession 重绘
+      if(m.sessionId===currentSid&&!busy) openSession(m.sessionId);
+      return;
+    }
     if(m.sys==='saved_config'){ note('已保存'); return; }
     if(m.sys==='tool_explanation_delta'){ // 流式增量：追加进气泡（思考期桥不转发，故收到即首字）
       const card=toolCards.get(m.id); if(!card) return;
@@ -1013,13 +1023,19 @@ function flushTable2(out, bufRef){
 function addMsg(text,who){
   const stick=nearBottom(); // s69 P2-7: 先测距再追加，新增大块内容不影响判定
   typing.style.display='none';
+  let el=null;
   if(who==='agent'&&streamEl&&streamEl.dataset.live==='1'){ streamEl.textContent+=text; }
   else{
-    const el=document.createElement('div'); el.className='msg '+who; el.textContent=text;
-    if(who==='agent'){ el.dataset.live='1'; streamEl=el; } else { el.appendChild(msgButtons()); streamEl=null; }
+    el=document.createElement('div'); el.className='msg '+who; el.textContent=text;
+    if(who==='agent'){ el.dataset.live='1'; streamEl=el; } else { demoteLiveUser(); el.appendChild(msgButtons('user')); streamEl=null; } // 主线5：user 操作条多一枚「撤回重写」；新 user 上墙后，上一条无 id 的直播 user 消息不再是最后一行
     chat.appendChild(el);
   }
   if(stick) chat.scrollTop=chat.scrollHeight;
+  return el; // 主线5：调用方（user_message_chunk 回放）要往元素上挂 goose messageId
+}
+function demoteLiveUser(){ // 主线5（research/21 §6-3）：直播轮 goose 不发 user 帧→拿不到 id；一旦不再是最后一条 user，撤回边界无从定位，钮转禁用（重开对话回放后恢复）
+  const us=chat.querySelectorAll('.msg.user'); const last=us[us.length-1];
+  if(last&&!last.dataset.gmid){ const b=last.querySelector('.msgbtn[data-act="rollback"]'); if(b&&!b.disabled){ b.disabled=true; b.title='这条消息还没入档——重新打开这个对话后，就能撤回它了。'; } }
 }
 function endStream(){ if(streamEl){
   streamEl.dataset.live='0';
@@ -1146,7 +1162,7 @@ function onAgentEvent(p){
   if(p.method==='session/update'){
     const u=p.params.update;
     if(u.sessionUpdate==='agent_message_chunk'){ typing.style.display='none'; addMsg(u.content.text,'agent'); }
-    else if(u.sessionUpdate==='user_message_chunk'){ addMsg(u.content.text,'user'); }
+    else if(u.sessionUpdate==='user_message_chunk'){ const el=addMsg(u.content.text,'user'); const gm=(u.messageId||(u._meta&&u._meta.goose&&u._meta.goose.messageId)); if(gm) el.dataset.gmid=gm; } // 主线5：回放帧双冗余 id（research/21 §6 顶级 messageId 与 _meta.goose.messageId 同值），存元素上供撤回定位
     else if(u.sessionUpdate==='agent_thought_chunk'){ /* keep silent */ }
     else if(u.sessionUpdate==='tool_call'||u.sessionUpdate==='tool_call_update'){ toolCard(u); }
     else if(u.sessionUpdate==='plan'){ /* future */ }
@@ -2083,20 +2099,48 @@ $('store-q').oninput=()=>{ clearTimeout(storeQT); storeQT=setTimeout(()=>{ listP
 let skillsQT=null; // IA-1: 已装区搜索（同款防抖；过滤变化回第 1 页）
 $('skills-q').oninput=()=>{ clearTimeout(skillsQT); skillsQT=setTimeout(()=>{ listPage.ins=1; paintInstalled(); },200); };
 
-// 消息操作：复制 / 取回修改
+// 消息操作：复制 / 取回修改 / 撤回重写（主线5，仅 user 消息有第三钮——撤回的是用户自己的话）
 document.getElementById('chat').addEventListener('click', async e=>{
   const btn=e.target.closest('.msgbtn'); if(!btn) return;
   const msg=btn.closest('.msg');
   if(btn.dataset.act==='copy'){ await navigator.clipboard.writeText(msgText(msg)); btn.textContent='已复制✓'; setTimeout(()=>btn.textContent='复制',1200); }
   if(btn.dataset.act==='retry'){ $('txt').value=msgText(msg); $('txt').focus(); const L=$('txt').value.length; $('txt').setSelectionRange(L,L); } // s62/P3: 元素级剥操作条取正文; pm裁决2026-09-07-batch1 C: 取回修改=载入+聚焦+光标到末尾，不自动发送（自动重发语义只属于错误卡闭包 s50e/s50f，红线区）
+  if(btn.dataset.act==='rollback'){ armRollback(msg,btn); }
 });
-function msgButtons(){
+function msgButtons(who){
   const bar=document.createElement('div'); bar.className='mbar';
-  for(const [act,label] of [['copy','复制'],['retry','取回修改']]){
+  const items=[['copy','复制'],['retry','取回修改']];
+  if(who==='user') items.push(['rollback','撤回重写']); // 主线5：三钮共存，复制/取回修改零触碰（batch1 §4 红线）
+  for(const [act,label] of items){
     const b=document.createElement('button'); b.className='msgbtn'; b.dataset.act=act; b.textContent=label; bar.appendChild(b);
   }
   return bar;
 }
+// 主线5：行内两步确认（补篇 §1.2——撤回删的是一整段尾部，必须有一道闸；对齐主线1 删除二次确认先例精神）
+function armRollback(msg,btn){
+  const bar=btn.closest('.mbar'); if(!bar||bar.dataset.arm==='1') return;
+  bar.dataset.arm='1';
+  const keep=[...bar.children]; bar.innerHTML='';
+  const q=document.createElement('span'); q.textContent='撤回这条及之后所有来回？';
+  const yes=document.createElement('button'); yes.className='msgbtn'; yes.textContent='确认撤回';
+  const no=document.createElement('button'); no.className='msgbtn'; no.textContent='取消';
+  bar.append(q,yes,no);
+  const restore=()=>{ bar.dataset.arm=''; bar.innerHTML=''; keep.forEach(b=>bar.appendChild(b)); };
+  no.onclick=ev=>{ ev.stopPropagation(); restore(); };
+  yes.onclick=ev=>{ ev.stopPropagation(); restore(); doRollback(msg); };
+}
+function doRollback(msg){
+  if(busy){ addInfo('它正在干活，等它做完再撤回。'); return; } // UI 预防；桥侧 busy 门才是权威门
+  const mid=msg.dataset.gmid;
+  if(!mid){ // 直播轮无 id：只有「最后一条 user」能按缺省边界撤回（桥解析为该 sid 最后一行 user 消息）
+    const us=chat.querySelectorAll('.msg.user');
+    if(us[us.length-1]!==msg){ addInfo('这条消息还没入档，撤不了——重新打开这个对话后就能撤回它了。'); return; }
+  }
+  rollbackPrefill=msgText(msg); // 预填原文（覆盖既有草稿不确认=裁决既定，batch1 §4.2-3 同判据）
+  addInfo('正在撤回…');
+  if(!wssend({type:'rollback_rewrite',sessionId:currentSid,messageId:mid||undefined})) rollbackPrefill=null;
+}
+let rollbackPrefill=null; // 发出 rollback_rewrite 时记原文，收回执后预填输入框
 function msgText(m){ const c=m.cloneNode(true); c.querySelectorAll('.mbar').forEach(b=>b.remove()); return c.textContent; } // s62/P3: 正文提取唯一入口——剥 .mbar 操作条后再取 textContent，复制/重发/导出共用
 
 

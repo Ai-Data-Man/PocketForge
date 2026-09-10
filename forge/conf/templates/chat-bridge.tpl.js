@@ -108,6 +108,7 @@ function classifyUpstream(txt) { // s50e: 上游错误细分（401=Key 没配好
 }
 const permKinds = new Map(); // request_permission callId -> {m: optionId->kind, t: shown 时间戳}，供 acp_reply 分类+超时判定
 const turnText = new Map();  // sessionId -> 当轮 agent 文本累计（s26 流内报错检测用）
+const busySids = new Set();  // sessionId -> 有在飞 prompt/流式未收尾（主线5 rollback_rewrite 的 busy 门，桥侧权威）
 function statsDay() { const d = new Date(), p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
 function statsFlush() {
     try {
@@ -669,6 +670,7 @@ function onAcpData(chunk) {
                 } else if (msg.method === 'stop') {
                     const txt = turnText.get(sid) || '';
                     turnText.delete(sid);
+                    busySids.delete(sid); // 主线5：防御性收口（ACP 模式 goose 从不发 stop，见 sendTurn 注释；发了也不许漏登记）
                     if (S26_ERR_RE.test(txt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(txt)); }
                 }
             } catch {}
@@ -700,7 +702,9 @@ const TURN_DOWN_TEXT = '看起来是大模型服务商那边暂时不通（不�
 const TURN_RETRY_TEXT = '这一轮没完成，请再发一次试试。';
 function sendTurn(ws, sid, text, allowRescue) {
     const id = nextId++;
+    busySids.add(sid); // 主线5：turn 在飞登记（resolve/reject/write 失败三路都收）
     waiting.set(id, { ws, resolve: () => {
+        busySids.delete(sid);
         // s50e 修复：goose 上游故障以 agent_message_chunk 文本随正常 turn 结束返回（session/prompt 正常 resolve，非 reject），
         // 故在 turn 结束处对当轮累计文本跑 s26 正则（:349 的 stop 通知分支 goose ACP 模式从不发，为死代码）
         const txt = turnText.get(sid) || '';
@@ -708,6 +712,7 @@ function sendTurn(ws, sid, text, allowRescue) {
         if (S26_ERR_RE.test(txt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(txt)); }
         ws.send({ agent: { method: 'stop', params: { sessionId: sid, reason: 'end' } } });
     }, reject: (e) => {
+        busySids.delete(sid);
         // P31-③: turn 失败按 s26 正则归类上游故障
         // goose 的 JSON-RPC error：message=错误类（如 Resource not found），具体原因在 data（如 Session not found: <sid>）——拼接后供匹配
         const etxt = String((e && e.message) || e) + ' ' + String((e && e.data) || '');
@@ -727,7 +732,7 @@ function sendTurn(ws, sid, text, allowRescue) {
     // reject 回调可能来自 onAcpData 栈（不在 handleClient try 内），acp 写失败必须就地接住
     try {
         acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/prompt', params: { sessionId: sid, prompt: [{ type: 'text', text }] } }) + '\n');
-    } catch (e) { waiting.delete(id); ws.send({ sys: 'error', text: '服务忙不过来（对话引擎没响应），稍等几秒再发一次。' }); }
+    } catch (e) { waiting.delete(id); busySids.delete(sid); ws.send({ sys: 'error', text: '服务忙不过来（对话引擎没响应），稍等几秒再发一次。' }); }
 }
 function rescueSession(ws, text) {
     const rid = nextId++;
@@ -776,6 +781,7 @@ async function hotRestartProvider() {
     // M6(审查s15): 清 waiting 前先 reject 在途请求，否则前端 spinner 永挂
     for (const [, w] of waiting) { if (w.reject) { try { w.reject(new Error('provider switching')); } catch {} } }
     waiting.clear();
+    busySids.clear(); // 主线5：acp 已换新进程，在飞 turn 全部作废
     sessionClients.clear();
     rescuedSids.clear(); // qa s76 P3-A: 热重启同样杀 acp（全部旧 sid 作废），去重集合必须随行清，否则热重启前的死 sid 被拦在救援外
     acp = spawnAcp();
@@ -3030,6 +3036,83 @@ function writeRaw(socket, op, payload, cb) {
 }
 function writeFrame(socket, obj, cb) { try { writeRaw(socket, 0x1, Buffer.from(JSON.stringify(obj), 'utf8'), cb); } catch (e) { if (cb) { try { cb(e); } catch {} } } } // s62: 可选 flush 回调——同步 write 抛错时也必须回调，否则依赖回调的 destroy 永不触发
 
+// ---- 主线5：撤回重写（历史手术，B 型截断；补篇裁决 2026-09-08 §2 七步协议）----
+const TOMB_DIR = path.join(ROOT, 'data', 'rewrite-tombstones');
+const TOMB_COLS = 'id,message_id,session_id,role,content_json,created_timestamp,timestamp,tokens,metadata_json'; // messages 全 9 列（补篇 §2-4 列举 7 列+表实有 timestamp/tokens）
+function rollbackBoundary(db, sid, messageId) {
+    if (messageId !== undefined && messageId !== null && messageId !== '') {
+        return db.prepare('SELECT id, created_timestamp FROM messages WHERE session_id = ? AND message_id = ?').get(sid, String(messageId)) || null;
+    }
+    // 缺省边界=该 sid 最后一行 user 可见正文行（research/21 surgery.js lastUserRow 同款语义：同秒的 turn-context
+    // 行 id 更大，直接取「最后一行 user」会以 turn-context 为边界漏删正文、留孤儿行——G2 谓词要求边界取正文行）
+    const rows = db.prepare("SELECT id, created_timestamp, content_json, metadata_json FROM messages WHERE session_id = ? AND role = 'user' ORDER BY created_timestamp DESC, id DESC").all(sid);
+    for (const r of rows) {
+        let c; try { c = JSON.parse(r.content_json); } catch { continue; }
+        if (!Array.isArray(c) || !c.some(b => b && b.type === 'text')) continue;
+        let meta = {}; try { meta = r.metadata_json ? JSON.parse(r.metadata_json) : {}; } catch {}
+        if (meta.userVisible === false) continue;
+        return r;
+    }
+    return null;
+}
+function writeTombstone(sid, rows) {
+    // 每次手术独立文件（atomicWrite 非 append），每 sid keep-3（对齐 pre-upgrade 备份先例）；无 UI，恢复=tools/rollback-restore.js 修复路径
+    FSS.mkdirSync(TOMB_DIR, { recursive: true });
+    const re = new RegExp('^' + sid + '-(\\d+)\\.jsonl$'); // sid 已过 sidValid 白名单（[\w\-]），入正则安全
+    let seq = 1;
+    for (const f of FSS.readdirSync(TOMB_DIR)) {
+        const m = f.match(re);
+        if (m && Number(m[1]) >= seq) seq = Number(m[1]) + 1;
+    }
+    atomicWrite(path.join(TOMB_DIR, sid + '-' + seq + '.jsonl'), rows.map(r => JSON.stringify(r)).join('\n') + '\n');
+    const all = FSS.readdirSync(TOMB_DIR).map(f => f.match(re)).filter(Boolean).sort((a, b) => Number(a[1]) - Number(b[1]));
+    while (all.length > 3) FSS.unlinkSync(path.join(TOMB_DIR, all.shift()[0]));
+    return seq;
+}
+async function rollbackRewrite(ws, msg) {
+    const fail = t => { try { ws.send({ sys: 'rollback_done', ok: false, sessionId: wsSession.get(ws), text: t }); } catch {} }; // 带 sid：前端失败恢复=重跑 openSession（close 过的 sid 由 load 复活，G6）
+    try {
+        const sid = wsSession.get(ws); // 只信 wsSession 绑定（对齐 prompt s50h(FIND-4)，不收前端自报 sid）
+        if (!sid || (msg.sessionId != null && msg.sessionId !== sid)) return fail('这场对话已经不在了（可能刚重启过）。点左侧列表重新打开这个对话，再试一次撤回。');
+        if (busySids.has(sid)) return fail('这一轮还在进行中，等它做完再撤回。'); // 步1 busy 门（桥侧权威，双客户端场景前端门不可信）
+        // 步2 session/close：回收 Agent，防内存态经 compaction replace_conversation 复活已删内容（research/21 G6）；失败即中止，不降级裸做
+        const closed = await new Promise(resolve => {
+            const id = nextId++;
+            const timer = setTimeout(() => { if (waiting.delete(id)) resolve(false); }, 15000);
+            if (timer.unref) timer.unref();
+            waiting.set(id, { ws: null, resolve: () => { clearTimeout(timer); resolve(true); }, reject: () => { clearTimeout(timer); resolve(false); } });
+            try { acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/close', params: { sessionId: sid } }) + '\n'); }
+            catch { clearTimeout(timer); waiting.delete(id); resolve(false); }
+        });
+        if (!closed) return fail('没能正常收起这场对话，这次先不动它。稍等几秒再试一次。');
+        // 步3-6 手术事务（delete_session s75 同表裸 SQL 先例；谓词=goose truncate_conversation_from_message 同款 (created_timestamp,id)>=边界，research/21 G2）
+        const { DatabaseSync } = require('node:sqlite');
+        const db = new DatabaseSync(path.join(ROOT, 'conf', 'goose', 'data', 'sessions', 'sessions.db'));
+        let removed = 0;
+        try {
+            db.exec('PRAGMA busy_timeout=30000'); // WAL 下与 goose 写者的锁竞争兜底（对齐 goose 侧 busy_timeout 30s）
+            db.exec('BEGIN IMMEDIATE');
+            const b = rollbackBoundary(db, sid, msg.messageId);
+            if (!b) { db.exec('ROLLBACK'); return fail('没找到要撤回的那条消息（可能已经撤回过，或对话刚更新过）。刷新对话后再试。'); } // 不猜边界
+            const rows = db.prepare('SELECT ' + TOMB_COLS + ' FROM messages WHERE session_id = ? AND (created_timestamp > ? OR (created_timestamp = ? AND id >= ?)) ORDER BY id').all(sid, b.created_timestamp, b.created_timestamp, b.id);
+            if (!rows.length) { db.exec('ROLLBACK'); return fail('这条消息之后没有可撤回的内容了。'); }
+            try { writeTombstone(sid, rows); } // 步4 tombstone 先写（fail closed：DELETE 的前置条件）
+            catch (e) { db.exec('ROLLBACK'); console.error('tombstone write failed:', e.message); return fail('备份没写成，这次撤回取消了（对话内容没动）。稍后再试。'); }
+            const r = db.prepare('DELETE FROM messages WHERE session_id = ? AND (created_timestamp > ? OR (created_timestamp = ? AND id >= ?))').run(sid, b.created_timestamp, b.created_timestamp, b.id);
+            if (r.changes !== rows.length) { db.exec('ROLLBACK'); return fail('对话正在被改动，这次撤回取消了（内容没动）。请再试一次。'); } // 步5 对账防并发插行错删
+            removed = r.changes;
+            db.exec('COMMIT'); // 步6：边界写死——usage 累计列/归档索引/workspace-map/extension_data/制品零触碰（补篇 §4）
+        } finally { try { db.close(); } catch {} }
+        try { ws.send({ sys: 'rollback_done', ok: true, sessionId: sid, removed }); } catch {}
+        const subs = sessionClients.get(sid); // 步6 后半：向所有订阅该 sid 的客户端广播刷新（含请求者，其回执先到→预填，本帧后到→重绘；多客户端最终一致）
+        if (subs) for (const c of subs) if (c.alive) c.send({ sys: 'session_rolled_back', sessionId: sid });
+        console.log('rollback_rewrite', sid, 'boundary:', String(msg.messageId || '(last-user)'), 'removed:', removed);
+    } catch (e) {
+        console.error('rollback_rewrite failed:', e.message);
+        fail('撤回没做成（对话内容没动）。稍后再试，老不行就重启小 forge。');
+    }
+}
+
 function handleClient(ws, msg) {
     try {
         if (msg.sys === 'ping') return ws.send({ sys: 'pong' });
@@ -3104,6 +3187,12 @@ function handleClient(ws, msg) {
         if (msg.type === 'cancel') {
             const sid = wsSession.get(ws);
             if (sid) acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'session/cancel', params: { sessionId: sid } }) + '\n');
+            return;
+        }
+
+        if (msg.type === 'rollback_rewrite') {
+            // 主线5：七步协议详见 rollbackRewrite（自捕获 async，全部失败路径回 rollback_done{ok:false} 人话）
+            rollbackRewrite(ws, msg);
             return;
         }
 
