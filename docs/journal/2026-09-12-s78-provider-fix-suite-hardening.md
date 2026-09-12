@@ -110,3 +110,7 @@
 - 三批核心声明全部证实（C5 平移独立括号配平 dedent 比对 70/127/71 行全同；C3 settled 门竞争沙盒 8/8；C4 双形态参数核对+CRLF 负对照判别力实证）；全量 57/57+150/150。
 - **P3×2 应修**（已派收尾批）：①lastModelOverride 与 GOOSE_MODEL env 双源不同步——跨家非首位模型时前端告知/实际运行/探测锚三者错位（恰是 healthTargets 注释自称要防的「探 A 用 B」）+override 在 providers 变更块永不清除；②maskKeys 对 JSON 引号形态全绕过——值首引号不在字符类，MCP rawInput 的 JSON.stringify 渲染（主要真实形态）原样泄漏，探针只测了 shell 形态（测了能过的形态——探针设计教训）。
 - 首 WS 慢观察项：沙盒 0/8 复现（首帧 3-19ms），指向 dev 树环境成分，留 first-ws-repro.js 维持观察。
+
+## 收尾批+收官门（166607a + appcap 三跑）
+- 收尾批：effectiveModel 单一真相源（spawnAcp env/healthTargets 探锚/env0Model 告知三消费方统一——跨家非首位模型「告知/实跑/探锚」三者一致）+providers 变更块 override 清除+maskKeys JSON 引号形态（五形态全钉 39ck，修前 LEAK 实证）；双负对照判别力；全量 57/57+150/150。
+- **appcap 第三跑 13/13 exit 0**（全夜栈端到端终验：确认续轮生效 S6 完整闭环）——主线测试三轮数据点齐（两轮 13/13 判卷+本轮原生 13/13）。
