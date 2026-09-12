@@ -99,3 +99,9 @@
 - 修 2（工具卡/权限卡明文 key 掩码，主线 P4）：maskKeys 显示层前6后4（≤12 全 ****）；工具卡+权限卡（同族补，主控批准保留）两点；_inp 喂料/回放/导出零改动；toolcard-frames 探针 25→31ck（掩码六断言）。
 - 修 3（:659 死分支）清理+不可达理由注释。
 - 全量 e2e 57/57+fuzz 150/150。Edit 工具写 CRLF 再现→git stash/pop 按 .gitattributes 归一（autocrlf 家族第三次现身，根治生效）。
+
+## 重构批 C4（f671d4d）——审计可做项全清
+- rewriteSecretsEnv(kv) 合并 providers/save_config 双源回写（换行容差取宽 /\r?\n/ 归一 LF；键存在才回写语义逐字保持）；restartSchedulerDaemon(done) 合并两处守护重启。
+- 冒烟矩阵 24/24 桩+真桥 8/8+3/3+任务 resume/pause 2/2+一次性删除 1/1；全量 57/57+150/150。
+- 勘误入册：goose CLI 直调须 GOOSE_PATH_ROOT=forge/conf/goose（误用仓库根 conf/goose 注册进另一 home）；桥重启后首 WS 连接偶发慢（2/8，重试即过）留观察。
+- **审计重构收官：C1-C5 全落（净-164 行），C6 低值不做、C7 多文件拆分维持不做。四大病灶+双源样板全收敛，探针锚点全程零破损。**
