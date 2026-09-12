@@ -11,7 +11,8 @@ const req = http.request({ host: '127.0.0.1', port: PORT, path: '/ws', headers: 
 (async () => {
     await awaitAcpReady();   // research/15 就绪门：healthz 200 ≠ ACP 就绪，先等 hello.caps.modes 再放行探针
     const t0 = Date.now();
-    const timer = setTimeout(() => { console.log('PROBE-B: FAIL - timeout'); process.exit(1); }, 20000);
+    // s78: 断言契约=回执先于 close 的顺序，不是速度；20s 在套件负载下两度误红（subscribe→session/new 偶发 >20s），放宽到 45s 语义不变
+    const timer = setTimeout(() => { console.log('PROBE-B: FAIL - timeout'); process.exit(1); }, 45000);
     let gotDeletedAt = null, closedAt = null, sid = null;
 req.on('upgrade', (res, socket) => {
     socket.write(frame({ type: 'subscribe', sessionId: null }));
