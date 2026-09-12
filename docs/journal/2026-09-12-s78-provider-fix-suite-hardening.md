@@ -59,3 +59,9 @@
 
 ## goose v1.50 评估收口（05e6be4+00b42a9）
 - research/23 双 tag 源码 diff：**可以升 v1.46→v1.50**。三条红线零触碰；**第 10 必查（撤回手术面）全锚点逐字不变**（messages DDL/schema_version 16/B 型 truncate 谓词/当日 MAX+1/load 复活）；三键 panic 族保留（新增 permission.yaml.lock 邻居文件=巡检预期）；G6 双收紧；closed 措辞未差异化。唯一 UNVERIFIED=fork meta 可达性→升级沙盒补跑 FORK-D 判别。实施=下一版本窗口走 playbook（基线 55/150）。
+
+## 主线测试第二轮（修复批 6d94f3a 后，tmp/s78-appcap-run3.log）：13/13 全真通过
+- S1 三行数据入表（批卡 force-click 修复生效）+R4 说明；S2 xlsx 制品断言真通过（tree 递归遍历）；S3 数据精确；**S4 @菜单真实弹出含人话分组**：「库里的数据（点一下引用表名）🗄️s78exam.forge_table_info 1条 🗄️s78exam.stock 3条」；S5 双端断言过。
+- **S6「红」=加分行为**：agent 对不可逆删除主动列爆炸半径求确认（服务登记+db 文件+数据，报表成品默认保留）——断言没答确认话，产品判通过；脚本已补确认续轮。
+- P4 观察两条：S3 轮 agent 用 curl 带 X-API-Key 直查 faucet（key 明文显示在工具卡参数里——本地无洞，妻子可见长密钥略糙）；cmd dir 中文文件名 GBK 乱码（已知家族，纯外观）。
+- 值得记录：本轮 agent 查数据走 curl+HTTP 而非 MCP query（faucet stale 缺陷的自然绕行再次发生，佐证挂账②）。
