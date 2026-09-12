@@ -145,3 +145,7 @@
 - **P3-A 新发现**：vision.tpl.js:79 不存在图片路径→readFileSync 未捕获→22 行英文栈 RC=1 非人话（s76 存量自有代码）——小批修。
 - **P3-观察（产品裁决域）**：goose v1.50 决策序 user.always_allow>smart_approve.ask_before（permission_inspector.rs:162-190 VERIFIED-DOC）；妻子卡上选过「总是允许」=同构永久直通且产品无撤销入口（permission.yaml PROTECTED）——手册补引导+STATE 观察项，撤销 UI 挂 backlog。
 - fetch-mcp 目录 desc 注记「仅 text/*」留档商店治理候选。
+
+## vision 崩栈人话化（ad0d040）+ 会话循环收束
+- vision.tpl.js:79 裸读图包 try（ENOENT/EISDIR/其他三态人话 RC=2），--get-model 回归过+全量 57/57+178/178；engineer 测试日志误落 forge/tmp（gitignored 不入库）已清。
+- **本会话缺陷账本清零**：全部已知 P1/P2/P3（用户报障+QA 四轮+fuzz 扩展+活体猎捕）修复并验证；值守模式=巡检 cron+间隙找活。
