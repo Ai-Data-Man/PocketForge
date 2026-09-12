@@ -93,3 +93,9 @@
 - 验证：sched-drift 15/15+toolcard 25/25+explain-retry 13/13+全量 e2e 57/57+fuzz 150/150。净 -17 行（注释保留义务吃掉预算，审计预算按薄助手估算偏乐观——记入审计勘误）。
 - **autocrlf 幻影根治**：工程师 checkout 模板被 smudge 成 CRLF 打死探针 \n 锚点（过程事故）——.gitattributes 钉 *.tpl.js/*.tpl.html/chat.tpl.html/tools/e2e/* 为 eol=lf（e622060；首版注释 printf 转义事故当场修正）。
 - 重构三批合计（C1+C2 净-109 + C5+C3 净-17）：桥 3743→3580 行，样板/双胞胎/三胞胎/巨型函数四病灶全部收敛，探针锚点零破损。
+
+## QA P3 余项批（3f80ca9）
+- 修 1（健康缓存模型漂移，s78b P3-2）：取证修正——基础回落链本已同源，真漂移面=同档 set_config_option 生效模型≠池首；lastModelOverride 三落点+healthTargets 取 override∈活跃池?override:pool[0]+同档切换缓存失效重探；桩测 8/8+负对照判别力实证（goose session/new 自发拉 /models 与探测计数解耦，改存在性断言——探针计数断言不稳教训）。
+- 修 2（工具卡/权限卡明文 key 掩码，主线 P4）：maskKeys 显示层前6后4（≤12 全 ****）；工具卡+权限卡（同族补，主控批准保留）两点；_inp 喂料/回放/导出零改动；toolcard-frames 探针 25→31ck（掩码六断言）。
+- 修 3（:659 死分支）清理+不可达理由注释。
+- 全量 e2e 57/57+fuzz 150/150。Edit 工具写 CRLF 再现→git stash/pop 按 .gitattributes 归一（autocrlf 家族第三次现身，根治生效）。
