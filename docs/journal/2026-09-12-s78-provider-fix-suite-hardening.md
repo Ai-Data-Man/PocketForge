@@ -137,3 +137,5 @@
 - **goose v1.46 回滚位**：tmp/goose-v146-rollback/（升级稳定窗口确认后可清）。
 - 模型链：自家中转 deepseek-v4.1-flash（v4-flash 已被中转下架）；FORGE_VISION_MODEL=glm-5.2。
 - 终态基线：**e2e-chat 57/57 + fuzz 178/178**；本会话 commit 区间 38b06be…d06de72（50+ 提交）。
+
+[巡检 06:05] healthz=ok pg=Ready(Launching 态系重启后正常过渡) probe=PASS fake9r=alive —— 巡检流程验证轮，cron 已设（每 2h 至 22:00）
