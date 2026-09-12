@@ -667,6 +667,7 @@ function connect(){
     }
     if(m.sys==='error'){ if(pendingQueue.length){ rollbackQueue('对话没开好，刚才记下的话已放回，稍后再发一次。'); pendingForNew=false; } addErr(m.text+(m.text.includes('可选池')?'。到 ⚙️ 设置里勾选它，或换顶栏列表里有的模型。':'')); setBusy(false); return; } // B1: 开新对话失败时队列倒回（仅队列非空时，不影响其他 error 路径）
     if(m.sys==='hello'){ $('version').textContent=m.app||('v'+m.version); return; } // s64: app=应用版本（自带 v 前缀）；回落才是 WS 协议版本
+    if(m.sys==='health'){ healthSync(m); return; } // 裁决 provider-health-probe S3: 健康态帧（态变化广播与缓存直发同形）
     if(m.sys==='models'){
       fetchedModels=m.models||[];
       note('拉到 '+fetchedModels.length+' 个模型，下面勾选要给员工用的（勾上才算）');
@@ -1793,9 +1794,38 @@ function keyGuideSync(list){
   el.appendChild(t); el.appendChild(b);
   chat.insertBefore(el, chat.firstChild);
 }
+// 裁决 2026-09-12-provider-health-probe S3: 服务商健康告警条——key-guide 同款载体（聊天区顶部、客观状态判定、零持久化、恢复即消、ok 态零视觉）。
+// 互斥：所有档案都没 Key（=未配置，key-guide 独占态）时健康条不出现（桥侧同态不探）；文案照裁决 §S3 逐字。
+let lastHealthFrame=null;
+function healthSync(m){
+  lastHealthFrame=m||null;
+  const st=m&&m.state;
+  if(!st||st==='ok'||!(providerList||[]).some(p=>p.hasKey)){ const b=$('health-bar'); if(b) b.remove(); return; }
+  let el=$('health-bar');
+  if(!el){
+    el=document.createElement('div'); el.id='health-bar'; el.className='msg agent info';
+    el.style.cssText='display:flex;align-items:center;gap:10px;flex-wrap:wrap';
+    el.appendChild(document.createElement('span'));
+    const b=document.createElement('button'); b.className='msgbtn';
+    el.appendChild(b);
+    chat.insertBefore(el, chat.firstChild);
+  }
+  const t=el.firstChild, b=el.querySelector('button');
+  if(st==='down'&&m.kind==='key'){ t.textContent='这家服务商的 Key 没配上或不对。到 ⚙️ 设置 → 服务商档案，填好 Key 再发一次。'; }
+  else if(st==='down'){ t.textContent='现在联系不上大模型服务商，发消息可能没回音（不是你的操作问题）。点这里检查线路 →'; }
+  else{ t.textContent='你正在用的模型已被服务商下线，发消息会失败。点这里更新模型 →'; }
+  b.textContent=(st==='down'&&m.kind==='key')?'去设置':(st==='down'?'检查线路':'更新模型');
+  b.onclick=()=>{ $('modal').classList.add('on'); loadProvidersUI(); if(st==='down'&&m.kind==='key') setTimeout(()=>$('cfg-key').focus(),100); };
+  let px=el.querySelector('.px');
+  if(m.proxy){ // 事故一形态诚实提示：只说明风险存在，不装作探测结论、不阻断
+    if(!px){ px=document.createElement('span'); px.className='px'; px.style.cssText='flex-basis:100%;color:#8a6a00;font-size:.85rem'; el.appendChild(px); }
+    px.textContent='本机开着网络代理，大模型流量会经过它；如果上面的提示反复出现，先关掉代理软件再试';
+  } else if(px) px.remove();
+}
 function renderProviders(list){
   providerList=list;
   keyGuideSync(list); // s51d: P31-② 配 Key 引导条（判定=客观状态，不持久化）
+  if(lastHealthFrame) healthSync(lastHealthFrame); // 健康帧常先于 providers 应答到达（首屏时序），列表就位后按最近帧重判互斥
   const box=$('prov-list'); box.innerHTML='';
   if(!list.length){ box.innerHTML='<div class="fnote">还没有服务商。在下面填：名称+地址+Key，点「添加」。</div>'; }
   // s78: 编辑上下文优先于活跃——添加/保存后的 300ms 刷新不得把表单重置回活跃档（拉模型/保存会打到错误 host）

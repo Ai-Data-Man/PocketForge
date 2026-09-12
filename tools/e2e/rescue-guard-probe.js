@@ -25,11 +25,12 @@ function makeEnv(s26re, classify) { // s76c: 可注入 S26 正则/归类桩（�
         wsSession: new WeakMap(),
         sessionClients: new Map(),
         busySids: new Set(), // 主线5：sendTurn 在飞登记（桩内共享集合）
+        healthCalls: 0, // 裁决 provider-health-probe S2-2: S26 命中安排健康复检防抖的计数桩
         console: { log() {}, error() {} },
     };
-    const factory = new Function('waiting', '__nid', 'turnText', 'S26_ERR_RE', 'classifyUpstream', 'statsBump', 'acp', 'console', 'ROOT', 'wsSession', 'sessionClients', 'busySids',
+    const factory = new Function('waiting', '__nid', 'turnText', 'S26_ERR_RE', 'classifyUpstream', 'statsBump', 'acp', 'console', 'ROOT', 'wsSession', 'sessionClients', 'busySids', 'healthFailDebounce',
         block.replace(/nextId\+\+/g, '__nid()') + '\nreturn { sendTurn, rescueSession };');
-    const api = factory(env.waiting, () => env.nextId++, env.turnText, env.S26_ERR_RE, env.classifyUpstream, k => env.statsBump(k), env.acp, env.console, 'C:/PF-ROOT', env.wsSession, env.sessionClients, env.busySids);
+    const api = factory(env.waiting, () => env.nextId++, env.turnText, env.S26_ERR_RE, env.classifyUpstream, k => env.statsBump(k), env.acp, env.console, 'C:/PF-ROOT', env.wsSession, env.sessionClients, env.busySids, () => env.healthCalls++);
     return { env, api };
 }
 const mkWs = () => ({ alive: true, sends: [], send(o) { this.sends.push(o); } });
@@ -149,6 +150,7 @@ const NF = { message: 'resource_not_found', data: 'Session not found: SID' };
     env.waiting.get(env.acp.stdin.writes[0].id).reject({ message: 'provider switching' });
     const t9 = errsOf(wsH)[0] || '';
     ck('S9 非 NF 未归类走通用人话，不透英文原文', t9 === '这一轮没完成，请再发一次试试。' && !/provider switching|turn failed/.test(t9) && newsCount(env) === 0);
+    ck('S9b 非 S26 失败不安排健康复检', env.healthCalls === 0);
 }
 // S10 归类 unauthorized → Key 指引人话（S26 正则本不含 401，归类门先于 S26 门才能命中）
 {
@@ -165,6 +167,7 @@ const NF = { message: 'resource_not_found', data: 'Session not found: SID' };
     env.waiting.get(env.acp.stdin.writes[0].id).reject({ message: 'upstream request timed out' });
     const t11 = errsOf(wsJ)[0] || '';
     ck('S11 timeout 走服务商暂时不通人话，不透英文', t11.startsWith('看起来是大模型服务商那边暂时不通') && !/timed out/.test(t11) && newsCount(env) === 0);
+    ck('S11b S26 命中恰安排一次健康复检防抖（裁决 S2-2）', env.healthCalls === 1);
 }
 console.log('rescue-guard-probe: PASS=' + pass + ' FAIL=' + fail);
 process.exit(fail ? 1 : 0);

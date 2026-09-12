@@ -570,8 +570,7 @@ function vcsTime(ts) {
 
 // ---- provider profiles (data/providers.json v2): [{name,host,key,models[],active}] ----
 const PROV_FILE = path.join(ROOT, 'data', 'providers.json');
-function readProviders() {
-    const list = readJson(PROV_FILE, []);
+function providersFrom(list) { // v1->v2 迁移+形状兜底（纯函数核：同步/异步读共用同一真相，裁决 provider-health-probe S1）
     if (!Array.isArray(list)) return []; // B4: 合法 JSON 但非数组（如 {}）——for..of 会崩整份报告，兜底空表
     // v1->v2 迁移：model(单值) -> models(数组)
     for (const p of list) {
@@ -580,11 +579,82 @@ function readProviders() {
     }
     return list;
 }
+function readProviders() { return providersFrom(readJson(PROV_FILE, [])); }
+async function readProvidersAsync() { // 探测路径禁同步 IO（research/09 #7）——异步读同一文件同一解析
+    try { return providersFrom(JSON.parse((await fsp.readFile(PROV_FILE, 'utf8')).replace(/^\uFEFF/, ''))); }
+    catch { return []; }
+}
 function writeProviders(list) { atomicWrite(PROV_FILE, JSON.stringify(list, null, 2)); };
 function activeProvider() {
     const list = readProviders();
     return list.find(p => p.active) || null;
 }
+
+// ---- 裁决 2026-09-12-provider-health-probe S1/S2: provider 直连健康探测 ----
+// 单次 GET {host}/models（零 token）；只读信号——不写 upstream 计数、不触发任何自动动作（s50e 边界原样有效）。
+// 状态机：down / down+key(401/403) / stale-model(200 且当前模型名∉活列表，事故二形态) / ok；未配置不探（key-guide 独占，s51d）。
+const HEALTH_TTL = 30 * 60 * 1000; // 内存缓存 TTL；零持久化（重启即重探）；providers save/activate/跨档 switch 后失效
+const healthCache = { at: 0, state: null, kind: null, proxy: false };
+let healthBusy = false, healthFailT = null, healthPend = false;
+async function healthTargets() { // 同源铁律：与 spawnAcp env 链（active 档→secrets→process.env 三级回落）逐位同读法，防「探 A 用 B」
+    const act = (await readProvidersAsync()).find(p => p.active) || null;
+    return {
+        host: ((act && act.host) || secrets.FORGE_AGENT_HOST || process.env.OPENAI_HOST || '').replace(/\/$/, ''),
+        key: (act && act.key) || secrets.FORGE_AGENT_API_KEY || process.env.OPENAI_API_KEY || '',
+        model: (act && act.models && act.models[0]) || secrets.GOOSE_MODEL_NAME || '', // 与 :610 回落链同款（主控拍板：无死名字面量）
+    };
+}
+function healthFrame() {
+    if (!healthCache.state) return null;
+    const f = { sys: 'health', state: healthCache.state };
+    if (healthCache.kind) f.kind = healthCache.kind;
+    if (healthCache.proxy) f.proxy = true;
+    return f;
+}
+async function probeProviderHealth() {
+    if (healthBusy) { healthPend = true; return; } // 在飞合并：忙期来电记一笔，收尾补探——save 失效不被在飞旧探吞掉（修复后最长 30min 不刷新的竞态）
+    healthBusy = true;
+    try {
+        const t = await healthTargets();
+        if (!t.host || !t.model) { healthCache.state = null; healthCache.kind = null; healthCache.at = Date.now(); return; } // 未配置不探
+        const probe = new Promise(resolve => {
+            let settled = false;
+            const done = (state, kind) => { if (!settled) { settled = true; resolve({ state, kind: kind || null }); } };
+            try {
+                const u = new URL(t.host + '/models'); // 照 list_models 按协议切 http/https
+                const rq = require(u.protocol === 'https:' ? 'https' : 'http').get(u, { headers: { Authorization: 'Bearer ' + t.key }, timeout: 8000 }, res => {
+                    let b = '';
+                    res.on('data', c => b += c);
+                    res.on('end', () => {
+                        if (res.statusCode === 401 || res.statusCode === 403) return done('down', 'key');
+                        if (res.statusCode !== 200) return done('down');
+                        try {
+                            const j = JSON.parse(b);
+                            const names = (j.data || j.models || []).map(m => m.id || m.name || String(m));
+                            done(t.model && !names.includes(t.model) ? 'stale-model' : 'ok');
+                        } catch { done('down'); }
+                    });
+                    res.on('error', () => done('down'));
+                });
+                rq.on('error', () => done('down'));
+                rq.on('timeout', () => { rq.destroy(); done('down'); }); // 8s 超时按 down（比 test_model 30s 更紧，快速判死快速恢复）
+            } catch { done('down'); } // 坏 host（URL 解析失败）同 down
+        });
+        const [r, pr] = await Promise.all([probe, reportSysProxy()]); // ProxyEnable 注册表只读并行（s64 A1 复用；事故一形态诚实提示，不装作能探代理路径）
+        const prev = healthFrame();
+        healthCache.state = r.state; healthCache.kind = r.kind;
+        healthCache.proxy = !!(pr && pr.enabled);
+        healthCache.at = Date.now();
+        const now = healthFrame();
+        if (JSON.stringify(prev) !== JSON.stringify(now)) for (const ws of allClients) ws.send(now || { sys: 'health', state: null }); // 态变化才广播（s77 delete 广播同款）
+    } finally { healthBusy = false; if (healthPend) { healthPend = false; probeProviderHealth(); } }
+}
+function healthFailDebounce() { // S2-2: turn 失败（S26 命中）后 60s 防抖合并复检——真实失败是最强探测信号，零额外成本
+    if (healthFailT) return;
+    healthFailT = setTimeout(() => { healthFailT = null; probeProviderHealth(); }, 60000);
+    if (healthFailT.unref) healthFailT.unref();
+}
+setTimeout(probeProviderHealth, 90 * 1000).unref(); // S2-3: 桥启动 90s 一次（避开冷启资源竞争，兼作护航自检基线）；无周期心跳——裁决 §4 明确裁掉项
 
 let acp = null;
 let acpBuf = '';
@@ -606,8 +676,9 @@ function spawnAcp() {
         // s71(G1): 不注入 GOOSE_MODE——回落 config.yaml 的 smart_approve（env 会压 config，base.rs get_param），
         // permission.yaml 的 ask_before/never_allow 自此真实生效（auto 分支根本不查询）
         GOOSE_PROVIDER: 'openai',
-        // 末级回落=种子（可选池首模型）；2026-09-08 myopencode 线路已死（服务商侧 404），s76 遗留①清理
-        GOOSE_MODEL: (act && act.models && act.models[0]) || secrets.GOOSE_MODEL_NAME || 'deepseek-v4-flash',
+        // 末级回落链到此为止（主控拍板 2026-09-12：不再硬编码任何模型名——死名回落是两次事故的共同放大器；
+        // 空则 goose 用其自身默认，空态暴露交健康告警条，裁决 provider-health-probe S3）
+        GOOSE_MODEL: (act && act.models && act.models[0]) || secrets.GOOSE_MODEL_NAME || '',
         OPENAI_API_KEY: (act && act.key) || secrets.FORGE_AGENT_API_KEY || process.env.OPENAI_API_KEY,
         OPENAI_HOST: (act && act.host) || secrets.FORGE_AGENT_HOST || process.env.OPENAI_HOST,
         OPENAI_BASE_PATH: 'chat/completions',
@@ -709,14 +780,14 @@ function sendTurn(ws, sid, text, allowRescue) {
         // 故在 turn 结束处对当轮累计文本跑 s26 正则（:349 的 stop 通知分支 goose ACP 模式从不发，为死代码）
         const txt = turnText.get(sid) || '';
         turnText.delete(sid);
-        if (S26_ERR_RE.test(txt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(txt)); }
+        if (S26_ERR_RE.test(txt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(txt)); healthFailDebounce(); }
         ws.send({ agent: { method: 'stop', params: { sessionId: sid, reason: 'end' } } });
     }, reject: (e) => {
         busySids.delete(sid);
         // P31-③: turn 失败按 s26 正则归类上游故障
         // goose 的 JSON-RPC error：message=错误类（如 Resource not found），具体原因在 data（如 Session not found: <sid>）——拼接后供匹配
         const etxt = String((e && e.message) || e) + ' ' + String((e && e.data) || '');
-        if (S26_ERR_RE.test(etxt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(etxt)); }
+        if (S26_ERR_RE.test(etxt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(etxt)); healthFailDebounce(); }
         else statsBump('errorsByType.other');
         if (allowRescue && SESSION_NF_RE.test(etxt)) {
             if (rescuedSids.has(sid)) { ws.send({ sys: 'error', text: SID_RESCUED_TEXT }); return; } // P3-3 去重命中
@@ -3020,6 +3091,9 @@ server.on('upgrade', (req, socket) => {
     socket.on('error', () => { statsBump('errorsByType.websocket'); drop(ws); }); // P31-③: 仅异常断连计数（页面刷新等正常 close 不算错误）
     socket.on('close', () => drop(ws));
     ws.send({ sys: 'hello', version: 2, app: APP_VERSION, caps: acpCaps ? { modes: true } : {} });
+    // S2-1 页面打开触发：缓存未过期直接发缓存态（打开就知道），过期才后台探（最坏一天 20 次打开 ≤20 个免费 GET）
+    if (Date.now() - healthCache.at < HEALTH_TTL) { const hf = healthFrame(); if (hf) ws.send(hf); }
+    else probeProviderHealth();
 });
 function drop(ws) {
     ws.alive = false;
@@ -3486,6 +3560,7 @@ function handleClient(ws, msg) {
                     }
                 }
                 writeProviders(list);
+                healthCache.at = 0; probeProviderHealth(); // §S1 缓存失效：save/activate/改模型即后台重探（换档对齐；面板修复→告警条即消的 GUI 闭环）
             }
             const act = list.find(p => p.active);
             if (act) {
@@ -3538,6 +3613,7 @@ function handleClient(ws, msg) {
             } else {
                 for (const pr of list) pr.active = pr.name === target.name;
                 writeProviders(list);
+                healthCache.at = 0; probeProviderHealth(); // 跨档 switch=换档，同 §S1 失效语义
                 ws.send({ sys: 'provider_switching', to: target.name, model: msg.model });
                 hotRestartProvider().then(() => {
                     ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, restarted: true });
