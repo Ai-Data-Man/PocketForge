@@ -190,3 +190,8 @@ handleHttp 内 41 个端点分发行号（每行即一段）：1806,1810,1811,18
 - 巨型函数/嵌套/调试残留：`node tmp/s78-fnmap.js`（大括号配平法，忽略字符串字面量干扰的近似深度）。
 - 物化链：bootstrap.ps1 全文精读 + process-compose.yaml:100-109 + package.sh:22-34 + update-runner.tpl.js:70,257-301。
 - tpl/bin 双份同步状态：`diff forge/conf/templates/update-runner.tpl.js forge/bin/update-runner.js` = SAME（2026-09-12）；chat-bridge 同法 = SAME。
+
+## 实施收官附注（2026-09-13 s78）
+- C1+C2（8f0e6e2 净-109）→ C5+C3（367b57a 净-17）→ C4（f671d4d 净-1）全部落地：桥 3743→3586 行，四大病灶+双源样板全收敛，探针锚点全程零破损。C6 低值不做、C7 多文件拆分维持不做。
+- 实施中的审计勘误：C3 收益按薄助手估算偏乐观（裁决出处注释保留义务+settled 门吃掉预算，实删-27 vs 预估-60~70）；「19 处保留 writeHead」经三批验证全部合理。
+- 新增教训两条入工作方式：①公共函数签名变更的验证必须覆盖调用面（b4e02d2 位置绑定灾难）；②探针对模板的计数类断言在服务端有自发请求面时不稳健（goose 自拉 /models），改存在性断言。
