@@ -3177,7 +3177,14 @@ function llmStreamOnce({ host, key, model, maxTokens, sysP, um, onDelta }) {
                             const p = line.slice(5).trim();
                             if (p === '[DONE]') { finish(); return; }
                             // s78 P2-A: 只累计 d.content；d.reasoning_content 有意忽略——推理段不算正文，防把隐形推理当正文文本
-                            try { const j = JSON.parse(p); const c0 = j.choices && j.choices[0]; const d = c0 && c0.delta; if (c0 && c0.finish_reason) finRsn = c0.finish_reason; if (d && d.content) { full += d.content; onDelta(d.content); } } catch {}
+                            // fuzz P3-3: 内嵌 error 形态帧（j.error && !j.choices）终局透传 upstream——不再被静默忽略吞成空回
+                            // 「它没说出什么来」（误导重复撞墙家族）；over 先置位=同流后续 delta 丢弃；die 直走不经 finish，
+                            // 不触发 length 1600 阶梯重试（error≠length 空回）
+                            try {
+                                const j = JSON.parse(p);
+                                if (j && j.error && !j.choices) { const em = (typeof j.error.message === 'string') ? j.error.message : String(j.error); over = true; return die('upstream', em.slice(0, 150)); }
+                                const c0 = j.choices && j.choices[0]; const d = c0 && c0.delta; if (c0 && c0.finish_reason) finRsn = c0.finish_reason; if (d && d.content) { full += d.content; onDelta(d.content); }
+                            } catch {}
                         }
                     });
                     res.on('end', finish);
@@ -3364,6 +3371,8 @@ function handleClient(ws, msg) {
             }).catch(e => {
                 if (e.kind === 'parse') return reply('解释失败（服务返回异常）');
                 if (e.kind === 'timeout') return reply('解释超时了');
+                // fuzz P3-3: upstream 里 401/key 族→TURN_KEY_TEXT 口径人话（SSE 内嵌 error 帧与非 SSE 错误体同门），不误导重试
+                if (e.kind === 'upstream' && classifyUpstream(e.message) === 'unauthorized') return reply('解释失败: ' + TURN_KEY_TEXT);
                 reply('解释失败: ' + e.message); // upstream（上游 error 载荷）/net 同款前缀
             });
             return;
@@ -3394,7 +3403,9 @@ function handleClient(ws, msg) {
             }).catch(e => {
                 if (e.kind === 'parse') return reply('优化失败（服务返回异常），稍后再试一次。', true);
                 if (e.kind === 'timeout') return reply('优化超时了，稍后再试一次。', true);
-                reply('优化失败: ' + e.message, true); // upstream/net 同款前缀
+                // fuzz P3-3: upstream 里 401/key 族→TURN_KEY_TEXT 口径人话（与 explain 孪生同门）
+                if (e.kind === 'upstream' && classifyUpstream(e.message) === 'unauthorized') return reply('优化失败: ' + TURN_KEY_TEXT, true);
+                reply('优化失败: ' + e.message, true); // upstream（上游 error 载荷）/net 同款前缀
             });
             return;
         }

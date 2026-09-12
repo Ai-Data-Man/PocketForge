@@ -1,9 +1,9 @@
-// fuzz 面3（3f80ca9/166607a P3-2）：maskKeys 显示层掩码随机 key 形态矩阵（静态纯函数探针，无桥无网络）。
+// fuzz 面3（3f80ca9/166607a P3-2 + fuzz 批 P3-1/P3-2 修复）：maskKeys 显示层掩码随机 key 形态矩阵（静态纯函数探针，无桥无网络）。
 // 从 chat.tpl.html 提取 maskKeys 原文执行（report-probe-static 同款手法）。向量族：大小写 header 名/引号变体
 // （JSON 形态/单引号/键值异引号）/多 key 同串/超长 key/空值/仅前缀/12-13 字符掩码边界/Unicode 与 \0 值内混杂/
-// URL query ?apikey=（规格外形态）。断言：不崩恒返串、规格内两族（x-api-key/authorization bearer）全形态掩码
-// 到位、≤12 字符全星、13 字符前6后4。已知缺口（Unicode/NUL 断 token 后尾段裸奔、?apikey= 规格外）按观察项
-// 报告，探针只钉「不崩+规格内掩码不受污染」不钉缺口行为本身。
+// URL query ?apikey=。断言：不崩恒返串、三族（x-api-key/authorization bearer/URL query apikey|api_key|token）
+// 全形态掩码到位、≤12 字符全星、13 字符前6后4。P3-1/P3-2 修后：token 贪吃到结构分隔符（引号/空白/行尾/}），
+// Unicode/NUL/字面反斜杠不再断链尾段裸奔；URL query 值段掩码（吃到 & / 引号 / 行尾）。
 'use strict';
 const FSS = require('fs');
 const path = require('path');
@@ -60,13 +60,13 @@ V('空串输入', '', null);
 // 12/13 字符掩码边界 ×2
 V('12 字符全星边界', 'X-API-Key: abcdef123456', null);   // → ****（全掩）
 V('13 字符前6后4边界', 'X-API-Key: abcdef1234567', 'abcdef1234567'); // → abcdef****4567（首6 可见属规格）
-// Unicode / \0 混杂 ×3（观察项：token 类外字符断链后尾段可能裸奔——只钉不崩+头部已掩）
-V('值中含中文', 'X-API-Key: sk-abc中文def1234567890', 'sk-abc');  // 头段应被掩（尾段缺口走报告）
-V('值中含 \\0', 'X-API-Key: sk-\u0000null\u0000-abcdefghijklmnop', 'sk-');
-V('值中含 JSON 转义形态 \\u0000 字面', 'X-API-Key: sk-\\u0000abcdefghij', 'sk-');
-// 规格外 URL query 形态 ×2（?apikey= 不在 s78 P4 两族规格内——钉规格内 key 不受污染）
-V('?apikey= 规格外共存', 'curl "https://h/p?apikey=sk-notinspec0000" -H "X-API-Key: ' + K16 + '"', K16);
-V('?API-KEY= 大写变体', '?API-KEY=sk-alsoout000 -H "authorization: Bearer ' + K16 + '"', K16);
+// Unicode / \0 混杂 ×3（P3-1 修后：贪吃段吞掉类外字符——尾段同掩，修前红）
+V('值中含中文', 'X-API-Key: sk-abc中文def1234567890', 'sk-abc中文def1234567890');
+V('值中含 \\0', 'X-API-Key: sk-\u0000null\u0000-abcdefghijklmnop', 'sk-\u0000null\u0000-abcdefghijklmnop');
+V('值中含 JSON 转义形态 \\u0000 字面', 'X-API-Key: sk-\\u0000abcdefghij', 'sk-\\u0000abcdefghij');
+// URL query 形态 ×2（P3-2 修后进规格：?apikey=/?api_key=/&apikey=/&api_key=/?token=/&token= 值段掩码，与规格内两族共存）
+V('?apikey= 规格内共存', 'curl "https://h/p?apikey=sk-notinspec0000" -H "X-API-Key: ' + K16 + '"', 'sk-notinspec0000');
+V('?API_KEY= 大写变体（i 旗）', '?API_KEY=sk-alsoout000 -H "authorization: Bearer ' + K16 + '"', 'sk-alsoout000');
 
 let bad = [];
 for (const v of vectors) {
@@ -89,15 +89,15 @@ ck('M4 16 字符 key 前6+****+后4（小写 header 同效）', shape16 === 'x-a
 const two = maskKeys('X-API-Key: faucet_k111111111 X-API-Key: faucet_k222222222');
 ck('M5 多 key 同串逐一掩码（非首匹配即停）', two.includes('faucet****1111') && two.includes('faucet****2222'), two);
 
-// 规格外 ?apikey= 共存时规格内 key 仍被掩（缺口行为本身走观察报告，不在此钉）
+// 规格外 ?apikey= 值段掩码（P3-2 修后进规格）+ 共存时规格内两族仍被掩（修前红：值段裸奔）
 const mix = maskKeys('curl "https://h/p?apikey=sk-notinspec0000" -H "X-API-Key: ' + K16 + '"');
-ck('M6 规格外形态共存不阻断规格内掩码', mix.includes(K16.slice(0, 6) + '****' + K16.slice(-4)), mix);
+ck('M6 URL query ?apikey= 值段已掩（吃到引号）+共存不阻断规格内掩码', mix.includes('apikey=sk-not****0000') && mix.includes(K16.slice(0, 6) + '****' + K16.slice(-4)), mix);
 
-// Unicode/\0 向量：头部 ASCII 段必须已掩（尾段缺口=观察项 tmp 报告，不钉行为）
+// Unicode/\0 向量（P3-1 修后）：贪吃到行尾——断链尾段必须被掩，全串按前6后4呈现（修前：****中文def1234567890 尾段裸奔=红）
 const uni = maskKeys('X-API-Key: sk-abc中文def1234567890');
-ck('M7 Unicode 断链向量：ASCII 头段已掩不崩（尾段缺口走观察报告）', !uni.includes('sk-abc中文'), uni);
+ck('M7 Unicode 断链向量：断链尾段已掩（贪吃到行尾，前6后4）', uni === 'X-API-Key: sk-abc****7890', uni);
 const nul = maskKeys('X-API-Key: sk-\u0000null\u0000-abcdefghijklmnop');
-ck('M8 \\0 断链向量：ASCII 头段已掩不崩（尾段缺口走观察报告）', !nul.includes('sk-\u0000nul'), nul.replace(/\u0000/g, '\\0'));
+ck('M8 \\0 断链向量：断链尾段已掩（\\0 不再截断 token）', nul === 'X-API-Key: sk-\u0000nu****mnop', nul.replace(/\u0000/g, '\\0'));
 
 console.log('mask-fuzz-probe: PASS=' + pass + ' FAIL=' + fail);
 if (fail) process.exitCode = 1;

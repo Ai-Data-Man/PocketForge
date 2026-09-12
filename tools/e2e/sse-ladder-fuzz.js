@@ -3,7 +3,9 @@
 // 共用 llmStreamOnce，不重复造面）。每例断言三件：provider 调用次数恰达预期（400 降级/length 空回重试各至多一次）、
 // 该请求恰一个 done 终局帧（不双发）、终局形态正确（正文/空回人话/错误措辞）。畸形形态：中途断流/无 [DONE]/delta
 // 非对象/finish_reason 乱值×4/length 边界（1 字正文不重试、双空重试一次用尽）/[DONE] 前置/[DONE] 后垃圾/SSE 内嵌
-// error 帧/HTTP 500 JSON 错误体/200 非 JSON/CRLF+event+注释行/100KB 巨帧/400 降级重试阶梯。
+// error 帧（fuzz 批 P3-3 修后：终局透传 upstream 人话——server 族「解释失败: 消息」/key 族 TURN_KEY_TEXT 口径，
+// 不再吞成空回「它没说出什么来」误导重复撞墙；error 帧后同流迟到 delta 丢弃）/HTTP 500 JSON 错误体/200 非 JSON/
+// CRLF+event+注释行/100KB 巨帧/400 降级重试阶梯。
 const { spawn } = require('child_process');
 const http = require('http');
 const crypto = require('crypto');
@@ -19,7 +21,7 @@ const ck = (n, ok, why) => { console.log((ok ? 'PASS: ' : 'FAIL: ') + n + (ok ? 
 const EX_EMPTY_TEXT = '它没说出什么来，再点一次试试';
 
 // ---- 假 provider：marker 播控 + 请求台账 ----
-const MARKERS = ['L1MID', 'L2NODONE', 'L3DELTA', 'L4A', 'L4B', 'L4C', 'L4D', 'L5LEN1', 'L6LEN2', 'L7DONE0', 'L8DBLDONE', 'L9ERRDATA', 'L10HTTP500', 'L11NOTJSON', 'L12CRLF', 'L13HUGE', 'L14RE400'];
+const MARKERS = ['L1MID', 'L2NODONE', 'L3DELTA', 'L4A', 'L4B', 'L4C', 'L4D', 'L5LEN1', 'L6LEN2', 'L7DONE0', 'L8DBLDONE', 'L9ERRDATA', 'L9KEY', 'L10HTTP500', 'L11NOTJSON', 'L12CRLF', 'L13HUGE', 'L14RE400'];
 const calls = {}; // marker -> [{maxTok, re}]
 function startProvider() {
     const srv = http.createServer((req, res) => {
@@ -55,8 +57,11 @@ function startProvider() {
                 case 'L8DBLDONE': // 双 [DONE]+其后垃圾帧 —— 单终局不双发
                     sseHead(); res.write(chunk({ role: 'assistant', content: 'L8 正文' }, null)); res.write('data: [DONE]\n\n');
                     res.write(chunk({ content: '迟到垃圾' }, null)); res.write('data: [DONE]\n\n'); res.end(); return;
-                case 'L9ERRDATA': // SSE 内嵌 error 对象帧（choices 缺失被忽略）→ 空回人话（上游错误在 SSE 模式被吞——观察项）
-                    sseHead(); res.write('data: ' + JSON.stringify({ error: { message: 'quota out' } }) + '\n\n'); res.write('data: [DONE]\n\n'); res.end(); return;
+                case 'L9ERRDATA': // SSE 内嵌 error 对象帧（P3-3 修后终局透传 upstream 人话）+ 其后迟到 delta（应被丢弃）+ [DONE]
+                    sseHead(); res.write('data: ' + JSON.stringify({ error: { message: 'quota out' } }) + '\n\n');
+                    res.write(chunk({ role: 'assistant', content: '迟到垃圾' }, null)); res.write('data: [DONE]\n\n'); res.end(); return;
+                case 'L9KEY': // SSE 内嵌 error 帧 message 含 key → key 族人话（TURN_KEY_TEXT 口径）
+                    sseHead(); res.write('data: ' + JSON.stringify({ error: { message: 'Incorrect API key provided: sk-xxx' } }) + '\n\n'); res.write('data: [DONE]\n\n'); res.end(); return;
                 case 'L10HTTP500': res.writeHead(500, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { message: '配额用光' } })); return;
                 case 'L11NOTJSON': res.writeHead(200, { 'content-type': 'application/json' }); res.end('<html>not json</html>'); return;
                 case 'L12CRLF': // CRLF 行尾 + event: 行 + 注释行
@@ -177,8 +182,11 @@ let bridge = null, prov = null, C = null;
     ck('L11b 终局=空回人话', r7.text === EX_EMPTY_TEXT, JSON.stringify(r7.text));
     const r8 = await explainOnce(C, 'L8DBLDONE', 1, 'L12 双 [DONE]+迟到垃圾帧：单终局不双发');
     ck('L12b 终局正文=首段（迟到垃圾不进正文）', r8.text === 'L8 正文', JSON.stringify(r8.text));
-    const r9 = await explainOnce(C, 'L9ERRDATA', 1, 'L13 SSE 内嵌 error 帧：不崩不重试');
-    ck('L13b 终局=空回人话（SSE 模式上游错误被吞——观察项 tmp 报告）', r9.text === EX_EMPTY_TEXT, JSON.stringify(r9.text));
+    const r9 = await explainOnce(C, 'L9ERRDATA', 1, 'L13 SSE 内嵌 error 帧：终局透传不重试（不触发 1600 阶梯）');
+    const lateDelta = C.inbox.filter(m => m.sys === 'tool_explanation_delta' && m.id === r9.id && String(m.text || '').includes('迟到垃圾')).length;
+    ck('L13b 终局=解释失败+上游消息（error 帧人话，不再空回误导重复撞墙）+迟到 delta 丢弃', r9.text === '解释失败: quota out' && lateDelta === 0, JSON.stringify(r9.text) + ' late=' + lateDelta);
+    const r9k = await explainOnce(C, 'L9KEY', 1, 'L13c SSE error 帧 401/key 族：key 人话不裸英文');
+    ck('L13c 终局=key 族人话（解释失败+Key 指引，classifyUpstream unauthorized 映射）', r9k.text === '解释失败: 这家服务商的 Key 没配上或不对。到 ⚙️ 设置 → 服务商档案，填好 Key 再发一次。', JSON.stringify(r9k.text));
     const r10 = await explainOnce(C, 'L10HTTP500', 1, 'L14 HTTP500 JSON 错误体：upstream 措辞透传');
     ck('L14b 终局=解释失败+上游消息', /^解释失败: 配额用光/.test(r10.text || ''), JSON.stringify(r10.text));
     const r11 = await explainOnce(C, 'L11NOTJSON', 1, 'L15 200 非 JSON：parse 措辞稳定');

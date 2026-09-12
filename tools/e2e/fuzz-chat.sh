@@ -470,7 +470,7 @@ node "$(dirname "$0")/health-probe-fuzz.js" >/dev/null 2>&1; ck "health-probe /m
 # 面2 代际守卫（6d94f3a P1-A/P2-B）：20 客户端乱序轰炸 + 毁线窗（探针自建沙盒，种子化可复现）
 node "$(dirname "$0")/ws-genesis-fuzz.js" >/dev/null 2>&1; ck "ws genesis-guard 20-client bombardment fuzz, 9 asserts (fuzz-v2)" $?
 # 面5 SSE 重试阶梯（6d94f3a P2-A/367b57a C3）：mock 畸形流——重试不失控不双发（探针自建沙盒）
-node "$(dirname "$0")/sse-ladder-fuzz.js" >/dev/null 2>&1; ck "SSE retry-ladder malformed stream fuzz, 34 asserts (fuzz-v2)" $?
+node "$(dirname "$0")/sse-ladder-fuzz.js" >/dev/null 2>&1; ck "SSE retry-ladder malformed stream fuzz, 36 asserts (fuzz-v2)" $?
 # 面3 maskKeys（3f80ca9/166607a P3-2）：显示层掩码随机 key 形态（静态纯函数探针）
 node "$(dirname "$0")/mask-fuzz-probe.js" >/dev/null 2>&1; ck "maskKeys display-layer random key-form fuzz, 8 asserts (fuzz-v2)" $?
 echo "=============================="
