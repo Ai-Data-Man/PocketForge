@@ -41,3 +41,10 @@
 - **安全挂账（需用户拍板）**：faucet v0.1.13（2026-09-03）= HIGH 安全修复——≤0.1.12「任何有效 API key 可读写所有服务所有表，角色规则从未生效（含 MCP）」。我方暴露面有限（127.0.0.1+单 key+密钥不外发），但 v0.1.13 改 fail-closed（无角色规则的 key=全拒）→ 升级需先建角色规则，属破坏性迁移。已记 STATE 开放问题。
 - 模型链：中转站下架 v4-flash 后已切 deepseek-v4.1-flash（secrets+档案池双更新，全链往返验证「Ready. What you need?」）。
 - 测试脚本 4 bug 待修（tree root 遍历/批卡 force-click/@菜单选择器/S5 改 UI 断言）——影响可重复性，不影响本次结论。
+
+## QA 细测回报（tmp/s78-qa-report.md，五新功能矩阵）
+- **P1-A 双 subscribed 乱序竞态=真缺陷（需返工）**：s77「人类时间不触发」判词证伪——session/new 往返 ~2s，「开应用 2 秒内点进既有对话」即触发（裸 WS gap 0-1600ms 全复现+GUI 真实路径双证实：页面显示旧会话、currentSid 被迟到 subscribed 翻绑新空会话、消息静默落错处零报错）。同族：sessionClients 双挂+onAgentEvent 无 sid 过滤=跨会话串台，必须同批修。修法建议已入报告（wsPendingNew 代际守卫+旧成员籍摘除）。最小复现=tmp/s78-qa-race.js。
+- **P2-A 解释/✨间歇空回**：真链 7/10「它没说出什么来」；直连定根因=deepseek 间歇无视 reasoning_effort:'none'，隐形推理耗尽 300 max_tokens→finish=length 空 content；桥不重试。修法=提预算+空回自动重试一次。
+- P3-A explain 缓存键缺 model（ghost 模型 2ms 命中旧解释）；P3 留档：NUL 注入缓存碰撞（explain+optimize 双 1ms 命中）/<changes> 间歇缺失/Tab 菜单切会话残留。
+- **正面**：✨「覆盖原文件」5 次真链未复现（模型反加保守闸；sysP 补一句禁令可销 s77 观察项）；U9 \0 键回归过；提示词库 API 17/17+GUI 38/38 全绿；tombstone 恢复活体过。IME「缺陷」实为探针断言笔误（产品正确）。
+- 卫生：bin/chat.tpl.html 陈旧残留（9/9 调试拷贝，无引用未入 git，robocopy 会入包）已删。
