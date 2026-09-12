@@ -13,7 +13,7 @@ const PORT = Number(process.env.PORT || 8790);
 const POST_MAX_BYTES = 50 * 1024 * 1024;
 // s78-C1（research/24 §7）：POST body 读取助手——17 处累积样板收敛一处，s50c 防线逐字保留（累积超预算即断开）。
 // 交付原始 Buffer：/api/upload 是二进制体，禁字符串往返；JSON.parse 留在各端点 try 内——坏 JSON 的报错文案逐端点不变。
-function readJsonBody(req, cb) { // qa s78b P3-2: 死参数 res 删除（17 处调用点传 (req,res,cb) 多余实参无害）
+function readJsonBody(req, res, cb) { // res 有意保留：17 处调用点为 (req,res,cb) 位置形态——中间实参非「多余尾部实参」，删参=cb 位灌入 res 致全部 POST 端点 end 时 TypeError 连接重置（s78c 全量红实锤后回滚）
     const chunks = [];
     let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
     req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
