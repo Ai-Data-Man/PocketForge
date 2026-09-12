@@ -48,3 +48,14 @@
 - P3-A explain 缓存键缺 model（ghost 模型 2ms 命中旧解释）；P3 留档：NUL 注入缓存碰撞（explain+optimize 双 1ms 命中）/<changes> 间歇缺失/Tab 菜单切会话残留。
 - **正面**：✨「覆盖原文件」5 次真链未复现（模型反加保守闸；sysP 补一句禁令可销 s77 观察项）；U9 \0 键回归过；提示词库 API 17/17+GUI 38/38 全绿；tombstone 恢复活体过。IME「缺陷」实为探针断言笔误（产品正确）。
 - 卫生：bin/chat.tpl.html 陈旧残留（9/9 调试拷贝，无引用未入 git，robocopy 会入包）已删。
+
+## provider 健康探测落地（22732d1，裁决 f8d7987 实施）
+- 桥 probeProviderHealth()：GET /models 8s 超时四态（down/down+key/stale-model/ok）+ProxyEnable 注册表只读附注；host/model 与 spawnAcp env 链逐位同源（healthTargets）；TTL 30min+换档失效重探+在飞忙期 pending 收尾补探（桩测实锤后补的 3 行）；全异步零同步 IO；s50e 边界=探测零计数零自动动作（桩测断言恒 0）。
+- 三触发=WS hello 缓存门/turn 失败 60s 防抖/启动 90s 一次性；无常驻 setInterval（静态断言钉死）。
+- 前端 healthSync 克隆 key-guide：三态文案逐字、ok 零视觉、恢复即消、与 key-guide 互斥；GUI 实景 stale-model→修复→条消失零重启 4/4（截图 tmp/s79-gui-*.png）。
+- **:610 死名清理**：`|| 'deepseek-v4-flash'` → `|| ''`（全文件零模型名硬编码——两次事故的共同放大器拆除；空则 goose 默认+告警条兜底）。
+- 验证：桩测 13/13+静态 12/12+e2e 55/55+fuzz 150/150；护航清单附录三=断链剧本（37507af）。
+- 跟进留档：providers 处理器对 secrets.env 缺失 ENOENT（预存在，仅手工树触发）；openclaw gateway 外部进程占 18791/18792（探针选端口避开）。
+
+## goose v1.50 评估收口（05e6be4+00b42a9）
+- research/23 双 tag 源码 diff：**可以升 v1.46→v1.50**。三条红线零触碰；**第 10 必查（撤回手术面）全锚点逐字不变**（messages DDL/schema_version 16/B 型 truncate 谓词/当日 MAX+1/load 复活）；三键 panic 族保留（新增 permission.yaml.lock 邻居文件=巡检预期）；G6 双收紧；closed 措辞未差异化。唯一 UNVERIFIED=fork meta 可达性→升级沙盒补跑 FORK-D 判别。实施=下一版本窗口走 playbook（基线 55/150）。
