@@ -1845,6 +1845,290 @@ function preUpgradeBackup(pkg) {
     }
 }
 
+// C5（research/24 §7）：/api/update/upload 整段自 handleHttp 平移顶层——豁免段语义零触碰（s68 预检豁免 + PK 魔数 + .part 唯一化，见段内注释）
+function handleUpdateUpload(req, res, url) {
+    // 离线升级：小白把下载好的 zip 和 .sha256 都从弹窗选进来（单文件逐个传）。
+    // v0.9.10（裁决 docs/verdicts/2026-09-05-offline-upgrade-sha.md c 方案，s69 遗留⑨）：
+    // 桥端自算自验——zip 收完做字节数对账+PK 魔数预检（先落 .part，任何失败即清理，不留垃圾暂存，
+    // 关闭旧 upload 不校验内容留垃圾问题）；.sha256 收完对暂存 zip 实算哈希比对，一致才落位
+    // <zip>.sha256——update-runner 的 verifySha 原样消费，runner 零改动。UI 上传控件下批。
+    const qs = new URL(req.url, 'http://x').searchParams;
+    const fname = (qs.get('name') || ('PocketForge-manual-' + Date.now() + '.zip')).replace(/[\/:*?"<>|]/g, '_');
+    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+    const UPD_DIR = path.join(ROOT, 'data', 'updates');
+    if (/\.sha256$/.test(fname)) {
+        // 校验文件：小文本（sha256sum 产物百来字节），缓冲后解析比对
+        if (!/^PocketForge-[\w.-]+\.zip\.sha256$/.test(fname)) { res.end(JSON.stringify({ ok: false, err: '校验文件名需形如 PocketForge-*.zip.sha256' })); return; }
+        const chunks = []; let bytes = 0;
+        req.on('data', c => { bytes += c.length; if (bytes <= 65536) chunks.push(c); });
+        req.on('end', () => {
+            const raw = Buffer.concat(chunks);
+            if (bytes > 65536) { res.end(JSON.stringify({ ok: false, err: '校验文件过大（应为 sha256sum 生成的百来字节文本）' })); return; }
+            const expect = ((raw.toString('utf8').match(/^([0-9a-fA-F]{64})/) || [])[1] || '').toLowerCase();
+            if (!expect) { res.end(JSON.stringify({ ok: false, err: '校验文件格式不对（应为 sha256sum 生成的校验文件）' })); return; }
+            const zname = fname.slice(0, -'.sha256'.length);
+            const zpath = path.join(UPD_DIR, zname);
+            if (!FSS.existsSync(zpath)) { res.end(JSON.stringify({ ok: false, err: '请先上传安装包 ' + zname })); return; }
+            sha256File(zpath).then(actual => {
+                if (actual !== expect) { res.end(JSON.stringify({ ok: false, err: '校验不一致：安装包和校验文件不配套，请重新下载这两个文件' })); return; }
+                FSS.writeFileSync(path.join(UPD_DIR, fname), raw);
+                console.log('update upload verified:', zname);
+                res.end(JSON.stringify({ ok: true, name: fname, verified: true }));
+            }).catch(e => res.end(JSON.stringify(upErr(e, '校验读取失败（安装包可能正被占用），请重试'))));
+        });
+        return;
+    }
+    if (!/^PocketForge-[\w.-]+\.zip$/.test(fname)) { res.end(JSON.stringify({ ok: false, err: '文件名需形如 PocketForge-*.zip' })); return; }
+    FSS.mkdirSync(UPD_DIR, { recursive: true });
+    const declared = parseInt(req.headers['content-length'] || '0', 10) || 0;
+    // qa返工(P3-3): .part 唯一化——wx 独占创建防同名并发上传互踩；撞车换随机名重试一次，两败即拒（不留半开句柄）
+    let tmpPath = '', ws2 = null;
+    for (let i = 0; i < 2 && !ws2; i++) {
+        const p = path.join(UPD_DIR, fname + '.' + process.pid.toString(36) + Date.now().toString(36) + Math.random().toString(36).slice(2, 7) + '.part');
+        try { const fd = FSS.openSync(p, 'wx'); ws2 = FSS.createWriteStream(p, { fd }); tmpPath = p; } catch {}
+    }
+    if (!ws2) { res.end(JSON.stringify({ ok: false, err: '上传太频繁，请稍后再试' })); return; }
+    let got = 0, doneResp = false, reqEnded = false, failed = false;
+    const fail = (err) => {
+        if (doneResp) return;
+        doneResp = true; failed = true;
+        try { ws2.destroy(); } catch {}
+        res.end(JSON.stringify(typeof err === 'string' ? { ok: false, err } : err)); // P3-1: 对象形态=upErr() 产物（人话+type），直接透传
+    };
+    req.on('data', c => { got += c.length; });
+    req.on('end', () => { reqEnded = true; });
+    req.on('error', () => fail('上传中断'));
+    // Node≥16：body 完整读完也发 close（早于 finish）——只有「没读完就断」才算中断
+    req.on('close', () => { if (!reqEnded) fail('上传中断'); });
+    ws2.on('error', e => fail(upErr(e, '安装包保存失败（磁盘可能已满或被占用），请重试')));
+    // 失败清理放在流 close（fd 释放）之后——Windows 上删已打开文件不可靠
+    ws2.on('close', () => { if (failed) { try { FSS.rmSync(tmpPath, { force: true }); } catch {} } });
+    req.pipe(ws2);
+    ws2.on('finish', () => {
+        if (doneResp) return;
+        // 字节数对账：实收与声明不一致（截断/中断）→ 拒+清理
+        if (declared && got !== declared) { fail('传输不完整（应收 ' + declared + ' 字节，实收 ' + got + '），请重新上传'); return; }
+        try {
+            const fd = FSS.openSync(tmpPath, 'r');
+            const head = Buffer.alloc(4); FSS.readSync(fd, head, 0, 4, 0); FSS.closeSync(fd);
+            if (head.toString('latin1') !== 'PK\x03\x04') { fail('这不是有效的安装包（文件已损坏），请重新下载'); return; }
+            FSS.renameSync(tmpPath, path.join(UPD_DIR, fname));
+            doneResp = true;
+            console.log('update upload staged:', fname, got, 'bytes');
+            res.end(JSON.stringify({ ok: true, name: fname, bytes: got }));
+        } catch (e) { fail(upErr(e, '安装包落位失败（文件可能被占用），请重试')); }
+    });
+}
+
+// C5（research/24 §7）：/api/schedules 整段自 handleHttp 平移顶层（含 schedToggle/readTitle/driftOf/readIfOk 四嵌套函数一并平移；
+// sched-drift-probe 锚点=函数签名+尾部 catch 字面量，不锚缩进/行号）
+function handleSchedules(req, res, url) {
+    // s32: 定时任务只读列表+删除（ADR-0010 复议：写入走 agent 自然语言→goose schedule add，
+    // UI 不暴露 cron；删除经 goose CLI 处理 store 清理，不手改 schedule.json）。
+    const SCHED = path.join(ROOT, 'conf', 'goose', 'data', 'schedule.json');
+    function readTitle(source) {
+        try {
+            const m = FSS.readFileSync(source, 'utf8').match(/^title:\s*(.+)$/m);
+            return m ? m[1].trim() : null;
+        } catch { return null; }
+    }
+    // s55: 暂停/恢复——短命 `goose acp --enable-scheduler` 发 ACP custom request（改内存+persist 落盘）。
+    // 进程即用即弃，不与 cron 守护共存；运行中 pause 会报 "Cannot pause running schedule"，原样回传。
+    // 落盘后须重启 goose-scheduler 守护重载（守护 sync 只增删 id 不读 paused）；重启失败降级 warn 不欺骗。
+    function schedToggle(id, op, res) {
+        const { spawn, execFile } = require('child_process');
+        const child = spawn(GOOSE, ['acp', '--enable-scheduler'], {
+            env: { ...process.env, GOOSE_PATH_ROOT: path.join(ROOT, 'conf', 'goose'), GOOSE_DISABLE_KEYRING: '1', NO_PROXY: (process.env.NO_PROXY || '127.0.0.1,localhost') },
+            stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true,
+        });
+        const done = (payload, code) => {
+            if (res.writableEnded) return; // qa-P1: 25s 超时先回包后，pc restart(30s) 迟到回调再写已结束响应会抛 uncaughtException
+            try { child.kill(); } catch {}
+            res.writeHead(code || 200, { 'content-type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify(payload));
+        };
+        let buf = '', errOut = '';
+        child.stdout.on('data', d => {
+            buf += d.toString('utf8');
+            let i;
+            while ((i = buf.indexOf('\n')) !== -1) {
+                const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+                if (!line) continue;
+                let m; try { m = JSON.parse(line); } catch { continue; }
+                if (m.id === undefined || (m.result === undefined && m.error === undefined)) continue;
+                if (m.id === 1) { // initialize 回包 → 发 initialized + custom request
+                    try {
+                        child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'initialized' }) + '\n');
+                        child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: '_goose/unstable/schedules/' + (op === 'resume' ? 'unpause' : 'pause'), params: { scheduleId: id } }) + '\n');
+                    } catch (e) { done({ ok: false, err: '暂停操作失败' }); }
+                } else if (m.id === 2) {
+                    if (m.error) {
+                        const msg = String((m.error.data && (typeof m.error.data === 'string' ? m.error.data : m.error.data.message)) || m.error.message || '');
+                        done({ ok: false, err: msg.includes('running schedule') ? '任务正在运行，等它跑完再暂停' : (msg.slice(0, 200) || '操作失败') });
+                    } else {
+                        // 落盘成功 → 重启守护重载盘面值；失败降级 warn（ok 仍 true）
+                        let pcPort = '8099';
+                        try { pcPort = FSS.readFileSync(path.join(ROOT, 'data', 'pc.port'), 'utf8').trim() || pcPort; } catch {}
+                        execFile(path.join(ROOT, 'bin', 'pc', 'process-compose.exe'),
+                            ['-p', pcPort, 'process', 'restart', 'goose-scheduler'],
+                            { timeout: 30000, windowsHide: true }, (e) => {
+                                done(e ? { ok: true, warn: '任务已' + (op === 'resume' ? '恢复' : '暂停') + '，但后台调度器重启失败，下次到点可能仍会' + (op === 'resume' ? '跳过' : '执行') } : { ok: true });
+                            });
+                    }
+                }
+            }
+        });
+        child.stderr.on('data', d => { errOut += d; if (errOut.length > 4000) errOut = errOut.slice(-2000); });
+        child.on('error', () => done({ ok: false, err: '暂停服务启动失败' }));
+        child.on('close', () => { if (!res.writableEnded) done({ ok: false, err: '暂停服务异常退出' }); });
+        try {
+            child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false } } }) + '\n');
+        } catch (e) { done({ ok: false, err: '暂停服务启动失败' }); }
+        setTimeout(() => { if (!res.writableEnded) done({ ok: false, err: '操作超时，请重试' }); }, 25000).unref();
+    }
+    if (req.method === 'GET') {
+        let list = [];
+        try { list = JSON.parse(FSS.readFileSync(SCHED, 'utf8')); } catch {}
+        // s75: 源配方↔注册副本只读对账（裁决 docs/verdicts/2026-09-07-scheduler-drift-guard.md S1）。
+        // 触发读的是注册副本，改源配方不传导；副本文件名=schedule id ≠ 源配方名，basename 落空后按
+        // title 唯一匹配兜底；内容不等=drift。base_dir 缺失/无匹配/多匹配/源被删 → 静默 false（宁漏报不误报）。
+        function readIfOk(p) { try { return FSS.readFileSync(p, 'utf8'); } catch { return null; } }
+        function driftOf(j) {
+            try {
+                if (!j || typeof j.source !== 'string' || typeof j.recipe_base_dir !== 'string') return false;
+                const copy = readIfOk(j.source);
+                if (copy === null) return false; // 副本是任务活体，读不到不算漂移
+                const baseDir = j.recipe_base_dir.replace(/^\\\\\?\\/, '');
+                let src = readIfOk(path.join(baseDir, path.basename(j.source)));
+                if (src === null) { // basename 必失败是实态（副本名=id）→ title 兜底
+                    const t = readTitle(j.source);
+                    if (!t) return false;
+                    const hits = FSS.readdirSync(baseDir).filter(f => readTitle(path.join(baseDir, f)) === t);
+                    if (hits.length !== 1) return false; // 0=源已删 >1=同名歧义
+                    src = readIfOk(path.join(baseDir, hits[0]));
+                    if (src === null) return false;
+                }
+                return src !== copy;
+            } catch { return false; }
+        }
+        json200(res, list.map(j => ({
+            id: j.id, cron: j.cron, paused: !!j.paused,
+            title: readTitle(j.source) || j.id,
+            lastRun: j.last_run || null,
+            drift: driftOf(j),
+        })));
+    } else if (req.method === 'POST') {
+        // 删除经 goose CLI（比手改 json 安全：会同步清 store 里的 recipe）
+        // op=pause/resume 经短命 `goose acp --enable-scheduler` 子进程发 ACP custom request
+        // （_goose/unstable/schedules/pause|unpause）：桥自己的 acp 没开 scheduler（method_not_found），
+        // CLI 无 pause 子命令，手改 schedule.json 会被守护回滚——唯一落盘路径就是这条（s55 实证）。
+        readJsonBody(req, res, raw => {
+            let id = '', op = '';
+            try { const b = JSON.parse(raw.toString('utf8')); if (typeof b.id !== 'string' || (b.op !== undefined && typeof b.op !== 'string')) throw 0; id = b.id; op = b.op || ''; } catch {} // s58 修正：op 缺省=删除（UI 删除按钮不传 op），只拒非字符串的 op
+            // fuzz 发现：String([v])==='v'，数组/原始值会被静默字符串化绕过类型面——只收 string
+            if (!/^[\w\-\.]{1,64}$/.test(id) || (op && !['pause', 'resume'].includes(op))) {
+                json200(res, { ok: false, err: '参数不合法' }); return;
+            }
+            if (op) return schedToggle(id, op, res);
+            const { spawn, execFile } = require('child_process');
+            const p = spawn(GOOSE, ['schedule', 'remove', '--schedule-id', id], {
+                env: { ...process.env, GOOSE_PATH_ROOT: path.join(ROOT, 'conf', 'goose'), GOOSE_DISABLE_KEYRING: '1', NO_PROXY: (process.env.NO_PROXY || '127.0.0.1,localhost') },
+            });
+            let out = '';
+            p.stdout.on('data', c => out += c);
+            p.stderr.on('data', c => out += c);
+            p.on('close', code => {
+                if (code !== 0) { json200(res, { ok: false, out: out.slice(0, 300) }); return; }
+                // s58: 删除同款守护盲区——守护内存条目不随盘清，重启重载（失败降级 warn 不欺骗）
+                let pcPort = '8099';
+                try { pcPort = FSS.readFileSync(path.join(ROOT, 'data', 'pc.port'), 'utf8').trim() || pcPort; } catch {}
+                execFile(path.join(ROOT, 'bin', 'pc', 'process-compose.exe'),
+                    ['-p', pcPort, 'process', 'restart', 'goose-scheduler'],
+                    { timeout: 30000, windowsHide: true }, (e) => {
+                        if (res.writableEnded) return;
+                        json200(res, e ? { ok: true, warn: '已删除，但后台调度器重启失败，任务可能仍会执行一次' } : { ok: true, out: out.slice(0, 300) });
+                    });
+            });
+        });
+    } else { res.writeHead(405); res.end(); }
+}
+
+// C5（research/24 §7）：/api/skillstore 整段自 handleHttp 平移顶层
+function handleSkillstore(req, res, url) {
+    // s42: 技能商店（本地优先）。可装技能放 skills-repo/<name>/SKILL.md；
+    // 安装 = 整目录复制到 .agents/skills/<name>/（纯文本复制，无执行面）。
+    const REPO = path.join(ROOT, 'skills-repo');
+    const INSTALLED = path.join(ROOT, '.agents', 'skills');
+    function readSkillMeta(dir) {
+        try {
+            const raw = FSS.readFileSync(path.join(dir, 'SKILL.md'), 'utf8');
+            return { dir: path.basename(dir), ...parseSkillMeta(raw, path.basename(dir)) };
+        } catch { return null; }
+    }
+    if (req.method === 'GET') {
+        const qp = new URL(req.url, 'http://x').searchParams;
+        const isRemote = qp.get('remote') === '1';
+        // s56: 预览走缓存原文（dir 白名单 + 保留设备名过滤；不存在回落 err 人话）
+        const preview = qp.get('preview');
+        if (preview !== null) {
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            if (!/^[\w\-]{1,64}$/.test(preview) || !fileNameSafe(preview)) { res.end(JSON.stringify({ ok: false, err: '参数不合法' })); return; }
+            try {
+                const body = FSS.readFileSync(path.join(SKILL_CACHE, preview, 'SKILL.md'), 'utf8');
+                res.end(JSON.stringify({ ok: true, body: body.slice(0, 4000) }));
+            } catch { res.end(JSON.stringify({ ok: false, err: '内容还没缓存，安装后可见' })); }
+            return;
+        }
+        const installedSet = new Set();
+        try { for (const e of FSS.readdirSync(INSTALLED, { withFileTypes: true })) if (e.isDirectory()) installedSet.add(e.name); } catch {}
+        // s45: 远程技能源（anthropics/skills，开源；经代理访问 GitHub API）
+        if (isRemote) {
+            listRemoteSkills(installedSet, res);
+            return;
+        }
+        const out = [];
+        try {
+            for (const ent of FSS.readdirSync(REPO, { withFileTypes: true })) {
+                if (!ent.isDirectory()) continue;
+                const meta = readSkillMeta(path.join(REPO, ent.name));
+                if (!meta) continue;
+                out.push({ ...meta, dir: ent.name, installed: installedSet.has(ent.name) });
+            }
+        } catch {}
+        json200(res, out);
+    } else if (req.method === 'POST') {
+        readJsonBody(req, res, async raw => {
+            try {
+                const b = JSON.parse(raw.toString('utf8'));
+                // s50h(FIND-3): 白名单外再过保留设备名（con 等），remote 与本地复制两分支同门
+                if (typeof b.name !== 'string' || !/^[\w\-]{1,64}$/.test(b.name) || !fileNameSafe(b.name)) throw new Error('参数不合法');
+                // s57: op=uninstall 删 .agents/skills/<dir>（白名单与安装同门）
+                if (b.op === 'uninstall') {
+                    const dst = path.join(INSTALLED, b.name);
+                    if (!FSS.existsSync(path.join(dst, 'SKILL.md'))) throw new Error('没有安装这个技能，不用卸载');
+                    FSS.rmSync(dst, { recursive: true, force: true });
+                    json200(res, { ok: true, note: '已卸载' });
+                    return;
+                }
+                if (b.remote) { installRemoteSkill(b.name, res); return; }
+                const src = path.join(REPO, b.name);
+                const dst = path.join(INSTALLED, b.name);
+                if (!FSS.existsSync(path.join(src, 'SKILL.md'))) throw new Error('商店里没有这个技能');
+                const blocked = skillInstallBlocked(dst); // s70: 同名冲突保护（本地精选目录安装同门）
+                if (blocked) throw new Error(blocked);
+                // qa返工(P2-2): 本地复制同门原子安装——写 origin 失败（P3-1）随整体回滚，不假成功
+                await installAtomic(dst, async tmp => {
+                    FSS.cpSync(src, tmp, { recursive: true });
+                    writeSkillOrigin(tmp, 'local', 'skills-repo', '');
+                });
+                json200(res, { ok: true });
+            } catch (e) {
+                json200(res, { ok: false, err: e.message });
+            }
+        });
+    } else { res.writeHead(405); res.end(); }
+}
+
 async function handleHttp(req, res) {
     const url = (req.url || '/').split('?')[0];
     // R2-C1b(审查s17): WS 层有 Origin 校验，HTTP 层没有——恶意网页可跨站 POST
@@ -1947,79 +2231,7 @@ async function handleHttp(req, res) {
             json200(res, { ok: false, err: '查询升级源失败：' + e.message + '（可用离线升级）', current: APP_VERSION, staged });
         });
     }
-    else if (url.startsWith('/api/update/upload') && req.method === 'POST') {
-        // 离线升级：小白把下载好的 zip 和 .sha256 都从弹窗选进来（单文件逐个传）。
-        // v0.9.10（裁决 docs/verdicts/2026-09-05-offline-upgrade-sha.md c 方案，s69 遗留⑨）：
-        // 桥端自算自验——zip 收完做字节数对账+PK 魔数预检（先落 .part，任何失败即清理，不留垃圾暂存，
-        // 关闭旧 upload 不校验内容留垃圾问题）；.sha256 收完对暂存 zip 实算哈希比对，一致才落位
-        // <zip>.sha256——update-runner 的 verifySha 原样消费，runner 零改动。UI 上传控件下批。
-        const qs = new URL(req.url, 'http://x').searchParams;
-        const fname = (qs.get('name') || ('PocketForge-manual-' + Date.now() + '.zip')).replace(/[\/:*?"<>|]/g, '_');
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        const UPD_DIR = path.join(ROOT, 'data', 'updates');
-        if (/\.sha256$/.test(fname)) {
-            // 校验文件：小文本（sha256sum 产物百来字节），缓冲后解析比对
-            if (!/^PocketForge-[\w.-]+\.zip\.sha256$/.test(fname)) { res.end(JSON.stringify({ ok: false, err: '校验文件名需形如 PocketForge-*.zip.sha256' })); return; }
-            const chunks = []; let bytes = 0;
-            req.on('data', c => { bytes += c.length; if (bytes <= 65536) chunks.push(c); });
-            req.on('end', () => {
-                const raw = Buffer.concat(chunks);
-                if (bytes > 65536) { res.end(JSON.stringify({ ok: false, err: '校验文件过大（应为 sha256sum 生成的百来字节文本）' })); return; }
-                const expect = ((raw.toString('utf8').match(/^([0-9a-fA-F]{64})/) || [])[1] || '').toLowerCase();
-                if (!expect) { res.end(JSON.stringify({ ok: false, err: '校验文件格式不对（应为 sha256sum 生成的校验文件）' })); return; }
-                const zname = fname.slice(0, -'.sha256'.length);
-                const zpath = path.join(UPD_DIR, zname);
-                if (!FSS.existsSync(zpath)) { res.end(JSON.stringify({ ok: false, err: '请先上传安装包 ' + zname })); return; }
-                sha256File(zpath).then(actual => {
-                    if (actual !== expect) { res.end(JSON.stringify({ ok: false, err: '校验不一致：安装包和校验文件不配套，请重新下载这两个文件' })); return; }
-                    FSS.writeFileSync(path.join(UPD_DIR, fname), raw);
-                    console.log('update upload verified:', zname);
-                    res.end(JSON.stringify({ ok: true, name: fname, verified: true }));
-                }).catch(e => res.end(JSON.stringify(upErr(e, '校验读取失败（安装包可能正被占用），请重试'))));
-            });
-            return;
-        }
-        if (!/^PocketForge-[\w.-]+\.zip$/.test(fname)) { res.end(JSON.stringify({ ok: false, err: '文件名需形如 PocketForge-*.zip' })); return; }
-        FSS.mkdirSync(UPD_DIR, { recursive: true });
-        const declared = parseInt(req.headers['content-length'] || '0', 10) || 0;
-        // qa返工(P3-3): .part 唯一化——wx 独占创建防同名并发上传互踩；撞车换随机名重试一次，两败即拒（不留半开句柄）
-        let tmpPath = '', ws2 = null;
-        for (let i = 0; i < 2 && !ws2; i++) {
-            const p = path.join(UPD_DIR, fname + '.' + process.pid.toString(36) + Date.now().toString(36) + Math.random().toString(36).slice(2, 7) + '.part');
-            try { const fd = FSS.openSync(p, 'wx'); ws2 = FSS.createWriteStream(p, { fd }); tmpPath = p; } catch {}
-        }
-        if (!ws2) { res.end(JSON.stringify({ ok: false, err: '上传太频繁，请稍后再试' })); return; }
-        let got = 0, doneResp = false, reqEnded = false, failed = false;
-        const fail = (err) => {
-            if (doneResp) return;
-            doneResp = true; failed = true;
-            try { ws2.destroy(); } catch {}
-            res.end(JSON.stringify(typeof err === 'string' ? { ok: false, err } : err)); // P3-1: 对象形态=upErr() 产物（人话+type），直接透传
-        };
-        req.on('data', c => { got += c.length; });
-        req.on('end', () => { reqEnded = true; });
-        req.on('error', () => fail('上传中断'));
-        // Node≥16：body 完整读完也发 close（早于 finish）——只有「没读完就断」才算中断
-        req.on('close', () => { if (!reqEnded) fail('上传中断'); });
-        ws2.on('error', e => fail(upErr(e, '安装包保存失败（磁盘可能已满或被占用），请重试')));
-        // 失败清理放在流 close（fd 释放）之后——Windows 上删已打开文件不可靠
-        ws2.on('close', () => { if (failed) { try { FSS.rmSync(tmpPath, { force: true }); } catch {} } });
-        req.pipe(ws2);
-        ws2.on('finish', () => {
-            if (doneResp) return;
-            // 字节数对账：实收与声明不一致（截断/中断）→ 拒+清理
-            if (declared && got !== declared) { fail('传输不完整（应收 ' + declared + ' 字节，实收 ' + got + '），请重新上传'); return; }
-            try {
-                const fd = FSS.openSync(tmpPath, 'r');
-                const head = Buffer.alloc(4); FSS.readSync(fd, head, 0, 4, 0); FSS.closeSync(fd);
-                if (head.toString('latin1') !== 'PK\x03\x04') { fail('这不是有效的安装包（文件已损坏），请重新下载'); return; }
-                FSS.renameSync(tmpPath, path.join(UPD_DIR, fname));
-                doneResp = true;
-                console.log('update upload staged:', fname, got, 'bytes');
-                res.end(JSON.stringify({ ok: true, name: fname, bytes: got }));
-            } catch (e) { fail(upErr(e, '安装包落位失败（文件可能被占用），请重试')); }
-        });
-    }
+    else if (url.startsWith('/api/update/upload') && req.method === 'POST') { handleUpdateUpload(req, res, url); }
     else if (url === '/api/update/start' && req.method === 'POST') {
         readJsonBody(req, res, raw => {
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
@@ -2209,136 +2421,7 @@ const ext = path.extname(f).toLowerCase();
             res.end(JSON.stringify({ ok: true, hits }));
         } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message, hits: [] })); }
     }
-    else if (url === '/api/schedules') {
-        // s32: 定时任务只读列表+删除（ADR-0010 复议：写入走 agent 自然语言→goose schedule add，
-        // UI 不暴露 cron；删除经 goose CLI 处理 store 清理，不手改 schedule.json）。
-        const SCHED = path.join(ROOT, 'conf', 'goose', 'data', 'schedule.json');
-        function readTitle(source) {
-            try {
-                const m = FSS.readFileSync(source, 'utf8').match(/^title:\s*(.+)$/m);
-                return m ? m[1].trim() : null;
-            } catch { return null; }
-        }
-        // s55: 暂停/恢复——短命 `goose acp --enable-scheduler` 发 ACP custom request（改内存+persist 落盘）。
-        // 进程即用即弃，不与 cron 守护共存；运行中 pause 会报 "Cannot pause running schedule"，原样回传。
-        // 落盘后须重启 goose-scheduler 守护重载（守护 sync 只增删 id 不读 paused）；重启失败降级 warn 不欺骗。
-        function schedToggle(id, op, res) {
-            const { spawn, execFile } = require('child_process');
-            const child = spawn(GOOSE, ['acp', '--enable-scheduler'], {
-                env: { ...process.env, GOOSE_PATH_ROOT: path.join(ROOT, 'conf', 'goose'), GOOSE_DISABLE_KEYRING: '1', NO_PROXY: (process.env.NO_PROXY || '127.0.0.1,localhost') },
-                stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true,
-            });
-            const done = (payload, code) => {
-                if (res.writableEnded) return; // qa-P1: 25s 超时先回包后，pc restart(30s) 迟到回调再写已结束响应会抛 uncaughtException
-                try { child.kill(); } catch {}
-                res.writeHead(code || 200, { 'content-type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify(payload));
-            };
-            let buf = '', errOut = '';
-            child.stdout.on('data', d => {
-                buf += d.toString('utf8');
-                let i;
-                while ((i = buf.indexOf('\n')) !== -1) {
-                    const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-                    if (!line) continue;
-                    let m; try { m = JSON.parse(line); } catch { continue; }
-                    if (m.id === undefined || (m.result === undefined && m.error === undefined)) continue;
-                    if (m.id === 1) { // initialize 回包 → 发 initialized + custom request
-                        try {
-                            child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'initialized' }) + '\n');
-                            child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: '_goose/unstable/schedules/' + (op === 'resume' ? 'unpause' : 'pause'), params: { scheduleId: id } }) + '\n');
-                        } catch (e) { done({ ok: false, err: '暂停操作失败' }); }
-                    } else if (m.id === 2) {
-                        if (m.error) {
-                            const msg = String((m.error.data && (typeof m.error.data === 'string' ? m.error.data : m.error.data.message)) || m.error.message || '');
-                            done({ ok: false, err: msg.includes('running schedule') ? '任务正在运行，等它跑完再暂停' : (msg.slice(0, 200) || '操作失败') });
-                        } else {
-                            // 落盘成功 → 重启守护重载盘面值；失败降级 warn（ok 仍 true）
-                            let pcPort = '8099';
-                            try { pcPort = FSS.readFileSync(path.join(ROOT, 'data', 'pc.port'), 'utf8').trim() || pcPort; } catch {}
-                            execFile(path.join(ROOT, 'bin', 'pc', 'process-compose.exe'),
-                                ['-p', pcPort, 'process', 'restart', 'goose-scheduler'],
-                                { timeout: 30000, windowsHide: true }, (e) => {
-                                    done(e ? { ok: true, warn: '任务已' + (op === 'resume' ? '恢复' : '暂停') + '，但后台调度器重启失败，下次到点可能仍会' + (op === 'resume' ? '跳过' : '执行') } : { ok: true });
-                                });
-                        }
-                    }
-                }
-            });
-            child.stderr.on('data', d => { errOut += d; if (errOut.length > 4000) errOut = errOut.slice(-2000); });
-            child.on('error', () => done({ ok: false, err: '暂停服务启动失败' }));
-            child.on('close', () => { if (!res.writableEnded) done({ ok: false, err: '暂停服务异常退出' }); });
-            try {
-                child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false } } }) + '\n');
-            } catch (e) { done({ ok: false, err: '暂停服务启动失败' }); }
-            setTimeout(() => { if (!res.writableEnded) done({ ok: false, err: '操作超时，请重试' }); }, 25000).unref();
-        }
-        if (req.method === 'GET') {
-            let list = [];
-            try { list = JSON.parse(FSS.readFileSync(SCHED, 'utf8')); } catch {}
-            // s75: 源配方↔注册副本只读对账（裁决 docs/verdicts/2026-09-07-scheduler-drift-guard.md S1）。
-            // 触发读的是注册副本，改源配方不传导；副本文件名=schedule id ≠ 源配方名，basename 落空后按
-            // title 唯一匹配兜底；内容不等=drift。base_dir 缺失/无匹配/多匹配/源被删 → 静默 false（宁漏报不误报）。
-            function readIfOk(p) { try { return FSS.readFileSync(p, 'utf8'); } catch { return null; } }
-            function driftOf(j) {
-                try {
-                    if (!j || typeof j.source !== 'string' || typeof j.recipe_base_dir !== 'string') return false;
-                    const copy = readIfOk(j.source);
-                    if (copy === null) return false; // 副本是任务活体，读不到不算漂移
-                    const baseDir = j.recipe_base_dir.replace(/^\\\\\?\\/, '');
-                    let src = readIfOk(path.join(baseDir, path.basename(j.source)));
-                    if (src === null) { // basename 必失败是实态（副本名=id）→ title 兜底
-                        const t = readTitle(j.source);
-                        if (!t) return false;
-                        const hits = FSS.readdirSync(baseDir).filter(f => readTitle(path.join(baseDir, f)) === t);
-                        if (hits.length !== 1) return false; // 0=源已删 >1=同名歧义
-                        src = readIfOk(path.join(baseDir, hits[0]));
-                        if (src === null) return false;
-                    }
-                    return src !== copy;
-                } catch { return false; }
-            }
-            json200(res, list.map(j => ({
-                id: j.id, cron: j.cron, paused: !!j.paused,
-                title: readTitle(j.source) || j.id,
-                lastRun: j.last_run || null,
-                drift: driftOf(j),
-            })));
-        } else if (req.method === 'POST') {
-            // 删除经 goose CLI（比手改 json 安全：会同步清 store 里的 recipe）
-            // op=pause/resume 经短命 `goose acp --enable-scheduler` 子进程发 ACP custom request
-            // （_goose/unstable/schedules/pause|unpause）：桥自己的 acp 没开 scheduler（method_not_found），
-            // CLI 无 pause 子命令，手改 schedule.json 会被守护回滚——唯一落盘路径就是这条（s55 实证）。
-            readJsonBody(req, res, raw => {
-                let id = '', op = '';
-                try { const b = JSON.parse(raw.toString('utf8')); if (typeof b.id !== 'string' || (b.op !== undefined && typeof b.op !== 'string')) throw 0; id = b.id; op = b.op || ''; } catch {} // s58 修正：op 缺省=删除（UI 删除按钮不传 op），只拒非字符串的 op
-                // fuzz 发现：String([v])==='v'，数组/原始值会被静默字符串化绕过类型面——只收 string
-                if (!/^[\w\-\.]{1,64}$/.test(id) || (op && !['pause', 'resume'].includes(op))) {
-                    json200(res, { ok: false, err: '参数不合法' }); return;
-                }
-                if (op) return schedToggle(id, op, res);
-                const { spawn, execFile } = require('child_process');
-                const p = spawn(GOOSE, ['schedule', 'remove', '--schedule-id', id], {
-                    env: { ...process.env, GOOSE_PATH_ROOT: path.join(ROOT, 'conf', 'goose'), GOOSE_DISABLE_KEYRING: '1', NO_PROXY: (process.env.NO_PROXY || '127.0.0.1,localhost') },
-                });
-                let out = '';
-                p.stdout.on('data', c => out += c);
-                p.stderr.on('data', c => out += c);
-                p.on('close', code => {
-                    if (code !== 0) { json200(res, { ok: false, out: out.slice(0, 300) }); return; }
-                    // s58: 删除同款守护盲区——守护内存条目不随盘清，重启重载（失败降级 warn 不欺骗）
-                    let pcPort = '8099';
-                    try { pcPort = FSS.readFileSync(path.join(ROOT, 'data', 'pc.port'), 'utf8').trim() || pcPort; } catch {}
-                    execFile(path.join(ROOT, 'bin', 'pc', 'process-compose.exe'),
-                        ['-p', pcPort, 'process', 'restart', 'goose-scheduler'],
-                        { timeout: 30000, windowsHide: true }, (e) => {
-                            if (res.writableEnded) return;
-                            json200(res, e ? { ok: true, warn: '已删除，但后台调度器重启失败，任务可能仍会执行一次' } : { ok: true, out: out.slice(0, 300) });
-                        });
-                });
-            });
-        } else { res.writeHead(405); res.end(); }
-    }
+    else if (url === '/api/schedules') { handleSchedules(req, res, url); }
     else if (url === '/api/mcpstore') {
         // s46: MCP 市场最小形态——精选目录（npm vendored），安装=后台 npm i + 写 extensions，重启生效
         // s70 切片C: 目录读 data/config/mcp-catalog.json（每请求读取→改 JSON 零重启生效）；坏配置回落内置默认
@@ -2406,80 +2489,7 @@ const ext = path.extname(f).toLowerCase();
             });
         } else { res.writeHead(405); res.end(); }
     }
-    else if (url === '/api/skillstore') {
-        // s42: 技能商店（本地优先）。可装技能放 skills-repo/<name>/SKILL.md；
-        // 安装 = 整目录复制到 .agents/skills/<name>/（纯文本复制，无执行面）。
-        const REPO = path.join(ROOT, 'skills-repo');
-        const INSTALLED = path.join(ROOT, '.agents', 'skills');
-        function readSkillMeta(dir) {
-            try {
-                const raw = FSS.readFileSync(path.join(dir, 'SKILL.md'), 'utf8');
-                return { dir: path.basename(dir), ...parseSkillMeta(raw, path.basename(dir)) };
-            } catch { return null; }
-        }
-        if (req.method === 'GET') {
-            const qp = new URL(req.url, 'http://x').searchParams;
-            const isRemote = qp.get('remote') === '1';
-            // s56: 预览走缓存原文（dir 白名单 + 保留设备名过滤；不存在回落 err 人话）
-            const preview = qp.get('preview');
-            if (preview !== null) {
-                res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-                if (!/^[\w\-]{1,64}$/.test(preview) || !fileNameSafe(preview)) { res.end(JSON.stringify({ ok: false, err: '参数不合法' })); return; }
-                try {
-                    const body = FSS.readFileSync(path.join(SKILL_CACHE, preview, 'SKILL.md'), 'utf8');
-                    res.end(JSON.stringify({ ok: true, body: body.slice(0, 4000) }));
-                } catch { res.end(JSON.stringify({ ok: false, err: '内容还没缓存，安装后可见' })); }
-                return;
-            }
-            const installedSet = new Set();
-            try { for (const e of FSS.readdirSync(INSTALLED, { withFileTypes: true })) if (e.isDirectory()) installedSet.add(e.name); } catch {}
-            // s45: 远程技能源（anthropics/skills，开源；经代理访问 GitHub API）
-            if (isRemote) {
-                listRemoteSkills(installedSet, res);
-                return;
-            }
-            const out = [];
-            try {
-                for (const ent of FSS.readdirSync(REPO, { withFileTypes: true })) {
-                    if (!ent.isDirectory()) continue;
-                    const meta = readSkillMeta(path.join(REPO, ent.name));
-                    if (!meta) continue;
-                    out.push({ ...meta, dir: ent.name, installed: installedSet.has(ent.name) });
-                }
-            } catch {}
-            json200(res, out);
-        } else if (req.method === 'POST') {
-            readJsonBody(req, res, async raw => {
-                try {
-                    const b = JSON.parse(raw.toString('utf8'));
-                    // s50h(FIND-3): 白名单外再过保留设备名（con 等），remote 与本地复制两分支同门
-                    if (typeof b.name !== 'string' || !/^[\w\-]{1,64}$/.test(b.name) || !fileNameSafe(b.name)) throw new Error('参数不合法');
-                    // s57: op=uninstall 删 .agents/skills/<dir>（白名单与安装同门）
-                    if (b.op === 'uninstall') {
-                        const dst = path.join(INSTALLED, b.name);
-                        if (!FSS.existsSync(path.join(dst, 'SKILL.md'))) throw new Error('没有安装这个技能，不用卸载');
-                        FSS.rmSync(dst, { recursive: true, force: true });
-                        json200(res, { ok: true, note: '已卸载' });
-                        return;
-                    }
-                    if (b.remote) { installRemoteSkill(b.name, res); return; }
-                    const src = path.join(REPO, b.name);
-                    const dst = path.join(INSTALLED, b.name);
-                    if (!FSS.existsSync(path.join(src, 'SKILL.md'))) throw new Error('商店里没有这个技能');
-                    const blocked = skillInstallBlocked(dst); // s70: 同名冲突保护（本地精选目录安装同门）
-                    if (blocked) throw new Error(blocked);
-                    // qa返工(P2-2): 本地复制同门原子安装——写 origin 失败（P3-1）随整体回滚，不假成功
-                    await installAtomic(dst, async tmp => {
-                        FSS.cpSync(src, tmp, { recursive: true });
-                        writeSkillOrigin(tmp, 'local', 'skills-repo', '');
-                    });
-                    json200(res, { ok: true });
-                } catch (e) {
-                    json200(res, { ok: false, err: e.message });
-                }
-            });
-        } else { res.writeHead(405); res.end(); }
-    }
+    else if (url === '/api/skillstore') { handleSkillstore(req, res, url); }
     else if (url === '/api/extensions') {
         // 小白能力开关（s17 A）：改 conf/goose/config/config.yaml 各扩展 enabled。
         // bootstrap 幂等重写会保留用户开关值（配套改动见 bootstrap.ps1 / ADR-0010）。
@@ -3099,6 +3109,73 @@ async function rollbackRewrite(ws, msg) {
     }
 }
 
+// C3（research/24 §7）：explain_tool/optimize_prompt 两处同构 SSE 直调闭包合并（audit :3335 自注释「克隆骨架」实锤）。
+// 单次 chat/completions 直调：SSE 解析 + reasoning_effort:'none' 400 降级重试 + finish=length 空文预算阶梯
+// （800→1600，s78 P2-A）+ over 先置位防旧响应 end 抢答。→Promise<text>：正文（空串=空回，人话由调用方出，不入缓存）；
+// reject 带 e.kind（upstream=上游 error 载荷 / parse=非 SSE 响应解析失败 / net=网络或构造异常 / timeout），措辞差异留在调用方。
+function llmStreamOnce({ host, key, model, maxTokens, sysP, um, onDelta }) {
+    return new Promise((resolve, reject) => {
+        let retriedLen = false; // s78 P2-A: finish=length 且空文 → 同载荷重试一次（预算翻倍），最多一次
+        let settled = false; // 对应原 replied 门：终局（回包/报错）后迟到的 end/error 不再重试或回包
+        const ok = t => { if (!settled) { settled = true; resolve(t); } };
+        const die = (kind, msg) => { if (!settled) { settled = true; const e = new Error(msg || kind); e.kind = kind; reject(e); } };
+        const fire = (useRE, maxTok) => {
+            let rq;
+            try {
+                const u = new URL(host + '/chat/completions');
+                const reqMod = require(u.protocol === 'https:' ? 'https' : 'http');
+                // s78 P2-A: 300→800——deepseek 间歇无视 reasoning_effort:'none' 隐形推理，300 预算被推理耗尽后 finish=length、content 空（qa 直连实证 7/10 空）；
+                // 兜底=finish() 里 length+空文自动重试一次（预算 1600）
+                const bodyObj = { model, max_tokens: maxTok, stream: true, messages: [
+                    { role: 'system', content: sysP },
+                    { role: 'user', content: um }
+                ]};
+                if (useRE) bodyObj.reasoning_effort = 'none';
+                const body = JSON.stringify(bodyObj);
+                let sse = false, buf = '', full = '', over = false, finRsn = null;
+                const finish = () => {
+                    if (over) return; over = true;
+                    if (settled) return;
+                    let t = full;
+                    if (!sse) { // 上游不理 stream:true 回了普通 JSON——按旧逻辑整体解析
+                        try { const j = JSON.parse(buf.replace(/data:\s*\[DONE\][\s\S]*$/, '').trim());
+                            if (j && j.error) { const em = (j.error && typeof j.error.message === 'string') ? j.error.message : String(j.error); return die('upstream', em.slice(0, 150)); } // qa P3-6: 错误响应不再误报「它没说出什么来」
+                            const c0 = j.choices && j.choices[0]; const m0 = c0 && c0.message; t = (m0 && (m0.content || m0.reasoning_content)) || ''; if (c0 && c0.finish_reason) finRsn = c0.finish_reason; }
+                        catch { return die('parse'); }
+                    }
+                    if (t) ok(t);
+                    else if (finRsn === 'length' && !retriedLen) { retriedLen = true; fire(useRE, 1600); } // s78 P2-A: 隐形推理吃光预算被截断——同载荷重试一次（模型非确定性，qa 直连 run#2/#3 证明重试有效）
+                    else ok(''); // 空回：正文为空，人话由调用方出（不入缓存）
+                };
+                rq = reqMod.request(u, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, timeout: 30000 }, res => {
+                    if (res.statusCode === 400 && useRE) { over = true; res.resume(); fire(false, maxTok); return; } // 中转不认 reasoning_effort → 去掉重试一次；over 先置位防旧响应 end 抢答
+                    sse = String(res.headers['content-type'] || '').includes('text/event-stream');
+                    res.on('data', c => {
+                        if (over) return;
+                        buf += c;
+                        if (!sse) return;
+                        let i;
+                        while ((i = buf.indexOf('\n')) >= 0) {
+                            const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+                            if (!line.startsWith('data:')) continue;
+                            const p = line.slice(5).trim();
+                            if (p === '[DONE]') { finish(); return; }
+                            // s78 P2-A: 只累计 d.content；d.reasoning_content 有意忽略——推理段不算正文，防把隐形推理当正文文本
+                            try { const j = JSON.parse(p); const c0 = j.choices && j.choices[0]; const d = c0 && c0.delta; if (c0 && c0.finish_reason) finRsn = c0.finish_reason; if (d && d.content) { full += d.content; onDelta(d.content); } } catch {}
+                        }
+                    });
+                    res.on('end', finish);
+                    res.on('error', finish);
+                });
+                rq.on('error', e => { over = true; die('net', e.message); });
+                rq.on('timeout', () => { rq.destroy(); die('timeout'); });
+                rq.write(body); rq.end();
+            } catch (e) { die('net', e.message); }
+        };
+        fire(true, maxTokens);
+    });
+}
+
 function handleClient(ws, msg) {
     try {
         if (msg.sys === 'ping') return ws.send({ sys: 'pong' });
@@ -3252,9 +3329,6 @@ function handleClient(ws, msg) {
             const ck = crypto.createHash('sha1').update([model, t0, o0, i0, stt, ec, String(msg.toolName || '')].join('\u0000')).digest('hex'); // qa P3-2: \0 分隔防跨字段拼接碰撞（\n join 时 (x,A\nB)=(x\nA,B) 同键）；s78 P3-A: 键补 model——换模型后不吃旧模型的解释（optimizeCache 同款）
             if (explainCache.has(ck)) { const t = explainCache.get(ck); explainCache.delete(ck); explainCache.set(ck, t); return reply(t); }
             const delta = t => ws.send({ sys: 'tool_explanation_delta', id: msg.id, text: String(t) });
-            let replied = false;
-            const sendOnce = t => { if (!replied) { replied = true; reply(t); } };
-            let retriedLen = false; // s78 P2-A: finish=length 且空文 → 同载荷重试一次（预算翻倍），最多一次
             // 裁决 batch2 §5.2.3 sysP 重写：受众=会用电脑但不懂 AI 内部机制的好奇者（删三禁令）；必答三问+点名真实对象；
             // 术语=准确名词+括号内嵌解释；禁编造（缺信息明说未提供）；失败（执行状态失败/退出码非0）走四段式；2-4 句禁电报腔；乱码按上下文推断
             const sysP = '你在向会用电脑、但还不了解 AI 内部机制的读者，解释助手在完成任务时执行的一步操作（一次工具调用，tool call，指让 AI 使用某个具体功能）。用 2-4 句连贯的中文陈述句（约 60-150 字）讲清三件事：①做了什么动作、对什么对象——点名信息里的真实名称，工具名、文件名、命令开头几个词、网址、表名，有什么点什么；②结果如何——成功还是失败，加上关键返回值，比如版本号、行数、报错原因；③这一步对整个任务意味着什么——一句话即可，讲不出就直说看不出来，不要硬编。技术名词可以用，但要写准确，并在后面用括号跟一句解释，例如：执行了一条命令（command，让电脑做具体事的指令）。输出写成一段连贯的话，不要电报式短语、编号或标题，不要堆砌比喻。信息里没有的就直说「未提供」，不要猜，更不要编造系统里不存在的类比或对象；「该步骤没有返回文字输出」只说明没拿到输出，不能据此断定结果是空的，也不能当作成功或失败的证据。如果执行状态是「失败」或退出码不是 0，按四段回答：先说清这一步失败了；再引用报错里的真实关键词，说明错在哪；然后给出最可能的原因或下一步；最后说明需不需要用户做什么。信息里可能混有因编码问题产生的乱码，按上下文推断含义即可，不要照抄乱码。';
@@ -3266,66 +3340,22 @@ function handleClient(ws, msg) {
             um += '\n结果摘要' + (msg.trunc ? '（只含最后600字，更早内容已被截去）' : '') + '：' + (o0 ? o0 : '（该步骤没有返回文字输出）');
             if (/[\uFFFD]/.test(o0)) um += '\n注意：上面的输出可能因编码问题含乱码，请按上下文推断其含义，不要照抄乱码。';
             if (process.env.PF_EXPLAIN_DEBUG) console.log('[explain_tool debug] id=' + msg.id + ' user msg fed:\n' + um);
-            const fire = (useRE, maxTok) => {
-                let rq;
-                try {
-                    const u = new URL(host + '/chat/completions');
-                    const reqMod = require(u.protocol === 'https:' ? 'https' : 'http');
-                    // s78 P2-A: 300→800——deepseek 间歇无视 reasoning_effort:'none' 隐形推理，300 预算被推理耗尽后 finish=length、content 空（qa 直连实证 7/10 空）；
-                    // 兜底=finish() 里 length+空文自动重试一次（预算 1600）
-                    const bodyObj = { model, max_tokens: maxTok, stream: true, messages: [
-                        { role: 'system', content: sysP },
-                        { role: 'user', content: um }
-                    ]};
-                    if (useRE) bodyObj.reasoning_effort = 'none';
-                    const body = JSON.stringify(bodyObj);
-                    let sse = false, buf = '', full = '', over = false, finRsn = null;
-                    const finish = () => {
-                        if (over) return; over = true;
-                        if (replied) return;
-                        let t = full;
-                        if (!sse) { // 上游不理 stream:true 回了普通 JSON——按旧逻辑整体解析
-                            try { const j = JSON.parse(buf.replace(/data:\s*\[DONE\][\s\S]*$/, '').trim());
-                                if (j && j.error) { const em = (j.error && typeof j.error.message === 'string') ? j.error.message : String(j.error); return sendOnce('解释失败: ' + em.slice(0, 150)); } // qa P3-6: 错误响应不再误报「它没说出什么来」
-                                const c0 = j.choices && j.choices[0]; const m0 = c0 && c0.message; t = (m0 && (m0.content || m0.reasoning_content)) || ''; if (c0 && c0.finish_reason) finRsn = c0.finish_reason; }
-                            catch { return sendOnce('解释失败（服务返回异常）'); }
-                        }
-                        if (t) { explainCache.set(ck, t); while (explainCache.size > 200) explainCache.delete(explainCache.keys().next().value); sendOnce(t); }
-                        else if (finRsn === 'length' && !retriedLen) { retriedLen = true; fire(useRE, 1600); } // s78 P2-A: 隐形推理吃光预算被截断——同载荷重试一次（模型非确定性，qa 直连 run#2/#3 证明重试有效）
-                        else sendOnce('它没说出什么来，再点一次试试');
-                    };
-                    rq = reqMod.request(u, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, timeout: 30000 }, res => {
-                        if (res.statusCode === 400 && useRE) { over = true; res.resume(); fire(false, maxTok); return; } // 中转不认 reasoning_effort → 去掉重试一次；over 先置位防旧响应 end 抢答
-                        sse = String(res.headers['content-type'] || '').includes('text/event-stream');
-                        res.on('data', c => {
-                            if (over) return;
-                            buf += c;
-                            if (!sse) return;
-                            let i;
-                            while ((i = buf.indexOf('\n')) >= 0) {
-                                const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-                                if (!line.startsWith('data:')) continue;
-                                const p = line.slice(5).trim();
-                                if (p === '[DONE]') { finish(); return; }
-                                // s78 P2-A: 只累计 d.content；d.reasoning_content 有意忽略——推理段不算正文，防把隐形推理当解释文本
-                                try { const j = JSON.parse(p); const c0 = j.choices && j.choices[0]; const d = c0 && c0.delta; if (c0 && c0.finish_reason) finRsn = c0.finish_reason; if (d && d.content) { full += d.content; delta(d.content); } } catch {}
-                            }
-                        });
-                        res.on('end', finish);
-                        res.on('error', finish);
-                    });
-                    rq.on('error', e => { over = true; sendOnce('解释失败: ' + e.message); });
-                    rq.on('timeout', () => { rq.destroy(); sendOnce('解释超时了'); });
-                    rq.write(body); rq.end();
-                } catch (e) { sendOnce('解释失败: ' + e.message); }
-            };
-            fire(true, 800);
+            // C3（research/24 §7）：SSE 直调骨架收敛至 llmStreamOnce；缓存/空回人话/错误措辞留差异体
+            llmStreamOnce({ host, key, model, maxTokens: 800, sysP, um, onDelta: delta }).then(t => {
+                if (t) { explainCache.set(ck, t); while (explainCache.size > 200) explainCache.delete(explainCache.keys().next().value); reply(t); }
+                else reply('它没说出什么来，再点一次试试'); // 空回人话不入缓存（explain-retry-probe E4）
+            }).catch(e => {
+                if (e.kind === 'parse') return reply('解释失败（服务返回异常）');
+                if (e.kind === 'timeout') return reply('解释超时了');
+                reply('解释失败: ' + e.message); // upstream（上游 error 载荷）/net 同款前缀
+            });
             return;
         }
 
         if (msg.type === 'optimize_prompt') {
-            // 主线3（裁决 batch2 §4.2-2）：克隆 explain_tool 骨架——单次直调当前会话模型、流式、reasoning_effort:'none' 400 降级、
+            // 主线3（裁决 batch2 §4.2-2）：单次直调当前会话模型、流式、reasoning_effort:'none' 400 降级、
             // 30s 超时、sha1 全载荷缓存（text+context 都进键，\0 分隔）、不进会话历史。结果不进 goose 会话，只回请求方
+            // （C3 research/24 §7：原「克隆 explain_tool 骨架」已并入 llmStreamOnce 共用助手）
             const act = activeProvider();
             const host = ((act && act.host) || secrets.FORGE_AGENT_HOST || '').replace(/\/$/, '');
             const key = (act && act.key) || secrets.FORGE_AGENT_API_KEY || '';
@@ -3337,65 +3367,18 @@ function handleClient(ws, msg) {
             const ck = crypto.createHash('sha1').update([model, p0, cx0].join('\u0000')).digest('hex'); // 缓存键=全载荷（model+text+context），\0 分隔（P3-2 同款）
             if (optimizeCache.has(ck)) { const t = optimizeCache.get(ck); optimizeCache.delete(ck); optimizeCache.set(ck, t); return reply(t); }
             const delta = t => ws.send({ sys: 'optimize_delta', id: msg.id, text: String(t) }); // 前端只用作「首字已到」信号撤 12s 兜底，不渲染中间态
-            let replied = false;
-            const sendOnce = (t, err) => { if (!replied) { replied = true; reply(t, err); } };
-            let retriedLen = false; // s78 P2-A: finish=length 且空文 → 同载荷重试一次（预算翻倍），最多一次（与 explain_tool 同族）
             // 裁决 §4.2-3：五条固定变换+硬禁令（不得新增用户未提出的任务目标/假设/背景）+双段式输出+语言跟随原文+保留原意不追求华丽
             const sysP = '你是提示词优化器，把用户的提示词改写成模型更容易消化的形态。只做五类变换：①消歧——含糊的表述改清楚：指代不明就补出具体对象，笼统的动词换成具体动作；②补输出格式——原文没说结果要什么形态时补上（表格、清单、分段、文件等，按任务选最自然的）；③补长度与受众约束——原文没提篇幅和写给谁看时补上；④收窄范围——任务范围宽得没法一次完成时收窄；⑤去口语冗余——删口头废话，不删有效信息。硬禁令：不得新增用户未提出的任务目标、假设或背景；对话上下文只用来理解意图，优化稿里不得出现原文与上下文都没有的新事实；不得建议覆盖或删除用户原文件，修改类操作必须先征得用户确认。保留原意，不追求华丽。输出恰好两段、不写别的：<optimized>改写后的完整提示词</optimized><changes>逐条列出做了什么修改，一行一条</changes>语言跟随原文（中文进中文出）。';
             const um = '待优化的提示词原文：\n' + p0 + '\n\n当前对话上下文（仅供理解意图，不是优化对象）：\n' + cx0;
-            const fire = (useRE, maxTok) => {
-                let rq;
-                try {
-                    const u = new URL(host + '/chat/completions');
-                    const reqMod = require(u.protocol === 'https:' ? 'https' : 'http');
-                    // s78 P2-A: 隐形推理吃预算同根因（explain_tool 注释同款）——length+空文时 fire(useRE,1600) 重试一次
-                    const bodyObj = { model, max_tokens: maxTok, stream: true, messages: [
-                        { role: 'system', content: sysP },
-                        { role: 'user', content: um }
-                    ]};
-                    if (useRE) bodyObj.reasoning_effort = 'none';
-                    const body = JSON.stringify(bodyObj);
-                    let sse = false, buf = '', full = '', over = false, finRsn = null;
-                    const finish = () => {
-                        if (over) return; over = true;
-                        if (replied) return;
-                        let t = full;
-                        if (!sse) { // 上游不理 stream:true 回了普通 JSON——按旧逻辑整体解析
-                            try { const j = JSON.parse(buf.replace(/data:\s*\[DONE\][\s\S]*$/, '').trim());
-                                if (j && j.error) { const em = (j.error && typeof j.error.message === 'string') ? j.error.message : String(j.error); return sendOnce('优化失败: ' + em.slice(0, 150), true); }
-                                const c0 = j.choices && j.choices[0]; const m0 = c0 && c0.message; t = (m0 && (m0.content || m0.reasoning_content)) || ''; if (c0 && c0.finish_reason) finRsn = c0.finish_reason; }
-                            catch { return sendOnce('优化失败（服务返回异常），稍后再试一次。', true); }
-                        }
-                        if (t) { optimizeCache.set(ck, t); while (optimizeCache.size > 200) optimizeCache.delete(optimizeCache.keys().next().value); sendOnce(t); }
-                        else if (finRsn === 'length' && !retriedLen) { retriedLen = true; fire(useRE, 1600); } // s78 P2-A: 隐形推理吃光预算被截断——同载荷重试一次
-                        else sendOnce('模型没说出什么来，再点一次 ✨ 试试。', true);
-                    };
-                    rq = reqMod.request(u, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, timeout: 30000 }, res => {
-                        if (res.statusCode === 400 && useRE) { over = true; res.resume(); fire(false, maxTok); return; } // 中转不认 reasoning_effort → 去掉重试一次；over 先置位防旧响应 end 抢答
-                        sse = String(res.headers['content-type'] || '').includes('text/event-stream');
-                        res.on('data', c => {
-                            if (over) return;
-                            buf += c;
-                            if (!sse) return;
-                            let i;
-                            while ((i = buf.indexOf('\n')) >= 0) {
-                                const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-                                if (!line.startsWith('data:')) continue;
-                                const pj = line.slice(5).trim();
-                                if (pj === '[DONE]') { finish(); return; }
-                                // s78 P2-A: 只累计 d.content；d.reasoning_content 有意忽略——推理段不算正文（与 explain_tool 同款）
-                                try { const j = JSON.parse(pj); const c0 = j.choices && j.choices[0]; const d = c0 && c0.delta; if (c0 && c0.finish_reason) finRsn = c0.finish_reason; if (d && d.content) { full += d.content; delta(d.content); } } catch {}
-                            }
-                        });
-                        res.on('end', finish);
-                        res.on('error', finish);
-                    });
-                    rq.on('error', e => { over = true; sendOnce('优化失败: ' + e.message, true); });
-                    rq.on('timeout', () => { rq.destroy(); sendOnce('优化超时了，稍后再试一次。', true); });
-                    rq.write(body); rq.end();
-                } catch (e) { sendOnce('优化失败: ' + e.message, true); }
-            };
-            fire(true, 800);
+            // C3（research/24 §7）：SSE 直调骨架收敛至 llmStreamOnce；缓存/空回人话/错误措辞留差异体
+            llmStreamOnce({ host, key, model, maxTokens: 800, sysP, um, onDelta: delta }).then(t => {
+                if (t) { optimizeCache.set(ck, t); while (optimizeCache.size > 200) optimizeCache.delete(optimizeCache.keys().next().value); reply(t); }
+                else reply('模型没说出什么来，再点一次 ✨ 试试。', true); // 空回人话不入缓存
+            }).catch(e => {
+                if (e.kind === 'parse') return reply('优化失败（服务返回异常），稍后再试一次。', true);
+                if (e.kind === 'timeout') return reply('优化超时了，稍后再试一次。', true);
+                reply('优化失败: ' + e.message, true); // upstream/net 同款前缀
+            });
             return;
         }
 
