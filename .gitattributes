@@ -1,2 +1,7 @@
-# s53: goose config.yaml 内残留混合 CRLF，autocrlf=true 每次翻出噪声 diff——钉死 LF
-forge/conf/goose/config/config.yaml text eol=lf
+# s78c: autocrlf=true 下 checkout 会把模板 smudge 成 CRLF，打死 sched-drift 等探针的 
+ 锚点（367b57a 批实锤）——模板与探针钉死 LF
+*.tpl.js text eol=lf
+*.tpl.html text eol=lf
+chat.tpl.html text eol=lf
+tools/e2e/*.js text eol=lf
+tools/e2e/*.sh text eol=lf
