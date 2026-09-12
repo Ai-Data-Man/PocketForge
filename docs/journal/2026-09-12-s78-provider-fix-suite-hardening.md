@@ -105,3 +105,8 @@
 - 冒烟矩阵 24/24 桩+真桥 8/8+3/3+任务 resume/pause 2/2+一次性删除 1/1；全量 57/57+150/150。
 - 勘误入册：goose CLI 直调须 GOOSE_PATH_ROOT=forge/conf/goose（误用仓库根 conf/goose 注册进另一 home）；桥重启后首 WS 连接偶发慢（2/8，重试即过）留观察。
 - **审计重构收官：C1-C5 全落（净-164 行），C6 低值不做、C7 多文件拆分维持不做。四大病灶+双源样板全收敛，探针锚点全程零破损。**
+
+## QA 终轮（tmp/s78c-qa-final.md）
+- 三批核心声明全部证实（C5 平移独立括号配平 dedent 比对 70/127/71 行全同；C3 settled 门竞争沙盒 8/8；C4 双形态参数核对+CRLF 负对照判别力实证）；全量 57/57+150/150。
+- **P3×2 应修**（已派收尾批）：①lastModelOverride 与 GOOSE_MODEL env 双源不同步——跨家非首位模型时前端告知/实际运行/探测锚三者错位（恰是 healthTargets 注释自称要防的「探 A 用 B」）+override 在 providers 变更块永不清除；②maskKeys 对 JSON 引号形态全绕过——值首引号不在字符类，MCP rawInput 的 JSON.stringify 渲染（主要真实形态）原样泄漏，探针只测了 shell 形态（测了能过的形态——探针设计教训）。
+- 首 WS 慢观察项：沙盒 0/8 复现（首帧 3-19ms），指向 dev 树环境成分，留 first-ws-repro.js 维持观察。
