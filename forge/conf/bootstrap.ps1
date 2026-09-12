@@ -88,6 +88,19 @@ if (Test-Path $permTplPath) {
     Write-Host '[bootstrap] WARNING: permission.yaml missing AND template missing - goose may fail to start; restore conf\templates\permission.tpl.yaml and relaunch' -ForegroundColor Red
 }
 
+# 1b-8) s78d 裁决 docs/verdicts/2026-09-13-v150-builtin-skills-trim：上游捆绑内置技能遮蔽桩（web-search/goose-doc-guide）。
+#     goose 无内置技能禁用键，唯一覆盖通道=同名文件系统技能优先于 builtins（discover 先扫目录再补 builtins，seen 去重）。
+#     每启覆盖重建（语义同 1b-2 .goosehints，非 1b-7 copy-if-missing）：桩是产品自有静态物，覆盖式自愈、可随版改文案。
+#     桩不进产品 UI（/api/skills 只扫 .agents/skills）；用户日后从商店装同名技能（cwd/.agents/skills 扫描序更先）=用户意愿优先。
+foreach ($stubName in @('web-search','goose-doc-guide')) {
+    $stubTplPath = Join-Path $ForgeRoot "conf\templates\skill-stub-$stubName.tpl.md"
+    if (Test-Path $stubTplPath) {
+        $stubDir = Join-Path $gooseDir "skills\$stubName"
+        New-Item -ItemType Directory -Force -Path $stubDir | Out-Null
+        Copy-Item $stubTplPath (Join-Path $stubDir 'SKILL.md') -Force
+    }
+}
+
 # 1c) memory junction：goose-mcp 硬编码 %APPDATA%\Block\goose\config\memory（无视 GOOSE_PATH_ROOT，
 #     见 docs/research/04-goose.md）。NTFS junction 重定向到便携目录（免管理员；卸载=删 junction）。
 $memPort = Join-Path $ForgeRoot 'conf\goose\config\memory'

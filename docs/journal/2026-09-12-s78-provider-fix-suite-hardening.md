@@ -119,7 +119,7 @@
 - 十面矩阵：三红线（scheduler persist 落盘往返/schedules ACP/GOOSE_PATH_ROOT 便携收敛）+permission.yaml 三键零触碰（.lock 邻居=预期）+会话号语义（三跑同 sid 复用逐字保持）+救援面真 LLM 绿+**撤回手术面 31/31（第 10 必查，CTL/B/RB/NEG 四项 v1.50 复跑）**+T2 工具清单 46=46 逐名一致+全量 57/57+150/150。
 - **FORK-D 销账（VERIFIED-RUN）**：字符串 meta 无 invalid_params+合法时间戳不截断=meta 仍被 schema 层剥离不可达 handler；research/23「大概率可达」推断证伪；补篇 §6-3 不触发，B 型手术前提全维持。
 - **唯一真实行为差异已适配**：v1.50 goose acp 对 stdin EOF 优雅退出（v1.46 忽略常驻）→pc 守护无 stdin→goose-scheduler 秒退调度器死；三重实证定位（恒开管道=常驻/null-stdin=秒退/v1.46 null=常驻）+适配=goose-scheduler.tpl.js node 管道保持 wrapper（v1.46 同形兼容）+bootstrap 5g+pc yaml 三处；审计无其他 stdin 敏感 spawn 点。
-- 二进制 sha256 与 release digest 一致；回滚位 tmp/goose-v146-rollback/；fetch.sh/components/checksums 同步。观察：v1.50 新捆绑内置 skill web-search/goose-doc-guide（+1 行 system prompt，工具清单不变，裁剪如需另立裁决）。
+- 二进制 sha256 与 release digest 一致；回滚位 tmp/goose-v146-rollback/；fetch.sh/components/checksums 同步。观察：v1.50 新捆绑内置 skill web-search/goose-doc-guide（+1 行 system prompt，工具清单不变，裁剪如需另立裁决）。【s78d 勘误（裁决 docs/verdicts/2026-09-13-v150-builtin-skills-trim §0.1）：v1.50 真实增量仅 web-search；goose-doc-guide 为 v1.46 存量补审——两者同批桩遮蔽裁剪。】
 - 环境插曲再证：首轮 PG 段红=提权直启栈 s66 家族，降权重拉后全绿（本会话第三次实锤该恢复序价值）。
 
 ## fuzz 新向量扩展批（c4a6aeb，150→178）
