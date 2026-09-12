@@ -114,3 +114,10 @@
 ## 收尾批+收官门（166607a + appcap 三跑）
 - 收尾批：effectiveModel 单一真相源（spawnAcp env/healthTargets 探锚/env0Model 告知三消费方统一——跨家非首位模型「告知/实跑/探锚」三者一致）+providers 变更块 override 清除+maskKeys JSON 引号形态（五形态全钉 39ck，修前 LEAK 实证）；双负对照判别力；全量 57/57+150/150。
 - **appcap 第三跑 13/13 exit 0**（全夜栈端到端终验：确认续轮生效 S6 完整闭环）——主线测试三轮数据点齐（两轮 13/13 判卷+本轮原生 13/13）。
+
+## goose v1.46→v1.50 升级实施（5c30368，research/23+playbook 十面全绿）
+- 十面矩阵：三红线（scheduler persist 落盘往返/schedules ACP/GOOSE_PATH_ROOT 便携收敛）+permission.yaml 三键零触碰（.lock 邻居=预期）+会话号语义（三跑同 sid 复用逐字保持）+救援面真 LLM 绿+**撤回手术面 31/31（第 10 必查，CTL/B/RB/NEG 四项 v1.50 复跑）**+T2 工具清单 46=46 逐名一致+全量 57/57+150/150。
+- **FORK-D 销账（VERIFIED-RUN）**：字符串 meta 无 invalid_params+合法时间戳不截断=meta 仍被 schema 层剥离不可达 handler；research/23「大概率可达」推断证伪；补篇 §6-3 不触发，B 型手术前提全维持。
+- **唯一真实行为差异已适配**：v1.50 goose acp 对 stdin EOF 优雅退出（v1.46 忽略常驻）→pc 守护无 stdin→goose-scheduler 秒退调度器死；三重实证定位（恒开管道=常驻/null-stdin=秒退/v1.46 null=常驻）+适配=goose-scheduler.tpl.js node 管道保持 wrapper（v1.46 同形兼容）+bootstrap 5g+pc yaml 三处；审计无其他 stdin 敏感 spawn 点。
+- 二进制 sha256 与 release digest 一致；回滚位 tmp/goose-v146-rollback/；fetch.sh/components/checksums 同步。观察：v1.50 新捆绑内置 skill web-search/goose-doc-guide（+1 行 system prompt，工具清单不变，裁剪如需另立裁决）。
+- 环境插曲再证：首轮 PG 段红=提权直启栈 s66 家族，降权重拉后全绿（本会话第三次实锤该恢复序价值）。
