@@ -86,3 +86,10 @@
 - **签名灾难**：e9f04ee 的 readJsonBody 删参 (req,res,cb)→(req,cb)——工程师判「多余实参无害」实为位置绑定灾难（res 灌入 cb 位，end 时 res(buffer) TypeError），**全部 POST 端点连接重置**（主控全量 e2e 43/57+fuzz 77/150 红实锤；其探针全 WS/GET 面零 POST 覆盖）。热修 b4e02d2 回滚三参签名。**教训入册：改公共函数签名，验证必须覆盖调用面（全量回归），自有探针绿≠安全**。
 - fuzz 残余单红=mcp-catalog 探针不幂等（中断遗留沙盒 EEXIST），77eb8c9 先清后建+双跑验证。
 - **终态：e2e-chat 57/57 + fuzz 150/150（e9f04ee 两必修有效+签名回滚后）**。
+
+## 重构批 C5+C3（367b57a）+ autocrlf 根治（e622060）
+- C5：handleUpdateUpload/handleSchedules/handleSkillstore 三段顶层化（脚本断言式核对平移体与原文逐字节一致仅差缩进；schedToggle writableEnded 门/upload 豁免段零触碰；sched-drift 探针签名正则本不锚缩进，零改动过）；handleHttp 最大函数瘦身 71+128+72 行。
+- C3：explain/optimize SSE 双胞胎（53+52 行）合并 llmStreamOnce 62 行（400 降级/over 抢答防护/length 空回阶梯 800→1600/reasoning 忽略/settled 门）；缓存键与四族人话措辞逐字保留——探针零改动全过（设计保锚点字面量在 helper 内）。
+- 验证：sched-drift 15/15+toolcard 25/25+explain-retry 13/13+全量 e2e 57/57+fuzz 150/150。净 -17 行（注释保留义务吃掉预算，审计预算按薄助手估算偏乐观——记入审计勘误）。
+- **autocrlf 幻影根治**：工程师 checkout 模板被 smudge 成 CRLF 打死探针 \n 锚点（过程事故）——.gitattributes 钉 *.tpl.js/*.tpl.html/chat.tpl.html/tools/e2e/* 为 eol=lf（e622060；首版注释 printf 转义事故当场修正）。
+- 重构三批合计（C1+C2 净-109 + C5+C3 净-17）：桥 3743→3580 行，样板/双胞胎/三胞胎/巨型函数四病灶全部收敛，探针锚点零破损。
