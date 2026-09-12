@@ -29,3 +29,15 @@
 ## 进行中（本 journal 落笔时）
 - ~~pf-engineer 服务商修复验证中~~（**已收口 bb9c6b6，见上**）；pf-pm 健康探测裁决中；pf-researcher goose v1.50 评估中。
 - 排队：小 forge 应用开发与管理能力全链测试（tmp/s78-appcap-test.js 就绪，真模型实景六断言：建库建表/汇总 xlsx/取数问答/@菜单/人话化/清理）；QA 细测 s77 五新功能（tmp/s78-qa-charter.md）；重构批次 C1+C2。
+
+## 主线：小 forge 应用开发与管理能力全链测试（真模型实景，tmp/s78-appcap-run.log）
+- **判卷修正后产品层 13/13 全过**（探针 4 处工具 bug 导致初判 10/13，逐条翻案）：
+  - S1 建服务+建表+R4 说明 ✓（agent 路径曲折但自洽：手建空 db→学 faucet CLI→注册→python 建 stock+forge_table_info「仓库库存表：记录每样货物的品名、数量和存放的货架位」）；三条插入的权限卡 60s 超时自动拒（我的批卡循环没点中，测试工具 bug）→ **agent 被拒后表现满分**：停下解释、给两个选项、不硬闯
+  - S2 汇总 xlsx ✓（5440 字节真实产出；A1=95/B2=30/合计 125 全对；断言红=tree API 形状误读——返回 {root,attachments} 树非 files 平面）
+  - S3 取数问答 ✓（数据在 S2 轮被 agent 补种后答案精确）
+  - S5 人话化 ✓（TYPE_ZH 前端映射 chat.tpl.html:1666，API 层无字段是设计如此）
+  - S6 清理 ✓（服务删除干净）
+- **真缺陷一枚（agent 自己发现并报告）**：faucet MCP query/list 服务注册表不一致——`faucet query` 报「Service "s78exam" not found. Available: [plm]」而同进程 `faucet list services` 明明显示 s78exam（transcript 铁证）。根因=faucet.exe（上游 faucetdb/faucet v0.1.12 vendored）MCP 内 query 路径用缓存注册表，CLI 注册的新服务对 query 不可见直到 MCP 重启。**零二开纪律不本地修**；agent 侧 workaround 已自然发生（python 直连/HTTP）。升级 v0.1.13 不含此修复。
+- **安全挂账（需用户拍板）**：faucet v0.1.13（2026-09-03）= HIGH 安全修复——≤0.1.12「任何有效 API key 可读写所有服务所有表，角色规则从未生效（含 MCP）」。我方暴露面有限（127.0.0.1+单 key+密钥不外发），但 v0.1.13 改 fail-closed（无角色规则的 key=全拒）→ 升级需先建角色规则，属破坏性迁移。已记 STATE 开放问题。
+- 模型链：中转站下架 v4-flash 后已切 deepseek-v4.1-flash（secrets+档案池双更新，全链往返验证「Ready. What you need?」）。
+- 测试脚本 4 bug 待修（tree root 遍历/批卡 force-click/@菜单选择器/S5 改 UI 断言）——影响可重复性，不影响本次结论。
