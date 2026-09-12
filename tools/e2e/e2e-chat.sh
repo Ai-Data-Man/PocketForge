@@ -311,6 +311,25 @@ ck "toolcard frames probe 25 ck (dual-form content + rawOutput fallback + explai
 grep -E "^toolcard-frames-probe" /tmp/toolcard-frames.log || true
 rm -f /tmp/toolcard-frames.log
 
+# ---------- 20) 双 subscribed 乱序竞态 + 串台面（s78 qa P1-A/P2-B；详见 tools/e2e/ws-subscribe-race-probe.js） ----------
+# 沙盒自建（FORGE_ROOT=tmp/pfr20-e2e-<pid>，端口运行期自选），绝不碰 dev 活体会话；场景转正自 tmp/s78-qa-race.js。
+# 覆盖：gap 0/200/800/1600 迟到 session/new 代际守卫（绑定保持 oracle）/孤儿 close 桥日志/Ctrl+K 双 null/unsubscribe 接管/
+# sid 广播过滤与旧成员籍摘除（跨会话串台负断言）/无订阅者事件丢弃
+rc=0; node "$ROOT/tools/e2e/ws-subscribe-race-probe.js" > /tmp/ws-subrace.log 2>&1 || rc=$?
+grep -q "FAIL=0" /tmp/ws-subrace.log || rc=$?
+ck "ws-subscribe-race probe 21 ck (P1-A generation guard x4 gaps + Ctrl+K + unsubscribe + P2-B sid filter)" $rc
+grep -E "^ws-subscribe-race-probe" /tmp/ws-subrace.log || true
+rm -f /tmp/ws-subrace.log
+
+# ---------- 21) 解释/✨优化 SSE 空回重试桩测（s78 qa P2-A/P3-A；详见 tools/e2e/explain-retry-probe.js） ----------
+# 假 provider marker 播控：finish=length 空文（deepseek 隐形推理耗尽预算形态）→ 800→1600 自动重试一次；双空→人话；
+# reasoning_content 不算正文；人话不入缓存；explain 缓存键含 model（换模型不吃旧解释）
+rc=0; node "$ROOT/tools/e2e/explain-retry-probe.js" > /tmp/explain-retry.log 2>&1 || rc=$?
+grep -q "FAIL=0" /tmp/explain-retry.log || rc=$?
+ck "explain-retry probe 13 ck (SSE length-empty retry + reasoning-ignore + human fallback + model cache key)" $rc
+grep -E "^explain-retry-probe" /tmp/explain-retry.log || true
+rm -f /tmp/explain-retry.log
+
 rm -f /tmp/e2e-v1.md
 echo "=============================="
 echo "chat-link E2E: PASS=$PASS FAIL=$FAIL"

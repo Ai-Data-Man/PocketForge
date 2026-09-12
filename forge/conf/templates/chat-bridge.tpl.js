@@ -663,6 +663,13 @@ const waiting = new Map();
 const allClients = new Set();
 const sessionClients = new Map();
 const wsSession = new WeakMap();
+function bindWs(ws, sid) { // s78 P2-B 同族①: 重绑必摘旧会话成员籍——同一 ws 挂进多个 sid 的广播集 = 跨会话串台
+    const old = wsSession.get(ws);
+    if (old && old !== sid) { const s = sessionClients.get(old); if (s) s.delete(ws); }
+    wsSession.set(ws, sid);
+    if (!sessionClients.has(sid)) sessionClients.set(sid, new Set());
+    sessionClients.get(sid).add(ws);
+}
 const explainCache = new Map(); // explain_tool 解释缓存：键=sha1(title+'\n'+output切片)，LRU 上限 200 条（2026-09-06 提速）
 const optimizeCache = new Map(); // optimize_prompt 缓存：键=sha1(model+\0+text+\0+context)（裁决 batch2 §4.2-2 全载荷进键），LRU 上限 200 条
 
@@ -748,7 +755,7 @@ function onAcpData(chunk) {
             const set = sid ? sessionClients.get(sid) : null;
             const obj = { agent: msg };
             if (set && set.size) for (const ws of set) ws.send(obj);
-            else for (const ws of allClients) ws.send(obj);
+            else if (!sid) for (const ws of allClients) ws.send(obj); // s78 P2-B 同族②: 带 sid 的事件只发该会话订阅者，无订阅者即丢弃——不再全员广播（跨会话串台）
         }
     }
 }
@@ -762,6 +769,19 @@ const SESSION_NF_RE = /session\s*not\s*found/i;
 // qa s76 P3-2: 成因中立——同一文案也用于 provider 切换/acp 慢等非删除成因的救援失败，不能点名「删除对话」
 const TURN_LOST_TEXT = '这一轮没能完成，可能是刚才的会话出了点异常，或者线路一时不稳。请再发一次试试，还不行就点左侧「＋ 新对话」重新开始。';
 const wsFirstPrompt = new WeakMap(); // ws→当前绑定是否还没发过 prompt（仅首轮救援；中轮 sid 丢失不静默迁移，避免无声丢上下文）
+// s78 P1-A 代际守卫：ws 上在飞 session/new 的代际标记（新发起覆盖旧的；subscribe(具体 sid)/unsubscribe 接管即清除）。
+// 回调到达时标记不匹配 = 该 ws 已被后续操作接管（典型：页面加载 subscribe(null) 在飞 ~2s 期间用户点进既有对话）→
+// 丢弃迟到的绑定，孤儿会话 fire-and-forget close 回收（delete_session :3284 同款先例）——否则 wsSession 被翻绑到
+// 新空会话，用户消息静默落错处零报错（qa s78-qa-report P1-A，复现 tmp/s78-qa-race.js）。
+const wsPendingNew = new WeakMap();
+function staleNewSession(ws, reqId, res) {
+    if (wsPendingNew.get(ws) === reqId) return false;
+    if (res && res.sessionId) {
+        try { acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: nextId++, method: 'session/close', params: { sessionId: res.sessionId } }) + '\n'); } catch {}
+        console.log('stale session/new discarded, orphan closed:', res.sessionId);
+    }
+    return true;
+}
 // qa s76 P3-3: 双客户端绑同一死 sid 且都在首轮→各自救援→两个重复新会话。会话级 Set 去重：救援触发即记，
 // 已记的 sid 不再建新会话、走人话错误。无 TTL/清理——桥重启即清，且重启同时杀 acp（全部 goose sid 作废），跨重启去重无意义。
 const rescuedSids = new Set();
@@ -809,14 +829,14 @@ function rescueSession(ws, text) {
     const rid = nextId++;
     const fail = () => ws.send({ sys: 'error', text: TURN_LOST_TEXT });
     const timer = setTimeout(() => { if (waiting.delete(rid)) fail(); }, 30000); // 救援 30s 不到=人话收场，不留新僵尸
+    wsPendingNew.set(ws, rid); // s78 P1-A: 救援窗口内用户点了别的会话 → 迟到的救援绑定同样丢弃
     waiting.set(rid, { ws, resolve: (res) => {
         clearTimeout(timer);
         if (!(res && res.sessionId)) return fail();
         statsBump('sessionsCreated');
+        if (staleNewSession(ws, rid, res)) return; // s78 P1-A 代际守卫
         if (!ws.alive) return; // qa s76 P3-4: 救援窗口内客户端已断开（drop 已清各表）——不再回挂死连接/续发重放（rpc 直通 alive 门同款）
-        wsSession.set(ws, res.sessionId);
-        if (!sessionClients.has(res.sessionId)) sessionClients.set(res.sessionId, new Set());
-        sessionClients.get(res.sessionId).add(ws);
+        bindWs(ws, res.sessionId);
         // 前端 subscribed 处理器会更新 sessionId/currentSid（与 hotRestart 后 rebind 同款），用户表现为「继续聊」
         ws.send({ sys: 'subscribed', sessionId: res.sessionId, newSession: true, modes: res.modes || [], configOptions: res.configOptions || [] });
         sendTurn(ws, res.sessionId, text, false); // 单次守卫：重放不救援
@@ -3208,20 +3228,20 @@ function handleClient(ws, msg) {
             // s50h(FIND-2): 显式给了 sid 就必须过白名单（null/缺省=新会话语义不拒），杜绝任意串进 sessionClients
             if (msg.sessionId !== undefined && msg.sessionId !== null && !sidValid(String(msg.sessionId))) return ws.send({ sys: 'error', text: '会话标识不对，请从左侧列表重新选择对话。' });
             if (msg.sessionId) {
-                wsSession.set(ws, msg.sessionId);
+                wsPendingNew.delete(ws); // s78 P1-A: 具体 sid 接管——在飞的 session/new 回调到达即判过期丢弃
                 wsFirstPrompt.set(ws, true); // research/18 断点①: 每次绑定（重）开允许首轮救援
-                if (!sessionClients.has(msg.sessionId)) sessionClients.set(msg.sessionId, new Set());
-                sessionClients.get(msg.sessionId).add(ws);
+                bindWs(ws, msg.sessionId);
                 ws.send({ sys: 'subscribed', sessionId: msg.sessionId, modes: [], configOptions: [] });
             } else {
                 const id = nextId++;
+                wsPendingNew.set(ws, id); // s78 P1-A 代际守卫：登记本次发起，回调到达时校验
                 waiting.set(id, { ws: null, resolve: (res) => {
+                    if (staleNewSession(ws, id, res)) return; // s78 P1-A: 迟到的 session/new——ws 已被后续 subscribe 接管，丢弃绑定（孤儿已 close）
+                    wsPendingNew.delete(ws);
                     if (res && res.sessionId) {
                         statsBump('sessionsCreated'); // P31-③
                         wsFirstPrompt.set(ws, true); // research/18 断点①: 新绑定首轮允许救援
-                        wsSession.set(ws, res.sessionId);
-                        if (!sessionClients.has(res.sessionId)) sessionClients.set(res.sessionId, new Set());
-                        sessionClients.get(res.sessionId).add(ws);
+                        bindWs(ws, res.sessionId);
                         ws.send({ sys: 'subscribed', sessionId: res.sessionId, newSession: true, modes: res.modes || [], configOptions: res.configOptions || [] });
                         // s26: 新对话沿用顶栏当前模型——session/new 默认回落 env 首模型（STATE 开放问题#4）
                         if (msg.model) {
@@ -3240,6 +3260,7 @@ function handleClient(ws, msg) {
         }
 
         if (msg.type === 'unsubscribe') {
+            wsPendingNew.delete(ws); // s78 P1-A: 主动退订=接管，在飞的 session/new 不再回绑
             const sid = wsSession.get(ws);
             if (sid) { const set = sessionClients.get(sid); if (set) set.delete(ws); wsSession.delete(ws); }
             return;
@@ -3336,11 +3357,12 @@ function handleClient(ws, msg) {
             const i0 = String(msg.rawInput || '').slice(0, 1200);
             const stt = msg.status === 'failed' ? '失败' : msg.status === 'completed' ? '成功' : '';
             const ec = (typeof msg.exitCode === 'number' && isFinite(msg.exitCode)) ? msg.exitCode : '';
-            const ck = crypto.createHash('sha1').update([t0, o0, i0, stt, ec, String(msg.toolName || '')].join('\u0000')).digest('hex'); // qa P3-2: \0 分隔防跨字段拼接碰撞（\n join 时 (x,A\nB)=(x\nA,B) 同键）
+            const ck = crypto.createHash('sha1').update([model, t0, o0, i0, stt, ec, String(msg.toolName || '')].join('\u0000')).digest('hex'); // qa P3-2: \0 分隔防跨字段拼接碰撞（\n join 时 (x,A\nB)=(x\nA,B) 同键）；s78 P3-A: 键补 model——换模型后不吃旧模型的解释（optimizeCache 同款）
             if (explainCache.has(ck)) { const t = explainCache.get(ck); explainCache.delete(ck); explainCache.set(ck, t); return reply(t); }
             const delta = t => ws.send({ sys: 'tool_explanation_delta', id: msg.id, text: String(t) });
             let replied = false;
             const sendOnce = t => { if (!replied) { replied = true; reply(t); } };
+            let retriedLen = false; // s78 P2-A: finish=length 且空文 → 同载荷重试一次（预算翻倍），最多一次
             // 裁决 batch2 §5.2.3 sysP 重写：受众=会用电脑但不懂 AI 内部机制的好奇者（删三禁令）；必答三问+点名真实对象；
             // 术语=准确名词+括号内嵌解释；禁编造（缺信息明说未提供）；失败（执行状态失败/退出码非0）走四段式；2-4 句禁电报腔；乱码按上下文推断
             const sysP = '你在向会用电脑、但还不了解 AI 内部机制的读者，解释助手在完成任务时执行的一步操作（一次工具调用，tool call，指让 AI 使用某个具体功能）。用 2-4 句连贯的中文陈述句（约 60-150 字）讲清三件事：①做了什么动作、对什么对象——点名信息里的真实名称，工具名、文件名、命令开头几个词、网址、表名，有什么点什么；②结果如何——成功还是失败，加上关键返回值，比如版本号、行数、报错原因；③这一步对整个任务意味着什么——一句话即可，讲不出就直说看不出来，不要硬编。技术名词可以用，但要写准确，并在后面用括号跟一句解释，例如：执行了一条命令（command，让电脑做具体事的指令）。输出写成一段连贯的话，不要电报式短语、编号或标题，不要堆砌比喻。信息里没有的就直说「未提供」，不要猜，更不要编造系统里不存在的类比或对象；「该步骤没有返回文字输出」只说明没拿到输出，不能据此断定结果是空的，也不能当作成功或失败的证据。如果执行状态是「失败」或退出码不是 0，按四段回答：先说清这一步失败了；再引用报错里的真实关键词，说明错在哪；然后给出最可能的原因或下一步；最后说明需不需要用户做什么。信息里可能混有因编码问题产生的乱码，按上下文推断含义即可，不要照抄乱码。';
@@ -3352,18 +3374,20 @@ function handleClient(ws, msg) {
             um += '\n结果摘要' + (msg.trunc ? '（只含最后600字，更早内容已被截去）' : '') + '：' + (o0 ? o0 : '（该步骤没有返回文字输出）');
             if (/[\uFFFD]/.test(o0)) um += '\n注意：上面的输出可能因编码问题含乱码，请按上下文推断其含义，不要照抄乱码。';
             if (process.env.PF_EXPLAIN_DEBUG) console.log('[explain_tool debug] id=' + msg.id + ' user msg fed:\n' + um);
-            const fire = useRE => {
+            const fire = (useRE, maxTok) => {
                 let rq;
                 try {
                     const u = new URL(host + '/chat/completions');
                     const reqMod = require(u.protocol === 'https:' ? 'https' : 'http');
-                    const bodyObj = { model, max_tokens: 300, stream: true, messages: [
+                    // s78 P2-A: 300→800——deepseek 间歇无视 reasoning_effort:'none' 隐形推理，300 预算被推理耗尽后 finish=length、content 空（qa 直连实证 7/10 空）；
+                    // 兜底=finish() 里 length+空文自动重试一次（预算 1600）
+                    const bodyObj = { model, max_tokens: maxTok, stream: true, messages: [
                         { role: 'system', content: sysP },
                         { role: 'user', content: um }
                     ]};
                     if (useRE) bodyObj.reasoning_effort = 'none';
                     const body = JSON.stringify(bodyObj);
-                    let sse = false, buf = '', full = '', over = false;
+                    let sse = false, buf = '', full = '', over = false, finRsn = null;
                     const finish = () => {
                         if (over) return; over = true;
                         if (replied) return;
@@ -3371,14 +3395,15 @@ function handleClient(ws, msg) {
                         if (!sse) { // 上游不理 stream:true 回了普通 JSON——按旧逻辑整体解析
                             try { const j = JSON.parse(buf.replace(/data:\s*\[DONE\][\s\S]*$/, '').trim());
                                 if (j && j.error) { const em = (j.error && typeof j.error.message === 'string') ? j.error.message : String(j.error); return sendOnce('解释失败: ' + em.slice(0, 150)); } // qa P3-6: 错误响应不再误报「它没说出什么来」
-                                const c0 = j.choices && j.choices[0]; const m0 = c0 && c0.message; t = (m0 && (m0.content || m0.reasoning_content)) || ''; }
+                                const c0 = j.choices && j.choices[0]; const m0 = c0 && c0.message; t = (m0 && (m0.content || m0.reasoning_content)) || ''; if (c0 && c0.finish_reason) finRsn = c0.finish_reason; }
                             catch { return sendOnce('解释失败（服务返回异常）'); }
                         }
                         if (t) { explainCache.set(ck, t); while (explainCache.size > 200) explainCache.delete(explainCache.keys().next().value); sendOnce(t); }
-                        else sendOnce('它没说出什么来');
+                        else if (finRsn === 'length' && !retriedLen) { retriedLen = true; fire(useRE, 1600); } // s78 P2-A: 隐形推理吃光预算被截断——同载荷重试一次（模型非确定性，qa 直连 run#2/#3 证明重试有效）
+                        else sendOnce('它没说出什么来，再点一次试试');
                     };
                     rq = reqMod.request(u, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, timeout: 30000 }, res => {
-                        if (res.statusCode === 400 && useRE) { over = true; res.resume(); fire(false); return; } // 中转不认 reasoning_effort → 去掉重试一次；over 先置位防旧响应 end 抢答
+                        if (res.statusCode === 400 && useRE) { over = true; res.resume(); fire(false, maxTok); return; } // 中转不认 reasoning_effort → 去掉重试一次；over 先置位防旧响应 end 抢答
                         sse = String(res.headers['content-type'] || '').includes('text/event-stream');
                         res.on('data', c => {
                             if (over) return;
@@ -3390,7 +3415,8 @@ function handleClient(ws, msg) {
                                 if (!line.startsWith('data:')) continue;
                                 const p = line.slice(5).trim();
                                 if (p === '[DONE]') { finish(); return; }
-                                try { const j = JSON.parse(p); const d = j.choices && j.choices[0] && j.choices[0].delta; if (d && d.content) { full += d.content; delta(d.content); } } catch {}
+                                // s78 P2-A: 只累计 d.content；d.reasoning_content 有意忽略——推理段不算正文，防把隐形推理当解释文本
+                                try { const j = JSON.parse(p); const c0 = j.choices && j.choices[0]; const d = c0 && c0.delta; if (c0 && c0.finish_reason) finRsn = c0.finish_reason; if (d && d.content) { full += d.content; delta(d.content); } } catch {}
                             }
                         });
                         res.on('end', finish);
@@ -3401,7 +3427,7 @@ function handleClient(ws, msg) {
                     rq.write(body); rq.end();
                 } catch (e) { sendOnce('解释失败: ' + e.message); }
             };
-            fire(true);
+            fire(true, 800);
             return;
         }
 
@@ -3421,21 +3447,23 @@ function handleClient(ws, msg) {
             const delta = t => ws.send({ sys: 'optimize_delta', id: msg.id, text: String(t) }); // 前端只用作「首字已到」信号撤 12s 兜底，不渲染中间态
             let replied = false;
             const sendOnce = (t, err) => { if (!replied) { replied = true; reply(t, err); } };
+            let retriedLen = false; // s78 P2-A: finish=length 且空文 → 同载荷重试一次（预算翻倍），最多一次（与 explain_tool 同族）
             // 裁决 §4.2-3：五条固定变换+硬禁令（不得新增用户未提出的任务目标/假设/背景）+双段式输出+语言跟随原文+保留原意不追求华丽
-            const sysP = '你是提示词优化器，把用户的提示词改写成模型更容易消化的形态。只做五类变换：①消歧——含糊的表述改清楚：指代不明就补出具体对象，笼统的动词换成具体动作；②补输出格式——原文没说结果要什么形态时补上（表格、清单、分段、文件等，按任务选最自然的）；③补长度与受众约束——原文没提篇幅和写给谁看时补上；④收窄范围——任务范围宽得没法一次完成时收窄；⑤去口语冗余——删口头废话，不删有效信息。硬禁令：不得新增用户未提出的任务目标、假设或背景；对话上下文只用来理解意图，优化稿里不得出现原文与上下文都没有的新事实。保留原意，不追求华丽。输出恰好两段、不写别的：<optimized>改写后的完整提示词</optimized><changes>逐条列出做了什么修改，一行一条</changes>语言跟随原文（中文进中文出）。';
+            const sysP = '你是提示词优化器，把用户的提示词改写成模型更容易消化的形态。只做五类变换：①消歧——含糊的表述改清楚：指代不明就补出具体对象，笼统的动词换成具体动作；②补输出格式——原文没说结果要什么形态时补上（表格、清单、分段、文件等，按任务选最自然的）；③补长度与受众约束——原文没提篇幅和写给谁看时补上；④收窄范围——任务范围宽得没法一次完成时收窄；⑤去口语冗余——删口头废话，不删有效信息。硬禁令：不得新增用户未提出的任务目标、假设或背景；对话上下文只用来理解意图，优化稿里不得出现原文与上下文都没有的新事实；不得建议覆盖或删除用户原文件，修改类操作必须先征得用户确认。保留原意，不追求华丽。输出恰好两段、不写别的：<optimized>改写后的完整提示词</optimized><changes>逐条列出做了什么修改，一行一条</changes>语言跟随原文（中文进中文出）。';
             const um = '待优化的提示词原文：\n' + p0 + '\n\n当前对话上下文（仅供理解意图，不是优化对象）：\n' + cx0;
-            const fire = useRE => {
+            const fire = (useRE, maxTok) => {
                 let rq;
                 try {
                     const u = new URL(host + '/chat/completions');
                     const reqMod = require(u.protocol === 'https:' ? 'https' : 'http');
-                    const bodyObj = { model, max_tokens: 800, stream: true, messages: [
+                    // s78 P2-A: 隐形推理吃预算同根因（explain_tool 注释同款）——length+空文时 fire(useRE,1600) 重试一次
+                    const bodyObj = { model, max_tokens: maxTok, stream: true, messages: [
                         { role: 'system', content: sysP },
                         { role: 'user', content: um }
                     ]};
                     if (useRE) bodyObj.reasoning_effort = 'none';
                     const body = JSON.stringify(bodyObj);
-                    let sse = false, buf = '', full = '', over = false;
+                    let sse = false, buf = '', full = '', over = false, finRsn = null;
                     const finish = () => {
                         if (over) return; over = true;
                         if (replied) return;
@@ -3443,14 +3471,15 @@ function handleClient(ws, msg) {
                         if (!sse) { // 上游不理 stream:true 回了普通 JSON——按旧逻辑整体解析
                             try { const j = JSON.parse(buf.replace(/data:\s*\[DONE\][\s\S]*$/, '').trim());
                                 if (j && j.error) { const em = (j.error && typeof j.error.message === 'string') ? j.error.message : String(j.error); return sendOnce('优化失败: ' + em.slice(0, 150), true); }
-                                const c0 = j.choices && j.choices[0]; const m0 = c0 && c0.message; t = (m0 && (m0.content || m0.reasoning_content)) || ''; }
+                                const c0 = j.choices && j.choices[0]; const m0 = c0 && c0.message; t = (m0 && (m0.content || m0.reasoning_content)) || ''; if (c0 && c0.finish_reason) finRsn = c0.finish_reason; }
                             catch { return sendOnce('优化失败（服务返回异常），稍后再试一次。', true); }
                         }
                         if (t) { optimizeCache.set(ck, t); while (optimizeCache.size > 200) optimizeCache.delete(optimizeCache.keys().next().value); sendOnce(t); }
-                        else sendOnce('模型没说出什么来，再试一次。', true);
+                        else if (finRsn === 'length' && !retriedLen) { retriedLen = true; fire(useRE, 1600); } // s78 P2-A: 隐形推理吃光预算被截断——同载荷重试一次
+                        else sendOnce('模型没说出什么来，再点一次 ✨ 试试。', true);
                     };
                     rq = reqMod.request(u, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, timeout: 30000 }, res => {
-                        if (res.statusCode === 400 && useRE) { over = true; res.resume(); fire(false); return; } // 中转不认 reasoning_effort → 去掉重试一次；over 先置位防旧响应 end 抢答
+                        if (res.statusCode === 400 && useRE) { over = true; res.resume(); fire(false, maxTok); return; } // 中转不认 reasoning_effort → 去掉重试一次；over 先置位防旧响应 end 抢答
                         sse = String(res.headers['content-type'] || '').includes('text/event-stream');
                         res.on('data', c => {
                             if (over) return;
@@ -3462,7 +3491,8 @@ function handleClient(ws, msg) {
                                 if (!line.startsWith('data:')) continue;
                                 const pj = line.slice(5).trim();
                                 if (pj === '[DONE]') { finish(); return; }
-                                try { const j = JSON.parse(pj); const d = j.choices && j.choices[0] && j.choices[0].delta; if (d && d.content) { full += d.content; delta(d.content); } } catch {}
+                                // s78 P2-A: 只累计 d.content；d.reasoning_content 有意忽略——推理段不算正文（与 explain_tool 同款）
+                                try { const j = JSON.parse(pj); const c0 = j.choices && j.choices[0]; const d = c0 && c0.delta; if (c0 && c0.finish_reason) finRsn = c0.finish_reason; if (d && d.content) { full += d.content; delta(d.content); } } catch {}
                             }
                         });
                         res.on('end', finish);
@@ -3473,7 +3503,7 @@ function handleClient(ws, msg) {
                     rq.write(body); rq.end();
                 } catch (e) { sendOnce('优化失败: ' + e.message, true); }
             };
-            fire(true);
+            fire(true, 800);
             return;
         }
 
@@ -3597,13 +3627,14 @@ function handleClient(ws, msg) {
                 else {
                     // 无活动会话（桥重启丢状态/新窗口）：自动开新会话再切，用户无感
                     const nid = nextId++;
+                    wsPendingNew.set(ws, nid); // s78 P1-A 代际守卫同款：此 session/new 与页面加载在飞的 subscribe(null) 互相接管
                     waiting.set(nid, { ws, resolve: (res) => {
+                        if (staleNewSession(ws, nid, res)) return;
+                        wsPendingNew.delete(ws);
                         if (res && res.sessionId) {
                             statsBump('sessionsCreated'); // P31-③
                             wsFirstPrompt.set(ws, true); // research/18 断点①: 新绑定首轮允许救援
-                            wsSession.set(ws, res.sessionId);
-                            if (!sessionClients.has(res.sessionId)) sessionClients.set(res.sessionId, new Set());
-                            sessionClients.get(res.sessionId).add(ws);
+                            bindWs(ws, res.sessionId);
                             ws.send({ sys: 'subscribed', sessionId: res.sessionId, modes: res.modes || [], configOptions: res.configOptions || [] });
                             doSet(res.sessionId);
                         } else ws.send({ sys: 'error', text: '开新对话失败，稍后再试' });
