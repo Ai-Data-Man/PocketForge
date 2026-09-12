@@ -605,13 +605,15 @@ function activeProvider() {
 // 状态机：down / down+key(401/403) / stale-model(200 且当前模型名∉活列表，事故二形态) / ok；未配置不探（key-guide 独占，s51d）。
 const HEALTH_TTL = 30 * 60 * 1000; // 内存缓存 TTL；零持久化（重启即重探）；providers save/activate/跨档 switch 后失效
 const healthCache = { at: 0, state: null, kind: null, proxy: false };
+let lastModelOverride = ''; // qa s78b P3-2: 最近一次用户选定模型（switch_model / subscribe 带 model 时更新）——同档 set_config_option 不改 models[0]，探测锚池首会漂移
 let healthBusy = false, healthFailT = null, healthPend = false;
 async function healthTargets() { // 同源铁律：与 spawnAcp env 链（active 档→secrets→process.env 三级回落）逐位同读法，防「探 A 用 B」
     const act = (await readProvidersAsync()).find(p => p.active) || null;
+    const pool = (act && act.models) || [];
     return {
         host: ((act && act.host) || secrets.FORGE_AGENT_HOST || process.env.OPENAI_HOST || '').replace(/\/$/, ''),
         key: (act && act.key) || secrets.FORGE_AGENT_API_KEY || process.env.OPENAI_API_KEY || '',
-        model: (act && act.models && act.models[0]) || secrets.GOOSE_MODEL_NAME || '', // 与 :610 回落链同款（主控拍板：无死名字面量）
+        model: (lastModelOverride && pool.includes(lastModelOverride) ? lastModelOverride : pool[0]) || secrets.GOOSE_MODEL_NAME || '', // qa s78b P3-2: 探测目标跟随生效模型；不在活跃池=换档/改池自愈回落池首（与 :610 回落链同款，无死名字面量）
     };
 }
 function healthFrame() {
@@ -656,7 +658,7 @@ async function probeProviderHealth(reply) { // qa s78b P1-1: reply=触发方 ws�
         healthCache.proxy = !!(pr && pr.enabled);
         healthCache.at = Date.now();
         const now = healthFrame();
-        if (JSON.stringify(prev) !== JSON.stringify(now)) for (const ws of allClients) ws.send(now || { sys: 'health', state: null }); // 态变化才广播（s77 delete 广播同款）
+        if (JSON.stringify(prev) !== JSON.stringify(now)) for (const ws of allClients) ws.send(now); // 态变化才广播（s77 delete 广播同款）；now 恒非空——state=null 唯一路径在上方未配置分支已提前 return
         else if (reply && reply.alive && now) reply.send(now); // qa s78b P1-1: 态不变也必答触发方——隔夜首开（TTL 必过期）链路持续坏时告警条不再缺失（裁决 §6 主指标）
     } finally { healthBusy = false; if (healthPend) { healthPend = false; probeProviderHealth(); } } // pend 补探不带 reply（QA 裁定）
 }
@@ -3214,6 +3216,7 @@ function handleClient(ws, msg) {
                         ws.send({ sys: 'subscribed', sessionId: res.sessionId, newSession: true, modes: res.modes || [], configOptions: res.configOptions || [] });
                         // s26: 新对话沿用顶栏当前模型——session/new 默认回落 env 首模型（STATE 开放问题#4）
                         if (msg.model) {
+                            lastModelOverride = msg.model; // qa s78b P3-2: 新会话显式带模型（顶栏当前模型）=生效模型，探测目标随行
                             const mid = nextId++;
                             acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: mid, method: 'session/set_config_option', params: { sessionId: res.sessionId, configId: 'model', value: msg.model } }) + '\n');
                         }
@@ -3488,7 +3491,9 @@ function handleClient(ws, msg) {
             const list = readProviders();
             const target = list.find(p => (p.models || []).includes(msg.model));
             if (!target) return ws.send({ sys: 'error', text: '该模型不在可选池：' + msg.model });
+            lastModelOverride = msg.model; // qa s78b P3-2: 生效模型记录（同档 set_config_option/跨档重启均以它为实际模型）
             if (target.active) {
+                healthCache.at = 0; probeProviderHealth(); // qa s78b P3-2: 同档切换=换生效模型，同 §S1 失效语义（顶栏切健康兄弟模型→条即消，不等 30min TTL）
                 const doSet = (sessionId) => {
                     const id = nextId++;
                     acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/set_config_option', params: { sessionId, configId: 'model', value: msg.model } }) + '\n');

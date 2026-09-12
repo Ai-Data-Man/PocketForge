@@ -307,7 +307,7 @@ rm -f /tmp/ws-rollback.log
 # 旧对象 .raw 兜底、rawOutput-only 形态、live_output 不污染、explain 载荷喂料扩容（rawInput/status/exitCode/toolName/trunc）、桥侧措辞静态钉
 rc=0; node "$ROOT/tools/e2e/toolcard-frames-probe.js" > /tmp/toolcard-frames.log 2>&1 || rc=$?
 grep -q "FAIL=0" /tmp/toolcard-frames.log || rc=$?
-ck "toolcard frames probe 25 ck (dual-form content + rawOutput fallback + explain payload feeding)" $rc
+ck "toolcard frames probe 31 ck (dual-form content + rawOutput fallback + explain payload feeding + param-area key masking)" $rc
 grep -E "^toolcard-frames-probe" /tmp/toolcard-frames.log || true
 rm -f /tmp/toolcard-frames.log
 

@@ -1083,6 +1083,11 @@ function showExpPop(card,text){ // 解释气泡：定位到按钮下方，越下
   const ph=pop.offsetHeight; if(r.bottom+6+ph>innerHeight) pop.style.top=Math.max(8,innerHeight-ph-8)+'px';
   pop.onclick=(ev)=>ev.stopPropagation();
 }
+function maskKeys(s){ // s78 主线测试 P4: 显示层密钥掩码——X-API-Key / Authorization: Bearer 保留前6后4；只影响参数区展示（工具卡+权限卡），_inp 喂料/回放/导出不动
+  const one=t=>t.length<=12?'****':t.slice(0,6)+'****'+t.slice(-4);
+  return String(s).replace(/(\bx-api-key\s*[:=]\s*)([a-z0-9_\-.=+/]+)/gi,(m,p,t)=>p+one(t))
+                  .replace(/(\bauthorization\s*:\s*bearer\s+)([a-z0-9_\-.=+/]+)/gi,(m,p,t)=>p+one(t));
+}
 function toolCard(upd){
   const stick=nearBottom(); // s69 P2-7
   const id=upd.toolCallId;
@@ -1103,7 +1108,7 @@ function toolCard(upd){
     card._inp=s; // r19 R2: 存序列化原文供 explain 喂料（展示仍截 1200）
     const sec=document.createElement('div'); sec.className='sec';
     const h=document.createElement('b'); h.className='sech'; h.textContent='参数'; sec.appendChild(h);
-    const pre=document.createElement('pre'); pre.textContent=s.slice(0,1200); sec.appendChild(pre);
+    const pre=document.createElement('pre'); pre.textContent=maskKeys(s).slice(0,1200); sec.appendChild(pre); // s78 P4: 长密钥掩码仅显示层，card._inp 原文喂解释者
     body.appendChild(sec);
   }
   // 工具真名（r19 R5）：title 可能被 goose 异步增强成英文短语丢掉参数——用 _meta 原始 toolName/extensionName 喂解释者
@@ -1193,7 +1198,7 @@ function onAgentEvent(p){
       '<div class="pbody"><b></b>'+(tDetail?'<pre></pre>':'')+'</div>'+
       '<div class="pnote">它不会自己偷偷做。您选了它才动。</div>';
     card.querySelector('.pbody b').textContent=tTitle;
-    if(tDetail) card.querySelector('.pbody pre').textContent=tDetail.slice(0,800);
+    if(tDetail) card.querySelector('.pbody pre').textContent=maskKeys(tDetail).slice(0,800); // s78 P4 同族: 权限卡参数摘要同掩码（同一命令同一密钥，妻子可见面）
     const btns=document.createElement('div'); btns.className='pbtns';
     let done=false;
     const settle=(opt,label)=>{

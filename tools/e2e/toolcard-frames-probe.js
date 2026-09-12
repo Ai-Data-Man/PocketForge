@@ -18,10 +18,15 @@ let pass = 0, fail = 0;
 const ck = (n, ok) => { console.log((ok ? 'PASS: ' : 'FAIL: ') + n); ok ? pass++ : fail++; };
 const die = (msg) => { console.error(msg); process.exit(1); };
 
-// ---- 从模板原文提取 toolCard（提取失败=模板漂移，红） ----
+// ---- 从模板原文提取 toolCard / maskKeys（提取失败=模板漂移，红） ----
 function extractToolCard(src) {
     const m = src.match(/function toolCard\(upd\)\{[\s\S]*?\n\}/);
     if (!m) die('NOT FOUND: toolCard（模板结构漂移，先改探针）');
+    return m[0];
+}
+function extractMaskKeys(src) { // s78 主线测试 P4: 显示层密钥掩码函数——工具卡参数区引用它，随工具卡一并进桩
+    const m = src.match(/function maskKeys\(s\)\{[\s\S]*?\n\}/);
+    if (!m) die('NOT FOUND: maskKeys（模板结构漂移，先改探针）');
     return m[0];
 }
 
@@ -71,7 +76,7 @@ function runFrames(frames) {
         setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {}
     };
     const make = new Function('document', 'nearBottom', 'toolCards', 'chat', 'endStream', 'wssend', 'lastKnownModel', 'showExpPop', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
-        extractToolCard(html) + '\nreturn toolCard;');
+        extractMaskKeys(html) + '\n' + extractToolCard(html) + '\nreturn toolCard;');
     const toolCard = make(ctx.document, ctx.nearBottom, ctx.toolCards, ctx.chat, ctx.endStream, ctx.wssend, ctx.lastKnownModel, ctx.showExpPop, ctx.setTimeout, ctx.clearTimeout, ctx.setInterval, ctx.clearInterval);
     for (const u of frames) toolCard(u);
     return { cards: ctx.toolCards, sent, chat };
@@ -88,6 +93,9 @@ const enrichCall = { sessionUpdate: 'tool_call', toolCallId: 'call_04_enrich', t
 const enrichTitle = { sessionUpdate: 'tool_call_update', toolCallId: 'call_04_enrich', title: 'listing files in data directory', status: 'completed', content: [{ type: 'content', content: { type: 'text', text: 'artifacts/\nbackups/' } }], rawOutput: { stdout: '', stderr: '', exit_code: 0 } };
 const longDone = { sessionUpdate: 'tool_call_update', toolCallId: 'call_05_long', status: 'completed', content: [{ type: 'content', content: { type: 'text', text: 'x'.repeat(700) } }] };
 const emptyDone = { sessionUpdate: 'tool_call_update', toolCallId: 'call_06_empty', status: 'completed' }; // 无 content 无 rawOutput
+// s78 主线测试 P4: agent 直查 faucet 的 shell 命令带 X-API-Key/Bearer——参数区显示层掩码（前6后4）
+const keyCall = { sessionUpdate: 'tool_call', toolCallId: 'call_07_key', title: 'shell · curl faucet', rawInput: { command: 'curl -s -H "X-API-Key: faucet_1a2b3c4d5e6f7g8h" -H "Authorization: Bearer sk-proj-abcdefgh1234567890" http://127.0.0.1:7800/api/services' }, _meta: { goose: { toolCall: { toolName: 'shell', extensionName: 'developer' } } } };
+const keyDone = { sessionUpdate: 'tool_call_update', toolCallId: 'call_07_key', status: 'completed', content: [{ type: 'content', content: { type: 'text', text: '[]' } }] };
 
 function clickExplain(card) {
     const summary = card.querySelector('summary');
@@ -146,7 +154,20 @@ if (require.main === module) {
     ck('超长输出：payload.output 截 600 且 trunc=true', r6.sent[0].output.length === 600 && r6.sent[0].trunc === true);
     ck('空输出：payload.output 空串且 trunc=false（桥端据此说「没有返回文字」而非「(空)」）', r6.sent[1].output === '' && r6.sent[1].trunc === false);
 
-    // 7) 桥侧静态钉（chat-bridge.tpl.js 喂料措辞与缓存键；活体路径由 e2e 真桥覆盖，此处防措辞回潮）
+    // 7) s78 P4 参数区密钥掩码：显示层掩码（前6后4），_inp 喂料与 explain 载荷保持原文
+    const r7 = runFrames([keyCall, keyDone]);
+    const k = r7.cards.get('call_07_key');
+    const secK = k.querySelector('.body').children[0];
+    const kPre = (((secK.children || []).find(c => c.tag === 'pre') || {}).textContent || '');
+    ck('参数区 X-API-Key 掩码形态（前6后4）', kPre.includes('X-API-Key: faucet****7g8h'));
+    ck('参数区 Authorization Bearer 掩码形态（前6后4）', kPre.includes('Authorization: Bearer sk-pro****7890'));
+    ck('完整密钥零泄露（两种头部全检）', !kPre.includes('faucet_1a2b3c4d5e6f7g8h') && !kPre.includes('sk-proj-abcdefgh1234567890'));
+    ck('URL 与命令其余部分不受掩码影响', kPre.includes('http://127.0.0.1:7800/api/services'));
+    ck('card._inp 保持原文（explain 喂料语义不动）', (k._inp || '').includes('faucet_1a2b3c4d5e6f7g8h'));
+    clickExplain(k);
+    ck('explain 载荷 rawInput 带原文密钥（桥侧数据不改，显示层专属掩码）', r7.sent[0].rawInput.includes('faucet_1a2b3c4d5e6f7g8h'));
+
+    // 8) 桥侧静态钉（chat-bridge.tpl.js 喂料措辞与缓存键；活体路径由 e2e 真桥覆盖，此处防措辞回潮）
     ck('桥侧旧「(空)」歧义措辞未回潮', !bridgeSrc.includes("'\\n结果摘要：' + (msg.output ? o0 : '(空)')"));
     ck('桥侧空输出无歧义措辞在场', bridgeSrc.includes('（该步骤没有返回文字输出）'));
     ck('桥侧缓存键含 model+新喂料字段+\\0 安全分隔（s78 P3-A 换模型不吃旧解释；防旧键碰撞/跨字段拼接碰撞）', /update\(\[model, t0, o0, i0, stt, ec, String\(msg\.toolName \|\| ''\)\]\.join\('\\u0000'\)\)/.test(bridgeSrc));
