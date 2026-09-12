@@ -130,3 +130,10 @@
 - 终批 e8db2de（掩码贪吃到结构边界+URL query 族+SSE error 终局透传——修前实证比报告更重：error 吞没后迟到垃圾 delta 曾冒充解释正文；key 族走 TURN_KEY_TEXT 单源）；全量 57/57+178/178。
 - **appcap 第四跑 13/13 exit 0**（最终栈=goose v1.50+全夜修复；四轮数据点：两轮判卷 13/13+两轮原生 13/13）。
 - docs/dev-lessons-s78.md：13 条实锤教训沉淀（签名调用面/探针判别力义务/环境三家族/升级差异定位三重实证/误导性安慰双验证）。
+
+## 会话栈状态注记（下会话冷启动必读）
+- **dev 栈在跑**（降权 runas 链拉起：pc 8099、桥 8790、pg Ready、goose v1.50+调度器 wrapper）；沙盒栈（C:\PocketForge-Test）已停。
+- **假 9router 在跑**：node tmp/s78-fake-9router.js @127.0.0.1:20129（取证资产，provider 复测用，勿杀；进程若亡重启命令即文件首行）。
+- **goose v1.46 回滚位**：tmp/goose-v146-rollback/（升级稳定窗口确认后可清）。
+- 模型链：自家中转 deepseek-v4.1-flash（v4-flash 已被中转下架）；FORGE_VISION_MODEL=glm-5.2。
+- 终态基线：**e2e-chat 57/57 + fuzz 178/178**；本会话 commit 区间 38b06be…d06de72（50+ 提交）。
