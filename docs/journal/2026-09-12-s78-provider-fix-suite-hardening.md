@@ -149,3 +149,4 @@
 ## vision 崩栈人话化（ad0d040）+ 会话循环收束
 - vision.tpl.js:79 裸读图包 try（ENOENT/EISDIR/其他三态人话 RC=2），--get-model 回归过+全量 57/57+178/178；engineer 测试日志误落 forge/tmp（gitignored 不入库）已清。
 - **本会话缺陷账本清零**：全部已知 P1/P2/P3（用户报障+QA 四轮+fuzz 扩展+活体猎捕）修复并验证；值守模式=巡检 cron+间隙找活。
+[巡检 06:36·主控手补] healthz=ok pg=Ready probe=PASS fake9r=alive —— cron 06:30 首轮触发但留痕未落（08:30 观察，连续两轮失败则撤 cron 改主控自跑）
