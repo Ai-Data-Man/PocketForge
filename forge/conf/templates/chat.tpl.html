@@ -1764,7 +1764,10 @@ $('db-q').oninput=()=>{ clearTimeout(dbQT); dbQT=setTimeout(dbPaint,200); }; // 
 $('prov-add').onclick=()=>{
   const name=$('prov-name').value.trim(); if(!name)return note('先填一个名字，比如 公司中转');
   curProvName=name;
-  wssend({type:'providers',save:true,add:{name,host:$('cfg-host').value.trim(),models:[],key:$('cfg-key').value.trim()}});
+  // s78: key 非空才随 add 发送——重复添加同名档案时不得用空/他档 key 覆写已存档案
+  const add={name,host:$('cfg-host').value.trim(),models:[]};
+  const k=$('cfg-key').value.trim(); if(k) add.key=k;
+  wssend({type:'providers',save:true,add});
   $('prov-name').value='';
   note('已新建「'+name+'」。填好地址和 Key 后点保存，再⟳拉取模型勾选。');
   setTimeout(loadProvidersUI,300);
@@ -1795,17 +1798,17 @@ function renderProviders(list){
   keyGuideSync(list); // s51d: P31-② 配 Key 引导条（判定=客观状态，不持久化）
   const box=$('prov-list'); box.innerHTML='';
   if(!list.length){ box.innerHTML='<div class="fnote">还没有服务商。在下面填：名称+地址+Key，点「添加」。</div>'; }
-  let selected=null;
+  // s78: 编辑上下文优先于活跃——添加/保存后的 300ms 刷新不得把表单重置回活跃档（拉模型/保存会打到错误 host）
+  let selected=list.find(p=>p.name===curProvName)||list.find(p=>p.active)||null;
   for(const pr of list){
     const el=document.createElement('div'); el.className='prov'+(pr.active?' active':'');
     el.innerHTML='<span class="nm">'+esc(pr.name)+'</span><span class="hd">'+((pr.models||[]).length+' 个模型 · '+(pr.hasKey?'🔑':'⚠无key'))+'</span>';
     const use=document.createElement('button'); use.textContent=pr.active?'✓使用中':'启用';
-    use.onclick=(e)=>{e.stopPropagation(); wssend({type:'providers',save:true,activate:pr.name}); note('已切换到 '+pr.name); };
+    use.onclick=(e)=>{e.stopPropagation(); wssend({type:'providers',save:true,activate:pr.name}); curProvName=pr.name; note('已切换到 '+pr.name); }; // s78: 表单跟随刚启用的档案
     const del=document.createElement('button'); del.textContent='✕';
     del.onclick=(e)=>{e.stopPropagation(); if(confirm('删除服务商「'+pr.name+'」？')) wssend({type:'providers',save:true,remove:pr.name}); };
     el.appendChild(use); el.appendChild(del);
     el.onclick=()=>{ selected=pr; fillProvForm(pr); renderModelPool(pr); };
-    if(pr.active && !selected) selected=pr;
     box.appendChild(el);
   }
   if(selected){ renderModelPool(selected); fillProvForm(selected); }

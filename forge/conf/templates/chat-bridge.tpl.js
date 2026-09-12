@@ -3422,8 +3422,9 @@ function handleClient(ws, msg) {
             const host = (msg.host || secrets.FORGE_AGENT_HOST || '').replace(/\/$/, '');
             const key = msg.key || secrets.FORGE_AGENT_API_KEY || '';
             if (!host) return ws.send({ sys: 'error', text: '未配置接口地址' });
-            const url = host + '/models';
-            require('http').get(url, { headers: { Authorization: 'Bearer ' + key } }, res => {
+            const u = new URL(host + '/models'); // s78: 照 test_model 写法按协议切 http/https，https 端点不再硬编码失败
+            const reqMod = require(u.protocol === 'https:' ? 'https' : 'http');
+            reqMod.get(u, { headers: { Authorization: 'Bearer ' + key } }, res => {
                 let b = '';
                 res.on('data', c => b += c);
                 res.on('end', () => {
@@ -3467,7 +3468,8 @@ function handleClient(ws, msg) {
                 }
                 if (msg.add) {
                     const ex = list.find(p => p.name === msg.add.name);
-                    if (ex) Object.assign(ex, msg.add); else list.push(msg.add);
+                    // s78: add 未带 key 时保留已存档案 key——重复添加不得覆写既有凭据
+                    if (ex) { if (!msg.add.key) msg.add.key = ex.key; Object.assign(ex, msg.add); } else list.push(msg.add);
                     if (list.length === 1) list[0].active = true;
                 }
                 if (msg.remove) {
@@ -3489,7 +3491,8 @@ function handleClient(ws, msg) {
             if (act) {
                 const sf = path.join(ROOT, 'data', 'secrets.env');
                 const lines = require('fs').readFileSync(sf, 'utf8').split('\n').filter(l => l && !l.startsWith('#'));
-                const keep = lines.filter(l => !/^(GOOSE_MODEL_NAME|FORGE_AGENT_HOST|FORGE_AGENT_API_KEY)=/.test(l.trim()));
+                // s78 自愈: NUL 前缀行 trim 不除、键名正则匹配不到 → 旧过滤下永久存活；回写只保留 KEY=VALUE 形状行
+                const keep = lines.filter(l => /^[A-Za-z_][A-Za-z0-9_]*=/.test(l.trim()) && !/^(GOOSE_MODEL_NAME|FORGE_AGENT_HOST|FORGE_AGENT_API_KEY)=/.test(l.trim()));
                 keep.push('GOOSE_MODEL_NAME=' + (act.models && act.models[0] || ''));
                 keep.push('FORGE_AGENT_HOST=' + (act.host || ''));
                 keep.push('FORGE_AGENT_API_KEY=' + (act.key || ''));
@@ -3548,7 +3551,8 @@ function handleClient(ws, msg) {
             try {
                 const f = path.join(ROOT, 'data', 'secrets.env');
                 const lines = require('fs').readFileSync(f, 'utf8').split(/\r?\n/).filter(l => l && !l.startsWith('#'));
-                const keep = lines.filter(l => !/^(GOOSE_MODEL_NAME|FORGE_AGENT_HOST|FORGE_AGENT_API_KEY)=/.test(l.trim()));
+                // s78 自愈: NUL 前缀行 trim 不除、旧过滤匹配不到 → 永久存活；回写只保留 KEY=VALUE 形状行
+                const keep = lines.filter(l => /^[A-Za-z_][A-Za-z0-9_]*=/.test(l.trim()) && !/^(GOOSE_MODEL_NAME|FORGE_AGENT_HOST|FORGE_AGENT_API_KEY)=/.test(l.trim()));
                 const c = msg.config || {};
                 if (c.model) keep.push('GOOSE_MODEL_NAME=' + c.model);
                 if (c.host) keep.push('FORGE_AGENT_HOST=' + c.host);
