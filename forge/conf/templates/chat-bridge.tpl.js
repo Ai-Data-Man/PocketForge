@@ -11,6 +11,16 @@ const ROOT = process.env.FORGE_ROOT || path.resolve(__dirname, '..');
 const PORT = Number(process.env.PORT || 8790);
 // s50c: POST body 统一预算（照片/表格上传绰绰有余；防超大 body 撑爆内存）
 const POST_MAX_BYTES = 50 * 1024 * 1024;
+// s78-C1（research/24 §7）：POST body 读取助手——17 处累积样板收敛一处，s50c 防线逐字保留（累积超预算即断开）。
+// 交付原始 Buffer：/api/upload 是二进制体，禁字符串往返；JSON.parse 留在各端点 try 内——坏 JSON 的报错文案逐端点不变。
+function readJsonBody(req, res, cb) {
+    const chunks = [];
+    let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
+    req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
+    req.on('end', () => cb(Buffer.concat(chunks)));
+}
+// s78-C1：JSON 200 响应助手——只替换「写头后紧跟 end」的成对现场；先写头再分支/多落点的现场保持原样（响应序不变形）
+function json200(res, obj) { res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); }
 const GOOSE = path.join(ROOT, 'bin', 'goose', 'goose-package', 'goose.exe');
 const PAGE = path.join(ROOT, 'conf', 'templates', 'chat.tpl.html');
 
@@ -1080,13 +1090,11 @@ function translatingNow(m) { return !!m.translating && (Date.now() - Date.parse(
 async function listRemoteSkills(installedSet, res) {
     const m = readSkillManifest();
     if (skillCacheFresh(m)) {
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: true, fetched_at: m.fetched_at, translating: translatingNow(m), skills: m.skills.map(s => ({ ...s, remote: true, installed: installedSet.has(s.dir) })) }));
+        json200(res, { ok: true, fetched_at: m.fetched_at, translating: translatingNow(m), skills: m.skills.map(s => ({ ...s, remote: true, installed: installedSet.has(s.dir) })) });
         return;
     }
     if (m) { // 缓存过期：立即回旧缓存，后台重拉
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: true, fetched_at: m.fetched_at, translating: true, skills: m.skills.map(s => ({ ...s, remote: true, installed: installedSet.has(s.dir) })) }));
+        json200(res, { ok: true, fetched_at: m.fetched_at, translating: true, skills: m.skills.map(s => ({ ...s, remote: true, installed: installedSet.has(s.dir) })) });
         syncRemoteSkills();
         return;
     }    try { // 首次无缓存：同步拉一次
@@ -1095,11 +1103,9 @@ async function listRemoteSkills(installedSet, res) {
         warnSkillFetchFailures(failed); // qa P2-3: 首拉路径同门（坏源跳过、警告照写）
         writeSkillManifest(merged);
         translateSkillManifest(merged).catch(() => {});
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: true, fetched_at: merged.fetched_at, translating: merged.translating, skills: merged.skills.map(s => ({ ...s, remote: true, installed: installedSet.has(s.dir) })) }));
+        json200(res, { ok: true, fetched_at: merged.fetched_at, translating: merged.translating, skills: merged.skills.map(s => ({ ...s, remote: true, installed: installedSet.has(s.dir) })) });
     } catch (e) {
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: false, err: '技能源拉取失败: ' + e.message }));
+        json200(res, { ok: false, err: '技能源拉取失败: ' + e.message });
     }
 }
 // s70 切片A（裁决 S1）: 技能来源标记——origin.json { _schema:1, source: market|local|self, repo, branch, installed_at }
@@ -1150,8 +1156,7 @@ async function installRemoteSkill(dirName, res) {
     const dst = path.join(ROOT, '.agents', 'skills', dirName);
     const blocked = skillInstallBlocked(dst);
     if (blocked) {
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: false, err: blocked }));
+        json200(res, { ok: false, err: blocked });
         return;
     }
     // s70 切片B: 安装来源随 manifest 条目 source（缓存树不带标记）；条目缺失回落内置默认
@@ -1161,8 +1166,7 @@ async function installRemoteSkill(dirName, res) {
     // B2: source 记录 subdir 用加键形态（research/13 §3.1，非 repo/subdir 复合形态）；旧 manifest/origin 缺 subdir 键照常解析（切片A originOf 容错一致）→当前配置该源→内置默认
     const src = { repo: ms.repo, branch: ms.branch, subdir: subdirSafe(ms.subdir) && ms.subdir ? ms.subdir : (readSkillSources().filter(s => s.enabled).find(s => s.repo === ms.repo && s.branch === ms.branch) || REMOTE_SKILLS).subdir };
     const finish = () => {
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: true }));
+        json200(res, { ok: true });
     };
     // s56: 优先从本地缓存复制（出网面收敛到 sync 一处）；qa返工(P2-2): 原子安装，失败旧版完好
     try {
@@ -1175,8 +1179,7 @@ async function installRemoteSkill(dirName, res) {
             return;
         }
     } catch (e) {
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: false, err: '安装失败: ' + e.message }));
+        json200(res, { ok: false, err: '安装失败: ' + e.message });
         return;
     }
     // 缓存缺该目录：递归拉取 <subdir>/<dir> 全部文件（GitHub contents API；子目录递归），拉完写缓存；subdir 已随 source 解析（B2）
@@ -1205,8 +1208,7 @@ async function installRemoteSkill(dirName, res) {
         });
         finish();
     } catch (e) {
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: false, err: '安装失败: ' + e.message }));
+        json200(res, { ok: false, err: '安装失败: ' + e.message });
     }
 }
 
@@ -1407,14 +1409,15 @@ function faucetCli(args) {
             (e, stdout) => resolve(e ? null : String(stdout || '')));
     });
 }
-function faucetRows(svc, tbl, port, key) {
+// s78-C2（research/24 §7）：faucet REST GET 三胞胎（行数/表说明/样例）合并——同构管线（http.get+超时+静默 null），仅 path 与解析不同
+function faucetGet(path, port, key, parse) {
     return new Promise(resolve => {
         let rq;
         try {
-            rq = require('http').get({ hostname: '127.0.0.1', port, path: '/api/v1/' + svc + '/_table/' + tbl + '?fields=id', headers: { 'X-API-Key': key }, timeout: 4000 }, r => {
+            rq = require('http').get({ hostname: '127.0.0.1', port, path, headers: { 'X-API-Key': key }, timeout: 4000 }, r => {
                 let b = '';
                 r.on('data', c => b += c);
-                r.on('end', () => { try { const j = JSON.parse(b); resolve(j.meta && typeof j.meta.count === 'number' ? j.meta.count : null); } catch { resolve(null); } });
+                r.on('end', () => { try { resolve(parse(b)); } catch { resolve(null); } });
             });
             rq.on('error', () => resolve(null));
             rq.on('timeout', () => { rq.destroy(); resolve(null); });
@@ -1424,33 +1427,7 @@ function faucetRows(svc, tbl, port, key) {
 // IA-3（裁决 2026-09-07-ia-root-cure §6-d，主控修正版）：表说明唯一真相源=各应用库自带的 forge_table_info 表
 // （tbl, description, created_at），由 agent 建表时用已有 faucet 工具写入；桥经 _table 通道只读。
 // agent 写的数据按不可信输入处理：缺 tbl 的行跳过、desc 非字符串跳过、超长截断 200 字符。
-const TINFO_TBL = 'forge_table_info';
-function faucetTableInfo(svc, port, key) {
-    return new Promise(resolve => {
-        let rq;
-        try {
-            rq = require('http').get({ hostname: '127.0.0.1', port, path: '/api/v1/' + svc + '/_table/' + TINFO_TBL + '?max_results=200', headers: { 'X-API-Key': key }, timeout: 4000 }, r => {
-                let b = '';
-                r.on('data', c => b += c);
-                r.on('end', () => {
-                    try {
-                        const rows = JSON.parse(b).resource;
-                        if (!Array.isArray(rows)) return resolve(null); // 表不存在/读不到 → 无说明，静默降级
-                        const m = new Map();
-                        for (const row of rows) {
-                            if (!row || typeof row !== 'object') continue;
-                            if (typeof row.tbl !== 'string' || typeof row.description !== 'string') continue;
-                            m.set(row.tbl, row.description.length > 200 ? row.description.slice(0, 200) : row.description);
-                        }
-                        resolve(m.size ? m : null);
-                    } catch { resolve(null); }
-                });
-            });
-            rq.on('error', () => resolve(null));
-            rq.on('timeout', () => { rq.destroy(); resolve(null); });
-        } catch { resolve(null); }
-    });
-}
+const TINFO_TBL = 'forge_table_info'; // s78-C2：读管线并入 faucetGet（上方），tinfo 行硬化解析闭包移至 dbOverview 调用点
 async function dbOverview() {
     let list;
     try { list = JSON.parse(await faucetCli(['db', 'list', '--json']) || 'x'); } catch { return { ok: false }; }
@@ -1475,8 +1452,18 @@ async function dbOverview() {
     if (port && key) {
         const jobs = [];
         for (const en of services) {
-            for (const t of en.tables) jobs.push(faucetRows(en.service, t.name, port, key).then(c => { t.rows = c; }));
-            jobs.push(faucetTableInfo(en.service, port, key).then(m => { if (m) for (const t of en.tables) { const d = m.get(t.name); if (d !== undefined) t.desc = d; } })); // IA-3：与行数取数同轮并发，每库一次请求
+            for (const t of en.tables) jobs.push(faucetGet('/api/v1/' + en.service + '/_table/' + t.name + '?fields=id', port, key, b => { const j = JSON.parse(b); return j.meta && typeof j.meta.count === 'number' ? j.meta.count : null; }).then(c => { t.rows = c; }));
+            jobs.push(faucetGet('/api/v1/' + en.service + '/_table/' + TINFO_TBL + '?max_results=200', port, key, b => {
+                const rows = JSON.parse(b).resource;
+                if (!Array.isArray(rows)) return null; // 表不存在/读不到 → 无说明，静默降级
+                const m = new Map();
+                for (const row of rows) {
+                    if (!row || typeof row !== 'object') continue;
+                    if (typeof row.tbl !== 'string' || typeof row.description !== 'string') continue;
+                    m.set(row.tbl, row.description.length > 200 ? row.description.slice(0, 200) : row.description);
+                }
+                return m.size ? m : null;
+            }).then(m => { if (m) for (const t of en.tables) { const d = m.get(t.name); if (d !== undefined) t.desc = d; } })); // IA-3：与行数取数同轮并发，每库一次请求
         }
         await Promise.all(jobs);
     }
@@ -1489,20 +1476,6 @@ async function dbOverview() {
 function faucetSchema(svc) {
     return faucetCli(['db', 'schema', svc]).then(out => {
         try { return ((JSON.parse(out || 'x') || {}).tables) || null; } catch { return null; }
-    });
-}
-function faucetSample(svc, tbl, port, key) {
-    return new Promise(resolve => {
-        let rq;
-        try {
-            rq = require('http').get({ hostname: '127.0.0.1', port, path: '/api/v1/' + svc + '/_table/' + tbl + '?max_results=3', headers: { 'X-API-Key': key }, timeout: 4000 }, r => {
-                let b = '';
-                r.on('data', c => b += c);
-                r.on('end', () => { try { resolve((JSON.parse(b).resource) || []); } catch { resolve(null); } });
-            });
-            rq.on('error', () => resolve(null));
-            rq.on('timeout', () => { rq.destroy(); resolve(null); });
-        } catch { resolve(null); }
     });
 }
 async function dbTableSchema(svc, tbl) {
@@ -1520,7 +1493,7 @@ async function dbTableSchema(svc, tbl) {
     try { port = parseInt(FSS.readFileSync(path.join(ROOT, 'data', 'faucet.port'), 'utf8').trim(), 10) || 0; } catch {}
     try { key = FSS.readFileSync(path.join(ROOT, 'data', 'faucet', '.apikey'), 'utf8').trim(); } catch {}
     let samples = null;
-    if (port && key) samples = await faucetSample(svc, tbl, port, key);
+    if (port && key) samples = await faucetGet('/api/v1/' + svc + '/_table/' + tbl + '?max_results=3', port, key, b => (JSON.parse(b).resource) || []);
     return { ok: true, columns, samples: Array.isArray(samples) ? samples : null };
 }
 
@@ -1933,8 +1906,7 @@ async function handleHttp(req, res) {
                 }
             } catch {}
         }
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify(out));
+        json200(res, out);
     }
     else if (url.startsWith('/vendor/')) {
         const name = decodeURIComponent(url.slice('/vendor/'.length));
@@ -1951,30 +1923,27 @@ async function handleHttp(req, res) {
         res.end(require('fs').readFileSync(path.join(ROOT, 'conf', 'web-assets', 'preview.html')));
     }
     else if (url === '/api/update/status') {
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         let staged = [];
         try {
             staged = FSS.readdirSync(path.join(ROOT, 'data', 'updates')).filter(n => /^PocketForge-.+\.zip$/.test(n) && !n.endsWith('.sha256'));
         } catch {}
         const status = readJson(path.join(ROOT, 'data', 'updates', 'status.json'), null);
-        res.end(JSON.stringify({ ok: true, version: APP_VERSION, warnings: stateWarnings, staged, status }));
+        json200(res, { ok: true, version: APP_VERSION, warnings: stateWarnings, staged, status });
     }
     else if (url === '/api/update/check') {
         // 对比本地 VERSION 与 GitHub 最新 release；失败时仍可走离线通道
         const cfg = readJson(path.join(ROOT, 'data', 'update.json'), {});
         let staged = [];
         try { staged = FSS.readdirSync(path.join(ROOT, 'data', 'updates')).filter(n => /^PocketForge-.+\.zip$/.test(n)); } catch {}
-        if (!cfg.repo) { res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' }); return res.end(JSON.stringify({ ok: false, err: '未配置升级源', current: APP_VERSION, staged })); }
+        if (!cfg.repo) return json200(res, { ok: false, err: '未配置升级源', current: APP_VERSION, staged });
         fetchBufJson('https://api.github.com/repos/' + cfg.repo + '/releases/latest').then(rel => {
             const zipA = (rel.assets || []).find(a => /^PocketForge-.+\.zip$/.test(a.name));
             const out = { ok: true, current: APP_VERSION, latest: String(rel.tag_name || '').replace(/^v/, ''), staged };
             if (zipA) out.asset = { name: zipA.name, url: zipA.browser_download_url };
             out.hasNew = !!(out.asset && cmpVer(out.latest, out.current) > 0);
-            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify(out));
+            json200(res, out);
         }).catch(e => {
-            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({ ok: false, err: '查询升级源失败：' + e.message + '（可用离线升级）', current: APP_VERSION, staged }));
+            json200(res, { ok: false, err: '查询升级源失败：' + e.message + '（可用离线升级）', current: APP_VERSION, staged });
         });
     }
     else if (url.startsWith('/api/update/upload') && req.method === 'POST') {
@@ -2051,13 +2020,10 @@ async function handleHttp(req, res) {
         });
     }
     else if (url === '/api/update/start' && req.method === 'POST') {
-        const chunks = [];
-        let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
-        req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
-        req.on('end', () => {
+        readJsonBody(req, res, raw => {
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             try {
-                const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                const b = JSON.parse(raw.toString('utf8'));
                 const runnerArgs = ['--root', ROOT];
                 if (b.staged) {
                     if (!/^PocketForge-[\w.-]+\.zip$/.test(b.staged) || !FSS.existsSync(path.join(ROOT, 'data', 'updates', b.staged))) throw new Error('离线包不存在');
@@ -2106,8 +2072,7 @@ async function handleHttp(req, res) {
         const rel = vcsSafeRel(qs.get('file'));
         if (!wsValidId(ws) || !rel) { res.writeHead(400); res.end(); return; }
         const versions = (await vcsLog(wsDir(ws), rel)).map(v => ({ oid: v.oid, msg: v.msg, time: vcsTime(v.ts), ts: v.ts }));
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: true, versions }));
+        json200(res, { ok: true, versions });
     }
     else if (url === '/api/vcs/blob') {
         const qs = new URL(req.url, 'http://x').searchParams;
@@ -2123,13 +2088,10 @@ async function handleHttp(req, res) {
         } catch { res.writeHead(404); res.end(); }
     }
     else if (url === '/api/vcs/restore' && req.method === 'POST') {
-        const chunks = [];
-        let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
-        req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
-        req.on('end', async () => {
+        readJsonBody(req, res, async raw => {
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             try {
-                const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                const body = JSON.parse(raw.toString('utf8'));
                 const ws = body.ws || '';
                 const rel = vcsSafeRel(body.file);
                 const oid = String(body.oid || '').replace(/[^0-9a-f]/g, '');
@@ -2209,8 +2171,7 @@ const ext = path.extname(f).toLowerCase();
             }
         } catch {}
         out.sort((a, b) => b.mtime - a.mtime);
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify(out));
+        json200(res, out);
     }
     else if (url === '/api/search') {
         // s21: 聊天记录搜索（只读 sessions.db）。LIKE 匹配 content_json；
@@ -2336,28 +2297,23 @@ const ext = path.extname(f).toLowerCase();
                     return src !== copy;
                 } catch { return false; }
             }
-            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify(list.map(j => ({
+            json200(res, list.map(j => ({
                 id: j.id, cron: j.cron, paused: !!j.paused,
                 title: readTitle(j.source) || j.id,
                 lastRun: j.last_run || null,
                 drift: driftOf(j),
-            }))));
+            })));
         } else if (req.method === 'POST') {
             // 删除经 goose CLI（比手改 json 安全：会同步清 store 里的 recipe）
             // op=pause/resume 经短命 `goose acp --enable-scheduler` 子进程发 ACP custom request
             // （_goose/unstable/schedules/pause|unpause）：桥自己的 acp 没开 scheduler（method_not_found），
             // CLI 无 pause 子命令，手改 schedule.json 会被守护回滚——唯一落盘路径就是这条（s55 实证）。
-            const chunks = [];
-            let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
-            req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
-            req.on('end', () => {
+            readJsonBody(req, res, raw => {
                 let id = '', op = '';
-                try { const b = JSON.parse(Buffer.concat(chunks).toString('utf8')); if (typeof b.id !== 'string' || (b.op !== undefined && typeof b.op !== 'string')) throw 0; id = b.id; op = b.op || ''; } catch {} // s58 修正：op 缺省=删除（UI 删除按钮不传 op），只拒非字符串的 op
+                try { const b = JSON.parse(raw.toString('utf8')); if (typeof b.id !== 'string' || (b.op !== undefined && typeof b.op !== 'string')) throw 0; id = b.id; op = b.op || ''; } catch {} // s58 修正：op 缺省=删除（UI 删除按钮不传 op），只拒非字符串的 op
                 // fuzz 发现：String([v])==='v'，数组/原始值会被静默字符串化绕过类型面——只收 string
                 if (!/^[\w\-\.]{1,64}$/.test(id) || (op && !['pause', 'resume'].includes(op))) {
-                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ ok: false, err: '参数不合法' })); return;
+                    json200(res, { ok: false, err: '参数不合法' }); return;
                 }
                 if (op) return schedToggle(id, op, res);
                 const { spawn, execFile } = require('child_process');
@@ -2368,7 +2324,7 @@ const ext = path.extname(f).toLowerCase();
                 p.stdout.on('data', c => out += c);
                 p.stderr.on('data', c => out += c);
                 p.on('close', code => {
-                    if (code !== 0) { res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: false, out: out.slice(0, 300) })); return; }
+                    if (code !== 0) { json200(res, { ok: false, out: out.slice(0, 300) }); return; }
                     // s58: 删除同款守护盲区——守护内存条目不随盘清，重启重载（失败降级 warn 不欺骗）
                     let pcPort = '8099';
                     try { pcPort = FSS.readFileSync(path.join(ROOT, 'data', 'pc.port'), 'utf8').trim() || pcPort; } catch {}
@@ -2376,8 +2332,7 @@ const ext = path.extname(f).toLowerCase();
                         ['-p', pcPort, 'process', 'restart', 'goose-scheduler'],
                         { timeout: 30000, windowsHide: true }, (e) => {
                             if (res.writableEnded) return;
-                            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-                            res.end(JSON.stringify(e ? { ok: true, warn: '已删除，但后台调度器重启失败，任务可能仍会执行一次' } : { ok: true, out: out.slice(0, 300) }));
+                            json200(res, e ? { ok: true, warn: '已删除，但后台调度器重启失败，任务可能仍会执行一次' } : { ok: true, out: out.slice(0, 300) });
                         });
                 });
             });
@@ -2387,20 +2342,16 @@ const ext = path.extname(f).toLowerCase();
         // s46: MCP 市场最小形态——精选目录（npm vendored），安装=后台 npm i + 写 extensions，重启生效
         // s70 切片C: 目录读 data/config/mcp-catalog.json（每请求读取→改 JSON 零重启生效）；坏配置回落内置默认
         if (req.method === 'GET') {
-            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify(readMcpCatalog().map(m => ({
+            json200(res, readMcpCatalog().map(m => ({
                 id: m.id, name: m.name, desc: m.desc, license: m.license,
                 installed: mcpInstalled(m.id),
                 enabled: mcpEnabled(m.id),
                 install: mcpInstallState[m.id] || null,
-            }))));
+            })));
         } else if (req.method === 'POST') {
-            const chunks = [];
-            let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
-            req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
-            req.on('end', () => {
+            readJsonBody(req, res, raw => {
                 let id = '', op = '';
-                try { const b = JSON.parse(Buffer.concat(chunks).toString('utf8')); if (typeof b.id !== 'string') throw 0; id = b.id; op = b.op === 'uninstall' ? 'uninstall' : ''; } catch {}
+                try { const b = JSON.parse(raw.toString('utf8')); if (typeof b.id !== 'string') throw 0; id = b.id; op = b.op === 'uninstall' ? 'uninstall' : ''; } catch {}
                 const item = readMcpCatalog().find(m => m.id === id);
                 res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
                 // s57: op=uninstall 删 config.yaml 块 + vendor 目录（停用走 /api/extensions，这里是删）
@@ -2445,17 +2396,12 @@ const ext = path.extname(f).toLowerCase();
         // s72: 市场源与 MCP 目录管理（技术用户配置面）。GET=当前有效视图；POST=变更操作（同门校验+原子写）。
         // 鉴权同门：非 GET 跨站 Origin 由 handleHttp 顶部统一 403；POST 尺寸走 POST_MAX_BYTES 双层（预检+累积）。
         if (req.method === 'GET') {
-            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify(marketView()));
+            json200(res, marketView());
         } else if (req.method === 'POST') {
-            const chunks = [];
-            let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
-            req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
-            req.on('end', () => {
+            readJsonBody(req, res, raw => {
                 let b = null;
-                try { b = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch {}
-                res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify(marketMutate(b && typeof b === 'object' && !Array.isArray(b) ? b : {})));
+                try { b = JSON.parse(raw.toString('utf8')); } catch {}
+                json200(res, marketMutate(b && typeof b === 'object' && !Array.isArray(b) ? b : {}));
             });
         } else { res.writeHead(405); res.end(); }
     }
@@ -2500,15 +2446,11 @@ const ext = path.extname(f).toLowerCase();
                     out.push({ ...meta, dir: ent.name, installed: installedSet.has(ent.name) });
                 }
             } catch {}
-            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify(out));
+            json200(res, out);
         } else if (req.method === 'POST') {
-            const chunks = [];
-            let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
-            req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
-            req.on('end', async () => {
+            readJsonBody(req, res, async raw => {
                 try {
-                    const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                    const b = JSON.parse(raw.toString('utf8'));
                     // s50h(FIND-3): 白名单外再过保留设备名（con 等），remote 与本地复制两分支同门
                     if (typeof b.name !== 'string' || !/^[\w\-]{1,64}$/.test(b.name) || !fileNameSafe(b.name)) throw new Error('参数不合法');
                     // s57: op=uninstall 删 .agents/skills/<dir>（白名单与安装同门）
@@ -2516,8 +2458,7 @@ const ext = path.extname(f).toLowerCase();
                         const dst = path.join(INSTALLED, b.name);
                         if (!FSS.existsSync(path.join(dst, 'SKILL.md'))) throw new Error('没有安装这个技能，不用卸载');
                         FSS.rmSync(dst, { recursive: true, force: true });
-                        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-                        res.end(JSON.stringify({ ok: true, note: '已卸载' }));
+                        json200(res, { ok: true, note: '已卸载' });
                         return;
                     }
                     if (b.remote) { installRemoteSkill(b.name, res); return; }
@@ -2531,11 +2472,9 @@ const ext = path.extname(f).toLowerCase();
                         FSS.cpSync(src, tmp, { recursive: true });
                         writeSkillOrigin(tmp, 'local', 'skills-repo', '');
                     });
-                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ ok: true }));
+                    json200(res, { ok: true });
                 } catch (e) {
-                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ ok: false, err: e.message }));
+                    json200(res, { ok: false, err: e.message });
                 }
             });
         } else { res.writeHead(405); res.end(); }
@@ -2568,12 +2507,9 @@ const ext = path.extname(f).toLowerCase();
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify(rows));
         } else if (req.method === 'POST') {
-            const chunks = [];
-            let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
-            req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
-            req.on('end', () => {
+            readJsonBody(req, res, body => { // 参数名避开下方 try 块内的 let raw（TDZ 撞名）
                 try {
-                    const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                    const b = JSON.parse(body.toString('utf8'));
                     // s57: id 合法面 = 内置 LABELS ∪ 已装 MCP（mcp-*）；enabled 行级替换两态同门
                     // qa返工(P2-1): 目录删条目后已装项仍可停用——id 以 mcp- 开头且 config.yaml 实存同名块也放行
                     const dyn = readMcpCatalog().some(m => mcpInstalled(m.id) && mcpExtensionId(m.id) === b.id)
@@ -2593,11 +2529,9 @@ const ext = path.extname(f).toLowerCase();
                     }).join('\n');
                     if (!done) throw new Error('配置里没找到该扩展开关');
                     atomicWrite(CFG, raw);
-                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ ok: true, note: '重启数字员工后生效' }));
+                    json200(res, { ok: true, note: '重启数字员工后生效' });
                 } catch (e) {
-                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ ok: false, err: e.message }));
+                    json200(res, { ok: false, err: e.message });
                 }
             });
         } else { res.writeHead(405); res.end(); }
@@ -2634,15 +2568,11 @@ const ext = path.extname(f).toLowerCase();
                     out.push({ category: ent.name.slice(0, -4), items });
                 }
             } catch {}
-            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify(out));
+            json200(res, out);
         } else if (req.method === 'POST') {
-            const chunks = [];
-            let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
-            req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
-            req.on('end', () => {
+            readJsonBody(req, res, raw => {
                 try {
-                    const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                    const b = JSON.parse(raw.toString('utf8'));
                     if (typeof b.category !== 'string' || !/^[A-Za-z0-9_\-]{1,64}$/.test(b.category)) throw new Error('分类名不合法');
                     const cat = b.category;
                     const f = path.join(MEM_DIR, cat + '.txt');
@@ -2657,11 +2587,9 @@ const ext = path.extname(f).toLowerCase();
                         items.splice(i, 1);
                         atomicWrite(f, serializeMem(items));
                     } else throw new Error('未知操作');
-                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ ok: true }));
+                    json200(res, { ok: true });
                 } catch (e) {
-                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ ok: false, err: e.message }));
+                    json200(res, { ok: false, err: e.message });
                 }
             });
         } else { res.writeHead(405); res.end(); }
@@ -2679,15 +2607,11 @@ const ext = path.extname(f).toLowerCase();
         function writePrompts(list) { FSS.mkdirSync(path.dirname(PROMPTS_FILE), { recursive: true }); atomicWrite(PROMPTS_FILE, JSON.stringify({ _schema: 1, prompts: list }, null, 2)); }
         if (req.method === 'GET') {
             const list = readPrompts().sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || ''))); // updated_at 倒序（ISO 串字典序）
-            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify(list));
+            json200(res, list);
         } else if (req.method === 'POST') {
-            const chunks = [];
-            let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
-            req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
-            req.on('end', () => {
+            readJsonBody(req, res, raw => {
                 try {
-                    const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                    const b = JSON.parse(raw.toString('utf8'));
                     const list = readPrompts();
                     if (b.op === 'add') {
                         if (typeof b.body !== 'string' || !b.body.trim()) throw new Error('提示词内容不能为空');
@@ -2706,11 +2630,9 @@ const ext = path.extname(f).toLowerCase();
                         list.splice(i, 1);
                         writePrompts(list);
                     } else throw new Error('未知操作');
-                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ ok: true }));
+                    json200(res, { ok: true });
                 } catch (e) {
-                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ ok: false, err: e.message }));
+                    json200(res, { ok: false, err: e.message });
                 }
             });
         } else { res.writeHead(405); res.end(); }
@@ -2718,8 +2640,7 @@ const ext = path.extname(f).toLowerCase();
     else if (url === '/api/stats') {
         // P31-③: 当日匿名使用统计（只读；Origin 校验走 handleHttp 顶部全局规则，与 /api/memory 等同级）
         // pg 字段=存储层模式机现态（off/connecting/pg/file），人话两态由 stateWarnings 承载；payload 文件形状不变
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ...stats, pg: pgStore.mode }));
+        json200(res, { ...stats, pg: pgStore.mode });
     }
     else if (url === '/api/report') {
         // 只读诊断报告（GET）：采集→脱敏→atomicWrite 到 data/reports/；失败回人话错误
@@ -2742,11 +2663,9 @@ const ext = path.extname(f).toLowerCase();
             try {
                 spawn('explorer.exe', ['/select,' + out.path], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
             } catch {}
-            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify(out));
+            json200(res, out);
         } catch (e) {
-            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({ ok: false, error: '报告生成失败：' + String((e && e.message) || e) }));
+            json200(res, { ok: false, error: '报告生成失败：' + String((e && e.message) || e) });
         }
     }
     else if (url === '/api/db/overview') {
@@ -2767,12 +2686,9 @@ const ext = path.extname(f).toLowerCase();
     else if (url === '/api/sessions/archive') {
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         if (req.method === 'POST') {
-            const chunks = [];
-            let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
-            req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
-            req.on('end', () => {
+            readJsonBody(req, res, raw => {
                 try {
-                    const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                    const b = JSON.parse(raw.toString('utf8'));
                     if (!b.sid) throw new Error('缺 sid');
                     const arch = readArch();
                     if (b.archived) arch[b.sid] = Date.now(); else delete arch[b.sid];
@@ -2813,18 +2729,14 @@ const ext = path.extname(f).toLowerCase();
             out.sort((a, b) => ((a.type === 'file') - (b.type === 'file')) || a.name.localeCompare(b.name, 'zh'));
             return out;
         }
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: true, root: { name: ws, path: '', type: 'dir', children: build(wsDir(ws), '') }, attachments: [...att] }));
+        json200(res, { ok: true, root: { name: ws, path: '', type: 'dir', children: build(wsDir(ws), '') }, attachments: [...att] });
     }
     else if (url === '/api/ws/link' && req.method === 'POST') {
         // 把另一个工作区以 junction 形式引入当前工作区（相对引用语义，物理为绝对路径）
-        const chunks = [];
-        let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
-        req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
-        req.on('end', () => {
+        readJsonBody(req, res, raw => {
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             try {
-                const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                const b = JSON.parse(raw.toString('utf8'));
                 if (!wsValidId(b.ws) || !FSS.existsSync(wsDir(b.ws))) throw new Error('当前工作区不存在');
                 if (!wsValidId(b.target) || !FSS.existsSync(wsDir(b.target))) throw new Error('目标工作区不存在');
                 if (b.target === b.ws) throw new Error('不能把工作区引进它自己');
@@ -2842,13 +2754,10 @@ const ext = path.extname(f).toLowerCase();
         });
     }
     else if (url === '/api/ws/unlink' && req.method === 'POST') {
-        const chunks = [];
-        let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
-        req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
-        req.on('end', () => {
+        readJsonBody(req, res, raw => {
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             try {
-                const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                const b = JSON.parse(raw.toString('utf8'));
                 const rel = vcsSafeRel(b.path);
                 if (!wsValidId(b.ws) || !rel || rel.includes('/')) throw new Error('参数不完整');
                 const dest = path.join(wsDir(b.ws), rel.split('/').join(path.sep));
@@ -2862,13 +2771,10 @@ const ext = path.extname(f).toLowerCase();
     }
     else if (url === '/api/ws/delete' && req.method === 'POST') {
         // 删除整个工作区：仅孤儿或绑定归档会话的区允许；被任何活跃区链接引用时拒绝
-        const chunks = [];
-        let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
-        req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
-        req.on('end', async () => {
+        readJsonBody(req, res, async raw => {
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             try {
-                const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                const b = JSON.parse(raw.toString('utf8'));
                 if (!wsValidId(b.ws)) throw new Error('参数不完整');
                 const map = readWsMap(), arch = readArch();
                 const curSid = b.sid || null; // HTTP 端无 ws 句柄,当前会话 sid 由客户端带上
@@ -2894,13 +2800,10 @@ const ext = path.extname(f).toLowerCase();
     }
     else if (url === '/api/fs/new' && req.method === 'POST') {
         // 轻量文件管理：新建文件/目录（IDE 能力的最小集）
-        const chunks = [];
-        let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
-        req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
-        req.on('end', () => {
+        readJsonBody(req, res, raw => {
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             try {
-                const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                const b = JSON.parse(raw.toString('utf8'));
                 const rel = vcsSafeRel(b.path);
                 if (!wsValidId(b.ws) || !rel) throw new Error('参数不完整');
                 if (/^(?:[^/]*\/)?\./.test(rel.split('/').pop())) throw new Error('名字不能以点开头');
@@ -2917,13 +2820,10 @@ const ext = path.extname(f).toLowerCase();
         });
     }
     else if (url === '/api/fs/rename' && req.method === 'POST') {
-        const chunks = [];
-        let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
-        req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
-        req.on('end', async () => {
+        readJsonBody(req, res, async raw => {
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             try {
-                const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                const b = JSON.parse(raw.toString('utf8'));
                 const rel = vcsSafeRel(b.path);
                 const name = String(b.name || '').trim();
                 if (!wsValidId(b.ws) || !rel || !name) throw new Error('参数不完整');
@@ -2948,13 +2848,10 @@ const ext = path.extname(f).toLowerCase();
         });
     }
     else if (url === '/api/fs/delete' && req.method === 'POST') {
-        const chunks = [];
-        let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
-        req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
-        req.on('end', async () => {
+        readJsonBody(req, res, async raw => {
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             try {
-                const b = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                const b = JSON.parse(raw.toString('utf8'));
                 const rel = vcsSafeRel(b.path);
                 if (!wsValidId(b.ws) || !rel) throw new Error('参数不完整');
                 const root = wsDir(b.ws);
@@ -3030,8 +2927,7 @@ const ext = path.extname(f).toLowerCase();
             } catch {}
             return out;
         }
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify(listDir(wsDir(ws), '', { n: 500 })));
+        json200(res, listDir(wsDir(ws), '', { n: 500 }));
     }
     else if (url.startsWith('/api/upload') && req.method === 'POST') {
         const qs = new URL(req.url, 'http://x').searchParams;
@@ -3042,10 +2938,7 @@ const ext = path.extname(f).toLowerCase();
         if (dir === null) dir = '';
         const fname = (qs.get('name') || ('upload-' + Date.now())).replace(/[\\/:*?"<>|]/g, '_');
         if (!fileNameSafe(fname)) { res.writeHead(400); res.end(JSON.stringify({ ok: false, err: '名字是 Windows 保留的，换一个吧' })); return; }
-        const chunks = [];
-        let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
-        req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
-        req.on('end', () => {
+        readJsonBody(req, res, raw => {
             try {
                 const tdir = path.join(wsDir(ws), dir.split('/').join(path.sep));
                 FSS.mkdirSync(tdir, { recursive: true });
@@ -3055,15 +2948,14 @@ const ext = path.extname(f).toLowerCase();
                 const ext = extM ? extM[1] : '';
                 let n = 1;
                 while (FSS.existsSync(path.join(tdir, finalName))) { finalName = base + '-v' + (++n) + ext; }
-                FSS.writeFileSync(path.join(tdir, finalName), Buffer.concat(chunks));
+                FSS.writeFileSync(path.join(tdir, finalName), raw);
                 const meta = readForgeMeta(ws);
                 meta.attachments = meta.attachments || [];
                 const rp = (dir ? dir + '/' : '') + finalName;
                 if (!meta.attachments.includes(rp)) { meta.attachments.push(rp); if (meta.attachments.length > 1000) meta.attachments = meta.attachments.slice(-1000); }
                 writeForgeMeta(ws, meta);
                 console.log('uploaded:', ws + '/' + rp);
-                res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify({ ok: true, name: rp }));
+                json200(res, { ok: true, name: rp });
             } catch (e) { res.writeHead(500); res.end(JSON.stringify({ ok: false, err: e.message })); }
         });
     }
