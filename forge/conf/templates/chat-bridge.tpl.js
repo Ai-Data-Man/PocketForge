@@ -38,6 +38,20 @@ function readSecrets(file) {
 }
 const secrets = readSecrets(path.join(ROOT, 'data', 'secrets.env'));
 
+// C4（research/24 §7）：providers/save_config 两分支同构回写合一。换行容差取宽 split(/\r?\n/)
+// （原 save_config 版；providers 版 split('\n') 遇 CRLF 文件存活行会残留 \r 尾巴，宽容差即归一为 LF）。
+// kv 键存在才回写：providers 恒传三键（空值也落 KEY=），save_config 只传真值（缺键=该行不落盘）。
+function rewriteSecretsEnv(kv) {
+    const f = path.join(ROOT, 'data', 'secrets.env');
+    const lines = require('fs').readFileSync(f, 'utf8').split(/\r?\n/).filter(l => l && !l.startsWith('#'));
+    // s78 自愈: NUL 前缀行 trim 不除、旧过滤匹配不到 → 永久存活；回写只保留 KEY=VALUE 形状行
+    const keep = lines.filter(l => /^[A-Za-z_][A-Za-z0-9_]*=/.test(l.trim()) && !/^(GOOSE_MODEL_NAME|FORGE_AGENT_HOST|FORGE_AGENT_API_KEY)=/.test(l.trim()));
+    if ('model' in kv) keep.push('GOOSE_MODEL_NAME=' + (kv.model || ''));
+    if ('host' in kv) keep.push('FORGE_AGENT_HOST=' + (kv.host || ''));
+    if ('key' in kv) keep.push('FORGE_AGENT_API_KEY=' + (kv.key || ''));
+    atomicWrite(f, keep.join('\n') + '\n');
+}
+
 // 真版本号（ADR-0009）：package.sh 打包时写入的 VERSION 是唯一真相源
 const APP_VERSION = (() => { try { return require('fs').readFileSync(path.join(__dirname, '..', 'VERSION'), 'utf8').trim() || 'dev'; } catch { return 'dev'; } })();
 
@@ -1934,11 +1948,19 @@ function handleSchedules(req, res, url) {
             return m ? m[1].trim() : null;
         } catch { return null; }
     }
+    // C4（research/24 §7）：schedToggle 落盘后/删除后两处 pc.port 读取+守护重启同构合一；done(err) 收 execFile 结果
+    function restartSchedulerDaemon(done) {
+        let pcPort = '8099';
+        try { pcPort = FSS.readFileSync(path.join(ROOT, 'data', 'pc.port'), 'utf8').trim() || pcPort; } catch {}
+        require('child_process').execFile(path.join(ROOT, 'bin', 'pc', 'process-compose.exe'),
+            ['-p', pcPort, 'process', 'restart', 'goose-scheduler'],
+            { timeout: 30000, windowsHide: true }, done);
+    }
     // s55: 暂停/恢复——短命 `goose acp --enable-scheduler` 发 ACP custom request（改内存+persist 落盘）。
     // 进程即用即弃，不与 cron 守护共存；运行中 pause 会报 "Cannot pause running schedule"，原样回传。
     // 落盘后须重启 goose-scheduler 守护重载（守护 sync 只增删 id 不读 paused）；重启失败降级 warn 不欺骗。
     function schedToggle(id, op, res) {
-        const { spawn, execFile } = require('child_process');
+        const { spawn } = require('child_process');
         const child = spawn(GOOSE, ['acp', '--enable-scheduler'], {
             env: { ...process.env, GOOSE_PATH_ROOT: path.join(ROOT, 'conf', 'goose'), GOOSE_DISABLE_KEYRING: '1', NO_PROXY: (process.env.NO_PROXY || '127.0.0.1,localhost') },
             stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true,
@@ -1969,13 +1991,7 @@ function handleSchedules(req, res, url) {
                         done({ ok: false, err: msg.includes('running schedule') ? '任务正在运行，等它跑完再暂停' : (msg.slice(0, 200) || '操作失败') });
                     } else {
                         // 落盘成功 → 重启守护重载盘面值；失败降级 warn（ok 仍 true）
-                        let pcPort = '8099';
-                        try { pcPort = FSS.readFileSync(path.join(ROOT, 'data', 'pc.port'), 'utf8').trim() || pcPort; } catch {}
-                        execFile(path.join(ROOT, 'bin', 'pc', 'process-compose.exe'),
-                            ['-p', pcPort, 'process', 'restart', 'goose-scheduler'],
-                            { timeout: 30000, windowsHide: true }, (e) => {
-                                done(e ? { ok: true, warn: '任务已' + (op === 'resume' ? '恢复' : '暂停') + '，但后台调度器重启失败，下次到点可能仍会' + (op === 'resume' ? '跳过' : '执行') } : { ok: true });
-                            });
+                        restartSchedulerDaemon((e) => done(e ? { ok: true, warn: '任务已' + (op === 'resume' ? '恢复' : '暂停') + '，但后台调度器重启失败，下次到点可能仍会' + (op === 'resume' ? '跳过' : '执行') } : { ok: true }));
                     }
                 }
             }
@@ -2032,7 +2048,7 @@ function handleSchedules(req, res, url) {
                 json200(res, { ok: false, err: '参数不合法' }); return;
             }
             if (op) return schedToggle(id, op, res);
-            const { spawn, execFile } = require('child_process');
+            const { spawn } = require('child_process');
             const p = spawn(GOOSE, ['schedule', 'remove', '--schedule-id', id], {
                 env: { ...process.env, GOOSE_PATH_ROOT: path.join(ROOT, 'conf', 'goose'), GOOSE_DISABLE_KEYRING: '1', NO_PROXY: (process.env.NO_PROXY || '127.0.0.1,localhost') },
             });
@@ -2042,14 +2058,10 @@ function handleSchedules(req, res, url) {
             p.on('close', code => {
                 if (code !== 0) { json200(res, { ok: false, out: out.slice(0, 300) }); return; }
                 // s58: 删除同款守护盲区——守护内存条目不随盘清，重启重载（失败降级 warn 不欺骗）
-                let pcPort = '8099';
-                try { pcPort = FSS.readFileSync(path.join(ROOT, 'data', 'pc.port'), 'utf8').trim() || pcPort; } catch {}
-                execFile(path.join(ROOT, 'bin', 'pc', 'process-compose.exe'),
-                    ['-p', pcPort, 'process', 'restart', 'goose-scheduler'],
-                    { timeout: 30000, windowsHide: true }, (e) => {
-                        if (res.writableEnded) return;
-                        json200(res, e ? { ok: true, warn: '已删除，但后台调度器重启失败，任务可能仍会执行一次' } : { ok: true, out: out.slice(0, 300) });
-                    });
+                restartSchedulerDaemon((e) => {
+                    if (res.writableEnded) return;
+                    json200(res, e ? { ok: true, warn: '已删除，但后台调度器重启失败，任务可能仍会执行一次' } : { ok: true, out: out.slice(0, 300) });
+                });
             });
         });
     } else { res.writeHead(405); res.end(); }
@@ -3471,16 +3483,7 @@ function handleClient(ws, msg) {
                 healthCache.at = 0; probeProviderHealth(); // §S1 缓存失效：save/activate/改模型即后台重探（换档对齐；面板修复→告警条即消的 GUI 闭环）
             }
             const act = list.find(p => p.active);
-            if (act) {
-                const sf = path.join(ROOT, 'data', 'secrets.env');
-                const lines = require('fs').readFileSync(sf, 'utf8').split('\n').filter(l => l && !l.startsWith('#'));
-                // s78 自愈: NUL 前缀行 trim 不除、键名正则匹配不到 → 旧过滤下永久存活；回写只保留 KEY=VALUE 形状行
-                const keep = lines.filter(l => /^[A-Za-z_][A-Za-z0-9_]*=/.test(l.trim()) && !/^(GOOSE_MODEL_NAME|FORGE_AGENT_HOST|FORGE_AGENT_API_KEY)=/.test(l.trim()));
-                keep.push('GOOSE_MODEL_NAME=' + (act.models && act.models[0] || ''));
-                keep.push('FORGE_AGENT_HOST=' + (act.host || ''));
-                keep.push('FORGE_AGENT_API_KEY=' + (act.key || ''));
-                atomicWrite(sf, keep.join(String.fromCharCode(10)) + String.fromCharCode(10));
-            }
+            if (act) rewriteSecretsEnv({ model: act.models && act.models[0] || '', host: act.host || '', key: act.key || '' });
             ws.send({ sys: 'providers', list: list.map(pr => ({ name: pr.name, host: pr.host, models: pr.models || [], active: !!pr.active, hasKey: !!pr.key })) });
             if (needRestart) hotRestartProvider().catch(e => console.error('hot restart failed', e));
             return;
@@ -3536,15 +3539,11 @@ function handleClient(ws, msg) {
         if (msg.type === 'save_config') {
             // persist model/host/key into data/secrets.env (idempotent rewrite of known keys)
             try {
-                const f = path.join(ROOT, 'data', 'secrets.env');
-                const lines = require('fs').readFileSync(f, 'utf8').split(/\r?\n/).filter(l => l && !l.startsWith('#'));
-                // s78 自愈: NUL 前缀行 trim 不除、旧过滤匹配不到 → 永久存活；回写只保留 KEY=VALUE 形状行
-                const keep = lines.filter(l => /^[A-Za-z_][A-Za-z0-9_]*=/.test(l.trim()) && !/^(GOOSE_MODEL_NAME|FORGE_AGENT_HOST|FORGE_AGENT_API_KEY)=/.test(l.trim()));
-                const c = msg.config || {};
-                if (c.model) keep.push('GOOSE_MODEL_NAME=' + c.model);
-                if (c.host) keep.push('FORGE_AGENT_HOST=' + c.host);
-                if (c.key) keep.push('FORGE_AGENT_API_KEY=' + c.key);
-                atomicWrite(f, keep.join('\n') + '\n');
+                const c = msg.config || {}, kv = {};
+                if (c.model) kv.model = c.model;
+                if (c.host) kv.host = c.host;
+                if (c.key) kv.key = c.key;
+                rewriteSecretsEnv(kv);
                 console.log('config saved (takes effect after restart):', c.model || '', c.host || '');
                 ws.send({ sys: 'saved_config' });
             } catch (e) { ws.send({ sys: 'error', text: '保存失败: ' + e.message }); }
