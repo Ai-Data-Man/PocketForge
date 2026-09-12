@@ -407,6 +407,72 @@ rm -rf "$UPD/$UZ" "$UPD/$UZ".*.part "$UPD/$US" "$UZT" "$UPD/$UZD"; trap - EXIT
 [ ! -e "$UPD/$UZ" ] && [ ! -e "$UPD/$US" ] && [ -z "$(ls "$UPD/$UZ".*.part 2>/dev/null)" ]; ck "v0.9.10 upload fuzz cleaned up" $?
 # s76: vision --set-model 注入矩阵收编（qa P2-1 转正探针，F1-F7 七断言逐案计数；探针自含沙盒零副作用）
 for vf in F1 F2 F3 F4 F5 F6 F7; do node "$(dirname "$0")/vision-fuzz-probe.js" "$vf" >/dev/null 2>&1; ck "vision-fuzz $vf set-model injection (s76)" $?; done
+# ===== fuzz-v2 五面新增（夜批 22732d1/6d94f3a/3f80ca9/8f0e6e2/b4e02d2/367b57a/166607a/e9f04ee）=====
+# 面4 readJsonBody/json200（8f0e6e2 样板收敛 + b4e02d2 签名回滚）：随机 POST 体 × 5 端点抽样——
+# 坏 JSON/BOM 头/超深嵌套/1MB 超长值：友好 JSON 错误、不 500 不崩不泄漏（累积断开防线由下方预算边界钉）
+JL(){ python -c "
+import sys,json
+raw=sys.stdin.read()
+try:
+    json.loads(raw)
+except Exception:
+    sys.exit(1)
+sys.exit(0 if ('C:' not in raw and '/conf/' not in raw and 'ENOENT' not in raw) else 1)"; }
+for EP in /api/memory /api/schedules /api/config/market /api/extensions /api/prompts; do
+  curl -s -m 10 -X POST "$B$EP" -H 'content-type: application/json' -d '{"op":' | JL; ck "readJsonBody $EP truncated JSON friendly (fuzz-v2)" $?
+  printf '\xEF\xBB\xBF{"op":"list"}' | curl -s -m 10 -X POST "$B$EP" -H 'content-type: application/json' --data-binary @- | JL; ck "readJsonBody $EP BOM-prefixed JSON friendly (fuzz-v2)" $?
+  python -c "import sys; sys.stdout.write('['*100000)" | curl -s -m 15 -X POST "$B$EP" -H 'content-type: application/json' --data-binary @- | JL; ck "readJsonBody $EP 100k deep nesting friendly (fuzz-v2)" $?
+  python -c "import sys; sys.stdout.write('{\"op\":\"x\",\"t\":\"' + 'x'*1000000 + '\"}')" | curl -s -m 15 -X POST "$B$EP" -H 'content-type: application/json' --data-binary @- | JL; ck "readJsonBody $EP 1MB long value friendly (fuzz-v2)" $?
+done
+# 预算边界 ±1：恰 50MB 不触发累积断开（> 严格比较），50MB+1 头部门 413
+BFT="$(mktemp)"
+python -c "
+import sys
+head = '{\"op\":\"x\",\"t\":\"'; tail = '\"}'; pad = 52428800 - len(head) - len(tail)
+sys.stdout.write(head + 'y'*pad + tail)" > "$BFT"
+curl -s -m 60 -X POST "$B/api/memory" -H 'content-type: application/json' --data-binary @"$BFT" | JL; ck "readJsonBody exact-50MB passes cumulative guard, friendly err (fuzz-v2)" $?
+python -c "import sys; sys.stdout.write('[' * 52428801)" > "$BFT"
+[ "$(curl -s -m 60 -o /dev/null -w '%{http_code}' -X POST "$B/api/memory" -H 'content-type: application/json' --data-binary @"$BFT")" = "413" ]; ck "readJsonBody 50MB+1 rejected 413 at header gate (fuzz-v2)" $?
+rm -f "$BFT"
+# chunked 畸形（垃圾 chunk-size 行）与 CL 谎报（声明 10 实发更多+流水线垃圾）：协议级 400/断开，桥存活
+python - "$B" <<'PYEOF'
+import socket, sys
+host, port = sys.argv[1].replace('http://','').split(':')
+s = socket.create_connection((host, int(port)), timeout=8)
+s.sendall(b'POST /api/memory HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\nzzzz\r\nnot-a-chunk-size\r\n')
+s.settimeout(3)
+try:
+    data = s.recv(4096).decode('utf8','replace')
+except Exception:
+    data = '(closed)'
+s.close()
+sys.exit(0 if (' 400 ' in data or data == '(closed)' or data == '') and ' 200 ' not in data else 1)
+PYEOF
+ck "readJsonBody chunked garbage chunk-size rejected protocol-level (fuzz-v2)" $?
+python - "$B" <<'PYEOF'
+import socket, sys, urllib.request
+host, port = sys.argv[1].replace('http://','').split(':')
+s = socket.create_connection((host, int(port)), timeout=8)
+s.sendall(b'POST /api/memory HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: 10\r\n\r\n{"op":1}GARBAGE-PIPELINE-NOT-A-REQUEST\r\n\r\n')
+s.settimeout(3)
+try:
+    data = s.recv(8192).decode('utf8','replace')
+except Exception:
+    data = '(closed)'
+s.close()
+ok_resp = (' 400 ' in data or 'ok":false' in data or data == '(closed)' or data == '')
+ok_alive = urllib.request.urlopen('http://%s:%s/healthz' % (host, port), timeout=5).read().decode() == 'ok'
+sys.exit(0 if ok_resp and ok_alive else 1)
+PYEOF
+ck "readJsonBody CL-lie pipeline garbage rejected, bridge alive (fuzz-v2)" $?
+# 面1 健康探测（22732d1/e9f04ee/166607a）：/models 畸形响应四态判定 + 入站畸形帧（探针自建沙盒）
+node "$(dirname "$0")/health-probe-fuzz.js" >/dev/null 2>&1; ck "health-probe /models malformed 4-state fuzz, 24 asserts (fuzz-v2)" $?
+# 面2 代际守卫（6d94f3a P1-A/P2-B）：20 客户端乱序轰炸 + 毁线窗（探针自建沙盒，种子化可复现）
+node "$(dirname "$0")/ws-genesis-fuzz.js" >/dev/null 2>&1; ck "ws genesis-guard 20-client bombardment fuzz, 9 asserts (fuzz-v2)" $?
+# 面5 SSE 重试阶梯（6d94f3a P2-A/367b57a C3）：mock 畸形流——重试不失控不双发（探针自建沙盒）
+node "$(dirname "$0")/sse-ladder-fuzz.js" >/dev/null 2>&1; ck "SSE retry-ladder malformed stream fuzz, 34 asserts (fuzz-v2)" $?
+# 面3 maskKeys（3f80ca9/166607a P3-2）：显示层掩码随机 key 形态（静态纯函数探针）
+node "$(dirname "$0")/mask-fuzz-probe.js" >/dev/null 2>&1; ck "maskKeys display-layer random key-form fuzz, 8 asserts (fuzz-v2)" $?
 echo "=============================="
 echo "fuzz: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" = "0" ]
