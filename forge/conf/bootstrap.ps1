@@ -186,6 +186,11 @@ $visTpl = Join-Path $ForgeRoot 'conf\templates\vision.tpl.js'
 $visOut = Join-Path $ForgeRoot 'bin\vision.js'
 if (Test-Path $visTpl) { Copy-Item $visTpl $visOut -Force }
 
+# 5g) goose 调度守护 wrapper 生成（goose v1.50 适配：acp 对 stdin EOF 即优雅退出，pc 守护进程无 stdin
+#     须由 wrapper 持管道，见模板头注；process-compose.yaml goose-scheduler 指向本产物）
+$schedTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\goose-scheduler.tpl.js'))
+[IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\goose-scheduler.js'), $schedTpl)
+
 # 5c) 首启欢迎页（仅首次：data/welcome.done 不存在时生成 html 并由启动器打开）
 $done = Join-Path $ForgeRoot 'data\welcome.done'
 if (-not (Test-Path $done)) {

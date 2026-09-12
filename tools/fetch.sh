@@ -28,7 +28,7 @@ mkdir -p "$BIN/nats-cli"; unzip -oq "$DL/nats-cli.zip" -d "$BIN/nats-cli"
 dl https://github.com/faucetdb/faucet/releases/download/v0.1.12/faucet_0.1.12_windows_amd64.zip "$DL/faucet.zip"
 mkdir -p "$BIN/faucet"; unzip -oq "$DL/faucet.zip" -d "$BIN/faucet"
 # goose
-dl https://github.com/aaif-goose/goose/releases/download/v1.46.0/goose-x86_64-pc-windows-msvc.zip "$DL/goose.zip"
+dl https://github.com/aaif-goose/goose/releases/download/v1.50.0/goose-x86_64-pc-windows-msvc.zip "$DL/goose.zip"
 mkdir -p "$BIN/goose"; unzip -oq "$DL/goose.zip" -d "$BIN/goose"
 # postgresql (s66/ADR-0011: zonky maven jar → 取 txz → 解到 bin/pg，顶层 bin/lib/share)
 dl https://repo1.maven.org/maven2/io/zonky/test/postgres/embedded-postgres-binaries-windows-amd64/17.11.0/embedded-postgres-binaries-windows-amd64-17.11.0.jar "$DL/zonky-pg-17.11.0.jar"

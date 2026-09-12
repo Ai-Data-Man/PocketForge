@@ -24,4 +24,6 @@ conf/apps.env.yaml
 forge/conf/goose/config/memory/
 # goose 运行时演化物不入库（裁决 2026-09-08-permission-yaml-untrack）：种子=conf/templates/permission.tpl.yaml
 forge/conf/goose/config/permission.yaml
+# goose v1.50 #11383：permission.yaml 的 fs2 文件锁邻居（运行时首写后常驻，零字节，非污染）
+forge/conf/goose/config/permission.yaml.lock
 forge/conf/diag.ps1

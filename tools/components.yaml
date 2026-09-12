@@ -28,11 +28,11 @@ components:
     license: MIT
     url: https://github.com/faucetdb/faucet/releases/download/v0.1.12/faucet_0.1.12_windows_amd64.zip
   - name: goose-cli
-    version: v1.46.0
+    version: v1.50.0
     repo: aaif-goose/goose
     asset: goose-x86_64-pc-windows-msvc.zip
     license: Apache-2.0
-    url: https://github.com/aaif-goose/goose/releases/download/v1.46.0/goose-x86_64-pc-windows-msvc.zip
+    url: https://github.com/aaif-goose/goose/releases/download/v1.50.0/goose-x86_64-pc-windows-msvc.zip
   # s66/ADR-0011: zonky maven jar（内含 postgres-windows-x86_64.txz，fetch 时解出 bin/ 3 exe + dll + lib/share）
   - name: postgresql
     version: 17.11.0

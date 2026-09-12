@@ -83,9 +83,9 @@
 
 | 项 | 状态 |
 |---|---|
-| ACP SDK schema 1.1→=1.5.0 / protocol 2.0 的协议层行为差异未逐项审计 | UNVERIFIED——沙盒全量回归（bridge 200 + e2e 53/53 + fuzz 150/150）覆盖 |
-| fork meta.conversationBefore 在 v1.50 是否可达 handler | UNVERIFIED——FORK-D 判别复跑（§3） |
-| 新版二进制本机未运行，本报告全部结论为源码/release 级 | 全体 VERIFIED-DOC；RUN 级验证=playbook 沙盒面 |
+| ACP SDK schema 1.1→=1.5.0 / protocol 2.0 的协议层行为差异未逐项审计 | UNVERIFIED——沙盒全量回归（bridge 200 + e2e 53/53 + fuzz 150/150）覆盖 → **已销账（§9.2 全量绿）** |
+| fork meta.conversationBefore 在 v1.50 是否可达 handler | UNVERIFIED——FORK-D 判别复跑（§3）→ **已销账（§9.5，VERIFIED-RUN：仍剥离，不可达）** |
+| 新版二进制本机未运行，本报告全部结论为源码/release 级 | 全体 VERIFIED-DOC；RUN 级验证=playbook 沙盒面 → **已销账（§9 十面矩阵 RUN 级）** |
 | v1.47/v1.48 的 PR 级深审（非红线面）未做 | 按需补（release notes 全文已档 tmp/g150/ 可查） |
 
 ## 8. 取证档案（复跑路径）
@@ -95,3 +95,50 @@
 - diff：tmp/g150/d-*.diff（session_manager 575 行 / config-permission 421 行 / load_session 572 行 / server 2296 行 / scheduler 33 行 / schedule 10 行 / paths 0 / permission_inspector 0 / extension_manager 1493 行 / config-base 359 行）
 - PR patch：tmp/g150/pr10285.patch.txt；SDK：tmp/g150/sdk-tree.json / sdk-cta-requests.rs / sdk-schema-mod.rs
 - 本地 v1.46.0 基线：tmp/goose-src（git 98c11ce，release branch for 1.46.0）
+
+## 9. 实施记录（2026-09-13，VERIFIED-RUN）
+
+**升级落地**：dev 栈 forge/bin/goose v1.46.0 → v1.50.0。资产=goose-x86_64-pc-windows-msvc.zip（83,949,640B，sha256 `1bcb644e9dd9eeae60ec0491c0687b3378d32365e7cb5c3edeab8db6aa923829`，与 GitHub release 元数据 digest 逐字一致）；解压后 goose.exe sha256 `235f929f17eb5a9eaa58903431f97d81d30147e9c9f614b1545290805d329c77`；LICENSE 与 vendor-licenses/goose.Apache-2.0 逐字节一致（AAIF/Apache-2.0 不变）。回滚位=tmp/goose-v146-rollback/goose-package/goose.exe（v1.46.0，`07145c85…dcf31`）。版本记账：tools/fetch.sh goose URL、tools/components.yaml goose-cli v1.50.0、tools/checksums.txt 两行 goose 哈希同步。
+
+### 9.1 唯一真实行为差异与适配（升级中实锤）
+
+**`goose acp` 对 stdin EOF 即优雅退出（v1.46 忽略 EOF 常驻）**。process-compose 守护进程不给 stdin（Go exec nil=NUL）→ `goose-scheduler`（`acp --enable-scheduler`）直跑秒退 exit 0，pc 视为正常退出不重启（Launched+僵尸 PID 假象），调度器死、cron 永不触发。三重实证：v1.50 管道恒开=常驻（node/cmd /C 两形状 12s+ 存活）；v1.50 null-stdin=秒退 0；v1.46 null-stdin=常驻（timeout 124）。EOF 语义在 ACP rust-sdk serve() 层，无配置开关；pc v1.122 对非交互守护也无 stdin 管道选项（app/process.go 源码核）。
+**适配**（最小面三处）：新模板 `conf/templates/goose-scheduler.tpl.js`（node wrapper：为 goose 持永不关闭的 stdin 管道，stdout/stderr 透传，退出码透传）+ bootstrap.ps1 5g 物化块 + process-compose.yaml goose-scheduler command 改指 `bin/goose-scheduler.js`（环境块不动，wrapper 原样传 process.env）。v1.46 同形兼容。bootstrap 重物化其余产物 cmp 逐位一致。
+
+### 9.2 十面回归矩阵（playbook §3 + 本报告 §6 增补）
+
+| 面 | 结果 | 证据 |
+|---|---|---|
+| 1 调度闭环 | PASS | pause/resume 往返（v1.50 ACP 自定义请求 `_goose/unstable/schedules/pause|unpause`）落盘 schedule.json paused True→False→True 还原；桥内 restartSchedulerDaemon 重启守护（wrapper 形态下 goose.exe 常驻重载）；daily-mem 终态 paused=true 原样；删除路径与 pause/resume 共用同一 C4 合并助手（restartSchedulerDaemon），不单独造删除任务 |
+| 2 会话回放/错误流 | PASS | pfr21 CTL（§9.3）+ e2e §18c S12-S13 回放断言；401 文案面未单独造（#11202 面 fuzz/e2e 已含错误链路桩） |
+| 3 审批卡（G6 双臂） | PASS（文档级+运行形态） | user.never_allow `browser__browser_run_code_unsafe` 经 v1.50 运行时重写后仍在（#11383 lock+原子写路径实跑）；smart_approve 学习条目全为规范前缀名（browser__*/faucet-db__*，#10285 形态）；#11477 never 优先=收紧方向，user-never 对 smart_approve-ask 仍权威。真浏览器任务双臂实跑未在本窗口清单内（源码级 VERIFIED-DOC 维持） |
+| 4 MCP 商店 | 未单跑（不在本窗口清单；e2e/fuzz 覆盖 mcp-catalog 探针） | — |
+| 5 真实任务 | 未单跑（不在本窗口清单；§18 真会话+标题生成实跑） | — |
+| 6 T2 转储巡检 | PASS | 工具清单 v1.46 时代 vs v1.50 时代 dump 逐名比对 **46=46 IDENTICAL**；G3 否定块（apps/summon/extensionmanager/analyze）缺席照旧；Global Hints 在、Project Hints 空照旧；system prompt 差异全部归因=记忆条目排序+新内置 skill（§9.4），goose 侧 prompt 本体无护栏变化 |
+| 7 G7 观察项 | 维持 | RepetitionInspector/SECURITY_PROMPT_ENABLED 无新配置键（research/23 §5 文档级维持；无运行时反证） |
+| 8 会话号/救援面 | PASS | ws-delete-receipt 三跑全 PASS 且三次同 sid=20260912_122（当日 MAX+1+删除复用语义逐字保持=救援前提不变）；e2e §18 sid-reuse-rescue 真 LLM 绿（57/57 内）；NEG 复跑：「Session not found」单源措辞不变（§9.3） |
+| 9 permission.yaml 升级语义 | PASS | 升级零触碰（mtime 03:58:41 < 换包 04:03，v1.50 启动不改写）；三键齐写存活；运行时 04:32 重写（e2e 期 smart_approve 学习）后三键+never_allow 锚仍在；**permission.yaml.lock 邻居如预期出现**（04:26，零字节，非污染，.gitignore 已补行） |
+| 10 手术面（s77 最重要） | PASS | pfr21 CTL/B/RB/NEG 四项 v1.50 复跑全绿（§9.3）；e2e §18c 31/31（沙盒自建桥硬链新 goose）；**FORK-D 判别见 §9.5** |
+
+**全量**：e2e-chat **57/57** + fuzz **150/150**（降权 dev 栈上顺序跑；首轮 52/57 红全部集中在 §13 PG 段——本机 Administrator 直启栈致 pg 拒提权运行（s66 已知家族），runas /trustlevel:0x20000 降权重拉后全绿，与 goose 无关）。
+
+### 9.3 pfr21 四项复跑（v1.50，tmp/g150/pfr21-v150，假 provider 离线确定性）
+
+- **CTL**：session/load 返回四 modes；prompt 后模型上下文=全部三轮 user 文（PROBE_ALL 回显 U1+U2+U3）。
+- **B**：surgery del-from-user 删 3 行（边界=U3 user 行）→ load+prompt 上下文=U1+U2、U3 缺席；术后 DB 行数=残留+新轮自洽。
+- **RB**：单进程 new→3 轮→close→手术→load 同 sid→改写 prompt：上下文=U1+U2+改写文、原句零残留（provider 请求 dump 直证）；rowsAfter 12 行形态同 research/21 基线。
+- **NEG**：corrupt-user 后 load → Resource not found +「Session not found: 20260912_1」——v1.46 同款单源误导文案，SESSION_NF_RE 救援触发面不变。
+
+### 9.4 新内置 skill（v1.50 版本面增量，观察项非红）
+
+v1.50 二进制捆绑 `builtin://skills/web-search`（DuckDuckGo/Tavily/SearXNG）与 `builtin://skills/goose-doc-guide`；system prompt 的 skills 提示段相应多 web-search 一行（v1.46 时代 dump 无）。工具清单不变（web-search 是 skill 非 tool，经 load_skill 激活）；内网目标机上按需联网失败即失败，无安全面回归（shell 本就 always_allow）。产品侧若要裁剪须另立裁决（上游如有内置 skill 禁用键再评估），本窗口不动。
+
+### 9.5 FORK-D 判别结论（research/23 唯一 UNVERIFIED → VERIFIED-RUN）
+
+tmp/g150/forkd.js（隔离 root+假 provider，v1.50 二进制）：**臂1** meta.conversationBefore='NOT_AN_INT'（字符串）→ fork 成功、新 sid 整份复制（9 行→9 行，U1-U3 全在），**无 invalid_params**；**臂2** meta.conversationBefore=合法秒级时间戳（U2 行）→ 同样整份复制，**零截断**。两臂合证：**meta.conversationBefore 在 v1.50 仍被 schema 校验层剥离、不可达 handler**（research/23 §3 的「大概率可达」侧证推断被证伪；replayTail 走 session/load meta，与 fork 的剥离不同路径，不受此结论影响）。→ **官方截断通道不存在，一切照旧；补篇 §6-3 形态重开归约不触发**；B 型手术 DB 路径前提全部维持。
+
+### 9.6 遗留观察
+
+- v1.50 标题生成正常（e2e §18 真会话产出「forge 连通测试」「Connectivity test」模型生成标题；#11787 本地命名路径未触达=OpenAI 兼容线仍走模型命名，与 §2.5 预期一致）。
+- 生产打包面：process-compose.yaml 的 goose-scheduler command 变更随下个版本包自然生效（bootstrap 5g 物化 wrapper）；存量包升级路径的适配说明归发版窗口。
+- tmp/goose-v146-rollback/ 回滚位保留至下个稳定窗口后清理。
