@@ -139,3 +139,9 @@
 - 终态基线：**e2e-chat 57/57 + fuzz 178/178**；本会话 commit 区间 38b06be…d06de72（50+ 提交）。
 
 [巡检 06:05] healthz=ok pg=Ready(Launching 态系重启后正常过渡) probe=PASS fake9r=alive —— 巡检流程验证轮，cron 已设（每 2h 至 22:00）
+
+## s78e 活体猎捕（tmp/s78e-qa-live-hunt.md）——v1.50 升级盲区补完
+- 四链全绿：MCP 商店装用停卸全链（sequential-thinking 真调 3 次答对+装卸 config.md5 逐位一致）/fetch-mcp 活体（json 目标 40=包固有 text/* 白名单非回归，模型自主 curl fallback）/技能市场（v1.50 发现+两桩共存零冲突+load_skill 真会话通）/vision（--list-models 真拉 24+；任务书笔误 --list 不存在）/权限链（v1.50 request_permission 卡 4 选项形态+批准+completed 全链）。
+- **P3-A 新发现**：vision.tpl.js:79 不存在图片路径→readFileSync 未捕获→22 行英文栈 RC=1 非人话（s76 存量自有代码）——小批修。
+- **P3-观察（产品裁决域）**：goose v1.50 决策序 user.always_allow>smart_approve.ask_before（permission_inspector.rs:162-190 VERIFIED-DOC）；妻子卡上选过「总是允许」=同构永久直通且产品无撤销入口（permission.yaml PROTECTED）——手册补引导+STATE 观察项，撤销 UI 挂 backlog。
+- fetch-mcp 目录 desc 注记「仅 text/*」留档商店治理候选。
