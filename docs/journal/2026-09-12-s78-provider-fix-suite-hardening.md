@@ -73,3 +73,10 @@
 
 ## 支线研究（4d48e7c research/25）
 - 对标景观→P32 输入：应用资产化（缺「它做过的东西」统一清单，触发器=真机「找不回」≥2 次）/agent-native 对等叙事零开发可用/生成式 UI+自主巡检明确不跟进/研究类任务前 3 源止损线入工作方式。
+
+## QA 独立复审三批（tmp/s78b-qa-review.md）
+- **批1 22732d1 需返工**：P1-1 hello 竞态——探测只在态变化时广播+hello 过期路径 fire-and-forget→TTL 过期+态不变=触发方零帧（沙盒实锤 tmp/s78b-health-race.js：重探发生但 B 零帧）；隔夜首开+链路持续坏=裁决主指标失效；修法 3 行（probeProviderHealth(reply) 收尾必发）。P3：switch_model 同档不失效缓存+models[0] 漂移可误报≤30min/:659 死分支/gui 探针自身 flaky。
+- **批2 6d94f3a 通过**：代际守卫真闭合（3 发起点 grep 全量核+e2e§20 复跑）；P2-1 sid 过滤误丢 session/request_permission（ACP 规范带必填 sessionId）——刷新窗口权限卡永久丢失→turn 挂死+busySids 泄漏；修法 1 行豁免。
+- **批3 8f0e6e2 通过**：行为零变化 A/B 实证（双沙盒 17 恶意 POST+8 GET 逐字节 SAME；update/upload 87 行零 diff；TDZ 注释属实）；P3 卫生三条；净删除实 108。
+- 排程：P1-1+P2-1 合小修批（已派），合入后主控跑全量。
+- 手册：使用说明.md 补 s77 五功能+健康提醒条妻子话术（a15f1bb）——章程优先级 6 缺口销账。
