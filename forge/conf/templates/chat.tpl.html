@@ -895,6 +895,7 @@ function toggleReportCard(wrap){
 }
 function openSession(sid){
   if(busy){ addErr('它正在干活，等一下或先停止。'); return; }
+  tabMenuClose(); // s78 qa P3-D：切会话关 Tab 菜单+清过滤词（侧栏点击/搜索窗选会话/撤回恢复重载全走此口；menu 不关则 Esc 前残留且再按 Tab 被「已开不重置」守卫卡成无操作）
   pendingForNew=false; lastOrig=null; // C3: 切旧会话不补发队列；s50e: 清重发原文，防上一会话原文串进本会话（回放末尾 endStream 可能读它）
   if(pendingQueue.length){ rollbackQueue('你切到了别的对话，刚才排队没发出去的话已放回，稍后再发一次。'); } // C3: 用户改主意切走，别替他发
   // 先订阅再载入：load 的历史回放通知才能流进 UI
@@ -1270,7 +1271,7 @@ txt.onkeydown=e=>{
   }
 };
 stopBtn.onclick=()=>{ wssend({type:'cancel'}); setBusy(false); };
-$('newchat').onclick=()=>{ if(busy){ addInfo('它正忙着呢——等这步干完，或点 ⏹ 停止再开新的。'); return; } subscribe(null); $('search-results').style.display='none'; $('sessions').style.display=''; $('chat-search').value=''; $('arch-q').value=''; listPage.arch=1; listPage.chat=1; renderSessions(lastSessions); }; // s69 P2-9: 忙碌态护栏（对齐 openSession）; s76 qa P3-6: 清 arch-q 残留过滤词+两视图回第 1 页再重渲染（残留过滤词会让新建会话不在列表；与 arch-q oninput 同款复位）
+$('newchat').onclick=()=>{ if(busy){ addInfo('它正忙着呢——等这步干完，或点 ⏹ 停止再开新的。'); return; } tabMenuClose(); subscribe(null); $('search-results').style.display='none'; $('sessions').style.display=''; $('chat-search').value=''; $('arch-q').value=''; listPage.arch=1; listPage.chat=1; renderSessions(lastSessions); }; // s69 P2-9: 忙碌态护栏（对齐 openSession）; s76 qa P3-6: 清 arch-q 残留过滤词+两视图回第 1 页再重渲染（残留过滤词会让新建会话不在列表；与 arch-q oninput 同款复位）; s78 qa P3-D: tabMenuClose 关 Tab 菜单（Ctrl+K 与 /新对话 命令同走此口，与 openSession 同款）
 // 导出当前对话（小白：存成 txt 给别人看）
 window.exportChat=()=>{
   const NL=String.fromCharCode(10);
