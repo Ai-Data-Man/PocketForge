@@ -167,6 +167,26 @@ if (require.main === module) {
     clickExplain(k);
     ck('explain 载荷 rawInput 带原文密钥（桥侧数据不改，显示层专属掩码）', r7.sent[0].rawInput.includes('faucet_1a2b3c4d5e6f7g8h'));
 
+    // 7b) s78c P3-2: JSON 引号形态（qa 终轮泄漏矩阵 5 形态）——修复前值首引号不在 token 字符类内=正则整段失配全裸奔
+    //     ①②JSON 单行两族 ③rawInput 对象经 JSON.stringify(,null,1)（工具卡主真实形态）④shell（§7 已钉）⑤裸头对照
+    const Kj = 'faucet_1a2b3c4d5e6f7g8h', Bj = 'sk-proj-abcdefgh1234567890';
+    const rJ = runFrames([
+        { sessionUpdate: 'tool_call', toolCallId: 'call_08_json1', title: 'shell · curl api', rawInput: JSON.stringify({ 'X-API-Key': Kj, 'Authorization': 'Bearer ' + Bj }), _meta: { goose: { toolCall: { toolName: 'shell', extensionName: 'developer' } } } },
+        { sessionUpdate: 'tool_call', toolCallId: 'call_09_json2', title: 'mcp · fetch headers', rawInput: { headers: { 'X-API-Key': Kj, 'Authorization': 'Bearer ' + Bj } }, _meta: { goose: { toolCall: { toolName: 'fetch', extensionName: 'mcp' } } } },
+        { sessionUpdate: 'tool_call', toolCallId: 'call_10_bare', title: 'shell · bare headers', rawInput: 'X-API-Key: ' + Kj + '\nAuthorization: Bearer ' + Bj, _meta: { goose: { toolCall: { toolName: 'shell', extensionName: 'developer' } } } },
+    ]);
+    const preOf = (id) => { const c = rJ.cards.get(id); const sec = c.querySelector('.body').children[0]; return (((sec.children || []).find(x => x.tag === 'pre') || {}).textContent || ''); };
+    const p8 = preOf('call_08_json1'), p9 = preOf('call_09_json2'), p10 = preOf('call_10_bare');
+    ck('①JSON 单行 X-API-Key 掩码（掩码直抵结构位尾引号，无残段）', p8.includes('"X-API-Key":"faucet****7g8h"'));
+    ck('②JSON 单行 Authorization Bearer 掩码（掩码直抵结构位尾引号，无残段）', p8.includes('"Authorization":"Bearer sk-pro****7890"'));
+    ck('①②完整密钥零泄露（JSON 单行两族全检）', !p8.includes(Kj) && !p8.includes(Bj));
+    let jv = null; try { jv = JSON.parse(p8); } catch {}
+    ck('①②掩码后 JSON 结构完好（尾引号留在结构位，parse 可回读掩码值）', !!jv && jv['X-API-Key'] === 'faucet****7g8h' && jv['Authorization'] === 'Bearer sk-pro****7890');
+    ck('③JSON.stringify 对象形态（工具卡主真实形态）X-API-Key 掩码', p9.includes('"X-API-Key": "faucet****7g8h"'));
+    ck('③JSON.stringify 对象形态 Authorization Bearer 掩码', p9.includes('"Authorization": "Bearer sk-pro****7890"'));
+    ck('③对象形态完整密钥零泄露 + card._inp 原文喂料不动', !p9.includes(Kj) && !p9.includes(Bj) && (rJ.cards.get('call_09_json2')._inp || '').includes(Kj));
+    ck('⑤裸头形态不回归（对照）', p10.includes('X-API-Key: faucet****7g8h') && p10.includes('Authorization: Bearer sk-pro****7890'));
+
     // 8) 桥侧静态钉（chat-bridge.tpl.js 喂料措辞与缓存键；活体路径由 e2e 真桥覆盖，此处防措辞回潮）
     ck('桥侧旧「(空)」歧义措辞未回潮', !bridgeSrc.includes("'\\n结果摘要：' + (msg.output ? o0 : '(空)')"));
     ck('桥侧空输出无歧义措辞在场', bridgeSrc.includes('（该步骤没有返回文字输出）'));

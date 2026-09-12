@@ -621,13 +621,16 @@ const HEALTH_TTL = 30 * 60 * 1000; // 内存缓存 TTL；零持久化（重启�
 const healthCache = { at: 0, state: null, kind: null, proxy: false };
 let lastModelOverride = ''; // qa s78b P3-2: 最近一次用户选定模型（switch_model / subscribe 带 model 时更新）——同档 set_config_option 不改 models[0]，探测锚池首会漂移
 let healthBusy = false, healthFailT = null, healthPend = false;
+function effectiveModel(act) { // qa s78c P3-1 单一真相源：生效模型读法唯一——spawnAcp env / healthTargets 探测锚 / env0Model 广播三处同源，防双源漂移（「探 A 用 B」）；override∉活跃池=自愈回落池首→secrets 链（面板换档/改池由 providers 块显式清除）
+    const pool = (act && act.models) || [];
+    return (lastModelOverride && pool.includes(lastModelOverride) ? lastModelOverride : pool[0]) || secrets.GOOSE_MODEL_NAME || '';
+}
 async function healthTargets() { // 同源铁律：与 spawnAcp env 链（active 档→secrets→process.env 三级回落）逐位同读法，防「探 A 用 B」
     const act = (await readProvidersAsync()).find(p => p.active) || null;
-    const pool = (act && act.models) || [];
     return {
         host: ((act && act.host) || secrets.FORGE_AGENT_HOST || process.env.OPENAI_HOST || '').replace(/\/$/, ''),
         key: (act && act.key) || secrets.FORGE_AGENT_API_KEY || process.env.OPENAI_API_KEY || '',
-        model: (lastModelOverride && pool.includes(lastModelOverride) ? lastModelOverride : pool[0]) || secrets.GOOSE_MODEL_NAME || '', // qa s78b P3-2: 探测目标跟随生效模型；不在活跃池=换档/改池自愈回落池首（与 :610 回落链同款，无死名字面量）
+        model: effectiveModel(act), // qa s78b P3-2: 探测目标跟随生效模型（s78c P3-1 读法上收 effectiveModel 单源）
     };
 }
 function healthFrame() {
@@ -712,7 +715,7 @@ function spawnAcp() {
         GOOSE_PROVIDER: 'openai',
         // 末级回落链到此为止（主控拍板 2026-09-12：不再硬编码任何模型名——死名回落是两次事故的共同放大器；
         // 空则 goose 用其自身默认，空态暴露交健康告警条，裁决 provider-health-probe S3）
-        GOOSE_MODEL: (act && act.models && act.models[0]) || secrets.GOOSE_MODEL_NAME || '',
+        GOOSE_MODEL: effectiveModel(act), // qa s78c P3-1: 跨档选非首位模型时 env 随行（修前恒池首——前端被告知 a2、实跑 b1、探锚 a2 三者错位）
         OPENAI_API_KEY: (act && act.key) || secrets.FORGE_AGENT_API_KEY || process.env.OPENAI_API_KEY,
         OPENAI_HOST: (act && act.host) || secrets.FORGE_AGENT_HOST || process.env.OPENAI_HOST,
         OPENAI_BASE_PATH: 'chat/completions',
@@ -886,8 +889,7 @@ async function init() {
     acpCaps = res;
 }
 function env0Model() {
-    const act = activeProvider();
-    return (act && act.models && act.models[0]) || secrets.GOOSE_MODEL_NAME || '';
+    return effectiveModel(activeProvider()); // qa s78c P3-1: provider_switched 告知的「默认模型」与 spawn env 同源
 }
 let acpCaps = null;
 init().catch(e => { console.error('init failed', e); process.exit(1); });
@@ -3485,7 +3487,7 @@ function handleClient(ws, msg) {
             const act = list.find(p => p.active);
             if (act) rewriteSecretsEnv({ model: act.models && act.models[0] || '', host: act.host || '', key: act.key || '' });
             ws.send({ sys: 'providers', list: list.map(pr => ({ name: pr.name, host: pr.host, models: pr.models || [], active: !!pr.active, hasKey: !!pr.key })) });
-            if (needRestart) hotRestartProvider().catch(e => console.error('hot restart failed', e));
+            if (needRestart) { lastModelOverride = ''; hotRestartProvider().catch(e => console.error('hot restart failed', e)); } // qa s78c P3-1: 面板换档/改池清除 override——生效模型随档回落池首（防同名模型跨家碰撞时探测/重启假锚旧选择）
             return;
         }
 
@@ -3494,7 +3496,7 @@ function handleClient(ws, msg) {
             const list = readProviders();
             const target = list.find(p => (p.models || []).includes(msg.model));
             if (!target) return ws.send({ sys: 'error', text: '该模型不在可选池：' + msg.model });
-            lastModelOverride = msg.model; // qa s78b P3-2: 生效模型记录（同档 set_config_option/跨档重启均以它为实际模型）
+            lastModelOverride = msg.model; // qa s78b P3-2 / s78c P3-1: 生效模型记录，effectiveModel 单源消费（同档 set_config_option / 跨档 spawn env / 探测锚三处同读；∉池自愈回落池首，面板换档清除）
             if (target.active) {
                 healthCache.at = 0; probeProviderHealth(); // qa s78b P3-2: 同档切换=换生效模型，同 §S1 失效语义（顶栏切健康兄弟模型→条即消，不等 30min TTL）
                 const doSet = (sessionId) => {

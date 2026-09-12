@@ -1084,9 +1084,11 @@ function showExpPop(card,text){ // 解释气泡：定位到按钮下方，越下
   pop.onclick=(ev)=>ev.stopPropagation();
 }
 function maskKeys(s){ // s78 主线测试 P4: 显示层密钥掩码——X-API-Key / Authorization: Bearer 保留前6后4；只影响参数区展示（工具卡+权限卡），_inp 喂料/回放/导出不动
+  // s78c P3-2: 键尾/值首各加可选引号 ["']?——JSON 形态（{"X-API-Key":"faucet_…"} 与 rawInput 对象经 JSON.stringify 渲染的工具卡主真实形态）
+  // 值首引号不在 token 字符类内=整段失配全裸奔；引号归前缀组原样保留，token 组吃尽尾引号前的密钥全串（掩码直抵结构位尾引号，无残段）
   const one=t=>t.length<=12?'****':t.slice(0,6)+'****'+t.slice(-4);
-  return String(s).replace(/(\bx-api-key\s*[:=]\s*)([a-z0-9_\-.=+/]+)/gi,(m,p,t)=>p+one(t))
-                  .replace(/(\bauthorization\s*:\s*bearer\s+)([a-z0-9_\-.=+/]+)/gi,(m,p,t)=>p+one(t));
+  return String(s).replace(/(\bx-api-key["']?\s*[:=]\s*["']?\s*)([a-z0-9_\-.=+/]+)/gi,(m,p,t)=>p+one(t))
+                  .replace(/(\bauthorization["']?\s*:\s*["']?\s*bearer\s+["']?)([a-z0-9_\-.=+/]+)/gi,(m,p,t)=>p+one(t));
 }
 function toolCard(upd){
   const stick=nearBottom(); // s69 P2-7
