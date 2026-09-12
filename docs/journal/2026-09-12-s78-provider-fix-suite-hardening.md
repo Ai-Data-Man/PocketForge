@@ -65,3 +65,11 @@
 - **S6「红」=加分行为**：agent 对不可逆删除主动列爆炸半径求确认（服务登记+db 文件+数据，报表成品默认保留）——断言没答确认话，产品判通过；脚本已补确认续轮。
 - P4 观察两条：S3 轮 agent 用 curl 带 X-API-Key 直查 faucet（key 明文显示在工具卡参数里——本地无洞，妻子可见长密钥略糙）；cmd dir 中文文件名 GBK 乱码（已知家族，纯外观）。
 - 值得记录：本轮 agent 查数据走 curl+HTTP 而非 MCP query（faucet stale 缺陷的自然绕行再次发生，佐证挂账②）。
+
+## 重构批 C1+C2（8f0e6e2，research/24 §7 实施）
+- chat-bridge.tpl.js 3706→3597 行**净删 109**（+104/-212）：顶层 readJsonBody/json200 两助手；17 处 POST 累积样板全替换（含 upload 二进制站；update/upload 豁免段零触碰）；writeHead 58 处中 39 处成对收敛、**有意保留 19 处**（多落点/先写头再分支/schedToggle 可变状态/无 charset 头——行为零变化优先于行数指标，JSON.parse 留端点 try 内保报错文案逐字不变）；faucet 三胞胎消亡→faucetGet 一个。
+- 验证：e2e 57/57+fuzz 150/150+6 静态探针全绿锚点零同步+ia3 行为门+行为抽检同形。TDZ 撞名一处（node --check 抓不到的运行时坑，已全量排查）。
+- **测试残留事件**：fuzz 基线一度 149/150=主线测试 run3 的 S6 确认后删除未彻底（服务登记未除+db 文件被 MCP 句柄占用——stale 家族再佐证）；主控收尾清理=faucet db remove（--data-dir 必须）+桥重启释放句柄+删库文件，overview 回净 [plm]。**appcap 脚本 S6 断言时点也有份**（确认续轮后的 overview 检查在桥外看 MCP 缓存）——留观。
+
+## 支线研究（4d48e7c research/25）
+- 对标景观→P32 输入：应用资产化（缺「它做过的东西」统一清单，触发器=真机「找不回」≥2 次）/agent-native 对等叙事零开发可用/生成式 UI+自主巡检明确不跟进/研究类任务前 3 源止损线入工作方式。
