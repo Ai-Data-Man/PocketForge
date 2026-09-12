@@ -80,3 +80,9 @@
 - **批3 8f0e6e2 通过**：行为零变化 A/B 实证（双沙盒 17 恶意 POST+8 GET 逐字节 SAME；update/upload 87 行零 diff；TDZ 注释属实）；P3 卫生三条；净删除实 108。
 - 排程：P1-1+P2-1 合小修批（已派），合入后主控跑全量。
 - 手册：使用说明.md 补 s77 五功能+健康提醒条妻子话术（a15f1bb）——章程优先级 6 缺口销账。
+
+## s78c 小修批+签名灾难热修（e9f04ee→b4e02d2）
+- 小修批 e9f04ee：P1-1 健康探测 reply 必答（probeProviderHealth(reply) 收尾对触发方必发，态变化才全员广播保持；负对照验证）+P2-1 permission 帧豁免 sid 过滤（session/request_permission 带 ACP 必填 sessionId，刷新窗口丢卡=turn 挂死）；顺手 :2507 json200+readJsonBody 删参。探针 24/24（新增刷新窗口 permission 必达断言）+health-race 5/5 转正。
+- **签名灾难**：e9f04ee 的 readJsonBody 删参 (req,res,cb)→(req,cb)——工程师判「多余实参无害」实为位置绑定灾难（res 灌入 cb 位，end 时 res(buffer) TypeError），**全部 POST 端点连接重置**（主控全量 e2e 43/57+fuzz 77/150 红实锤；其探针全 WS/GET 面零 POST 覆盖）。热修 b4e02d2 回滚三参签名。**教训入册：改公共函数签名，验证必须覆盖调用面（全量回归），自有探针绿≠安全**。
+- fuzz 残余单红=mcp-catalog 探针不幂等（中断遗留沙盒 EEXIST），77eb8c9 先清后建+双跑验证。
+- **终态：e2e-chat 57/57 + fuzz 150/150（e9f04ee 两必修有效+签名回滚后）**。
