@@ -7,7 +7,7 @@
 - **根因（GUI 实锤，tmp/s78-prov-gui-trap.js）**：chat.tpl.html `renderProviders()` 末尾无条件把表单绑回**活跃**服务商。用户新增服务商后 300ms（prov-add→loadProvidersUI→renderProviders→fillProvForm(active)），**表单 host 被静默重置回旧服务商**（实测：填 127.0.0.1:20129 → 600ms 后变回 111.228.54.166）；随后「拉取模型」打到旧 host——假 9router 收到 **0 次请求**。「完全配不上去」全链成立。
 - **附带三缺陷**：①同名档案重添加：前端无条件送 key + 桥端 `Object.assign(ex,msg.add)` 无守卫 → 已存 host/key 被污染表单覆写；②secrets.env 回写过滤正则 `^(KEY)=` 对 NUL 前缀行永不命中（trim 不除 NUL）→ **损坏行永久存活不自愈**（dev 机实锤：文件头 416 字节 NUL + GOOSE_MODEL_NAME 重复行 + FORGE_VISION_MODEL 丢失，见 tmp/secrets.env.corrupt.bak；bootstrap Get-Content 同样解析不出 → Add-Content 再补种重复键）；③list_models 硬编码 `require('http')` → https 端点必炸（test_model 是正确写法参照）。
 - **后端链本身健康**（tmp/s78-prov-repro.js WS 级 7/8）：添加→拉模型→勾选→启用→secrets 回写→test_model→ACP 热重启（provider: 9router, model: nine-flash 入日志）全通；唯一红=prompt 往返，系假路由 SSE 格式不合 goose 胃口（测试工具限制，非产品缺陷）。
-- **修复**：六点规格派 pf-engineer（renderProviders 编辑上下文优先重绑/启用钮跟随/前后端空 key 守卫/回写自愈门/https 支持），进行中。
+- **修复**：六点规格派 pf-engineer，**已落地 `bb9c6b6`（2 模板 16+/9-，最小 diff）**：renderProviders 编辑上下文（curProvName）优先重绑/启用钮跟随/前后端 add 空 key 守卫/回写形状门自愈/list_models https。**验证全过**：GUI 陷阱反转（AFTER-ADD host 保持 127.0.0.1:20129+假路由 +1 请求）/WS 全链 7/8（唯一红=假路由 SSE 工具限制）/自愈探针 8/8（PC_TOKEN+非管理键保留、NUL/垃圾行丢弃，真文件备份字节还原）/e2e 55/55+fuzz 150/150+ui-logic 56ck。物化纪律照走：bootstrap 重物化（cmp 逐位一致）+仅 pc restart chat-bridge。探针教训一枚：自愈探针首版构造了损坏文件却忘了落盘就触发回写——首红是探针 bug 不是产品 bug，补 writeFileSync 后 8/8；红时先审探针再审产品。
 - **取证资产**：tmp/s78-fake-9router.js（假 OpenAI 兼容端点 :20129，含 SSE）、tmp/s78-prov-repro.js（WS 全链）、tmp/s78-prov-gui-trap.js（GUI 陷阱）。
 
 ## 模型链事故二（与 s77 代理事故同族）
@@ -27,5 +27,5 @@
 - **v1.50.0 已于 09-08 发布**（s76b 09-08 检查时未出，窗口判断过时）。按 research/04 裁决 v1.50=等待目标；评估已重派 pf-researcher（预案 playbook 逐项+第 10 必查：sessions.db messages 表手术面）。
 
 ## 进行中（本 journal 落笔时）
-- pf-engineer 服务商修复验证中；pf-pm 健康探测裁决中；pf-researcher goose v1.50 评估中。
+- ~~pf-engineer 服务商修复验证中~~（**已收口 bb9c6b6，见上**）；pf-pm 健康探测裁决中；pf-researcher goose v1.50 评估中。
 - 排队：小 forge 应用开发与管理能力全链测试（tmp/s78-appcap-test.js 就绪，真模型实景六断言：建库建表/汇总 xlsx/取数问答/@菜单/人话化/清理）；QA 细测 s77 五新功能（tmp/s78-qa-charter.md）；重构批次 C1+C2。
