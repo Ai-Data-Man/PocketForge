@@ -205,6 +205,48 @@ let bridgeLog = '';
     ck('X3 无订阅者的事件丢弃：B 零 sid3 agent 帧（修前=else 全员广播）', B.inbox.filter(m => m.agent && m.agent.params && m.agent.params.sessionId === sid3).length === 0);
     ck('X3b turn 确实飞过（provider 收到 X3）', await provSaw('X3'));
 
+    // ===== qa s78b P2-1: permission 卡豁免——刷新窗口（ws drop 后重订阅前）permission 帧必须可达新连接 =====
+    // 桩注入（rescue-guard-probe 同款手法）：真桥侧 goose 在假 provider 下不发 permission（无工具调用），
+    // 故从模板原文提取 onAcpData、mock 广播三件套后喂合成 ACP 帧钉死豁免面；上方 X3 活体断言（无订阅者丢弃）保持。
+    {
+        const tplSrc = fs.readFileSync(path.join(FORGE, 'conf', 'templates', 'chat-bridge.tpl.js'), 'utf8');
+        const fnStart = tplSrc.indexOf('function onAcpData(chunk)');
+        const fnEnd = tplSrc.indexOf('// ---- research/18 断点①');
+        if (fnStart < 0 || fnEnd < 0 || fnEnd <= fnStart) ck('P2-1 桩提取锚点存在', false, 'anchor');
+        else {
+            const mkOnAcp = new Function('acpBuf', 'waiting', 'statsBump', 'permKinds', 'turnText', 'busySids', 'S26_ERR_RE', 'classifyUpstream', 'sessionClients', 'allClients',
+                tplSrc.slice(fnStart, fnEnd) + '\nreturn onAcpData;');
+            const mkEnv = () => ({ waiting: new Map(), stats: [], permKinds: new Map(), turnText: new Map(), busySids: new Set(), sessionClients: new Map(), allClients: new Set() });
+            const boot = env => mkOnAcp('', env.waiting, k => env.stats.push(k), env.permKinds, env.turnText, env.busySids, /(?!)/, () => 'unknown', env.sessionClients, env.allClients);
+            const mkWs = () => { const w = { alive: true, sent: [] }; w.send = o => w.sent.push(o); return w; };
+            const perm = sid => JSON.stringify({ jsonrpc: '2.0', id: 901, method: 'session/request_permission', params: { sessionId: sid, options: [{ optionId: 'a', kind: 'allow_once' }] } }) + '\n';
+            const chunk = sid => JSON.stringify({ method: 'session/update', params: { sessionId: sid, update: { sessionUpdate: 'agent_message_chunk', content: { text: 'x' } } } }) + '\n';
+            const gotPerm = w => w.sent.filter(m => m.agent && m.agent.method === 'session/request_permission').length;
+            // P1 刷新窗口形态①：drop 后 set 整缺（重订阅前）→ permission 必达全员（新连接）
+            {
+                const env = mkEnv(), onAcp = boot(env), fresh = mkWs();
+                env.allClients.add(fresh);
+                onAcp(perm('sid-refresh'));
+                ck('P1 刷新窗口 permission 帧（无订阅者 set）仍达新连接（qa s78b P2-1 豁免）', gotPerm(fresh) === 1, JSON.stringify(fresh.sent.map(m => m.agent && m.agent.method)));
+            }
+            // P2 刷新窗口形态②：drop 只摘成员留空集 → 同样必达
+            {
+                const env = mkEnv(), onAcp = boot(env), fresh = mkWs();
+                env.sessionClients.set('sid-refresh', new Set());
+                env.allClients.add(fresh);
+                onAcp(perm('sid-refresh'));
+                ck('P2 刷新窗口 permission 帧（空订阅者集）仍达新连接', gotPerm(fresh) === 1, JSON.stringify(fresh.sent.map(m => m.agent && m.agent.method)));
+            }
+            // P3 X3 桩钉：同状态下普通带 sid chunk 帧仍丢弃（串台修复不被豁免洞穿）
+            {
+                const env = mkEnv(), onAcp = boot(env), fresh = mkWs();
+                env.allClients.add(fresh);
+                onAcp(chunk('sid-refresh'));
+                ck('P3 无订阅者的普通 chunk 帧仍丢弃（X3 语义桩钉）', fresh.sent.length === 0, JSON.stringify(fresh.sent.map(m => m.agent && m.agent.method)));
+            }
+        }
+    }
+
     kill(S); kill(A); kill(B); kill(A3);
 })().catch(e => {
     console.error('PROBE ERROR:', e.message);

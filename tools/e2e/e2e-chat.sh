@@ -317,7 +317,7 @@ rm -f /tmp/toolcard-frames.log
 # sid 广播过滤与旧成员籍摘除（跨会话串台负断言）/无订阅者事件丢弃
 rc=0; node "$ROOT/tools/e2e/ws-subscribe-race-probe.js" > /tmp/ws-subrace.log 2>&1 || rc=$?
 grep -q "FAIL=0" /tmp/ws-subrace.log || rc=$?
-ck "ws-subscribe-race probe 21 ck (P1-A generation guard x4 gaps + Ctrl+K + unsubscribe + P2-B sid filter)" $rc
+ck "ws-subscribe-race probe 24 ck (P1-A generation guard x4 gaps + Ctrl+K + unsubscribe + P2-B sid filter)" $rc
 grep -E "^ws-subscribe-race-probe" /tmp/ws-subrace.log || true
 rm -f /tmp/ws-subrace.log
 

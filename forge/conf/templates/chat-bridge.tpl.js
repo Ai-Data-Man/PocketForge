@@ -13,7 +13,7 @@ const PORT = Number(process.env.PORT || 8790);
 const POST_MAX_BYTES = 50 * 1024 * 1024;
 // s78-C1（research/24 §7）：POST body 读取助手——17 处累积样板收敛一处，s50c 防线逐字保留（累积超预算即断开）。
 // 交付原始 Buffer：/api/upload 是二进制体，禁字符串往返；JSON.parse 留在各端点 try 内——坏 JSON 的报错文案逐端点不变。
-function readJsonBody(req, res, cb) {
+function readJsonBody(req, cb) { // qa s78b P3-2: 死参数 res 删除（17 处调用点传 (req,res,cb) 多余实参无害）
     const chunks = [];
     let postBytes = 0; // s50c: 累积超预算即断开（content-length 可能缺省/分块）
     req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { req.destroy(); return; } chunks.push(c); });
@@ -621,7 +621,7 @@ function healthFrame() {
     if (healthCache.proxy) f.proxy = true;
     return f;
 }
-async function probeProviderHealth() {
+async function probeProviderHealth(reply) { // qa s78b P1-1: reply=触发方 ws——态不变也要必答（hello 过期重探/turn 失败复检的客户端不再零健康帧）；广播仍只在态变化时全员发
     if (healthBusy) { healthPend = true; return; } // 在飞合并：忙期来电记一笔，收尾补探——save 失效不被在飞旧探吞掉（修复后最长 30min 不刷新的竞态）
     healthBusy = true;
     try {
@@ -657,11 +657,12 @@ async function probeProviderHealth() {
         healthCache.at = Date.now();
         const now = healthFrame();
         if (JSON.stringify(prev) !== JSON.stringify(now)) for (const ws of allClients) ws.send(now || { sys: 'health', state: null }); // 态变化才广播（s77 delete 广播同款）
-    } finally { healthBusy = false; if (healthPend) { healthPend = false; probeProviderHealth(); } }
+        else if (reply && reply.alive && now) reply.send(now); // qa s78b P1-1: 态不变也必答触发方——隔夜首开（TTL 必过期）链路持续坏时告警条不再缺失（裁决 §6 主指标）
+    } finally { healthBusy = false; if (healthPend) { healthPend = false; probeProviderHealth(); } } // pend 补探不带 reply（QA 裁定）
 }
-function healthFailDebounce() { // S2-2: turn 失败（S26 命中）后 60s 防抖合并复检——真实失败是最强探测信号，零额外成本
+function healthFailDebounce(reply) { // S2-2: turn 失败（S26 命中）后 60s 防抖合并复检——真实失败是最强探测信号，零额外成本
     if (healthFailT) return;
-    healthFailT = setTimeout(() => { healthFailT = null; probeProviderHealth(); }, 60000);
+    healthFailT = setTimeout(() => { healthFailT = null; probeProviderHealth(reply); }, 60000);
     if (healthFailT.unref) healthFailT.unref();
 }
 setTimeout(probeProviderHealth, 90 * 1000).unref(); // S2-3: 桥启动 90s 一次（避开冷启资源竞争，兼作护航自检基线）；无周期心跳——裁决 §4 明确裁掉项
@@ -765,7 +766,7 @@ function onAcpData(chunk) {
             const set = sid ? sessionClients.get(sid) : null;
             const obj = { agent: msg };
             if (set && set.size) for (const ws of set) ws.send(obj);
-            else if (!sid) for (const ws of allClients) ws.send(obj); // s78 P2-B 同族②: 带 sid 的事件只发该会话订阅者，无订阅者即丢弃——不再全员广播（跨会话串台）
+            else if (!sid || msg.method === 'session/request_permission') for (const ws of allClients) ws.send(obj); // s78 P2-B 同族②: 带 sid 的事件只发该会话订阅者，无订阅者即丢弃——不再全员广播（跨会话串台）；qa s78b P2-1 豁免: permission 卡必带 sid 且一次性通知（session/load 不重放），刷新窗口无订阅者丢弃=turn 挂死，回归全员广播
         }
     }
 }
@@ -810,14 +811,14 @@ function sendTurn(ws, sid, text, allowRescue) {
         // 故在 turn 结束处对当轮累计文本跑 s26 正则（:349 的 stop 通知分支 goose ACP 模式从不发，为死代码）
         const txt = turnText.get(sid) || '';
         turnText.delete(sid);
-        if (S26_ERR_RE.test(txt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(txt)); healthFailDebounce(); }
+        if (S26_ERR_RE.test(txt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(txt)); healthFailDebounce(ws); }
         ws.send({ agent: { method: 'stop', params: { sessionId: sid, reason: 'end' } } });
     }, reject: (e) => {
         busySids.delete(sid);
         // P31-③: turn 失败按 s26 正则归类上游故障
         // goose 的 JSON-RPC error：message=错误类（如 Resource not found），具体原因在 data（如 Session not found: <sid>）——拼接后供匹配
         const etxt = String((e && e.message) || e) + ' ' + String((e && e.data) || '');
-        if (S26_ERR_RE.test(etxt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(etxt)); healthFailDebounce(); }
+        if (S26_ERR_RE.test(etxt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(etxt)); healthFailDebounce(ws); }
         else statsBump('errorsByType.other');
         if (allowRescue && SESSION_NF_RE.test(etxt)) {
             if (rescuedSids.has(sid)) { ws.send({ sys: 'error', text: SID_RESCUED_TEXT }); return; } // P3-3 去重命中
@@ -2504,8 +2505,7 @@ const ext = path.extname(f).toLowerCase();
                 if (!mcpInstalled(m.id)) continue;
                 rows.push({ id: mcpExtensionId(m.id), name: m.name, desc: m.desc, enabled: mcpEnabled(m.id), visible: true, builtin: false });
             }
-            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify(rows));
+            json200(res, rows); // qa s78b P3-1: 成对「写头后紧跟 end」现场补转（C1 收敛遗漏）
         } else if (req.method === 'POST') {
             readJsonBody(req, res, body => { // 参数名避开下方 try 块内的 let raw（TDZ 撞名）
                 try {
@@ -3005,7 +3005,7 @@ server.on('upgrade', (req, socket) => {
     ws.send({ sys: 'hello', version: 2, app: APP_VERSION, caps: acpCaps ? { modes: true } : {} });
     // S2-1 页面打开触发：缓存未过期直接发缓存态（打开就知道），过期才后台探（最坏一天 20 次打开 ≤20 个免费 GET）
     if (Date.now() - healthCache.at < HEALTH_TTL) { const hf = healthFrame(); if (hf) ws.send(hf); }
-    else probeProviderHealth();
+    else probeProviderHealth(ws);
 });
 function drop(ws) {
     ws.alive = false;
