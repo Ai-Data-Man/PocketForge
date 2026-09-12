@@ -121,3 +121,7 @@
 - **唯一真实行为差异已适配**：v1.50 goose acp 对 stdin EOF 优雅退出（v1.46 忽略常驻）→pc 守护无 stdin→goose-scheduler 秒退调度器死；三重实证定位（恒开管道=常驻/null-stdin=秒退/v1.46 null=常驻）+适配=goose-scheduler.tpl.js node 管道保持 wrapper（v1.46 同形兼容）+bootstrap 5g+pc yaml 三处；审计无其他 stdin 敏感 spawn 点。
 - 二进制 sha256 与 release digest 一致；回滚位 tmp/goose-v146-rollback/；fetch.sh/components/checksums 同步。观察：v1.50 新捆绑内置 skill web-search/goose-doc-guide（+1 行 system prompt，工具清单不变，裁剪如需另立裁决）。
 - 环境插曲再证：首轮 PG 段红=提权直启栈 s66 家族，降权重拉后全绿（本会话第三次实锤该恢复序价值）。
+
+## fuzz 新向量扩展批（c4a6aeb，150→178）
+- 五面新覆盖：健康帧路径 24 断言（四态零错判零崩溃/302 自环零跟随/9s 有界超时）+代际守卫 20 客户端交错轰炸 3 种子全绿（无错绑/串台/泄漏）+maskKeys 25 向量+readJsonBody 累积防线边界实证（>严格比较/CL 谎报拒后存活）+SSE 重试阶梯 34 断言（不失控不双发）。
+- 三 P3 交主控裁决：①maskKeys Unicode/NUL 断链尾段裸奔（M7/M8 复现）②URL query 密钥形态规格外——主控裁**扩族**（同显示层一族）③SSE 内嵌 error 帧被吞成误导性空回（PM 裁决点名的「误导重复撞墙」家族）——三项全修，终批已派。
