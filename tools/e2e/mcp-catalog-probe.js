@@ -88,7 +88,11 @@ function seedBase() {
         { name: 'prov-a', host: 'https://x', key: 'sk-fixture000key2', models: ['m1'], active: true },
     ]));
     FSS.mkdirSync(J(['bin', 'goose', 'goose-package']), { recursive: true });
-    FSS.linkSync(FORGE + '/bin/goose/goose-package/goose.exe', J(['bin', 'goose', 'goose-package', 'goose.exe']));
+    // s78c: 沙盒不幂等实锤——上一轮中断留下的 goose.exe 使 linkSync EEXIST 打死探针（fuzz 149/150 单红）；
+    // 先清后建，probe 自恢复
+    const gooseLink = J(['bin', 'goose', 'goose-package', 'goose.exe']);
+    try { FSS.rmSync(gooseLink, { force: true }); } catch {}
+    FSS.linkSync(FORGE + '/bin/goose/goose-package/goose.exe', gooseLink);
 }
 const CFG = J(['data', 'config', 'mcp-catalog.json']);
 const writeCfg = j => { FSS.mkdirSync(path.dirname(CFG), { recursive: true }); FSS.writeFileSync(CFG, typeof j === 'string' ? j : JSON.stringify(j)); };
