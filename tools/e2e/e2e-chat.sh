@@ -157,7 +157,9 @@ rm -f /tmp/report-probe-e2e.log
 # ---------- 13) PG 备份链两态（s66/ADR-0011 阶段二：导出先行；跑在栈上，pg 由 pc 托管） ----------
 PC_PORT=$(cat "$FORGE/data/pc.port" 2>/dev/null || echo 8099)
 PC="$FORGE/bin/pc/process-compose.exe"
-PCRUN(){ timeout 20 env PC_DISABLE_TUI=1 "$PC" -p "$PC_PORT" "$@" </dev/null 2>/dev/null | grep -viE 'debug|duplicate'; }
+# s78: grep -v 在输出全被过滤/为空时退 1，pipefail+set -e 下直接杀套件（本日实锤：pg 停后无输出 → 第 13 节静默中止、pg 被留在停止态）。
+# || true 收口：pc 真失败由调用方的 grep 断言计红，套件永远走完（c4b8ce6 加固目标的漏网点）。
+PCRUN(){ timeout 20 env PC_DISABLE_TUI=1 "$PC" -p "$PC_PORT" "$@" </dev/null 2>/dev/null | grep -viE 'debug|duplicate' || true; }
 wait_backup_done(){ for i in $(seq 1 40); do sleep 2; grep -q "$1" "$FORGE/data/logs/backup.log" 2>/dev/null && return 0; done; return 1; }
 # 态B0（fc948e9 回归守卫）：空 pg-dumps + PG 不在场 = 冷启致命态。seed 前先走一遍，
 # 守卫（pg-dumps 无 pg-*.sql 不入 SOURCES）若被撤，Compress-Archive -Update 追加空目录会 exit 0 且删 zip → statSync ENOENT 崩溃。

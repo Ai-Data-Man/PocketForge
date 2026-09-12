@@ -105,7 +105,9 @@ if ! cmd //c runas //trustlevel:0x20000 "$(cygpath -w "$FORGE/data/logs/e2e-rela
 fi
 sleep 40   # s67: 降权 runas 链(bootstrap→pc listen)实测机器慢时 >25s, 25s 断言会打早(exit 7)
 NEW_PORT=$(cat "$FORGE/data/pc.port")
-timeout 15 env PC_DISABLE_TUI=1 "$FORGE/bin/pc/process-compose.exe" -p $NEW_PORT process get e2e-report </dev/null 2>/dev/null | grep -viE "debug|duplicate" | grep -qE "Running|Launching|Launched"; ck "app auto-registered after restart" $?
+# s78: rc 捕获（同 e2e-chat.sh PCRUN 坑）——grep -q 非零在 set -e 下会中止全量，红必须被计数
+rc=0; timeout 15 env PC_DISABLE_TUI=1 "$FORGE/bin/pc/process-compose.exe" -p $NEW_PORT process get e2e-report </dev/null 2>/dev/null | grep -viE "debug|duplicate" | grep -qE "Running|Launching|Launched" || rc=$?
+ck "app auto-registered after restart" $rc
 KEY2=$(cat "$FORGE/data/faucet/.apikey" 2>/dev/null || true)
 if [ -n "$KEY2" ]; then
   N2=$(curl -s "http://127.0.0.1:$(cat "$FORGE/data/faucet.port")/api/v1/plm/_table/parts_e2e?fields=id" -H "X-API-Key: $KEY2" | python -c "import sys,json;print(json.load(sys.stdin)['meta']['count'])")
