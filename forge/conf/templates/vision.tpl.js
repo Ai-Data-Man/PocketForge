@@ -76,7 +76,16 @@ if (cmd === '--list-models') {
     const model = argv[2] || process.env.FORGE_VISION_MODEL || secrets.FORGE_VISION_MODEL || '';
     if (!model) { console.error('看图失败：尚未设置视觉模型。' + SET_HINT); process.exit(1); }
 
-    const b64 = fs.readFileSync(imgPath).toString('base64');
+    // qa s78e P3-A：坏图片路径（不存在/是目录/读不了）人话报错，不吐英文栈
+    let b64;
+    try {
+        b64 = fs.readFileSync(imgPath).toString('base64');
+    } catch (e) {
+        if (e.code === 'ENOENT') console.error('看图失败：找不到这张图片：' + imgPath + '。请确认文件存在后再试。');
+        else if (e.code === 'EISDIR') console.error('看图失败：这个路径是文件夹，不是图片：' + imgPath + '。请给出图片文件本身的路径。');
+        else console.error('看图失败：这张图片读不了（' + (e.code || e.message) + '）：' + imgPath);
+        process.exit(2);
+    }
     const ext = path.extname(imgPath).slice(1).toLowerCase() || 'png';
     const host = (secrets.FORGE_AGENT_HOST || 'http://127.0.0.1:20128/v1/').replace(/\/$/, '');
     const key = secrets.FORGE_AGENT_API_KEY || '';
