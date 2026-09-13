@@ -239,3 +239,7 @@
 - PM 归约（tmp/s81-pm-verdict→docs/verdicts/2026-09-13-app-management-ledger.md）：最小形态=⚙️ 新 tab「✨ 做过的东西」三源只读聚合（数据表/制品/技能）时间倒序+chips+搜索+分页+会话回链；**关键查证=faucet 服务无来源记录**（实跑铁证）→ agent 建账路线（forge_meta 单行表，hints 一句成本）；制品回链天然存在（workspace-map）。裁掉七项（应用级 @/新实体/重命名/模板市场/统一删除/桥侧监听/考古）。
 - 主控改排期：用户点名=触发器开，**即刻 dev 实施**（S1-S4 已派），发布窗口归用户。
 - 微批同窗收口：fuzz s50h 会话自清（620ea97，sid 零增减）+**permission.yaml 热重载 VERIFIED-RUN**（fca3fc5——外部改下一轮即生效双向，机理=goose 高频自 mutate 顺路吸收；B1 面板文案输入「撤销即生效，时机=下一轮」，research/27 遗留#1 关闭）。
+
+## QA 复审应用管理特性（tmp/s83-qa-review.md：需返工 3🟡 0🔴）
+- 🟡1 「打开-表」跨服务同名表定位错库：ref.svc 未参与定位+表名子串互撞（parts 命中 parts_e2e）；🟡2 死 sid「去当时对话看看」=无提示空白（rpc2 只 resolve 从不 reject→catch 死代码；**现网已有 2 条死链**——I1 解绑修复前的 ws-map 历史死键）；🟡3 forge_meta 多行坏行遮蔽好行（与 tinfo 读法纪律不齐）。
+- 红线七项独立负断言全过；S1 建账 REST 直连路径补测 roundtrip 过；性能实测 281 ws ~222ms（大头 faucet CLI spawn，服务数串行加价——规模护栏在护航预期内）。教训 #20（faucet db remove 须连启 rawsql 才能删文件）/#21（GUI goto 型探针每跑=新会话+孤儿目录）。
