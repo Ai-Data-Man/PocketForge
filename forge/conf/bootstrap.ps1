@@ -164,6 +164,13 @@ if ((Test-Path $faucetFile)) {
     $faucetPort = Pick-Port 8091
     "$faucetPort" | Set-Content $faucetFile
 }
+# s84: hints 的 __FAUCET_PORT__ 占位符在端口确定后替换（首启 1b-2 物化先于此，故补一次后置替换；
+# 旧模板硬编码 8091 在端口漂移机器上误导 agent curl 错端口烧整轮——cycle-40 appcap 实锤）
+$hintsLive = Join-Path $gooseDir '.goosehints'
+if ((Test-Path $hintsLive) -and ((Get-Content $hintsLive -Raw).Contains('__FAUCET_PORT__'))) {
+    $h2 = [IO.File]::ReadAllText($hintsLive).Replace('__FAUCET_PORT__', "$faucetPort")
+    [IO.File]::WriteAllText($hintsLive, $h2)
+}
 # s66/ADR-0011: PG 端口（pg.port 存在即复用，与 faucet 同款；${PG_PORT} 由两个启动器导出供 pc 展开）
 $pgFile = Join-Path $ForgeRoot 'data\pg.port'
 if ((Test-Path $pgFile)) {
