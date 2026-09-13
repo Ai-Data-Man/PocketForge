@@ -1494,13 +1494,27 @@ function marketMutate(b) {
 // ---- s50b: 库里有什么（GET /api/db/overview）——faucet CLI 发现实 + REST 数行数；端点不收任何用户参数 ----
 const FAUCET_EXE = path.join(ROOT, 'bin', 'faucet', 'faucet.exe');
 const DB_NAME_RE = /^[A-Za-z0-9_\-]+$/; // 服务/表名白名单：来自 faucet 输出，拼 CLI 参数/REST 路径前强制过一遍
+// FINDING-1（fuzz bea6ee7）：并发 GET /api/assets 与 /api/db/overview 时，桥迸发的 faucet CLI 进程同撞 config store
+// （faucet.db，SQLite 无 busy_timeout）→ SQLITE_BUSY(5) 快败（rc=1「open config store: database is locked」，
+// 100 进程迸发实测 ~90% 复现；桥响应级表源静默缺席 22-48%）。桥侧两层最小修（不碰 faucet 上游）：
+// 1) 同参并发读单飞合并（in-flight 去重）——50 并发请求只起 1 个 CLI 进程，消灭迸发本身；
+// 2) 读失败（非零退出/空输出）单次退避 150-300ms 重试（带抖动，防同波失败者同步重试再撞）；
+// BUSY 是瞬态锁竞争非持久故障；仍失败走原降级（null → 上层 ok:false / dbOverview schemaMiss→tblMiss 可观察化）。
+const FAUCET_CLI_INFLIGHT = new Map();
 function faucetCli(args) {
-    return new Promise(resolve => {
+    const key = args.join('\u0000');
+    if (FAUCET_CLI_INFLIGHT.has(key)) return FAUCET_CLI_INFLIGHT.get(key);
+    const run = () => new Promise(resolve => {
         const { execFile } = require('child_process');
         execFile(FAUCET_EXE, args.concat(['--data-dir', path.join(ROOT, 'data', 'faucet')]),
             { timeout: 5000, windowsHide: true, maxBuffer: 4 * 1024 * 1024 },
             (e, stdout) => resolve(e ? null : String(stdout || '')));
     });
+    const p = run()
+        .then(out => out || new Promise(r => setTimeout(r, 150 + Math.floor(Math.random() * 150))).then(run))
+        .finally(() => { FAUCET_CLI_INFLIGHT.delete(key); });
+    FAUCET_CLI_INFLIGHT.set(key, p);
+    return p;
 }
 // s78-C2（research/24 §7）：faucet REST GET 三胞胎（行数/表说明/样例）合并——同构管线（http.get+超时+静默 null），仅 path 与解析不同
 function faucetGet(path, port, key, parse) {
@@ -1536,14 +1550,14 @@ async function dbOverview() {
     try { port = parseInt(FSS.readFileSync(path.join(ROOT, 'data', 'faucet.port'), 'utf8').trim(), 10) || 0; } catch {}
     try { key = FSS.readFileSync(path.join(ROOT, 'data', 'faucet', '.apikey'), 'utf8').trim(); } catch {}
     const services = [];
-    let n = 0, truncated = 0;
+    let n = 0, truncated = 0, schemaMiss = false;
     for (const s of list) {
         const svc = (s && s.name) || '';
         if (!DB_NAME_RE.test(svc)) continue;
         const entry = { service: svc, tables: [] };
         services.push(entry);
         let names = [];
-        try { names = ((JSON.parse(await faucetCli(['db', 'schema', svc]) || 'x') || {}).tables || []).map(t => (t && t.name) || '').filter(x => DB_NAME_RE.test(x)); } catch {}
+        try { names = ((JSON.parse(await faucetCli(['db', 'schema', svc]) || 'x') || {}).tables || []).map(t => (t && t.name) || '').filter(x => DB_NAME_RE.test(x)); } catch { schemaMiss = true; } // FINDING-1: schema 通道与 list 同病（SQLITE_BUSY 重试后仍败）——置 tblMiss 不再静默
         for (const nm of names) {
             if (n >= 50) { truncated++; continue; }
             entry.tables.push({ name: nm, rows: null, desc: null, ts: null }); n++;
@@ -1584,6 +1598,7 @@ async function dbOverview() {
     }
     const out = { ok: true, services };
     if (truncated) out.truncated = truncated;
+    if (schemaMiss) out.tblMiss = true; // FINDING-1: schema 读失败同标记（/api/assets 前端「表这次没数进来」同款消费；/api/db/overview 响应同带）
     return out;
 }
 
@@ -1693,7 +1708,7 @@ async function assetsOverview() {
     }
     items.sort((a, b) => ((a.ts == null) - (b.ts == null)) || ((b.ts || 0) - (a.ts || 0))); // ts 倒序，null 沉底
     const out = { ok: true, items };
-    if (!ov.ok) out.tblMiss = true; // s83 返工💭6: faucet 不可达→表静默缺席可观察化（不编造条目，前端一行标记同款「来源不详」诚实降级）
+    if (!ov.ok || ov.tblMiss) out.tblMiss = true; // s83 返工💭6: faucet 不可达→表静默缺席可观察化（不编造条目，前端一行标记同款「来源不详」诚实降级）；FINDING-1: schema 读失败（dbOverview 内标）同传播
     return out;
 }
 

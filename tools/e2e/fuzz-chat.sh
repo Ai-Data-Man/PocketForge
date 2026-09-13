@@ -476,7 +476,7 @@ node "$(dirname "$0")/mask-fuzz-probe.js" >/dev/null 2>&1; ck "maskKeys display-
 # ===== s83 追批（aa7fb2b 后置补盖——fuzz 扩展批早于 /api/assets 落地）：三源聚合端点模糊批 =====
 # 端点面（活体只读）：无参形状稳定（三源字段齐）/POST 405/畸形 query 不 500；
 # 数据面（探针自建自清，详见 assets-fuzz-probe.js）：forge_meta+tinfo 极端行冲突与降级/ws 目录名畸形/成品文件名极端/千行表；
-# 并发面：5 并发 GET 每响应形状完备（逐字节一致 oracle 因 FINDING-1 SQLITE_BUSY deferred，见下方注记）
+# 并发面：5 并发 GET 每响应形状完备 + 5 份逐字节一致（FINDING-1 已修，oracle 已收紧，见下方注记）
 curl -s "$B/api/assets" | python -c "
 import sys,json
 d=json.load(sys.stdin)
@@ -511,9 +511,11 @@ ck "assets raw NUL in request line: protocol 400, never 500 (s83)" $?
 "$FRX/bin/node-v22/node-v22.21.1-win-x64/node.exe" "$(dirname "$0")/assets-fuzz-probe.js" svc "$B" >/dev/null 2>&1; ck "assets-fuzz svc data-plane pollution, 14 asserts (s83)" $?
 # 数据面污染（fs 相位）：artifacts 自建畸形 ws 目录+极端成品名——白名单边界/零泄漏/逐字节往返
 "$FRX/bin/node-v22/node-v22.21.1-win-x64/node.exe" "$(dirname "$0")/assets-fuzz-probe.js" fs "$B" >/dev/null 2>&1; ck "assets-fuzz fs data-plane pollution, 5 asserts (s83)" $?
-# 并发面：5 并发 GET——每响应必须 200/ok/统一模型形状/排序不变量（逐字节一致为 FINDING-1 让位 deferred：
-# dbOverview 的 faucet CLI config store 在并发迸发下 SQLITE_BUSY 快败→表源整段静默缺席，~20% 响应 15/17 条实测，
-# 根因独立于桥复现（纯 CLI+REST 混合同撞）；s50b 起遗留、/api/assets 继承，分级报告不修产品——修复落地后收紧回逐字节）
+# 并发面：5 并发 GET——每响应 200/ok/统一模型形状/排序不变量 + 5 份原始响应逐字节一致（FINDING-1 已修，oracle 已收紧）：
+# 根因=faucet CLI config store（faucet.db，SQLite 无 busy_timeout）在迸发下 SQLITE_BUSY(5) 快败（rc=1「database is locked」），
+# 桥侧原样吞掉→表源整段静默缺席（修前并发 50 实测丢源 22-48%；固定退避重试同波再撞不解决）；
+# 修=桥 faucetCli 收口处同参并发读单飞合并+失败 150-300ms 抖动退避重试+dbOverview schema 失败置 tblMiss 可观察化（不碰 faucet 上游）；
+# 修后并发 50 丢源 0/50（×3 轮，/api/assets 与 /api/db/overview 同测）+混发 25+25 逐字节一致——deferred 注记就此收紧销案）
 CT="$(mktemp -d)"
 for i in 1 2 3 4 5; do curl -s -m 20 "$B/api/assets" > "$CT/r$i" & done
 wait
@@ -535,8 +537,9 @@ for k in range(1,len(items)):
     assert not (a is None and b is not None)
 PYEOF
 done
+for i in 2 3 4 5; do cmp -s "$CT/r1" "$CT/r$i" || OKC=0; done # FINDING-1 收紧：原始响应逐字节一致（表源缺席/条目漂移立即红）
 rm -rf "$CT"
-[ "$OKC" = "1" ]; ck "assets 5 concurrent GETs: each 200/ok/shape+sort intact (s83; byte-identity deferred=FINDING-1 SQLITE_BUSY)" $?
+[ "$OKC" = "1" ]; ck "assets 5 concurrent GETs: each 200/ok/shape+sort intact + byte-identical (s83; FINDING-1 fixed: faucetCli single-flight+backoff)" $?
 echo "=============================="
 echo "fuzz: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" = "0" ]
