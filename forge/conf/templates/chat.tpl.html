@@ -178,6 +178,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 /* s19: 权限请求小白面板（「问你」卡） */
 .permcard{align-self:flex-start;width:80%;background:var(--warn-bg);border:1.5px solid var(--warn-line);border-radius:var(--r-m);font-size:.8rem;overflow:hidden;box-shadow:var(--shadow-2)}
 .permcard .ptitle{padding:9px 14px 0;font-weight:600;color:var(--warn-tx)}
+.permcard .psub{padding:2px 14px 0;font-size:.72rem;color:var(--mut)}
 .permcard .pbody{padding:6px 14px;color:var(--tx)}
 .permcard .pbody pre{margin:6px 0 0;padding:8px 10px;background:var(--code-bg);border-radius:8px;font-size:.72rem;color:var(--code-tx);max-height:150px;overflow:auto;white-space:pre-wrap;font-family:Consolas,monospace}
 .permcard .pbtns{display:flex;gap:8px;padding:10px 14px;flex-wrap:wrap}
@@ -348,7 +349,7 @@ details.tz[open]>summary::before{content:'▾ '}
   <div id="chat"></div>
   <div class="typing" id="typing" role="status" style="display:none">小 forge 正在干活<span class="tdots"><i></i><i></i><i></i></span></div>
   <div id="inputbar">
-    <input id="txt" placeholder="想让我做什么？输入 @ 引用文件或数据表" autocomplete="off" aria-label="聊天输入框">
+    <input id="txt" placeholder="想让我做什么？@ 引用文件或数据表，Tab=常用话术" autocomplete="off" aria-label="聊天输入框">
     <button id="prompts-btn" title="我的提示词：存住常用话术，一点就用" aria-label="打开我的提示词">📖</button>
     <button id="opt-btn" title="先写点什么再优化" aria-label="优化输入框里的话术" disabled>✨</button>
     <button id="send">发送</button>
@@ -1206,12 +1207,15 @@ function onAgentEvent(p){
       if(rin!==undefined&&rin!==null) tDetail=(typeof rin==='string')?rin:JSON.stringify(rin,null,1);
     }catch(e){}
     // 选项分类：按 kind 归到 允许一次/总是允许/拒绝一次/总是拒绝
-    const KIND={allow_once:{t:'✅ 这次可以',cls:'acc'},allow_always:{t:'✅ 以后都允许',cls:'acc'},
-                reject_once:{t:'🚫 这次不行',cls:'rej'},reject_always:{t:'🚫 以后都别问',cls:'rej'}};
+    // s78 P1-1a（ux 自查）：「这次」优先于「以后」——goose 回包恒 allow_always 居首（活体实录），照单透出=最大按钮管持久化承诺；
+    // allow_always 文案自带持久化预告（HITL Progressive Consent：风险信息随决策点呈现）
+    const KIND={allow_once:{t:'✅ 这次可以',cls:'acc',o:0},allow_always:{t:'✅ 以后都允许（会记住，之后不再问）',cls:'acc',o:2},
+                reject_once:{t:'🚫 这次不行',cls:'rej',o:1},reject_always:{t:'🚫 以后都别问',cls:'rej',o:3}};
     const card=document.createElement('div'); card.className='permcard';
     card.innerHTML='<div class="ptitle">🛡 小 forge 想做一个操作，需要您点头：</div>'+
+      '<div class="psub">选「以后」的会被记住，之后这类操作不再问。</div>'+
       '<div class="pbody"><b></b>'+(tDetail?'<pre></pre>':'')+'</div>'+
-      '<div class="pnote">它不会自己偷偷做。您选了它才动。</div>';
+      '<div class="pnote">它不会自己偷偷做。您选了它才动。一分钟没回应，会自动先跳过这次。</div>';
     card.querySelector('.pbody b').textContent=tTitle;
     if(tDetail) card.querySelector('.pbody pre').textContent=maskKeys(tDetail).slice(0,800); // s78 P4 同族: 权限卡参数摘要同掩码（同一命令同一密钥，妻子可见面）
     const btns=document.createElement('div'); btns.className='pbtns';
@@ -1222,7 +1226,7 @@ function onAgentEvent(p){
       btns.remove(); card.querySelector('.pnote').textContent='您选了：'+label;
       card.classList.add('settled');
     };
-    for(const o of opts){
+    for(const o of [...opts].sort((a,b)=>((KIND[a.kind]||{}).o??9)-((KIND[b.kind]||{}).o??9))){ // s78 P1-1a：按 o 权重渲染，未知 kind 沉底保原相对序
       const meta=KIND[o.kind]||{t:(o.name||o.optionId),cls:''};
       const b=document.createElement('button'); b.className='mini '+(meta.cls?'pbtn-'+meta.cls:'');
       b.textContent=meta.t;
@@ -1241,17 +1245,19 @@ function onAgentEvent(p){
       addInfo('💡 这个任务要确认好几步。想让它一口气干完：把上方「工作模式」切到「自动干活」，或者遇到确认时点「✅ 以后都允许」。');
     }
     // 超时兜底自动选「这次不行」（reject_once）——goose 每张卡必带该选项；「以后都别问」不能自动替用户按（持久化太激进）
+    // s78 P2-2c：超时拒绝后 agent 按其提示词自主换路（活体实录：改走别的工具再来问）——不替用户停整个任务
+    // （session/close 必删会话 research/18；cancel 撞未决权限请求的语义未验证，不为拦截破坏协议），改以文案管理预期
     const noOpt = opts.find(o=>o.kind==='reject_once') || opts[0];
-    setTimeout(()=>settle(noOpt.optionId,'（等太久没人选，自动帮你选了 🚫 这次不行。想让它做的话，再点一次按钮就行。）'),60000);
+    card._pto=setTimeout(()=>settle(noOpt.optionId,'（等太久没人选，自动帮你选了 🚫 这次不行。它可能会换个做法再来问你——想让它做，它再问时点「这次可以」就行。）'),60000);
     return;
   }
-  if(p.method==='stop'){ setBusy(false); endStream(); loadSessions(); renderCurPane(); flushPendingQueue(); } // s52b: 任务完成自动刷新文件树（小白不用手动刷新找文件）；#3: 干完活补发排队中的消息
+  if(p.method==='stop'){ setBusy(false); endStream(); zombiePermcards(); loadSessions(); renderCurPane(); flushPendingQueue(); } // s52b: 任务完成自动刷新文件树（小白不用手动刷新找文件）；#3: 干完活补发排队中的消息；s78 P2-3b: 回合收口时未选的卡同步置灰（会话切换路径由清墙覆盖）
 }
 function submit(forced){
   const fromBox=(forced===undefined||forced===null); // B2: forced=队列补发值，直发不经输入框
   const t=fromBox?txt.value.trim():String(forced).trim(); if(!t)return;
   if(!sessionId){ if(fromBox){ pendingQueue.push(t); txt.value=''; addInfo('对话马上就开好，这条先记下了，开好会自动发出去（不用再点一次）。'); } return; } // #3: 入队等 subscribed 补发（forced 值本就来自队列，不再入队）
-  if(busy){ addInfo('它还在干活（可以点「停止」打断它，或者等它做完）。'); return; }
+  if(busy){ if(fromBox){ pendingQueue.push(t); txt.value=''; addInfo('它还在忙，这条已记下，等它干完手头的就自动发出去（不用再点一次）。'); } return; } // s78 P2-3c：忙碌补发入队+占位交代（对齐 #3 会话开设文案模式；stop 事件 flushPendingQueue 自动补发，用户点停止则 rollbackQueue 放回）
   // ponytail: 工作区路径随提示词注入（agent 不看 UI）；若将来提示词很长可改为桥接侧 system 注入
   // s44: 工作区须知——妻子说"记住这个项目的规矩"，agent 写进须知.md，之后每次任务自动带上
   // s50: hint 拆两段——位置段仅当消息未含 data/artifacts/（原条件语义）；须知/版本规矩段只要有工作区就带上，否则 @ 引用/报表卡消息会静默丢掉这两条（s28e 起的缺口）
@@ -1278,7 +1284,17 @@ txt.onkeydown=e=>{
     submit();
   }
 };
-stopBtn.onclick=()=>{ wssend({type:'cancel'}); setBusy(false); };
+stopBtn.onclick=()=>{ wssend({type:'cancel'}); setBusy(false); zombiePermcards();
+  addInfo('⏹ 已让它停下，进行到一半的步骤会就地结束；想继续就再说一句。'); // s78 P2-3a：停止动作即时交代（Nielsen #1 动作后状态确认）
+  if(pendingQueue.length){ rollbackQueue('你刚让它停了，排队没发出去的话已放回，想发再点一次发送。'); } }; // s78 P2-3c：用户停止≠自动续发——排队话放回输入框，控制权留给人
+function zombiePermcards(){ // s78 P2-3b：回合已死的审批卡视觉收口——置灰禁点+撤掉待触发的超时兜底定时器；不发协议帧（回合已死，点了也不算数）
+  for(const c of document.querySelectorAll('.permcard:not(.settled)')){
+    clearTimeout(c._pto);
+    const b=c.querySelector('.pbtns'); if(b) b.remove();
+    const n=c.querySelector('.pnote'); if(n) n.textContent='这轮已经结束，这张卡不用再选了。';
+    c.classList.add('settled');
+  }
+}
 $('newchat').onclick=()=>{ if(busy){ addInfo('它正忙着呢——等这步干完，或点 ⏹ 停止再开新的。'); return; } tabMenuClose(); subscribe(null); $('search-results').style.display='none'; $('sessions').style.display=''; $('chat-search').value=''; $('arch-q').value=''; listPage.arch=1; listPage.chat=1; renderSessions(lastSessions); }; // s69 P2-9: 忙碌态护栏（对齐 openSession）; s76 qa P3-6: 清 arch-q 残留过滤词+两视图回第 1 页再重渲染（残留过滤词会让新建会话不在列表；与 arch-q oninput 同款复位）; s78 qa P3-D: tabMenuClose 关 Tab 菜单（Ctrl+K 与 /新对话 命令同走此口，与 openSession 同款）
 // 导出当前对话（小白：存成 txt 给别人看）
 window.exportChat=()=>{

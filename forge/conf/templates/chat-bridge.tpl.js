@@ -130,6 +130,21 @@ function classifyUpstream(txt) { // s50e: 上游错误细分（401=Key 没配好
     if (/timed out|timeout/i.test(s)) return 'timeout';
     return 'server';
 }
+// s78 P2-2b（ff03b03 同族——人话门先于透出）：goose 收权限拒绝后把工具卡结果回填成英文
+// "The user has declined to run this tool. DO NOT attempt…"（v1.50 二进制+活体帧实录 tmp/s78e-decline-shape.js：
+// tool_call_update.status=failed + content 文本块数组）。只改写转发给前端的帧（goose 自持会话史不动，
+// 对 agent 零影响）；前端 explain_tool 喂料读 card._out，同步吃人话版
+const DECLINE_RE = /the user has declined to run this tool/i;
+function humanizeDecline(msg) {
+    try {
+        const upd = msg.params && msg.params.update;
+        if (!upd || (upd.sessionUpdate !== 'tool_call' && upd.sessionUpdate !== 'tool_call_update')) return;
+        for (const tu of [upd, upd.toolCallUpdate]) { // 实测形态=upd.content 直挂；嵌套 toolCallUpdate 形态兜底（同前端 toolCard 双形态）
+            if (!tu || !Array.isArray(tu.content)) continue;
+            for (const b of tu.content) if (b && b.content && typeof b.content.text === 'string' && DECLINE_RE.test(b.content.text)) b.content.text = '这一步没得到您的同意，没有执行。';
+        }
+    } catch {}
+}
 const permKinds = new Map(); // request_permission callId -> {m: optionId->kind, t: shown 时间戳}，供 acp_reply 分类+超时判定
 const turnText = new Map();  // sessionId -> 当轮 agent 文本累计（s26 流内报错检测用）
 const busySids = new Set();  // sessionId -> 有在飞 prompt/流式未收尾（主线5 rollback_rewrite 的 busy 门，桥侧权威）
@@ -782,6 +797,7 @@ function onAcpData(chunk) {
                     if (S26_ERR_RE.test(txt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(txt)); }
                 }
             } catch {}
+            humanizeDecline(msg); // s78 P2-2b: 拒绝回填文案人话门先于转发（含 session/load 回放同路帧）
             const set = sid ? sessionClients.get(sid) : null;
             const obj = { agent: msg };
             if (set && set.size) for (const ws of set) ws.send(obj);

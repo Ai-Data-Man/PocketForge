@@ -214,10 +214,10 @@ let bridgeLog = '';
         const fnEnd = tplSrc.indexOf('// ---- research/18 断点①');
         if (fnStart < 0 || fnEnd < 0 || fnEnd <= fnStart) ck('P2-1 桩提取锚点存在', false, 'anchor');
         else {
-            const mkOnAcp = new Function('acpBuf', 'waiting', 'statsBump', 'permKinds', 'turnText', 'busySids', 'S26_ERR_RE', 'classifyUpstream', 'sessionClients', 'allClients',
+            const mkOnAcp = new Function('acpBuf', 'waiting', 'statsBump', 'permKinds', 'turnText', 'busySids', 'S26_ERR_RE', 'classifyUpstream', 'humanizeDecline', 'sessionClients', 'allClients',
                 tplSrc.slice(fnStart, fnEnd) + '\nreturn onAcpData;');
             const mkEnv = () => ({ waiting: new Map(), stats: [], permKinds: new Map(), turnText: new Map(), busySids: new Set(), sessionClients: new Map(), allClients: new Set() });
-            const boot = env => mkOnAcp('', env.waiting, k => env.stats.push(k), env.permKinds, env.turnText, env.busySids, /(?!)/, () => 'unknown', env.sessionClients, env.allClients);
+            const boot = env => mkOnAcp('', env.waiting, k => env.stats.push(k), env.permKinds, env.turnText, env.busySids, /(?!)/, () => 'unknown', () => {}, env.sessionClients, env.allClients); // s78e: humanizeDecline 同 classifyUpstream 桩法（本段测广播豁免面，人话门由 GUI/WS 探针覆盖）
             const mkWs = () => { const w = { alive: true, sent: [] }; w.send = o => w.sent.push(o); return w; };
             const perm = sid => JSON.stringify({ jsonrpc: '2.0', id: 901, method: 'session/request_permission', params: { sessionId: sid, options: [{ optionId: 'a', kind: 'allow_once' }] } }) + '\n';
             const chunk = sid => JSON.stringify({ method: 'session/update', params: { sessionId: sid, update: { sessionUpdate: 'agent_message_chunk', content: { text: 'x' } } } }) + '\n';
