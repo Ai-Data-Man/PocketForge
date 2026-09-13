@@ -15,5 +15,6 @@ ADR（架构决策记录）= 持久的"为什么"。一经 Accepted 正文不可
 | 0009 | 自动升级系统与状态 Schema 演进 | Accepted |
 | 0010 | 能力中心与记忆可视化（双视角暴露） | Accepted |
 | 0011 | 许可证白名单扩列（PostgreSQL License/ISC）与 PG 采纳三阶段路线 | Accepted |
+| 0012 | 上游差异适配层——同名遮蔽与管道保持 wrapper | Accepted |
 
 模板见 `_template.md`。
