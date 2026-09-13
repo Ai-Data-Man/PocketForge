@@ -211,3 +211,8 @@
 - P2×2：①掩码裸 JSON 键（api_key/apikey/token 无 x_ 前缀）JSON 位漏网——rawInput 主真实形态明文（同批扩了 x_ 族漏了更常见裸键族）；②humanizeDecline 匹配面过宽——真实输出含 DECLINE_RE 原句被整字段替换吞数据（grep/日志审计场景即撞）。
 - P3 择修：x_api_key 缺 \b（max_api_key=5 误掩实证）；超时兜底 ||opts[0] 破例自动按 allow_always（预存在但违「这次优先」新原则）；R4 型2 未逐型锁；R1 reject 路径 hs 非 ok 不复检。留档：catalog 整文件替换结构性风险；_pto 家族/排队补发窗口推演安全（点名项核实通过：R1 时序 ok 帧不覆错误卡、P1-1a DOM 序无 Tab 副作用）。
 - 探针自坑新成员：new Function 提取未注入 DECLINE_RE 被产品 catch{} 静默（教训 13 家族）。
+
+## 修复批 5910d19（QA s78f 处置）
+- 掩码第五链（裸 JSON/header/%20 键名）+x_api_key \b；humanizeDecline 双门（status===failed 前置+句内子串替换，真实数据保全）；超时兜底显式拒绝族（原则入注释：破例路径不许落允许类）；R4 逐型锁（31→33ck）+R1 hs 非 ok 补挂点。
+- 顺带抓 masked() 假绿弱点（泄漏检查以 **** 在场为前提——整段漏掩时零 **** 假绿），改无条件检查。
+- 全套件顺序首轮绿 57/57+178/178。
