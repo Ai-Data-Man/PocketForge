@@ -79,8 +79,8 @@ function httpJson(p, path_, body) {
             stdio: 'ignore',
         });
     };
-    const waitPg = async tag => { // 等探针桥进 pg 态（≤20s：写路径懒连）
-        for (let i = 0; i < 80; i++) { const s = await httpJson(PROBE_PORT, '/api/stats'); if (s && s.pg === 'pg') return true; await sleep(250); }
+    const waitPg = async tag => { // 等探针桥进 pg 态（≤50s：写路径懒连；s80 research/29 20→50 吸收桥 20s waitPg<30s 重探间隔的重叠窗）
+        for (let i = 0; i < 200; i++) { const s = await httpJson(PROBE_PORT, '/api/stats'); if (s && s.pg === 'pg') return true; await sleep(250); }
         throw new Error(tag + ': probe bridge never reached pg mode');
     };
 

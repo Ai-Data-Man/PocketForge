@@ -36,15 +36,15 @@ const PORT = 8790;
                 if (msg.sys === 'subscribed' && msg.newSession) {
                     sid = msg.sessionId;
                     console.log('PROBE-C: session ' + sid + ' created, waiting for extension processes');
-                    waitFor(async c => c > n0, 10, acpPid).then(async ok => {
-                        if (!ok) { clearTimeout(timer); console.log('PROBE-C: FAIL - extension processes did not appear in 10s (count stuck at ' + n0 + ')'); try { socket.destroy(); } catch {} process.exit(1); }
+                    waitFor(async c => c > n0, 20, acpPid).then(async ok => { // s80 research/29：10→20s 吸收真冷机 EDR/IO 偶发拉爆 spawn（实测热机 1.4-1.8s，19 跑 0 复现判瞬态）
+                        if (!ok) { clearTimeout(timer); console.log('PROBE-C: FAIL - extension processes did not appear in 20s (count stuck at ' + n0 + ')'); try { socket.destroy(); } catch {} process.exit(1); }
                         const n1 = await treeCount(acpPid);
                         console.log('PROBE-C: with-session descendants=' + n1 + ' (baseline ' + n0 + ')');
                         socket.write(frame({ type: 'delete_session', sessionId: sid }));
                     });
                 } else if (msg.sys === 'session_deleted') {
                     console.log('PROBE-C: deleted ok=' + msg.ok + ', waiting for process reclamation');
-                    waitFor(async c => c <= n0, 10, acpPid).then(ok => {
+                    waitFor(async c => c <= n0, 20, acpPid).then(ok => { // 同上：回收门同步放宽（总 60s 门仍罩得住）
                         clearTimeout(timer);
                         try { socket.destroy(); } catch {}
                         if (ok) console.log('PROBE-C: PASS - extension tree reclaimed to baseline after delete_session');
