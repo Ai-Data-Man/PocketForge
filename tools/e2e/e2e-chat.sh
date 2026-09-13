@@ -306,7 +306,12 @@ rc=0; node "$ROOT/tools/e2e/ws-rollback-probe.js" > /tmp/ws-rollback.log 2>&1 ||
 grep -q "FAIL=0" /tmp/ws-rollback.log || rc=$?
 ck "ws-rollback probe 31 ck (B-type surgery + fail-closed + busy gate + tombstone/keep-3 + broadcast + empty-session)" $rc
 grep -E "^ws-rollback-probe" /tmp/ws-rollback.log || true
-rm -f /tmp/ws-rollback.log
+# s83e 取证（#16 同款，§11b 先例）：红时保留探针输出并回显红签名（原 rm -f 无条件清理=吞证据——cycle 18/24 两红的
+# 具体 ck/PROBE ERROR 至今未知即此因）；红时探针自身也保留沙盒树（ws-rollback-probe.js finally 分叉）
+if [ "$rc" -eq 0 ]; then rm -f /tmp/ws-rollback.log; else
+  grep -E "^(FAIL|\[bridge\] EXIT|PROBE ERROR)" /tmp/ws-rollback.log || true
+  cp /tmp/ws-rollback.log "$ROOT/tmp/s83e-18c-red-$(date +%H%M%S).log" || true
+fi
 
 # ---------- 19) 工具卡帧双形态桩测（e4a 批 r19 R1-R5；详见 tools/e2e/toolcard-frames-probe.js） ----------
 # 钉住解释链路断供修复：goose v1.46 数组形态 content 解析（修复前 _out 恒空→工具卡输出区从未显示+explain 恒「(空)」捏造）、

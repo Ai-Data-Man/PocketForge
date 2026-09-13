@@ -19,7 +19,8 @@ const REWRITE = '18c-改写 我明天要坐飞机去苏州，不是杭州';
 function freePort() { return new Promise(r => { const s = require('net').createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => r(p)); }); }); }
 let BRIDGE_PORT = 0, PROV_PORT = 0;
 let pass = 0, fail = 0;
-const ck = (n, ok, why) => { console.log((ok ? 'PASS: ' : 'FAIL: ') + n + (ok ? '' : (why ? '  << ' + why : ''))); ok ? pass++ : fail++; };
+const T0 = Date.now(); // s83e 取证：ck 带 T+ 秒戳——红时区分「全程慢」与「中途骤停」（超时家族定诊用）
+const ck = (n, ok, why) => { console.log((ok ? 'PASS: ' : 'FAIL: ') + '[T+' + Math.round((Date.now() - T0) / 1000) + 's] ' + n + (ok ? '' : (why ? '  << ' + why : ''))); ok ? pass++ : fail++; };
 
 // ---- 假 provider（pfr21 fake-openai 同款 + SLOW18C 延迟 4s）----
 function startProvider() {
@@ -62,6 +63,9 @@ function mkClient(port) {
     return new Promise((resolve, reject) => {
         const key = crypto.randomBytes(16).toString('base64');
         const req = http.request({ host: '127.0.0.1', port, path: '/ws', headers: { Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Key': key, 'Sec-WebSocket-Version': '13', Origin: 'http://127.0.0.1:' + port } });
+        // s83e 取证：upgrade 响应无界等待兜底——桥事件循环被宿主级饥饿卡住 >45s 时 hello 计时器尚未启动，
+        // 探针会无限挂起拖死整套件；5s（健康全程 <1s）把挂起转成可诊断快失败，零掩蔽
+        req.setTimeout(5000, () => req.destroy(new Error('upgrade timeout 5s（桥未回 101）')));
         req.on('upgrade', (res, socket) => {
             const c = { socket, inbox: [], waiters: [], tap: null, dead: false, sent: 0 };
             c.send = o => { c.sent++; socket.write(frame(o)); };
@@ -135,6 +139,8 @@ let bridge = null, prov = null, A = null, B = null, C = null;
     prov = await startProvider();
     bridge = spawn(process.execPath, [path.join(FORGE, 'bin', 'chat-bridge.js')], { env: { ...process.env, FORGE_ROOT: ROOT, PORT: String(BRIDGE_PORT), NO_PROXY: '127.0.0.1,localhost' }, stdio: ['ignore', 'pipe', 'pipe'] });
     bridge.stderr.on('data', d => process.stderr.write('[bridge] ' + d));
+    // s83e 取证：桥中途死亡必须留痕（exit 钩子落日志，含 T+ 时间戳）——「套件内红」家族的头号嫌疑面
+    bridge.on('exit', (code, sig) => console.error('[bridge] EXIT T+' + Math.round((Date.now() - T0) / 1000) + 's code=' + code + ' sig=' + sig));
     await new Promise((res, rej) => { const t = setTimeout(() => rej(new Error('bridge healthz 45s 未就绪')), 45000); const ping = () => http.get({ host: '127.0.0.1', port: BRIDGE_PORT, path: '/healthz' }, r => { if (r.statusCode === 200) { clearTimeout(t); res(); } else setTimeout(ping, 500); }).on('error', () => setTimeout(ping, 500)); ping(); });
     ck('S1 沙盒桥起活（healthz 200，不碰 dev 树 8790）', true);
 
@@ -301,7 +307,8 @@ let bridge = null, prov = null, A = null, B = null, C = null;
     try { if (B && B.socket) B.socket.destroy(); } catch {}
     try { if (C && C.socket) C.socket.destroy(); } catch {}
     if (bridge) { try { spawn('taskkill', ['/pid', String(bridge.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }); } catch {} }
-    setTimeout(() => { try { prov && prov.close(); } catch {} try { fs.rmSync(ROOT, { recursive: true, force: true }); } catch {} }, 1500);
+    // s83e 取证（#16 绿清红留）：红时保留沙盒树（DB/tombstone/goose 日志=案发现场），绿时照旧自清
+    setTimeout(() => { try { prov && prov.close(); } catch {} if (fail) console.error('ws-rollback-probe: sandbox kept for forensics: ' + ROOT); else { try { fs.rmSync(ROOT, { recursive: true, force: true }); } catch {} } }, 1500);
     console.log('ws-rollback-probe: PASS=' + pass + ' FAIL=' + fail);
     if (fail) process.exitCode = 1;
     setTimeout(() => process.exit(process.exitCode || 0), 1800);
