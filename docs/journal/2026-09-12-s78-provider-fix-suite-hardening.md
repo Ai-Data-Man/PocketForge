@@ -206,3 +206,8 @@
 ## UX 修复批+全树检查点（632b176 后）
 - UX 四发现全落：审批卡「这次」优先序+持久化预告/60s 超时卡面预告+decline 人话门（ff03b03 同族，转发帧侧 agent 会话史零影响）/停止交代+僵尸卡 settled 化+排队占位/placeholder 补 Tab；P2-2c 取证后走预期管理（goose 拒后自主换路是设计，session/close 必删行不可用——顺带修正「再点一次按钮」失实指引）；GUI 活体 21 断言。
 - **全树检查点：e2e 57/57 + fuzz 178/178 + appcap 五跑 13/13**——当日全部工作在完整树上复验成立。
+
+## QA 复审后三批（tmp/s78f-qa-review.md，e2e+fuzz 首轮复现双绿）
+- P2×2：①掩码裸 JSON 键（api_key/apikey/token 无 x_ 前缀）JSON 位漏网——rawInput 主真实形态明文（同批扩了 x_ 族漏了更常见裸键族）；②humanizeDecline 匹配面过宽——真实输出含 DECLINE_RE 原句被整字段替换吞数据（grep/日志审计场景即撞）。
+- P3 择修：x_api_key 缺 \b（max_api_key=5 误掩实证）；超时兜底 ||opts[0] 破例自动按 allow_always（预存在但违「这次优先」新原则）；R4 型2 未逐型锁；R1 reject 路径 hs 非 ok 不复检。留档：catalog 整文件替换结构性风险；_pto 家族/排队补发窗口推演安全（点名项核实通过：R1 时序 ok 帧不覆错误卡、P1-1a DOM 序无 Tab 副作用）。
+- 探针自坑新成员：new Function 提取未注入 DECLINE_RE 被产品 catch{} 静默（教训 13 家族）。
