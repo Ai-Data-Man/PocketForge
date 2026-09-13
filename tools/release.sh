@@ -20,6 +20,30 @@ SHA="$OUT.sha256"
 echo "产物: $(basename "$OUT") ($(du -h "$OUT" | cut -f1))"
 cat "$SHA"
 
+# 1.5) 信誉尖峰检测（research/28 §7-B，2026-09-13）：对比上一包的 exe 哈希清单——
+# 变化 = 本版引入新 exe 哈希 = EDR 信誉冷启动版，发布说明须带 EDR 段+提醒 IT 重登记（SHA256-EXE.txt 随包）；
+# 全不变 = 无信誉尖峰（差量机制常态）。建议性输出，不阻断发布。
+PREVZIP=$(ls -t "$ROOT"/dist/PocketForge-*.zip 2>/dev/null | grep -v "^$OUT$" | head -1 || true)
+if [ -n "$PREVZIP" ]; then
+  NEWEXE=$(mktemp); OLDEXE=$(mktemp)
+  unzip -p "$OUT" SHA256-EXE.txt > "$NEWEXE" 2>/dev/null || true
+  unzip -p "$PREVZIP" SHA256-EXE.txt > "$OLDEXE" 2>/dev/null || true
+  if [ -s "$NEWEXE" ] && [ -s "$OLDEXE" ]; then
+    ADDED=$(comm -13 <(sort "$OLDEXE") <(sort "$NEWEXE") | wc -l)
+    REMOVED=$(comm -23 <(sort "$OLDEXE") <(sort "$NEWEXE") | wc -l)
+    if [ "$ADDED" = "0" ] && [ "$REMOVED" = "0" ]; then
+      echo "[尖峰检测] exe 哈希与 $(basename "$PREVZIP") 全一致——无信誉尖峰"
+    else
+      echo "[尖峰检测] ⚠ 信誉尖峰版：$ADDED 个 exe 哈希新增 / $REMOVED 个移除（对比 $(basename "$PREVZIP")）"
+      comm -13 <(sort "$OLDEXE") <(sort "$NEWEXE") | head -8 | sed 's/^/    + /'
+      echo "    → 发布说明须带 EDR 提示段；IT 侧按包根 SHA256-EXE.txt 重登记"
+    fi
+  else
+    echo "[尖峰检测] WARN: 新旧包缺 SHA256-EXE.txt（旧包 predates 清单交付物？），跳过——升级 package.sh 后的首次发布属预期"
+  fi
+  rm -f "$NEWEXE" "$OLDEXE"
+fi
+
 # 2) 检查 release 是否已存在（幂等）
 EXIST=$(curl -s -x "$PROXY" -H "Authorization: Bearer $GH_TOKEN" \
   "https://api.github.com/repos/$REPO/releases/tags/$TAG" | python -c "import sys,json;d=json.load(sys.stdin);print(d.get('id') or '')" 2>/dev/null || true)
