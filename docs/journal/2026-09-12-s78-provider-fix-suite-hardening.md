@@ -184,3 +184,11 @@
 - **教训四条入册**：①python 普通字符串 `\f` 转义吃掉路径反斜杠（`PocketForge\forge`→0x0C 换页符，wrapper 静默中止像 runas 坏了——先验 wrapper 字节再疑系统）；②PS5.1 读 BOM-less UTF-8 ps1 按 ANSI，CJK 字节烂掉可吞换行致编译错（脚本全 ASCII 或带 BOM）；③runas rc 观察曾被 bash 管道 rc 污染（`cmd //c runas; echo $?` 的 `$?` 非全链真相，文件捕获+PowerShell ExitCode 才可信）；④杀 seclogon 派生的 pause 卡死 wrapper 与其后 runas 死亡**时序相关但因果未证**（标记 UNVERIFIED，恢复序优先走任务通道）。
 - 观察项（用户基础设施域）：本机 administrator 正被外网 IP 111.7.65.74 持续爆破（4625 type 3，10:01 多次）——仅报告不动。
 - 假9router :20129 本班已不在监听（上会话资产自然亡，本演练未用未重启）。沙盒终态=演练包树+栈停；dev 终态=pf 栈全活（pg Ready/桥 8790/pc 8099/goose-scheduler wrapper）。基线 e2e 57/57+fuzz 178/178 不变（本班产品代码零触碰，仅 package.sh+文档）。
+
+## v0.9.12 打包演练（7d4ee9d，不 tag 不发布——时机归用户）
+- **SHA256-EXE.txt 新交付物**：package.sh 2b 步，包内 54 个 .exe 全清单（sha256sum 格式幂等，两跑逐字节一致；goose.exe 与升级台账哈希链交叉验证；research/28 刚性材料落地）。
+- 演练包 323,539,367B/25,300 文件 sha256 d3190e3b…（tmp/v0.9.12-drill/，dist 未污染，VERSION 保持 0.9.11 日期戳区分）。沙盒冷启 cold-surface 15/15+六新面全过：健康探测 S2-1 live×2（reply 必答同证）/S2-3 启动 90s 隔离实证（117s 首连 5ms 缓存帧唯一来源=定时器）/技能桩两枚非 builtin/调度器 wrapper running restarts=0/welcome 三新块/SHA256-EXE 54/54。
+- **栈承载通道变更（下会话必读）**：runas //trustlevel 会话中途死亡（09:44 起恒 exit-1 零输出，根因 UNVERIFIED）→ 通道=标准用户 forge-sbx+secedit SeBatchLogonRight（回滚 inf 在 tmp/v0.9.12-drill/）+计划任务 PFdrill2（RL LIMITED）。**停栈照旧 pc down；重启=`schtasks /Run /TN PFdrill2`**。退役序：runas 复活可回老路。
+- Explorer 45 窗+10 错误框清零（教训条 14 执行）；假路由 :20129 已亡未重启（provider 复测时再拉）；dev 栈终态全活（healthz 200/pg Ready）。
+- **安全观察（用户基础设施域，仅报告）**：外网 111.7.65.74 持续爆破本机 administrator（4625 type 3 多次）。
+- 巡检 cron 撤除（两轮触发零留痕连续失败）；主控轮内检查替代。
