@@ -107,13 +107,39 @@ function wsSession(steps, timeoutMs, pred) {
         20000, m => m.sys === 'error' || m.agent);
     const nerr = rnor.inbox.find(m => m.sys === 'error');
     assert('normal prompt passes local gate', !nerr, JSON.stringify(nerr));
-    console.log('==============================');
-    console.log('ws-fuzz-s50h: PASS=' + pass + ' FAIL=' + fail);
     // QA s80g 跟进：探针自建会话自清。复用桥侧 acpCloseSession（s81 出生门控延迟 close）语义——
     // 探针只发 delete_session、收 session_deleted 回执即算（幼龄延迟窗/树回收是桥侧职责，探针不等）。
     // 桥回执后自断请求方 socket，故一会话一连接。
-    for (const sid of created) await wsDeleteSession(sid);
-    console.log('[cleanup] deleted ' + created.length + ' self-created session(s)');
+    // 取走自建清单：下方烧号建的会话不得进入删除清单（删烧号顶行=号段回退=重新布雷）。
+    const burnPlan = created.splice(0);
+    const num = s => { const m = /_(\d+)$/.exec(String(s)); return m ? +m[1] : NaN; };
+    const preMax = Math.max(...burnPlan.map(num));
+    for (const sid of burnPlan) await wsDeleteSession(sid);
+    console.log('[cleanup] deleted ' + burnPlan.length + ' self-created session(s)');
+    // s83b 烧号（tmp/s83b-appcap-regression.md 修复建议·首选，620ea97 五连删回归的测试侧修复）：
+    // 叠删当日顶号 ≥2 必烧穿桥单次救援——删行致 goose 号段回退、closed 集留号，下个真会话复用
+    // closed 号 → prompt 撞守卫 → 救援又拿下一个 closed 号 → TURN_LOST 连环（appcap run7/8 形态）。
+    // 烧号 = 删 N 个再 subscribe(null) N 次（=桥发 session/new，只建不发 prompt），把当日 MAX 顶回
+    // 删除前水平，closed 号全部沉到 MAX 之下。烧号会话即弃（桥侧闲置会话本就滞留至桥重启，不新增
+    // 负担）；只建不删，桥「session/new 前冲刷 pending close」语义不受影响。
+    // 断言取 ≥ 而非 =：rnor 真模型 turn 在删除后才迟到 reject（Failed to load session）会触发桥单次
+    // 救援 session/new，中途多顶 1 个号（s83c 实测 pc.log：burn 序列 177,179,180,181,182，178 被救援
+    // 吃掉）；救援只增 MAX 不减，方向上只会更安全。烧/救援会话均不发 prompt，不踩 closed 守卫。
+    const burned = [];
+    for (let i = 0; i < burnPlan.length; i++) {
+        const rb = await wsSession({ first: { type: 'subscribe', sessionId: null } }, 10000,
+            m => m.sys === 'subscribed' || m.sys === 'error');
+        const bs = rb.inbox.find(m => m.sys === 'subscribed' && m.newSession);
+        if (bs && bs.sessionId) burned.push(bs.sessionId);
+    }
+    const postMax = burned.length ? Math.max(...burned.map(num)) : NaN;
+    console.log('[burn] pre-delete daily MAX=' + preMax + ', post-burn MAX=' + postMax +
+        ', burned ' + burned.length + '/' + burnPlan.length + ' session(s)');
+    assert('burn sinks closed sids below daily top (post-burn MAX >= pre-delete MAX)', !burnPlan.length ||
+        (burned.length === burnPlan.length && postMax >= preMax),
+        'pre=' + preMax + ' post=' + postMax + ' burned=[' + burned.join(',') + ']');
+    console.log('==============================');
+    console.log('ws-fuzz-s50h: PASS=' + pass + ' FAIL=' + fail);
     process.exit(fail ? 1 : 0);
 })();
 function clientFrame(str) {
