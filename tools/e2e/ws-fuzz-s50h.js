@@ -3,6 +3,7 @@
 const http = require('http'), crypto = require('crypto');
 const PORT = 8790;
 let pass = 0, fail = 0;
+const created = [];   // QA s80g 跟进：本探针 5 处 subscribe(null) 各建一会话，收尾逐个 delete_session 自清
 function assert(name, cond, detail) {
     if (cond) { pass++; console.log('PASS: ' + name); }
     else { fail++; console.log('FAIL: ' + name + (detail ? ' — ' + detail : '')); }
@@ -41,6 +42,7 @@ function wsSession(steps, timeoutMs, pred) {
                         const opt = opts.find(o => o.kind === 'allow_once') || opts[0];
                         socket.write(clientFrame(JSON.stringify({ type: 'acp_reply', callId: msg.agent.id, option: opt && opt.optionId })));
                     }
+                    if (msg.sys === 'subscribed' && msg.newSession && msg.sessionId) created.push(msg.sessionId);
                     if (msg.sys === 'subscribed' && !secondSent && steps.then) {
                         secondSent = true;
                         socket.write(clientFrame(JSON.stringify(steps.then())));
@@ -107,6 +109,11 @@ function wsSession(steps, timeoutMs, pred) {
     assert('normal prompt passes local gate', !nerr, JSON.stringify(nerr));
     console.log('==============================');
     console.log('ws-fuzz-s50h: PASS=' + pass + ' FAIL=' + fail);
+    // QA s80g 跟进：探针自建会话自清。复用桥侧 acpCloseSession（s81 出生门控延迟 close）语义——
+    // 探针只发 delete_session、收 session_deleted 回执即算（幼龄延迟窗/树回收是桥侧职责，探针不等）。
+    // 桥回执后自断请求方 socket，故一会话一连接。
+    for (const sid of created) await wsDeleteSession(sid);
+    console.log('[cleanup] deleted ' + created.length + ' self-created session(s)');
     process.exit(fail ? 1 : 0);
 })();
 function clientFrame(str) {
@@ -117,6 +124,46 @@ function clientFrame(str) {
     else if (payload.length < 65536) { header = Buffer.alloc(4); header[0] = 0x81; header[1] = 0x80 | 126; header.writeUInt16BE(payload.length, 2); }
     else { header = Buffer.alloc(10); header[0] = 0x81; header[1] = 0x80 | 127; header.writeBigUInt64BE(BigInt(payload.length), 2); }
     return Buffer.concat([header, mask, masked]);
+}
+// 收尾自清：单连接发 delete_session 等 session_deleted 回执（≤5s 兜底；delete 无需先 subscribe，桥 handleClient 直收）
+function wsDeleteSession(sid) {
+    return new Promise((resolve) => {
+        const key = crypto.randomBytes(16).toString('base64');
+        const req = http.request({ host: '127.0.0.1', port: PORT, path: '/ws', headers: {
+            Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Key': key, 'Sec-WebSocket-Version': '13',
+            Origin: 'http://127.0.0.1:' + PORT } });
+        let buf = Buffer.alloc(0), settled = false, sock = null;
+        function finish(why) {
+            if (settled) return; settled = true; clearTimeout(timer);
+            try { if (sock) sock.destroy(); } catch {}
+            try { req.destroy(); } catch {}
+            console.log('[cleanup] delete_session ' + sid + ' -> ' + why);
+            resolve();
+        }
+        const timer = setTimeout(() => finish('timeout 5s'), 5000);
+        req.on('upgrade', (res, socket) => {
+            sock = socket;
+            socket.write(clientFrame(JSON.stringify({ type: 'delete_session', sessionId: sid })));
+            socket.on('data', d => {
+                buf = Buffer.concat([buf, d]);
+                while (buf.length >= 2) {
+                    const op = buf[0] & 0x0f;
+                    let len = buf[1] & 0x7f, off = 2;
+                    if (len === 126) { if (buf.length < 4) return; len = buf.readUInt16BE(2); off = 4; }
+                    if (buf.length < off + len) return;
+                    const payload = buf.slice(off, off + len); buf = buf.slice(off + len);
+                    if (op !== 0x1) continue;
+                    let m; try { m = JSON.parse(payload.toString('utf8')); } catch { continue; }
+                    if (m.sys === 'session_deleted') finish('receipt ok=' + m.ok);
+                    else if (m.sys === 'error') finish('bridge error: ' + (m.text || ''));
+                }
+            });
+            socket.on('error', () => finish('socket error'));
+            socket.on('close', () => finish('socket closed (no receipt seen)'));
+        });
+        req.on('error', () => finish('connect error'));
+        req.end();
+    });
 }
 // research/15 就绪门：桥 listen/healthz 先于 goose ACP initialize 完成，矩阵的 session/new 依赖断言会撞 10s 超时。
 // 连 WS 只读 hello 帧（桥 ：2428，caps.modes 在 = acpCaps 就绪），零副作用不 subscribe；未就绪/连接拒
