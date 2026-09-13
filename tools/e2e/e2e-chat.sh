@@ -349,3 +349,7 @@ rm -f /tmp/e2e-v1.md
 echo "=============================="
 echo "chat-link E2E: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" = "0" ]
+
+# s83 产出循环加固：套件尾自动扫 explorer 窗（qa s83d FINDING-2——§10 report 成功路径会自动弹资源管理器窗口，
+# 累积不关会打崩云主机 explorer.exe→用户远程黑屏（用户令 2026-09-13）；扫除=用完即关的套件级落实）
+powershell -NoProfile -ExecutionPolicy Bypass -File "$ROOT/tools/e2e/close-explorer-windows.ps1" 2>/dev/null | tail -1 || true
