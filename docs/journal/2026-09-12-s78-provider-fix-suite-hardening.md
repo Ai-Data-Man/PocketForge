@@ -252,3 +252,6 @@
 ## ⚠ 回归警报（18:0x）：appcap 两连 5/13 同签名
 - 全树终验 e2e 58/58+fuzz 178/178 绿，但 appcap 真模型 GUI 路径 run7/8 两连 5/13（33s 秒败）：S1 新会话 prompt 即「Session not found: 20260913_169」→整轮雪崩；排队占位路径出现。回归窗口四候选（620ea97/fca3fc5/aa7fb2b/db47b33），pf-researcher 已派（单变量 bisect）。
 - **s83b 结案（tmp/s83b-appcap-regression.md）：非产品回归**——①②③④全证伪（WS 级探针不经 GUI/openSession/dbOverview 仍复现；毫秒级协议拒绝非时序形态）。真因=620ea97 fuzz 自清五连删×既有 closed-集发号语义（#17 长尾）：顶号叠删 ≥2 超出单次救援容量→TURN_LOST 必现；单叠=可救（run6 绿+e2e 绿均因先于污染/隔了桥重启）。对照实验 A/B 单变量（叠删 1 vs 2）双验证。修复建议首选测试侧烧号自清，报告未实施。遗留：MAX=176→next 177 安全，死行 173/175/176 留观，下次窗口 restart chat-bridge。
+
+## 值守期 tick（18:5x）
+- goose 上游：latest 仍 v1.50.0（无 v1.51），升级窗口稳定。栈 healthz ok；explorer 0 窗。
