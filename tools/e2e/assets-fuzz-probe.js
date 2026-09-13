@@ -94,7 +94,6 @@ function rmFileWithEscalation() { // 删不掉→杀 mcp 子进程→仍删不�
 }
 
 async function phaseSvc() {
-    const snapshot = fs.readdirSync(SQLITE_DIR).sort().join(',');
     // 幂等预清（教训 #9：中断遗留是常态）——残留服务/文件走同款句柄释放链
     let reg = false;
     try { reg = JSON.parse(faucet(['db', 'list', '--json'])).some(s => s && s.name === SVC); } catch {}
@@ -103,6 +102,8 @@ async function phaseSvc() {
         const r1 = await rmFileWithEscalation();
         if (fs.existsSync(DB_FILE)) { ck('svc-0 预清残留库文件（escalation=' + r1 + '）', false); return; }
     }
+    // 快照在预清后（qa s83d T-1：先于预清会吞掉上轮崩溃残留→重跑假红；教训 #24）
+    const snapshot = fs.readdirSync(SQLITE_DIR).sort().join(',');
     let db = null;
     try {
         // 建库：parts（2 行）+ bigrows（千行表——dbOverview 逐表 REST 计数通道的体量向量）
