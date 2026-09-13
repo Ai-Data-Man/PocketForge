@@ -261,3 +261,6 @@
 - **FINDING-1（M）**：5 并发 GET ~20% 静默丢表源——faucet CLI config store（faucet.db）并发 SQLITE_BUSY 快败+桥无重试+schema 失败无 tblMiss（/api/db/overview 同病 10/50 复现，s50b 遗留被新端点继承）——修复批已派（桥侧退避重试+可观察标记，修后并发例收紧回逐字节一致）。
 - FINDING-2（P3 环境尾巴）：e2e §10 report 成功路径自动弹 explorer 副作用（套件尾清窗已做；沙盒接线留候选）。
 - 环境注记：faucet db add 后须 pc restart faucet（serve 注册表启动期缓存）——与 MCP stale 同族第三成员（serve/cli/mcp 三层各自缓存）。
+
+## FINDING-1 修复（a7890ad）——并发静默丢源根除
+- 工程师实测证伪处方（固定退避=第二波同撞，丢源率不动）→取证 CLI 进程迸发互撞（100 进程 ~90% 快败）→**单飞合并根治**（同参并发读 in-flight 去重，50 并发 1 进程）+抖动退避+schema 失败 tblMiss 标记（降级分支必须同标记）。修前 22-56%→修后 **0/50×3 双端点**+并发逐字节一致×5；全量 58/58+187/187（fuzz 并发例 oracle 已收紧销案）。教训 #22/#23。
