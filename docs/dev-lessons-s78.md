@@ -23,3 +23,5 @@
 11. **「功能效果差先查喂料断供再骂提示词」**（s77 research/19 原则，本会话复验）：解释空回根因是模型侧隐形推理耗预算，不是提示词。
 12. **GUI 级复现是 UX 缺陷的判卷标准**（服务商表单重置陷阱）：WS 级全通不等于用户路径可用；playwright+JS click 批卡循环（`.permcard:not(.settled) .pbtn-acc`）+force click 是标准工具。
 13. **误导性安慰比零信号更糟**（PM 裁决 §1+SSE error 吞没双验证）：错误文案必须指向真出口；「等一等再试」只可用于真瞬时故障。
+
+14. **资源管理器窗口用完必须关闭**（用户环境硬规则，2026-09-13 立例）：云主机上 explorer 文件夹窗口累积不关会打崩 explorer.exe → 用户远程访问黑屏。任何探针/测试/人工操作打开了 explorer（CabinetWClass）都要当轮关闭；值守/巡检顺手数一遍（PowerShell EnumWindows 计数，>0 即逐个 WM_CLOSE）。本轮排查：0 残留。
