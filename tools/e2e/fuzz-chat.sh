@@ -473,6 +473,70 @@ node "$(dirname "$0")/ws-genesis-fuzz.js" >/dev/null 2>&1; ck "ws genesis-guard 
 node "$(dirname "$0")/sse-ladder-fuzz.js" >/dev/null 2>&1; ck "SSE retry-ladder malformed stream fuzz, 36 asserts (fuzz-v2)" $?
 # 面3 maskKeys（3f80ca9/166607a P3-2）：显示层掩码随机 key 形态（静态纯函数探针）
 node "$(dirname "$0")/mask-fuzz-probe.js" >/dev/null 2>&1; ck "maskKeys display-layer random key-form fuzz, 9 asserts (fuzz-v2 + s78f bare-json-key family +  no-overflow)" $?
+# ===== s83 追批（aa7fb2b 后置补盖——fuzz 扩展批早于 /api/assets 落地）：三源聚合端点模糊批 =====
+# 端点面（活体只读）：无参形状稳定（三源字段齐）/POST 405/畸形 query 不 500；
+# 数据面（探针自建自清，详见 assets-fuzz-probe.js）：forge_meta+tinfo 极端行冲突与降级/ws 目录名畸形/成品文件名极端/千行表；
+# 并发面：5 并发 GET 每响应形状完备（逐字节一致 oracle 因 FINDING-1 SQLITE_BUSY deferred，见下方注记）
+curl -s "$B/api/assets" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+assert d.get('ok') is True and isinstance(d.get('items'),list) and d['items'], d.keys()
+kinds=set(i['kind'] for i in d['items'])
+assert {'tbl','file','skill'} <= kinds, kinds
+for i in d['items']:
+    assert i['kind'] in ('tbl','file','skill') and isinstance(i['name'],str)
+    assert i['human'] is None or isinstance(i['human'],str)
+    assert i['ts'] is None or isinstance(i['ts'],(int,float))
+    assert i['srcSid'] is None or isinstance(i['srcSid'],str)
+    assert i['srcTitle'] is None or isinstance(i['srcTitle'],str)
+    assert isinstance(i['ref'],dict)
+"; ck "assets GET no-param shape stable, three sources present (s83)" $?
+[ "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/assets")" = "405" ]; ck "assets POST refused 405 (s83)" $?
+Q5K=$(printf 'x%.0s' {1..5000})
+curl -s -m 15 -G "$B/api/assets" --data-urlencode "q=$Q5K" | grep -q '"ok":true'; ck "assets overlong query ignored, no 500 (s83)" $?
+curl -s -m 15 -G "$B/api/assets" --data-urlencode "q=😀日本語№" | grep -q '"ok":true'; ck "assets unicode query ignored, no 500 (s83)" $?
+curl -s -m 15 "$B/api/assets?q=%00" | grep -q '"ok":true' && curl -s -m 15 "$B/api/assets?q=%" | grep -q '"ok":true' && curl -s -m 15 "$B/api/assets?q=%zz" | grep -q '"ok":true'; ck "assets malformed %-query (NUL/lone-%/bad-escape) no 500 (s83)" $?
+python - "$B" <<'PYEOF'
+import socket,sys
+host,port=sys.argv[1].replace('http://','').split(':')
+s=socket.create_connection((host,int(port)),timeout=5)
+s.sendall(b'GET /api/assets?q=%zz\x00HTTP/1.1\r\nHost: x\r\n\r\n')
+try: d=s.recv(1024).decode('utf8','replace')
+except Exception: d=''
+sys.exit(0 if (' 400 ' in d or d=='') and ' 500 ' not in d and ' 200 ' not in d else 1)
+PYEOF
+ck "assets raw NUL in request line: protocol 400, never 500 (s83)" $?
+# 数据面污染（svc 相位）：faucet 服务 fuzzassets 自建自清——meta/tinfo 极端行/冲突/坏行/千行表/删表降级
+# 探针内嵌清尾链（db remove→连跑 rawsql→杀 goose faucet mcp 子进程→重启 faucet serve→data/sqlite 文件级快照比对；教训 #20/#15）
+"$FRX/bin/node-v22/node-v22.21.1-win-x64/node.exe" "$(dirname "$0")/assets-fuzz-probe.js" svc "$B" >/dev/null 2>&1; ck "assets-fuzz svc data-plane pollution, 14 asserts (s83)" $?
+# 数据面污染（fs 相位）：artifacts 自建畸形 ws 目录+极端成品名——白名单边界/零泄漏/逐字节往返
+"$FRX/bin/node-v22/node-v22.21.1-win-x64/node.exe" "$(dirname "$0")/assets-fuzz-probe.js" fs "$B" >/dev/null 2>&1; ck "assets-fuzz fs data-plane pollution, 5 asserts (s83)" $?
+# 并发面：5 并发 GET——每响应必须 200/ok/统一模型形状/排序不变量（逐字节一致为 FINDING-1 让位 deferred：
+# dbOverview 的 faucet CLI config store 在并发迸发下 SQLITE_BUSY 快败→表源整段静默缺席，~20% 响应 15/17 条实测，
+# 根因独立于桥复现（纯 CLI+REST 混合同撞）；s50b 起遗留、/api/assets 继承，分级报告不修产品——修复落地后收紧回逐字节）
+CT="$(mktemp -d)"
+for i in 1 2 3 4 5; do curl -s -m 20 "$B/api/assets" > "$CT/r$i" & done
+wait
+OKC=1
+for i in 1 2 3 4 5; do
+  python - "$CT/r$i" <<'PYEOF' || OKC=0
+import sys,json
+d=json.load(open(sys.argv[1],encoding='utf8'))
+assert d.get('ok') is True and isinstance(d.get('items'),list) and d['items'], d.keys()
+items=d['items']
+for i in items:
+    assert i['kind'] in ('tbl','file','skill') and isinstance(i['name'],str)
+    assert i['human'] is None or isinstance(i['human'],str)
+    assert i['ts'] is None or isinstance(i['ts'],(int,float))
+    assert isinstance(i['ref'],dict)
+for k in range(1,len(items)):
+    a,b=items[k-1]['ts'],items[k]['ts']
+    assert not (a is not None and b is not None and a<b)
+    assert not (a is None and b is not None)
+PYEOF
+done
+rm -rf "$CT"
+[ "$OKC" = "1" ]; ck "assets 5 concurrent GETs: each 200/ok/shape+sort intact (s83; byte-identity deferred=FINDING-1 SQLITE_BUSY)" $?
 echo "=============================="
 echo "fuzz: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" = "0" ]
