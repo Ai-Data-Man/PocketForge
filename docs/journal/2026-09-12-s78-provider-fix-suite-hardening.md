@@ -170,3 +170,8 @@
 - R3 down 文案补「一般几分钟内恢复；顶部提醒条消失就是好了」。R4 S26_ERR_RE×goose v1.50 五型错误主哨兵入 rescue-guard（31ck）+playbook 第 3 步之 8 检查项。
 - B2 核验关项：真 goose v1.50 request_permission 帧=恰四选项，前端四按钮全人话可点（研究 27 遗留 UNVERIFIED-2 → VERIFIED-RUN）；坑=裸隔离 root 无 permission 配置时 load_skill 直通零卡（卡求值依赖产品配置）。
 - 验证：rescue 22→31ck+toolcard 39→45ck 双负对照；全量 57/57+178/178。新观察数据点：桥重启后即刻跑套件=§11b 冷态红（环境瞬态，复跑绿）。
+
+## 调研第四题：升级×EDR（research/28 §7 补篇）
+- **一手对照实验（VERIFIED-RUN）推翻直觉**：真实升级 v0.9.10→v0.9.11 路径=25,274/25,293 文件 hash 不变、**54 个 .exe 全部字节级不变**、盘上仅写 18 个纯文本（~1MB）——差量机制下「每次发版=全量新 hash」恐惧不成立，真尖峰只在 bump node/python/pg 运行时版本；MOTW 三连实验=升级路径结构性免疫（node 下载不写 Zone.Identifier+python 解压不传播）。
+- 同类实录：Jan 0.4.4 CI 构建产物被标→官方 23 分钟回滚（差量保留核对表的由来）；Docker delta 更新器被拦而全量安装器无事（我们全量包+hash 跳过恰好规避 delta blob）；微软官方：unsigned 每版零信誉无阈值、EV 即时信誉已取消（签名≠豁免）。
+- 建议 A-D：发布说明 EDR 提示段（随 v0.9.12 发布模板落）/信誉尖峰版自动钩子（54 exe hash 对比入 release.sh 候选——挂打包演练收口后评估）/升级失败杀软人话分支（候选挂 backlog）/差量保留核对表（构建漂移警报）。
