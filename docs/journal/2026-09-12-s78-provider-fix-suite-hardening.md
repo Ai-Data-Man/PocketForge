@@ -354,3 +354,5 @@
 ## s84：faucet 端口动态化（cycle-40 抓出的真缺陷）
 - cycle-40 appcap 首败根因=hints 第 9 行**硬编码 REST 端口 8091**（实际 8092）——agent 按指引 curl 被拒 exit 7 整轮耗尽；此前各轮 agent 走 python/MCP 未踩中=潜伏至今。**faucet MCP stale 挂账②的「agent 自然 workaround」可靠性证伪**（本轮没绕）。
 - 修：模板两处统一 __FAUCET_PORT__ 占位符（含陈年 `<faucet.port>` 字面量）+bootstrap 端口确定后置替换块（物化序：1b-2 在端口选择前，故后置补刀）；运行时 hints=8092 零残留验证+e2e 58/58+appcap 13/13 复验。
+
+[产出循环 02:40] 第 41 轮全绿+**打包安全核验过**（package.sh s20 机制用模板原文占位符版进包——运行版 8092 不外泄，目标机 bootstrap 自行替换）；§18c 观察窗 15/30 零复发。
