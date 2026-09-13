@@ -255,3 +255,9 @@
 
 ## 值守期 tick（18:5x）
 - goose 上游：latest 仍 v1.50.0（无 v1.51），升级窗口稳定。栈 healthz ok；explorer 0 窗。
+
+## fuzz 追批：/api/assets 覆盖（bea6ee7，178→187）
+- 9 新例含两相位探针 19 断言（svc：超长截断/emoji 往返/乱时间戳/坏行跳过/tinfo 冲突表级赢/千行 562ms；fs：畸形 ws 目录/极端文件名零泄漏）；裸 NUL 协议级 400。
+- **FINDING-1（M）**：5 并发 GET ~20% 静默丢表源——faucet CLI config store（faucet.db）并发 SQLITE_BUSY 快败+桥无重试+schema 失败无 tblMiss（/api/db/overview 同病 10/50 复现，s50b 遗留被新端点继承）——修复批已派（桥侧退避重试+可观察标记，修后并发例收紧回逐字节一致）。
+- FINDING-2（P3 环境尾巴）：e2e §10 report 成功路径自动弹 explorer 副作用（套件尾清窗已做；沙盒接线留候选）。
+- 环境注记：faucet db add 后须 pc restart faucet（serve 注册表启动期缓存）——与 MCP stale 同族第三成员（serve/cli/mcp 三层各自缓存）。
