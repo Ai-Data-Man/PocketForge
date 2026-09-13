@@ -132,20 +132,24 @@ RPU2=${RP2//\\//}
 if [ -f "$RPU2" ] && ! grep -q 'ghp_e2esanitizerprobe000000' "$RPU2" && grep -q '<已脱敏>' "$RPU2"; then ck "report sanitized: GH_TOKEN plaintext dropped" 0; else ck "report sanitized: GH_TOKEN plaintext dropped" 1; fi
 rm -f "$FAKE"
 
-# ---------- 11) WS delete_session 回执（s62/P3: 请求者收到回执且连接随后被服务端关闭） ----------
-# 输出先落地 tmp 文件再 grep：grep -q 提前退出关管道会让 node 偶发 EPIPE，pipefail 下中止全量
-rc=0; node "$ROOT/tools/e2e/ws-delete-receipt.js" > /tmp/ws-delete-receipt.log 2>&1 || rc=$?
-grep -q "PASS" /tmp/ws-delete-receipt.log || rc=$?
-ck "ws delete_session receipt delivered before close" $rc
-rm -f /tmp/ws-delete-receipt.log
-
-# ---------- 11b) delete_session 发 ACP session/close → extension 进程树回收（s75/research/17） ----------
-# 自相对断言（基线→建会话增长→删→回基线），1s 有界轮询；详见 tools/e2e/ws-close-reclaim.js
+# ---------- 11) delete_session 发 ACP session/close → extension 进程树回收（s75/research/17） ----------
+# 自相对断言（基线 pid 集→建会话新增 pid→删→新增 pid 归零），1s 有界轮询；详见 tools/e2e/ws-close-reclaim.js
+# s80g 前移（原 11b 位次在 ws-delete-receipt 之后）：前置探针建会话即删，close 与 in-flight 扩展树 spawn 竞态
+# （冷/载下树装配 1.8s→6-11s+），teardown 残树活 90s+/永久泄漏；本探针紧随其后会采到残树 baseline 且自身
+# spawn 被卡 → count 钉死 baseline（catalog 批 4/6 红、s80g 复现批 3/3 红同签名，tmp/s78g-qa-11b.md）。
+# 前移到 §10 后=无会话操作前置；回执探针不依赖进程树态，后置无害。
 rc=0; node "$ROOT/tools/e2e/ws-close-reclaim.js" > /tmp/ws-close-reclaim.log 2>&1 || rc=$?
 grep -q "PASS" /tmp/ws-close-reclaim.log || rc=$?
 ck "ws delete_session reclaims extension process tree" $rc
 grep -E "^PROBE-C" /tmp/ws-close-reclaim.log || true
 rm -f /tmp/ws-close-reclaim.log
+
+# ---------- 11b) WS delete_session 回执（s62/P3: 请求者收到回执且连接随后被服务端关闭） ----------
+# 输出先落地 tmp 文件再 grep：grep -q 提前退出关管道会让 node 偶发 EPIPE，pipefail 下中止全量
+rc=0; node "$ROOT/tools/e2e/ws-delete-receipt.js" > /tmp/ws-delete-receipt.log 2>&1 || rc=$?
+grep -q "PASS" /tmp/ws-delete-receipt.log || rc=$?
+ck "ws delete_session receipt delivered before close" $rc
+rm -f /tmp/ws-delete-receipt.log
 
 # ---------- 12) 报告 v2 探针（s65 转正自 s64 tmp 探针；详见 tools/e2e/report-probe.sh） ----------
 # static=39 ck 秒级；sandbox=29 ck 自建沙箱真桥（端口 18790/18799，不碰 dev 栈 8790），实测增量约 31-47s < 90s 门槛 → 挂进全量
@@ -175,7 +179,7 @@ if [ -n "$NEWZ0" ] && [ "$NEWZ0" != "$BEFORE0" ] && unzip -t "$NEWZ0" > /tmp/e2e
 rm -f /tmp/e2e-zipb0.txt
 # 复原 pg 并等探活回绿（态A 需要真实 dump 成功）
 PCRUN process start pg >/dev/null
-PR0=1; for i in $(seq 1 12); do sleep 5; ST0=$(PCRUN process get pg); echo "$ST0" | grep -q Ready && { PR0=0; break; }; done
+PR0=1; for i in $(seq 1 12); do sleep 5; ST0=$(PCRUN process get pg); echo "$ST0" | grep -q Ready && ! echo "$ST0" | grep -q 'Not Ready' && { PR0=0; break; }; done
 ck "backup state-B0: pg Ready again before state-A" $PR0
 mkdir -p "$FORGE/data/pg-dumps"
 for s in 01 02 03; do printf 'e2e-seed\n' > "$FORGE/data/pg-dumps/pg-1999-01-${s}T00-00-00.sql"; done
@@ -203,7 +207,8 @@ B2=0; tail -1 "$FORGE/data/logs/backup.log" | grep -q 'backup ok' || B2=$?
 if [ "$B2" = "0" ]; then ck "backup state-B: zip still produced" 0; else ck "backup state-B: zip still produced" 1; fi
 # 复原 pg 并等探活回绿
 PCRUN process start pg >/dev/null
-PR=1; for i in $(seq 1 12); do sleep 5; ST=$(PCRUN process get pg); echo "$ST" | grep -q Ready && { PR=0; break; }; done
+# s80g：Ready 子串会命中「Not Ready」（pc 过渡态 HEALTH 列），假就绪让 state-A dump 撞上还在 Launching 的 pg（批载下实锤 3 红）——补 Not Ready 反选
+PR=1; for i in $(seq 1 12); do sleep 5; ST=$(PCRUN process get pg); echo "$ST" | grep -q Ready && ! echo "$ST" | grep -q 'Not Ready' && { PR=0; break; }; done
 ck "backup chain: pg restored Ready after state-B" $PR
 rm -f "$FORGE/data/pg-dumps/"pg-1999-*.sql
 

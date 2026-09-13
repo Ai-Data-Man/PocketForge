@@ -1,8 +1,15 @@
 // s75 regression probe (research/17): delete_session must send ACP session/close and the
 // per-session extension process tree must be reclaimed. Self-relative assertion:
-// count descendants of the BRIDGE's acp pid -> create session (count grows) ->
-// delete via WS -> count returns to baseline. No absolute process counts (robust to
+// snapshot pid-SET of the BRIDGE's acp descendants -> create session (pids not in baseline
+// appear) -> delete via WS -> those new pids are gone. No absolute counts (robust to
 // concurrent stack state); polls are 1s bounded (no big sleeps).
+//
+// s80g 取证升级（tmp/s78g-qa-11b.md）：原计数算术（count > baseline）会被前置探针（§11 ws-delete-receipt）
+// 的 teardown 残树污染——close 与 in-flight 树 spawn 竞态时残树活 90s+/永久泄漏，新会话树 spawn 又被卡，
+// count 钉死 baseline（catalog 批 4/6 红、复现批 3/3 红）。pid-SET 语义结构性免疫：垂死的残树 pid 在基线集内
+// （消失不影响断言），本会话新增 pid 按身份识别（不靠 count 差）。已知极限：Windows pid 复用若恰好把基线集内
+// 刚退出的 pid 分配给新树进程，该进程会被漏计（其余 8 个仍可检出，容忍）。红时自清：gate1 失败先补发
+// delete_session 再退出，防探针自身泄漏会话污染后续轮（原版 3/3 红各漏 9 进程实证）。
 const http = require('http'), crypto = require('crypto'), { execFile } = require('child_process');
 const PORT = 8790;
 // readiness gate (research/15) + probe body share the WS framing helpers of ws-delete-receipt.js
@@ -12,9 +19,10 @@ const PORT = 8790;
     const acpPid = await findBridgeAcpPid();
     if (!acpPid) { clearTimeout(timer); console.log('PROBE-C: FAIL - bridge acp process not found'); process.exit(1); }
     console.log('PROBE-C: bridge acp pid=' + acpPid);
-    const n0 = await treeCount(acpPid);
-    console.log('PROBE-C: baseline descendants=' + n0);
-    let sid = null;
+    const base = await treePids(acpPid);
+    if (!base) { clearTimeout(timer); console.log('PROBE-C: FAIL - baseline snapshot failed'); process.exit(1); }
+    console.log('PROBE-C: baseline pids=' + base.size);
+    let sid = null, dead = false; // dead=gate1 已红：session_deleted 只走自清收尾，禁止再走 gate2（防清理性回收被误报 PASS）
     const key = crypto.randomBytes(16).toString('base64');
     const req = http.request({ host: '127.0.0.1', port: PORT, path: '/ws', headers: {
         Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Key': key, 'Sec-WebSocket-Version': '13',
@@ -36,15 +44,25 @@ const PORT = 8790;
                 if (msg.sys === 'subscribed' && msg.newSession) {
                     sid = msg.sessionId;
                     console.log('PROBE-C: session ' + sid + ' created, waiting for extension processes');
-                    waitFor(async c => c > n0, 20, acpPid).then(async ok => { // s80 research/29：10→20s 吸收真冷机 EDR/IO 偶发拉爆 spawn（实测热机 1.4-1.8s，19 跑 0 复现判瞬态）
-                        if (!ok) { clearTimeout(timer); console.log('PROBE-C: FAIL - extension processes did not appear in 20s (count stuck at ' + n0 + ')'); try { socket.destroy(); } catch {} process.exit(1); }
-                        const n1 = await treeCount(acpPid);
-                        console.log('PROBE-C: with-session descendants=' + n1 + ' (baseline ' + n0 + ')');
+                    waitFor(async s => [...s].some(p => !base.has(p)), 20, acpPid).then(async ok => { // s80 research/29：10→20s 吸收真冷机 EDR/IO 偶发拉爆 spawn（实测热机 1.4-1.8s）
+                        if (!ok) {
+                            clearTimeout(timer);
+                            dead = true;
+                            console.log('PROBE-C: FAIL - extension processes did not appear in 20s (no new pids over baseline ' + base.size + ')');
+                            // s80g 红时自清：补发 delete_session 防会话泄漏污染后续轮（等回执≤3s 即退）
+                            socket.write(frame({ type: 'delete_session', sessionId: sid }));
+                            setTimeout(() => { try { socket.destroy(); } catch {} process.exit(1); }, 3000);
+                            return;
+                        }
+                        const cur = await treePids(acpPid);
+                        let grown = 0; for (const p of cur) if (!base.has(p)) grown++;
+                        console.log('PROBE-C: with-session pids=' + cur.size + ' (new over baseline: ' + grown + ')');
                         socket.write(frame({ type: 'delete_session', sessionId: sid }));
                     });
                 } else if (msg.sys === 'session_deleted') {
+                    if (dead) { console.log('PROBE-C: cleanup delete receipt ok=' + msg.ok + ' (probe already failed, exiting red)'); return; }
                     console.log('PROBE-C: deleted ok=' + msg.ok + ', waiting for process reclamation');
-                    waitFor(async c => c <= n0, 20, acpPid).then(ok => { // 同上：回收门同步放宽（总 60s 门仍罩得住）
+                    waitFor(async s => [...s].every(p => base.has(p)), 20, acpPid).then(ok => { // 同上：回收门同步放宽（总 60s 门仍罩得住）
                         clearTimeout(timer);
                         try { socket.destroy(); } catch {}
                         if (ok) console.log('PROBE-C: PASS - extension tree reclaimed to baseline after delete_session');
@@ -60,12 +78,13 @@ const PORT = 8790;
     req.on('error', e => { clearTimeout(timer); console.log('PROBE-C: FAIL -', e.message); process.exit(1); });
     req.end();
 })();
-// poll `cond(count)` every 1s up to `cap`s; resolves true/false
+// poll `cond(pidSet)` every 1s up to `cap`s; resolves true/false; CIM 失败轮跳过不判（坏数据不结算）
 async function waitFor(cond, cap, acpPid) {
     for (let i = 0; i < cap; i++) {
         await new Promise(r => setTimeout(r, 1000));
-        const c = await treeCount(acpPid);
-        if (await cond(c)) return true;
+        const s = await treePids(acpPid);
+        if (!s) continue;
+        if (await cond(s)) return true;
     }
     return false;
 }
@@ -86,27 +105,28 @@ function findBridgeAcpPid() {
         });
     });
 }
-// count live processes whose ancestor chain reaches rootPid (descendant tree of the acp)
-function treeCount(rootPid) {
+// pid-SET of live processes whose ancestor chain reaches rootPid (descendant tree of the acp);
+// null on CIM/query failure so callers can skip the round instead of asserting on garbage
+function treePids(rootPid) {
     return new Promise((resolve) => {
         execFile('powershell', ['-NoProfile', '-Command',
             '$p=Get-CimInstance Win32_Process|Select-Object ProcessId,ParentProcessId;' +
             '$p|ConvertTo-Json -Compress -Depth 2'], { timeout: 30000 }, (err, stdout) => {
-            if (err) return resolve(-1);
-            let arr; try { arr = JSON.parse(stdout); } catch { return resolve(-1); }
+            if (err) return resolve(null);
+            let arr; try { arr = JSON.parse(stdout); } catch { return resolve(null); }
             if (!Array.isArray(arr)) arr = [arr];
             const byPid = new Map();
             for (const x of arr) if (x && x.ProcessId) byPid.set(Number(x.ProcessId), Number(x.ParentProcessId));
-            let n = 0;
+            const out = new Set();
             for (const [pid] of byPid) {
                 let cur = pid, hops = 0, reached = false;
                 while (cur !== undefined && hops < 20) {
                     if (cur === rootPid) { reached = true; break; }
                     cur = byPid.get(cur); hops++;
                 }
-                if (reached && pid !== rootPid) n++;
+                if (reached && pid !== rootPid) out.add(pid);
             }
-            resolve(n);
+            resolve(out);
         });
     });
 }

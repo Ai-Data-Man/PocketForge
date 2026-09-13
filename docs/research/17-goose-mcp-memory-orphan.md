@@ -67,3 +67,11 @@ taskkill /T 树杀输出显示：每个 session 滞留的不只 memory 一对，
 ## 现场恢复记录
 
 实验造数已全清：45（B/D/C/E/F）+5（复验 fuzz）个会话经产品路径 `delete_session` 删除（tmp/s74-cleanup-sessions.js，dry-run 复核归零）；滞留进程对经两次 `pc process restart chat-bridge` 清零；探针 node 进程已杀；终态快照（02:15:07）孤儿=0、滞留=0、bridge healthz 200 ok（node 直连）、fuzz 复验 143/143 绿。主控入睡前状态完整保持。
+
+## s80g 补录：close 与 in-flight 树 spawn 竞态=永久泄漏（VERIFIED-RUN，2026-09-13）
+
+1. **新事实（推翻「close 发出即回收」的普适性）**：session/close 在扩展树**装配完成前**发出（建会话→秒删，冷/载下树装配 1.8s→6-11s+ 而 close 在 subscribed 后 ~0s 发出）时，回收竞态落败：树**永久存活**（pid-birth 实证：14:08:57 出生的 9 进程树 10 分钟后仍在，归属已 close 的会话）。装配完成后 close（闲机形态）回收依旧成立（本报告 s75 节 + s80g 矩阵 C 5/5）。
+2. **次生效应**：竞态窗口内紧邻的下一 session/new 回 subscribed 成功但扩展树**不装配**（20s 门内 0 新进程，且红后 10 分钟仍未装配；同桥 3 分钟后无关会话装配正常）——非全局阻断，是紧邻阴影。
+3. **用户路径暴露**：新建对话→数秒内删除（真实操作序列）=泄漏 9 进程至桥重启。research/17 主文「残余滞留面」之外的新形态。
+4. **修向建议（engineering）**：delete_session 的 close 补发需带「树装配完成」等待（如首代扩展进程可见后再 close）或 close 响应确认+重试（goose 对未就绪会话的 close 处理待源码级核实：on_close_session 只做 HashSet insert+remove，装配中 agent 可能未入集合——假说，UNVERIFIED）。
+5. 取证与修复留痕：tmp/s78g-qa-11b.md（e2e §11/§11b 位次交换+探针 pid-set 化，套件面已免疫；产品面未动）。
