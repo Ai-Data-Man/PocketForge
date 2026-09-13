@@ -183,3 +183,94 @@
 - 真机任何拦截/隔离→回填 §1.1 对应行为行（预期内/预期外）+走 §1.3 渠道+§3 模板；
 - S2-S7 执行结果→本文 §2 表格补「已跑+日期」列；
 - STATE 开放问题#1 的关闭依据=真机数据，本文只是事前地图，不代裁决。
+
+## 7. 升级与 EDR（补篇，2026-09-13）
+
+背景：§1 已实锤「每次发新 hash 信誉冷启动重置」，而我们内置自动升级器（ADR-0009；`forge/conf/templates/update-runner.tpl.js`：GitHub 下载 zip→sha256 校验→python zipfile 解压→**逐文件 sha256 差量应用**→重启→失败回滚）——升级动作本身在用户机引入多少新 hash，直接决定 EDR 风险尖峰是「等同首装」还是「远小于首装」。ADR-0009 的复核条件原文「企业 EDR 对『下载+自我替换+外联 GitHub』报警」即本节要预演的对象。方法：本机对 5 个真实 dist zip 做逐文件 hash 对照实验（VERIFIED-RUN）+ web 一手检索；既有 §0-§6 结论不受本节影响（只收窄 §1.1「新 hash 首日最危险」在我们差量机制下的实际口径）。
+
+### 7.0 结论先行
+
+1. **实测反直觉：差量升级几乎不引入新 hash**。真实升级路径 v0.9.10(0906)→v0.9.11(0912)：新树 25,293 文件中 25,274 个 hash 不变（99.9%），**全部 54 个 .exe 字节级不变**，实际写盘仅 18 个纯文本文件（约 1MB；971MB 原样留在盘上连 mtime 都不动）。升级的 EDR hash 尖峰 ≠ 首装——「新版本=全量新 hash」的恐惧对差量机制不成立（§7.1）。
+2. **但风险转移为三类，不是消失**（§7.4）：①每次仍有 ~十几个新 hash 的 JS/YAML 冷启动——LM Studio 中弹的恰是 14MB 主进程 JS bundle，文本大文件同样是 ML 靶子（我们的是 KB 级小文本，命中面小得多）；②升级**行为**本身：detached node 进程全树 35K 文件读 hash（数分钟）+ 批量备份复制 + 批量删除（本次实测 3,706 个）+ 自我替换 update-runner.js——「批量读+批量删+自改写」与 dropper/勒索预备形态相似，未见公开独立检测规则（证据缺失型结论，真机观察项）；③54 exe 零换 hash 的前提是**运行时版本钉死**——一旦 bump node/python/pg 版本，全量 exe 换 hash，那一刻才是真尖峰。
+3. **SmartScreen/MOTW 面在升级路径结构性缺席**（本机三连实验，§7.1）：node https.get 下载不写 Zone.Identifier、python zipfile 解压不传播 MOTW（即使暂存 zip 带 MOTW）、dist 生成侧无 ADS（§5-D2）——升级路径的对手只有 Defender 云/ASR 与三方 EDR；SmartScreen 只咬浏览器首装下载。
+4. **信誉预热无捷径（官方口径）**：unsigned 每个新版本从零信誉；达标无精确阈值，官方量级=「数周+数百次干净安装」；consumer 侧**无人工提交通道**（信誉只随下载量有机增长）；**EV 证书「即时信誉」已被微软取消**（签名≠豁免，官方明说签名文件在证据攒够前仍可弹窗）。官方推荐的预热方法=灰度/内测放量+提前告知用户可能见提示（§7.3）。
+5. **同类更新误杀实录（补 §1.2）**：Jan 0.4.4 被 Bitdefender 自动隔离→官方 23 分钟内回滚版本并发布公告（含「CI 构建机产物被标、同一代码换 GitHub runner 重构建即不被标」的构建环境归因）；Docker Desktop 4.3.1 的 **delta 更新器临时文件被 Defender 拦而全量安装器无事**（差量制品的反向案例）；Obsidian（已签名）1.8.3/1.8.4/1.13.4/v0.15.9 四波更新 FP；Rufus 长期 unsigned 姿态+公开 FP 政策，3.15 签名后 FP 显著减少但未绝迹。**无一靠绕过，全部靠快速公告+hash 清单+逐厂商申诉存活**（§7.2）。
+6. **升级期文案有官方背书的先例**：微软官方建议开发者「告知早期用户可能看到 SmartScreen 提示」；JetBrains 2019.2 起产品内置 Defender 干扰检测并引导用户加排除——「明说杀软可能误报」不是自曝其短，是官方推荐动作（§7.5）。
+
+### 7.1 本机一手实验（VERIFIED-RUN，2026-09-13，devbox，脚本 tmp/zip-hash-diff.py 等）
+
+| # | 实验 | 方法 | 结果 |
+|---|---|---|---|
+| E1 | **真实 dist zip 逐文件 sha256 对照** | 5 个历史包（v0.9.9 / v0.9.10×2 / v0.9.11×2）全条目解压流式 hash，按 update-runner 的 walkMap 语义比对 | 升级路径 v0.9.10→v0.9.11：zip 内 15 改+4 增，**盘上实际应用 18 个**（custom_providers/forge-router.json 被 PROTECTED 跳过）、删除 3,706 个（bin/vendor/ node_modules 瘦身；permission.yaml 被 PROTECTED 跳过——与 runner 注释互证）。必换清单全部为文本：VERSION、bin/chat-bridge.js、**bin/update-runner.js（升级器自我替换）**、conf/bootstrap.ps1、conf/templates/×9、.agents/×1、vendor-licenses/×1、使用说明.md。**54 个 .exe（node/python/pg×5/goose/process-compose/faucet/nats×2/site-packages 脚本垫片）hash 全稳定**。同版本重构建 churn 仅 8/1 个文件→构建近确定性，hash 稳定是结构性（钉版本+模板内容稳定），不是运气 |
+| E2 | **python zipfile 解压是否传播 MOTW** | 给 zip 打 Zone.Identifier（ZoneId=3，模拟浏览器下载件）→ 用 runner 同款 `zipfile.ZipFile().extractall()` 解压 → 探测 ADS | 解压产物 0 个带 MOTW。**即使暂存 zip 带 MOTW，应用落盘的文件也无 MOTW**（对照：Explorer 解压会传播，§2-S1 首装路径才是 MOTW 风险面） |
+| E3 | **node https.get 下载是否产生 MOTW** | runner 同款 https.get 落盘真实文件 → 探测 ADS | 无 Zone.Identifier（MOTW 由浏览器/Shell 附件服务写入，raw socket 下载不经此路径）。**在线升级下载的 zip 天然无 MOTW** |
+
+实验边界：devbox 无 EDR；E1 的 hash 稳定结论仅对「运行时版本不 bump 的窗口」成立。
+
+### 7.2 Q1：同类产品更新误杀实录（补 §1.2，均 VERIFIED-DOC 除标注外）
+
+| 产品/事件 | 实录 | 厂商怎么指导 |
+|---|---|---|
+| **Jan 0.4.4**（2024-01-09，Tauri 形态） | Bitdefender `Gen:Variant.Tedy.258323` **自动隔离**（Defender/McAfee 不触发；跨 3 家公司多机复现）。issue：github.com/janhq/jan/issues/1483 | **23 分钟内回滚版本**（02:18 首报→02:41 revert，官方事故报告 jan.ai/post/bitdefender）；根因实验：CI 自建 agent 构建的二进制被标，**同一代码在 GitHub hosted runner 重构建即不被标**（构建机指纹影响检测）；行动项=发布前 AV×版本测试矩阵+**pre-release 阶段与 AV 厂商协作**；官方博客 Lesson 6=教育用户 FP 处理 |
+| **Docker Desktop 4.3.1**（2021-12，有签名——签名状态为社区公知 UNVERIFIED） | **delta 更新器**解到 %TEMP% 的临时文件被 Defender `Trojan:Script/Oneeva.A!ml` 拦截致更新失败；全量安装器不受影响。issue：github.com/docker/for-win/issues/12447 | 维护者确认「false positive in our delta updater 4.3.0 -> 4.3.1」→ 上报杀软厂商 + 指导用户**手动跑全量安装器**作 workaround。两点教训：①签名产品照样中（签名≠豁免的又一实证）；②**二进制差分包制品本身可比全量包更可疑**——我们「全量 zip+hash 跳过」不产生 patch blob，恰好规避此类 |
+| **Obsidian**（签名 Electron+便携使用广泛） | 1.8.3/1.8.4 被 Defender 检出（forum.obsidian.md/t/virus-found-in-obsidian-1-8-3-and-1-8-4/95827）；1.13.4 安装器 VT 复核 FP（/t/resolve-spurious-virus-detection-in-installer/116963）；v0.15.9 Dr.Web（/t/trojan-found-in-obsidian-v0-15-9-installer/41035） | 论坛指引=VT 复核+向 Microsoft 报 FP+等签名更新；社区经验「一两天内随定义更新自愈」（Prisma issue #29636，二手） |
+| **Rufus**（长期 unsigned，同我们姿态） | Defender `Trojan:Plutruption!`/`Trojan.Vigorf!`（issue #1169）、多引擎（#433，早期 UPX 加壳触发——印证 §1.3「不加壳」）；Malwarebytes 持续标记 CI 未签名构建（forums.malwarebytes.com/topic/288934） | 作者公开 FP 政策 wiki（github.com/pbatard/rufus/wiki/FAQ：要求 AV 厂商给出技术细节，否则视为 FUD）；3.15 起签名后 FP 显著减少但未绝迹——**签名的边际收益真实但非豁免** |
+| **Etcher** | #4164 Malwarebytes 标记；#862 Webroot 在点 flash 时对写入 %TEMP% 的文件报 `Trojan.Dropper.Gen`（「写 TEMP+执行」行为面）。github.com/balena-io/etcher/issues/4164、#862 | 官方论坛回应「启发式猜测，FP 常见」+建议报厂商 |
+| Discord/Squirrel 家族（二手，选录） | Update.exe 长期被用户当病毒举报（desktop/desktop#5884、r/discordapp） | ——「更新器下载+替换二进制」这个动作本身就是用户信任雷区，与是否真检出无关 |
+
+与 §1.2 合并的纵向结论：**LM Studio（0.4.7 更新后删主进程 JS）、Everything（仅本地化更新的版本中招）与本节五例共同构成「更新即误杀窗口」的行业常态**；无一例通过「绕过」解决，全部通过「版本回滚或快速公告 + hash 清单 + 厂商申诉/预沟通」存活。
+
+### 7.3 Q2：信誉预热的官方口径（核心来源 Microsoft Learn《SmartScreen reputation for Windows app developers》，ms.date 2026-05-04，VERIFIED-DOC）
+
+1. **unsigned 冷启动机制原文**："When a file is not signed, SmartScreen reputation must build for each new version of your files, starting with zero reputation. Reputation cannot transfer from previous versions unless both were signed using the same publisher identity."——不能跨版本继承，每版从零。
+2. **达标时长无 SLA，只有量级**："There is no exact threshold, but it can take several weeks and hundreds of clean installs from a wide audience."——**数周+数百次干净安装**。这是全部公开来源里最接近「预热时长」的官方说法。
+3. **无人工预热通道（consumer）**："There is no need (or mechanism) to manually submit a file for SmartScreen reputation review for consumer endpoints. Reputation builds organically through download volume."——信誉只随下载量有机增长；企业侧例外：admin 提交可为 managed 设备加速（同文档）。
+4. **EV 签名豁免已取消**："Years ago, signing files with an EV code signing certificate would result in positive SmartScreen reputation by default. **This is no longer the case.**"且签名文件"could still show a SmartScreen warning until its hash or publisher certificate accumulates sufficient evidence"（DigiCert 官方 alert 与 ToDesktop PSA 印证）。**结论对我们的含义：将来上签名值得（Rufus 实录边际收益），但别指望签名解决冷启动——差量保 hash（§7.1）比签名更直接。**
+5. **Smart App Control 注意点**（同文档）：Win11 全新安装默认开启的 SAC 对 unsigned 可执行文件「blocks execution unless positive reputation」且**不依赖 MOTW**（管全部可执行文件）。当前升级路径 0 个新 exe→不触发；**未来 bump 运行时版本=54 个新 unsigned exe，SAC 开启的用户机可能直接 block**——真机观察项。
+6. 与 §1.1 的关系：ASR 01443614 的 prevalence/age/trusted 判定走 Defender 云保护，同源「新 hash 最危险」逻辑；wdsi developer 提交（§1.3-A4）解决的是「误报判定」，不直接搬 prevalence——两者是并行通道。
+
+### 7.4 Q3：增量 vs 全量的工程对冲（落到我们的差量机制）
+
+1. **行业两极与我们所在**：Electron 主流（Squirrel/electron-updater）=全量替换 app 目录→每次更新全部文件重写（新 hash+新 mtime 面最大化），靠签名与流行度硬扛；Everything=单 exe 每版必新 hash，靠作者逐版申诉+hash 清单扛（§1.2）。**我们=第三条路：全量 zip 分发+逐文件 hash 跳过应用**——不产生 Docker 式可疑差分 blob，又继承 54 个 exe 的既有 hash 信誉（E1 实测），两头收益都占。
+2. **「更新后首启慢/重扫」是被官方产品承认的现象**：Electron#1487（AV 拖慢启动的基准 issue）；JetBrains 2019.2 起内置 Defender 干扰检测+自动排除功能（官方 YouTrack SUPPORT-A-1681：youtrack.jetbrains.com/articles/SUPPORT-A-1681；SO 实例：PyCharm 19.1.2→19.2.0 更新后即弹 Defender 性能警告）。映射到我们：升级后新 18 文件+重启栈=一次秒级首启扫描，真正的耗时大头是**升级前的 35K 文件全树 hash 预扫**（ADR-0009 已知数分钟，20min 总超时已兜底）——升级时长预期文案已有基础，无需新增机制。
+3. **未变文件连 mtime 都不动**（E1：hash 相同即不 copyFileSync）——规避「用户目录新落盘 exe」类启发式的重置（该类规则存在性 UNVERIFIED，但零成本获益）。同版本重构建 churn=1-8 文件→**构建环境漂移检测是免费的哨兵**（Jan CI 构建机被标案例的反向应用）。
+4. **差量保留策略的现实核对**（E1 实测互证）：PROTECTED 名单是用户侧稳定锚（config.yaml/custom_providers/memory/permission.yaml 升级不触碰——permission.yaml 在 v0.9.11 包中缺席但盘上保留，实测确认）；代码侧 hash 稳定靠钉版本。**规则化：凡 bump `bin/` 下任何运行时版本（node/python/pg/goose/pc/nats/faucet）=「信誉尖峰版」**，须走 §7.6-B 流程。
+5. **升级窗口的行为面观察项**（无公开独立规则，证据缺失型，真机 A1 采集）：数分钟全树读+3,706 文件批量备份复制+批量删除+update-runner.js 自我替换，单窗口内完成——dropper/勒索预备形态相似度高于日常运行态；若真机 EDR 在升级窗口告警，优先对号此组合而非逐文件 hash。
+
+### 7.5 Q4：升级期「杀软可能误报」文案先例
+
+1. **微软官方建议直接背书**（§7.3 同文档）："Communicate with early adopters — let beta users know they may see a SmartScreen prompt on first download"——把「可能见安全提示」写进用户沟通是官方推荐动作。
+2. **JetBrains**：产品内检测 Defender 干扰并弹通知引导加排除（2019.2+，YouTrack SUPPORT-A-1681；Rider 官方文 rider-support.jetbrains.com/hc/en-us/articles/360006365380）。
+3. **Jan**：事故后官方博客公开时间线+用户指引（恢复隔离/白名单/向厂商申诉）。
+4. **voidtools**：downloads 页 SHA256+论坛 FP 处置指引（§1.2 已录）。
+共同模式：**没有产品假装不会误报**；都是「事前告知可能弹窗+事后三步人话指引（恢复→白名单→报厂商）」。
+
+### 7.6 可执行建议（4 条）
+
+- **A. 发布说明模板加「安全软件提示」段**（落到 tools/release.sh 的 release notes 生成）：三句人话——①更新或首启时杀软可能提示/隔离（新版本文件需要重新建立信任，属正常现象）；②Defender：保护历史记录→恢复；第三方：隔离区恢复+加白名单目录；③拿不准→官网 hash 清单核对+§1.3 申诉渠道链接。依据：微软官方建议+Jan/JetBrains 先例（§7.5）。
+- **B. 「信誉尖峰版」流程钩子**（自动化进 release.sh）：对比新旧 dist 包的 54 个 exe hash（E1 脚本 tmp/zip-hash-diff.py 可复用），**任一变化即触发**：发版前 VT 先查后传（§2-S2 流程）+ wdsi developer 送检新 exe + 发布说明注明「本次升级杀软重扫较久」。普通文本差量版（E1 实测形态）免检。依据：§7.3 无预热通道+Docker/Rufus 实录。
+- **C. 升级失败文案区分「安全软件拦截」分支**（改 update-runner.tpl.js 的 ST.msg/前端展示，不动逻辑）：apply/restart 阶段失败或回滚时附一句「若刚才看到杀毒软件弹窗或隔离通知，请先在其界面恢复文件，再点重试；仍失败请把 data/updates/status.json 发给支持」——只给人话出口，**不自动改任何安全设置**。依据：Obsidian/Docker 案例中用户的第一反应决定去留。
+- **D. 差量保留策略核对表**（进 release checklist）：①dry-run 输出确认 config.yaml/custom_providers/memory/permission.yaml 不在 applied/deleted 列表（E1 已互证现状正确）；②同版本重构建 churn>50 文件=构建环境漂移警报，停下排查再发（Jan CI 构建机被标的反向教训）。
+
+### 7.7 排除了什么、怎么排除的（补篇）
+
+- **未找到**：任何厂商对「prevalence 达标时长」的精确 SLA——微软只给「数周+数百安装」量级（§7.3-2），其余厂商零公开数据；「用户目录进程批量删除文件」的公开独立检测规则——未见，仅行为族推断（§7.4-5）。
+- **未采信**：CA 营销页「EV 证书=即时 SmartScreen 信誉」（与微软官方文档直接冲突，弃用）；Discord Update.exe「被杀」的社区转述（未找到一手硬案例，降级为用户信任条目）。
+- **实验边界**：E1-E3 在无 EDR 的 devbox；hash 稳定性仅代表钉版本窗口；SAC 本机未实测。
+- **对既有章节的收窄（非修改）**：§1.1「每次发新 hash 信誉冷启动」在差量机制下实际口径=「每次约 18 个文本文件冷启动、54 个 exe 例外，直到 bump 运行时版本」。
+
+### 7.8 补篇来源清单
+
+1. Microsoft Learn：SmartScreen reputation for Windows app developers（ms.date 2026-05-04；unsigned 每版从零/数周+数百安装/无 consumer 提交通道/EV 不再豁免/SAC/官方沟通建议）——https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation
+2. DigiCert 官方 alert（EV 签名仍现 SmartScreen 警告）——https://knowledge.digicert.com/alerts/ev-signed-application-showing-microsoft-defender-smartscreen-warnings；ToDesktop PSA——https://www.todesktop.com/blog/posts/windows-apps-psa-ev-certs-do-not-grant-immediate-reputation-anymore
+3. Jan issue #1483 + 官方事故报告——https://github.com/janhq/jan/issues/1483 、https://www.jan.ai/post/bitdefender
+4. Docker for-win #12447（delta updater FP/全量安装器 workaround）——https://github.com/docker/for-win/issues/12447
+5. Obsidian 论坛 95827/116963/41035——https://forum.obsidian.md/t/virus-found-in-obsidian-1-8-3-and-1-8-4/95827 等
+6. Rufus #1169/#433/官方 wiki FAQ/Malwarebytes 288934——https://github.com/pbatard/rufus/issues/1169 、https://github.com/pbatard/rufus/issues/433 、https://github.com/pbatard/rufus/wiki/FAQ 、https://forums.malwarebytes.com/topic/288934-rufus-executable-once-again-being-falsely-flagged-as-malware/
+7. Etcher #4164/#862——https://github.com/balena-io/etcher/issues/4164 、https://github.com/balena-io/etcher/issues/862
+8. JetBrains YouTrack SUPPORT-A-1681 + Rider 官方文——https://youtrack.jetbrains.com/articles/SUPPORT-A-1681/Antivirus-Impact-on-Build-Speed 、https://rider-support.jetbrains.com/hc/en-us/articles/360006365380
+9. Electron #1487（AV 拖慢启动基准）——https://github.com/electron/electron/issues/1487
+10. 二手：Prisma #29636（FP 一两天自愈）https://github.com/prisma/orm/issues/29636 ；GitHub Desktop #5884（Squirrel 用户信任）https://github.com/desktop/desktop/issues/5884
+11. 本机实证（VERIFIED-RUN，2026-09-13，devbox）：E1 五包 hash 对照（tmp/zip-hash-diff.py）；E2 python zipfile 不传播 MOTW（tmp/motw-probe.ps1）；E3 node https.get 无 MOTW（tmp/dl-probe.js）——脚本留存 tmp/ 可复跑。
+
+**补篇回填约定**：真机护航若在升级窗口观察到拦截/告警→回填 §7.4-5 观察项（对照「批量读删+自改写」组合优先于逐文件 hash 归因）；bump 运行时版本的首次发版→执行 §7.6-B 并记录 VT/wdsi 结果。
