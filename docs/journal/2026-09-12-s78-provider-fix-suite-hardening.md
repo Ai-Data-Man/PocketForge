@@ -276,3 +276,4 @@
 [产出循环 20:2x] healthz=ok pg=Ready(Launching 过渡) goose=v1.50.0 不变 faucet=v0.1.13（挂账不变）——**explorer 15 窗累积已清零**（WM_CLOSE via .ps1——内联 PS 再被转义层吃，教训 #13 家族第三次；tmp/close-explorer.ps1 留作循环复用件）
 
 [产出循环 20:21] 全树核验 e2e 58/58+fuzz 187/187 双绿（基线恒定）
+（补：本轮套件又带出 5 窗（e2e §10 report 成功路径自动弹 explorer 副作用=known FINDING-2），两轮 WM_CLOSE 后 0）
