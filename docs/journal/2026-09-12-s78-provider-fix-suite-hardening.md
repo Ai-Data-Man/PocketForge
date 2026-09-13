@@ -230,3 +230,7 @@
 - 根因（VERIFIED-RUN）：§11 建会话即删→冷/载窗 close（fire-and-forget）与扩展树装配竞态→**§11 树永久泄漏 9 进程**→§11b baseline 被残树污染（count 永不超 baseline=断言算术问题，s80 门限放宽对此结构性无效）。矩阵 A/B/C 证伪①③+忠实批 3/3 红+observer CSV+pid-birth 定案。
 - 测试基建三修：§11↔§11b 位次对调/reclaim 探针 pid-SET 语义（外来瞬态免疫）+红时自清/§13 pg 假就绪门（grep Ready 命中 Not Ready 子串）。触发配方 3/3 绿+全量双绿。
 - **产品级缺陷转 engineering（批已派）**：建会话秒删=进程永久泄漏（用户可达路径）；修向=close 等装配窗或确认重试。附带登记：冷窗 session/new 快败族/§10 GH_TOKEN 状态依赖红/§18c 沙盒批载竞态/pg 孤儿崩溃环二实锤。
+
+## s81 秒删泄漏修复（ed414ec）
+- 源码级勘误：session/new 回包前 join_all 已装配完——QA 假说「close 先于装配」不成立于 delete 路径；真因=装配后冷窗内 goose 侧 teardown 丢失（pid-birth 铁证）。修法=错峰：noteSessionBorn 三 resolve 点登记出生+acpCloseSession 幼龄(<10s)延迟窗末+flushPendingCloses 在 session/new 发起点冲刷（stdin FIFO 保序，sid 复用救援语义+G6 红线逐字保持）。
+- 验证：行为断言 5/5+QA 冷窗配方 ×5 leaked=0+全量 57/57+178/178；已知极限=SETTLE 10s 工程值非机理根治（90s 慢 teardown 桥侧无杠杆，零二开）。explorer 累积 95 窗清零（教训 14 执行，累积速率提示环境自动开窗——轮内检查）。
