@@ -164,3 +164,9 @@
 ## 调研第三题：EDR 兼容事前地图（research/28）
 - P31 开放问题#1（真机 EDR 未知）→ 事前地图：头号风险=unsigned+低流行度新 hash+用户目录三要素（Defender ASR 01443614 信誉规则，**每次发新 hash 冷启动重置**——解释同类「更新后突然被杀」模式，EDR alerts=N 只弹用户通知双面看）；行为面（进程树/loopback/自解压/junction）=厂商官方认定的合法开发者场景；唯一结构性硬墙=AppLocker/WDAC；MOTW 是实证误报放大器（仅下载链路引入）。LM Studio/Everything 全踩过全存活——不混淆 JS（现状正确）+exe 级 SHA256 清单（申诉+IT 登记刚性材料，**打包产物应随附 hash 清单**——挂 v0.9.12 打包演练验收项）。
 - 产物：S1-S7 出发前自检清单（S2/S3 本机基线 VERIFIED-RUN）+IT 沟通模板（材料清单+申请正文+话术红线）。
+
+## R 批（c3461c3）——调研 26/27 建议落地
+- R1 双位点：真用户路径=goose 流内文本 resolve→前端 endStream 生成错误卡（桥 :851 只是 reject 路径）——桥 sendTurn 拒绝分支+前端 endStream 双处读健康态三档（stale→「等也不会好，换模型」/down+key→Key 口径/down→含时间预期）；stale 态不给换线钮（出路=换模型）。裁决 S3 互指去重至此双侧闭环。
+- R3 down 文案补「一般几分钟内恢复；顶部提醒条消失就是好了」。R4 S26_ERR_RE×goose v1.50 五型错误主哨兵入 rescue-guard（31ck）+playbook 第 3 步之 8 检查项。
+- B2 核验关项：真 goose v1.50 request_permission 帧=恰四选项，前端四按钮全人话可点（研究 27 遗留 UNVERIFIED-2 → VERIFIED-RUN）；坑=裸隔离 root 无 permission 配置时 load_skill 直通零卡（卡求值依赖产品配置）。
+- 验证：rescue 22→31ck+toolcard 39→45ck 双负对照；全量 57/57+178/178。新观察数据点：桥重启后即刻跑套件=§11b 冷态红（环境瞬态，复跑绿）。
