@@ -272,3 +272,5 @@
 ## F-1 修复（ca2478a）+持续循环开始
 - 空态分支同置 tblMiss 注行（innerHTML 后 append——赋值清子节点的坑当场又踩一次即时修正）；GUI 路由拦截双态验证+assets-probe 28/28+e2e 58/58+fuzz 全绿。
 - 剩余窗口（至 09-14 05:00）转入持续产出循环：全树核验/上游与环境 tick/新题响应，每轮 journal 留痕。
+
+[产出循环 20:2x] healthz=ok pg=Ready(Launching 过渡) goose=v1.50.0 不变 faucet=v0.1.13（挂账不变）——**explorer 15 窗累积已清零**（WM_CLOSE via .ps1——内联 PS 再被转义层吃，教训 #13 家族第三次；tmp/close-explorer.ps1 留作循环复用件）
