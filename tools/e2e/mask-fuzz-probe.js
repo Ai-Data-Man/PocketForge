@@ -4,6 +4,8 @@
 // URL query ?apikey=。断言：不崩恒返串、五形态（x-api-key/authorization bearer/URL query apikey|api_key|api-key|token/x_api_key 键名 JSON·query 两栖）
 // 全形态掩码到位、≤12 字符全星、13 字符前6后4。P3-1/P3-2 修后：token 贪吃到结构分隔符（引号/空白/行尾/}），
 // Unicode/NUL/字面反斜杠不再断链尾段裸奔；URL query 值段掩码（吃到 & / 引号 / 行尾）。
+// s78f QA P2-1/P3-1：裸 JSON 键族 api_key/apikey/token（\b 边界、键位引号可选、键尾 %20）进向量；M9=\b 反向断言
+// （正文 max_api_key/context_api_key 配置键名零误掩——修前 x_api_key 族缺 \b 值段失真）。
 'use strict';
 const FSS = require('fs');
 const path = require('path');
@@ -22,10 +24,8 @@ const masked = (inp, keyTail) => { // keyTail：原 key 中不应裸奔出现的
     let out;
     try { out = maskKeys(inp); } catch (e) { return { ok: false, why: 'threw ' + e.message }; }
     if (typeof out !== 'string') return { ok: false, why: 'non-string ' + typeof out };
-    if (out.includes('****')) {
-        const tail = keyTail.slice(-8);
-        if (keyTail.length > 12 && out.includes(tail)) return { ok: false, why: '尾段裸奔: ' + out };
-    }
+    const tail = keyTail.slice(-8); // s78f: 泄漏检查不再以 **** 在场为前提——整段漏掩（零 ****，裸 JSON 键族修前形态）同样必须红
+    if (keyTail.length > 12 && out.includes(tail)) return { ok: false, why: '尾段裸奔: ' + out };
     return { ok: true, out };
 };
 const key = (n, pre) => (pre || 'sk-') + 'abcdefghijklmnop'.slice(0, Math.max(1, n - (pre ? pre.length : 0))).padEnd(Math.max(1, n - (pre ? pre.length : 0)), '9');
@@ -72,6 +72,12 @@ V('?api-key= hyphen query 小写', 'curl "https://h/p?api-key=sk-hyphen0000000" 
 V('?API-KEY= hyphen query 大写（i 旗）', 'curl "https://h/p?API-KEY=sk-HyphenCap00000" ', 'sk-HyphenCap00000');
 V('x_api_key JSON 形态', '{"x_api_key":"sk-underjs1234567"}', 'sk-underjs1234567');
 V('x_api_key= 裸/query 形态', 'x_api_key=sk-underquery000', 'sk-underquery000');
+// s78f QA P2-1 裸 JSON 键族 ×5：rawInput 里 openai-sdk 风格第一常见形态是裸 {"api_key":"…"}（键位引号可选，\b 边界）
+V('{"api_key":} 裸 JSON 键', '{"api_key":"sk-barekey12345678"}', 'sk-barekey12345678');
+V('{"apikey":} 裸 JSON apikey 键', '{"apikey":"sk-barekey12345678"}', 'sk-barekey12345678');
+V('{"token":} 裸 JSON token 键', '{"token":"sk-barekey12345678"}', 'sk-barekey12345678');
+V('?api_key%20= URL 编码空格键名', 'https://h/p?api_key%20=sk-encspace12345', 'sk-encspace12345');
+V('api_key: header 裸形态（无 x- 前缀）', 'api_key: sk-barehead123456', 'sk-barehead123456');
 
 let bad = [];
 for (const v of vectors) {
@@ -103,6 +109,10 @@ const uni = maskKeys('X-API-Key: sk-abc中文def1234567890');
 ck('M7 Unicode 断链向量：断链尾段已掩（贪吃到行尾，前6后4）', uni === 'X-API-Key: sk-abc****7890', uni);
 const nul = maskKeys('X-API-Key: sk-\u0000null\u0000-abcdefghijklmnop');
 ck('M8 \\0 断链向量：断链尾段已掩（\\0 不再截断 token）', nul === 'X-API-Key: sk-\u0000nu****mnop', nul.replace(/\u0000/g, '\\0'));
+
+// s78f QA P3-1: \b 反向断言——正文 *_api_key= 配置项键名零误掩（修前红：x_api_key 族缺 \b，max_api_key=5 → max_api_key=**** 值失真）
+const over = maskKeys('配置项 max_api_key=5 是上限；context_api_key=abcdefghij 见文档；max_api_key=sk-longsecret999999');
+ck('M9 \\b 边界：max_api_key/context_api_key 配置键名零误掩（值段原样）', !over.includes('****') && over.includes('max_api_key=5') && over.includes('abcdefghij') && over.includes('sk-longsecret999999'), over);
 
 console.log('mask-fuzz-probe: PASS=' + pass + ' FAIL=' + fail);
 if (fail) process.exitCode = 1;

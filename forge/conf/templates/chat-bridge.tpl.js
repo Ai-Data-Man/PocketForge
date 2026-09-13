@@ -135,13 +135,17 @@ function classifyUpstream(txt) { // s50e: 上游错误细分（401=Key 没配好
 // tool_call_update.status=failed + content 文本块数组）。只改写转发给前端的帧（goose 自持会话史不动，
 // 对 agent 零影响）；前端 explain_tool 喂料读 card._out，同步吃人话版
 const DECLINE_RE = /the user has declined to run this tool/i;
+// s78f QA P2-2 双保险：①status 门——decline 回填实录恒 status=failed，success/pending 帧里引用原句（grep 源码/读日志/changelog
+// 的真实工具输出）不属拒绝回填，整帧不动；②句内子串替换——只换 DECLINE_RE 命中的原句子串，原句前后的真实数据（命中计数/后续
+// 日志行）保留，不再整字段覆写。回放帧（session/load）同路经此门。
 function humanizeDecline(msg) {
     try {
         const upd = msg.params && msg.params.update;
         if (!upd || (upd.sessionUpdate !== 'tool_call' && upd.sessionUpdate !== 'tool_call_update')) return;
+        if (upd.status !== undefined && upd.status !== 'failed') return;
         for (const tu of [upd, upd.toolCallUpdate]) { // 实测形态=upd.content 直挂；嵌套 toolCallUpdate 形态兜底（同前端 toolCard 双形态）
             if (!tu || !Array.isArray(tu.content)) continue;
-            for (const b of tu.content) if (b && b.content && typeof b.content.text === 'string' && DECLINE_RE.test(b.content.text)) b.content.text = '这一步没得到您的同意，没有执行。';
+            for (const b of tu.content) if (b && b.content && typeof b.content.text === 'string' && DECLINE_RE.test(b.content.text)) b.content.text = b.content.text.replace(DECLINE_RE, '这一步没得到您的同意，没有执行。');
         }
     } catch {}
 }
@@ -869,6 +873,7 @@ function sendTurn(ws, sid, text, allowRescue) {
         // S26 命中（rate/timeout/server）→服务商暂时不通；其余→通用重发。null 守卫在上方 etxt 构造处（qa s76 P2-A：畸形 error:null 帧曾在此 TypeError 打死桥，reject 回调在无 try 的 onAcpData 栈）
         // research/26 R1: 错误卡先读最近健康缓存态——stale-model=换模型出路（等也不会好）；down+key=Key 口径；down=不通（TURN_DOWN_TEXT 已含 R3 时间预期）；无态/ok=原按错误文本归类链不动。同因同回合与告警条并存互指：条=常驻锚，卡=出路
         const hs = healthCache.state;
+        if (hs && hs !== 'ok') healthFailDebounce(ws); // s78f P3-4: 缓存 down/stale（TTL 30min）会遮蔽真实归类变化且无收敛信号——非 ok 态读到即复检；null 不探（无态走原链）/ok 不探（真实失败信号才探，S26 命中分支 :859 已有防抖，重复调用由 healthFailT 幂等合并）
         ws.send({ sys: 'error', text: hs === 'stale-model' ? TURN_STALE_TEXT : hs === 'down' && healthCache.kind === 'key' ? TURN_KEY_TEXT : hs === 'down' ? TURN_DOWN_TEXT : classifyUpstream(etxt) === 'unauthorized' ? TURN_KEY_TEXT : S26_ERR_RE.test(etxt) ? TURN_DOWN_TEXT : TURN_RETRY_TEXT });
     } });
     // reject 回调可能来自 onAcpData 栈（不在 handleClient try 内），acp 写失败必须就地接住

@@ -1098,11 +1098,15 @@ function maskKeys(s){ // s78 主线测试 P4: 显示层密钥掩码——X-API-K
   // 反斜杠仅在后面不是引号时才入段（JSON.stringify 的 \" 是结构位尾引号转义，须停在其前——工具卡 stringify 主形态）
   // fuzz P3-2: URL query 族 [?&](apikey|api_key|token)= 值段掩码（吃到 & / 引号 / 行尾）——纯显示层同族，喂料/回放不动
   // s78e 扩族: api_?key→api[-_]?key（hyphen 形态 ?api-key=/?API-KEY=，i 旗下大小写通吃）+ x_api_key 键名族（JSON/query 两栖，结构同族1）
+  // s78f QA P2-1/P3-1: 裸 JSON 键族 \b["']?(api[-_]?key|token)（键位引号可选、键尾 (?:%20)? 吸收 ?api_key%20= 编码空格）与 x_api_key 同款值组——
+  // rawInput 里 openai-sdk 风格第一常见形态恰是裸 {"api_key":"…"}；\b=键名前必须是边界（引号/{/,/行首/?&），max_api_key=5 类
+  // 正文键名不误掩；x_api_key 族同补 \b 对齐族1/族2（误掩实证 max_api_key=sk-…→值失真）
   const one=t=>t.length<=12?'****':t.slice(0,6)+'****'+t.slice(-4);
   return String(s).replace(/(\bx-api-key["']?\s*[:=]\s*["']?\s*)([a-z0-9_\-.=+/]+(?:[^"'\s}\\]|\\[^"'])*)/gi,(m,p,t)=>p+one(t))
                   .replace(/(\bauthorization["']?\s*:\s*["']?\s*bearer\s+["']?)([a-z0-9_\-.=+/]+(?:[^"'\s}\\]|\\[^"'])*)/gi,(m,p,t)=>p+one(t))
-                  .replace(/(["']?x_api_key["']?\s*[:=]\s*["']?\s*)([a-z0-9_\-.=+/]+(?:[^"'\s}\\]|\\[^"'])*)/gi,(m,p,t)=>p+one(t))
-                  .replace(/([?&]api[-_]?key=|[?&]token=)((?:[^&"'\s\\]|\\[^"'])+)/gi,(m,p,t)=>p+one(t));
+                  .replace(/(\b["']?x_api_key["']?\s*[:=]\s*["']?\s*)([a-z0-9_\-.=+/]+(?:[^"'\s}\\]|\\[^"'])*)/gi,(m,p,t)=>p+one(t))
+                  .replace(/([?&]api[-_]?key=|[?&]token=)((?:[^&"'\s\\]|\\[^"'])+)/gi,(m,p,t)=>p+one(t))
+                  .replace(/(\b["']?(?:api[-_]?key|token)(?:%20)?["']?\s*[:=]\s*["']?\s*)([a-z0-9_\-.=+/]+(?:[^"'\s}\\]|\\[^"'])*)/gi,(m,p,t)=>p+one(t));
 }
 function toolCard(upd){
   const stick=nearBottom(); // s69 P2-7
@@ -1247,8 +1251,12 @@ function onAgentEvent(p){
     // 超时兜底自动选「这次不行」（reject_once）——goose 每张卡必带该选项；「以后都别问」不能自动替用户按（持久化太激进）
     // s78 P2-2c：超时拒绝后 agent 按其提示词自主换路（活体实录：改走别的工具再来问）——不替用户停整个任务
     // （session/close 必删会话 research/18；cancel 撞未决权限请求的语义未验证，不为拦截破坏协议），改以文案管理预期
-    const noOpt = opts.find(o=>o.kind==='reject_once') || opts[0];
-    card._pto=setTimeout(()=>settle(noOpt.optionId,'（等太久没人选，自动帮你选了 🚫 这次不行。它可能会换个做法再来问你——想让它做，它再问时点「这次可以」就行。）'),60000);
+    // s78f P3-5：破例路径（超时自动应答）不允许落在「允许」类选项上——goose 原始序 allow_always 恒居首（s78 P1-1a 实录），
+    // 旧 `||opts[0]` 兜底在 goose 破例不带 reject_once 时会自动替用户按「以后都允许」=持久化授权；改显式链
+    // reject_once→reject_always（拒绝族=失败安全：停住可恢复，不产生破坏），全无则不回复任何选项、让 goose 自身超时收口
+    // ——宁可无动作，不可替用户点 allow
+    const noOpt = opts.find(o=>o.kind==='reject_once') || opts.find(o=>o.kind==='reject_always');
+    if(noOpt) card._pto=setTimeout(()=>settle(noOpt.optionId,'（等太久没人选，自动帮你选了 🚫 这次不行。它可能会换个做法再来问你——想让它做，它再问时点「这次可以」就行。）'),60000);
     return;
   }
   if(p.method==='stop'){ setBusy(false); endStream(); zombiePermcards(); loadSessions(); renderCurPane(); flushPendingQueue(); } // s52b: 任务完成自动刷新文件树（小白不用手动刷新找文件）；#3: 干完活补发排队中的消息；s78 P2-3b: 回合收口时未选的卡同步置灰（会话切换路径由清墙覆盖）

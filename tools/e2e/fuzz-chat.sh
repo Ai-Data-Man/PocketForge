@@ -472,7 +472,7 @@ node "$(dirname "$0")/ws-genesis-fuzz.js" >/dev/null 2>&1; ck "ws genesis-guard 
 # 面5 SSE 重试阶梯（6d94f3a P2-A/367b57a C3）：mock 畸形流——重试不失控不双发（探针自建沙盒）
 node "$(dirname "$0")/sse-ladder-fuzz.js" >/dev/null 2>&1; ck "SSE retry-ladder malformed stream fuzz, 36 asserts (fuzz-v2)" $?
 # 面3 maskKeys（3f80ca9/166607a P3-2）：显示层掩码随机 key 形态（静态纯函数探针）
-node "$(dirname "$0")/mask-fuzz-probe.js" >/dev/null 2>&1; ck "maskKeys display-layer random key-form fuzz, 8 asserts (fuzz-v2)" $?
+node "$(dirname "$0")/mask-fuzz-probe.js" >/dev/null 2>&1; ck "maskKeys display-layer random key-form fuzz, 9 asserts (fuzz-v2 + s78f bare-json-key family +  no-overflow)" $?
 echo "=============================="
 echo "fuzz: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" = "0" ]

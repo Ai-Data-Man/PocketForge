@@ -1,7 +1,8 @@
 // 救援判据守卫桩测（qa s76 P2-A 转正，原 tmp/qa-s76-rescue-extract.js）：从桥模板原文切 SESSION_NF_RE..rescueSession 块，
 // 注入 mock（waiting/nextId/turnText/acp/statsBump/healthCache）后逐场景断言。零网络、零进程副作用。
 // 覆盖：null/字符串/空对象 reject 载荷（null 守卫）、救援去重、ws.alive 门、首轮门、非 NF 失败三档人话（s76 遗留⑦：未归类/unauthorized/S26 命中）
-//       + 错误卡读健康态三档（research/26 R1：stale-model/down+key/down）+ S26_ERR_RE 对 goose 五型错误文案穿透断言（research/26 R4）。
+//       + 错误卡读健康态三档（research/26 R1：stale-model/down+key/down）+ 非 ok 健康态失败复检钩（s78f P3-4）
+//       + S26_ERR_RE 对 goose 五型错误文案穿透断言（research/26 R4；s78f：型1+型2 逐型锁）。
 const fs = require('fs');
 const src = fs.readFileSync(__dirname + '/../../forge/conf/templates/chat-bridge.tpl.js', 'utf8');
 const start = src.indexOf('const SESSION_NF_RE');
@@ -186,6 +187,13 @@ const NF = { message: 'resource_not_found', data: 'Session not found: SID' };
     const t15 = mk(null);
     ck('S15 同桩无健康态 → 原链通用人话（三档非文本归类产物）', t15 === '这一轮没完成，请再发一次试试。');
 }
+// S16（s78f P3-4）：reject 路径读到缓存非 ok 态（down/stale，TTL 30min）也触发 healthFailDebounce 复检——
+// 缓存遮蔽真实归类变化时无收敛信号；ok/null 不触发（真实失败信号才探；S26 命中分支的既有防抖见 S11b）
+{
+    const mkH = health => { const { env, api } = makeEnv(/(?!)/, () => 'server', health); const ws = mkWs(); api.sendTurn(ws, 'DH', 'hi', true); env.waiting.get(env.acp.stdin.writes[0].id).reject({ message: 'provider switching' }); return env; };
+    ck('S16 down 缓存态非 S26 失败也安排健康复检（30min 缓存不遮蔽归类变化）', mkH({ state: 'down', kind: null }).healthCalls === 1);
+    ck('S16b ok 态不额外复检（对照，判别力）', mkH({ state: 'ok', kind: null }).healthCalls === 0);
+}
 // R4（research/26 建议 R4）：S26_ERR_RE 对 goose v1.50 错误五型文案的穿透静态断言——上游若改「Ran into this error」等包装前缀
 // （v1.46→v1.50 刚发生过行为变化，research/23），正则失配=上游错误英文原文透出、错误卡退化。**goose 升级 playbook 检查项**
 // （docs/research/goose-upgrade-playbook.md 第 3 步之 8）：升版后按新版 agent.rs 错误包装文案更新 V150_ERR_SAMPLES 并复跑本断言。
@@ -201,8 +209,8 @@ const NF = { message: 'resource_not_found', data: 'Session not found: SID' };
             'The provider refused this request. Please start a new session to continue — resending this conversation is likely to be refused again.',
             'Unable to continue: Context limit still exceeded after compaction. Try using a shorter message, a model with a larger context window, or start a new session.',
         ];
-        const hits = V150_ERR_SAMPLES.filter(s => re.test(s));
-        ck('R4b S26_ERR_RE 与 goose v1.50 五型至少一型匹配', hits.length >= 1);
+        const hits = V150_ERR_SAMPLES.map(s => re.test(s));
+        ck('R4b 型1+型2 逐型锁（型2 Network error=最常见上游断流形态——若措辞漂移只伤型2 不再漏检）+五型样本齐全（其余三型不含 S26 令牌走原链；升版更新样本须保五型）', hits[0] === true && hits[1] === true && V150_ERR_SAMPLES.length === 5 && V150_ERR_SAMPLES.every(s => typeof s === 'string' && s.length > 0));
         ck('R4c 通用包装型（Ran into this error 前缀）仍命中——防措辞漂移主哨兵', re.test(V150_ERR_SAMPLES[0]));
     }
 }
