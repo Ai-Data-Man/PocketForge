@@ -75,3 +75,11 @@ taskkill /T 树杀输出显示：每个 session 滞留的不只 memory 一对，
 3. **用户路径暴露**：新建对话→数秒内删除（真实操作序列）=泄漏 9 进程至桥重启。research/17 主文「残余滞留面」之外的新形态。
 4. **修向建议（engineering）**：delete_session 的 close 补发需带「树装配完成」等待（如首代扩展进程可见后再 close）或 close 响应确认+重试（goose 对未就绪会话的 close 处理待源码级核实：on_close_session 只做 HashSet insert+remove，装配中 agent 可能未入集合——假说，UNVERIFIED）。
 5. 取证与修复留痕：tmp/s78g-qa-11b.md（e2e §11/§11b 位次交换+探针 pid-set 化，套件面已免疫；产品面未动）。
+
+## s81 修复落地（VERIFIED-RUN，2026-09-13；工程师会话）
+
+1. **机制勘误（对上节假说）**：「close 先于树装配完成发出」不成立于 delete 路径——v1.46（本机源码）与 v1.50（官方源）的 `handle_new_session → finish_new_session_setup → activate_acp_session`（内含 `load_extensions_from_session` 的 `join_all` await）**全部完成后才 build/回包** NewSessionResponse；observer 实测（tmp/s81-repro.js）session/new 往返 = 树装配全程（冷 8-24s，暖 4-5s）。真实形态 = **装配刚完成的冷/载窗内 teardown 竞态丢失**（close 在装配完成 ~0s 后发出，kill 部分执行后丢失，9 进程永久存活——QA run1 pid-birth 铁证；本会话冷窗独立复现 2 轮 ×5 建+删 0 泄漏 = 触发随机态，以 QA 证据为准）。「等装配再 close」因此恒真恒无效，修法取**错峰**。
+2. **修法（chat-bridge.tpl.js，最小 diff）**：出生门控有界延迟 close——`noteSessionBorn`（session/new resolve=装配完成时刻，三个 resolve 点全登记）+ `acpCloseSession`（幼龄未满 `CLOSE_SETTLE_MS=10000` 的删除把 close 推到窗末，满龄/未登记即发；回执/DB 删除时序不变）+ `flushPendingCloses`（任何 session/new **发起点**先冲刷全部 pending close 再落笔新请求，同流 FIFO 保序）。staleNewSession 孤儿回收同走 acpCloseSession；rollbackRewrite 步2 事务性 close 不动。
+3. **sid 复用防护（s76 家族+research/21 G6 红线）**：删当日最新→goose 当日MAX+1 回退复用同 sid（本会话实测复现：连删连建 5 次恒同 sid）。发起点冲刷保证复用场景 close 先于新 session/new 落笔——「复用会话撞 closed 守卫→救援」语义逐字保持（修后实测 prompt→rescued 非挂死），且旧 Agent（内存态含已删内容）必先关，删除内容零复活窗。
+4. **验证矩阵**：①行为断言 tmp/s81-verify.js 5/5（秒删树 born+8s 仍在=延迟生效铁证 / born+30s 内回收 / 复用 prompt→rescued / 满龄 ≤10s 回收=即发语义保持 / 相位清理回基线）；②QA 复现配方冷窗 ×5（tmp/s81-repro.js）leaked=0；③桥日志 pc.log 实录 `pending closes flushed before session/new: <sid>`；④全量 e2e-chat **57/57**（§11 pid-SET 回收断言含 +9 新树回收；首轮 §18c 单红=QA 已归档沙盒批载竞态家族，净机复跑绿）+ fuzz **178/178**；⑤物化 bootstrap 重跑 cmp 逐位一致。附带小项：e2e §11b ws-delete-receipt 红时保留探针日志（rm -f 吞证据，QA §4 建议）。
+5. **已知极限（留档）**：SETTLE=10s 是错峰工程值非机理根治（goose 内部 kill 丢失机理不可桥侧观测）；慢 teardown 90s 形态（s80g run2）桥侧无杠杆，§11b 20s 回收门对它本就红（既有观察项）；闲置/救援放弃会话的滞留面不变（主控裁决不动）。

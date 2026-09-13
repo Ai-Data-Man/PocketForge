@@ -149,7 +149,8 @@ rm -f /tmp/ws-close-reclaim.log
 rc=0; node "$ROOT/tools/e2e/ws-delete-receipt.js" > /tmp/ws-delete-receipt.log 2>&1 || rc=$?
 grep -q "PASS" /tmp/ws-delete-receipt.log || rc=$?
 ck "ws delete_session receipt delivered before close" $rc
-rm -f /tmp/ws-delete-receipt.log
+# s80g 附带（QA §4 建议小项）：红时保留探针输出（原 rm -f 吞证据——冷窗 session/new 快败形态首红未捕获过）
+if [ "$rc" -eq 0 ]; then rm -f /tmp/ws-delete-receipt.log; fi
 
 # ---------- 12) 报告 v2 探针（s65 转正自 s64 tmp 探针；详见 tools/e2e/report-probe.sh） ----------
 # static=39 ck 秒级；sandbox=29 ck 自建沙箱真桥（端口 18790/18799，不碰 dev 栈 8790），实测增量约 31-47s < 90s 门槛 → 挂进全量

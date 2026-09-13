@@ -824,10 +824,42 @@ const wsFirstPrompt = new WeakMap(); // ws→当前绑定是否还没发过 prom
 // 丢弃迟到的绑定，孤儿会话 fire-and-forget close 回收（delete_session :3284 同款先例）——否则 wsSession 被翻绑到
 // 新空会话，用户消息静默落错处零报错（qa s78-qa-report P1-A，复现 tmp/s78-qa-race.js）。
 const wsPendingNew = new WeakMap();
+// s80g（research/17 补录 / tmp/s78g-qa-11b.md）：delete_session 的 close 在会话装配刚完成的冷/载窗内发出时，
+// goose 侧 teardown 竞态丢失 → 每会话 ~9 进程永久泄漏（QA 忠实批 run1 pid-birth 10min 实证；闲机/满龄回收成立）。
+// 修法=出生门控有界延迟：session/new resolve 即树装配完成（v1.46/v1.50 源码核实 join_all await 后才回包），
+// 出生未满 CLOSE_SETTLE_MS 的删除把 close 推到窗末再发（删除回执照旧立即——close 本就是后台收尾）；
+// 满龄/出生未登记（桥重启前的旧会话，新 acp 无树）照旧即发。sid 复用防护见 flushPendingCloses。
+const CLOSE_SETTLE_MS = 10000;
+const sidBorn = new Map();      // sid -> session/new resolve 时刻（=树装配完成）；>500 掐头防长尾
+const closePending = new Map(); // sid -> 延迟 close 的 timer（同 sid 重复删除幂等去重）
+function writeAcpClose(sid) {
+    // fire-and-forget：id 不注册 waiting（响应落 onAcpData 未匹配分支被静默忽略），写失败不阻断调用方（s75 同款）
+    try { acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: nextId++, method: 'session/close', params: { sessionId: sid } }) + '\n'); } catch {}
+}
+// 任何新 session/new 发出前冲刷全部 pending close：删当日最新→goose 当日MAX+1 回退复用同 sid（s76 家族），
+// 若待发新会话复用了 pending 中的 sid，close 必须先落笔（同流 FIFO）——保持「复用会话撞 closed 守卫→救援」
+// 既有语义与 research/21 G6 删除内容不复活红线（旧 Agent 先关，新会话不挂到未关的旧 Agent 上）。
+function flushPendingCloses() {
+    if (!closePending.size) return;
+    for (const [sid, t] of closePending) { clearTimeout(t); writeAcpClose(sid); }
+    console.log('pending closes flushed before session/new:', [...closePending.keys()].join(','));
+    closePending.clear();
+}
+function noteSessionBorn(sid) {
+    if (!sid) return;
+    sidBorn.set(sid, Date.now());
+    if (sidBorn.size > 500) sidBorn.delete(sidBorn.keys().next().value);
+}
+function acpCloseSession(sid) {
+    if (closePending.has(sid)) return;
+    const wait = sidBorn.has(sid) ? CLOSE_SETTLE_MS - (Date.now() - sidBorn.get(sid)) : 0;
+    if (wait <= 0) return writeAcpClose(sid);
+    closePending.set(sid, setTimeout(() => { closePending.delete(sid); writeAcpClose(sid); }, wait));
+}
 function staleNewSession(ws, reqId, res) {
     if (wsPendingNew.get(ws) === reqId) return false;
     if (res && res.sessionId) {
-        try { acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: nextId++, method: 'session/close', params: { sessionId: res.sessionId } }) + '\n'); } catch {}
+        acpCloseSession(res.sessionId); // s80g: 孤儿刚装配完即弃=同款竞态窗，走出生门控延迟 close
         console.log('stale session/new discarded, orphan closed:', res.sessionId);
     }
     return true;
@@ -889,6 +921,7 @@ function rescueSession(ws, text) {
     waiting.set(rid, { ws, resolve: (res) => {
         clearTimeout(timer);
         if (!(res && res.sessionId)) return fail();
+        noteSessionBorn(res.sessionId); // s80g: 出生登记（sid 复用冲刷 + 延迟 close 锚点）
         statsBump('sessionsCreated');
         if (staleNewSession(ws, rid, res)) return; // s78 P1-A 代际守卫
         if (!ws.alive) return; // qa s76 P3-4: 救援窗口内客户端已断开（drop 已清各表）——不再回挂死连接/续发重放（rpc 直通 alive 门同款）
@@ -898,6 +931,7 @@ function rescueSession(ws, text) {
         sendTurn(ws, res.sessionId, text, false); // 单次守卫：重放不救援
     }, reject: () => { clearTimeout(timer); fail(); } });
     try {
+        flushPendingCloses(); // s80g: 新会话可能复用 pending 中的 sid——close 先落笔保今日复用语义
         acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: rid, method: 'session/new', params: { cwd: ROOT, mcpServers: [] } }) + '\n');
     } catch (e) { clearTimeout(timer); waiting.delete(rid); fail(); }
 }
@@ -3268,6 +3302,7 @@ function handleClient(ws, msg) {
                 const id = nextId++;
                 wsPendingNew.set(ws, id); // s78 P1-A 代际守卫：登记本次发起，回调到达时校验
                 waiting.set(id, { ws: null, resolve: (res) => {
+                    if (res && res.sessionId) noteSessionBorn(res.sessionId); // s80g: 出生登记先于代际判定——迟到丢弃的孤儿同享延迟 close
                     if (staleNewSession(ws, id, res)) return; // s78 P1-A: 迟到的 session/new——ws 已被后续 subscribe 接管，丢弃绑定（孤儿已 close）
                     wsPendingNew.delete(ws);
                     if (res && res.sessionId) {
@@ -3287,6 +3322,7 @@ function handleClient(ws, msg) {
                         ws.send({ sys: 'error', text: '开新对话没成功：' + String(why) });
                     }
                 }});
+                flushPendingCloses(); // s80g: 新会话可能复用 pending 中的 sid——close 先落笔保今日复用语义
                 acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/new', params: { cwd: ROOT, mcpServers: [] } }) + '\n');
             }
             return;
@@ -3334,8 +3370,9 @@ function handleClient(ws, msg) {
                 const m = db.prepare('DELETE FROM messages WHERE session_id = ?').run(msg.sessionId);
                 const r = db.prepare('DELETE FROM sessions WHERE id = ?').run(msg.sessionId);
                 db.close();
-                // fire-and-forget：id 不注册 waiting（响应落进 onAcpData 未匹配分支被静默忽略），写失败不阻断删除
-                try { acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: nextId++, method: 'session/close', params: { sessionId: msg.sessionId } }) + '\n'); } catch {}
+                // s80g: close 走出生门控——幼龄会话（树装配完未满 CLOSE_SETTLE_MS）延迟到窗末再发，防冷/载窗
+                // teardown 竞态永久泄漏（research/17 s80g 补录）；满龄/未登记照旧即发。回执与 DB 删除时序不变。
+                acpCloseSession(msg.sessionId);
                 // I1(审查s15): 会话删了就解除其工作区绑定，否则区卡在 active 态永远无法清理
                 const wsm = readWsMap();
                 let unbound = false;
@@ -3565,6 +3602,7 @@ function handleClient(ws, msg) {
                     const nid = nextId++;
                     wsPendingNew.set(ws, nid); // s78 P1-A 代际守卫同款：此 session/new 与页面加载在飞的 subscribe(null) 互相接管
                     waiting.set(nid, { ws, resolve: (res) => {
+                        if (res && res.sessionId) noteSessionBorn(res.sessionId); // s80g: 出生登记（代际判定前，同 subscribe(null)）
                         if (staleNewSession(ws, nid, res)) return;
                         wsPendingNew.delete(ws);
                         if (res && res.sessionId) {
@@ -3575,6 +3613,7 @@ function handleClient(ws, msg) {
                             doSet(res.sessionId);
                         } else ws.send({ sys: 'error', text: '开新对话失败，稍后再试' });
                     }});
+                    flushPendingCloses(); // s80g: 新会话可能复用 pending 中的 sid——close 先落笔保今日复用语义
                     acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: nid, method: 'session/new', params: { cwd: ROOT, mcpServers: [] } }) + '\n');
                 }
             } else {
