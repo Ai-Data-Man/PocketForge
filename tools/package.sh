@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # P6 打包：forge/ + 许可证 → dist/PocketForge-<date>-v<ver>.zip（交付物）
+# 交付物含包根 SHA256-EXE.txt（bin 下全部 .exe 的 hash 清单，见 2b）。
 # 开发机专用。产物自检：解压到临时目录跑 --version 级冒烟。
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -60,6 +61,30 @@ for name in "${!SRC[@]}"; do
   [ -s "$LIC/$name" ] || { echo "MISSING LICENSE: $name"; MISS=1; }
 done
 [ "$MISS" = 0 ] || { echo "license incomplete"; exit 1; }
+
+# 2b) exe 级 SHA256 清单（research/28 §S6：无签名产品 EDR 申诉/IT 白名单登记的刚性材料，
+#     zip 整体 .sha256 粒度不够）。包根 SHA256-EXE.txt：包内 bin 下全部 .exe 相对路径+hash
+#     一行一件（sha256sum -c 可校验）；按路径排序枚举 → 幂等（重打包 hash 稳定，只随 exe 字节变）
+python - "$TMP/forge-pkg" <<'PYEOF'
+import hashlib, os, sys
+root = sys.argv[1]
+exes = []
+for dirpath, dirs, files in os.walk(os.path.join(root, 'bin')):
+    for f in files:
+        if f.lower().endswith('.exe'):
+            exes.append(os.path.join(dirpath, f))
+exes.sort(key=lambda p: os.path.relpath(p, root).replace(os.sep, '/'))
+lines = []
+for p in exes:
+    h = hashlib.sha256()
+    with open(p, 'rb') as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b''):
+            h.update(chunk)
+    lines.append(h.hexdigest() + '  ' + os.path.relpath(p, root).replace(os.sep, '/'))
+with open(os.path.join(root, 'SHA256-EXE.txt'), 'w', newline='\n') as f:
+    f.write('\n'.join(lines) + '\n')
+print('SHA256-EXE.txt:', len(lines), 'exes')
+PYEOF
 
 # 3) zip（保持 UTF-8 文件名：用 python zipfile）
 python - "$TMP/forge-pkg" "$OUT" <<'PYEOF'
