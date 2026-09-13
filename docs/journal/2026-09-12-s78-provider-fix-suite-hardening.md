@@ -234,3 +234,8 @@
 ## s81 秒删泄漏修复（ed414ec）
 - 源码级勘误：session/new 回包前 join_all 已装配完——QA 假说「close 先于装配」不成立于 delete 路径；真因=装配后冷窗内 goose 侧 teardown 丢失（pid-birth 铁证）。修法=错峰：noteSessionBorn 三 resolve 点登记出生+acpCloseSession 幼龄(<10s)延迟窗末+flushPendingCloses 在 session/new 发起点冲刷（stdin FIFO 保序，sid 复用救援语义+G6 红线逐字保持）。
 - 验证：行为断言 5/5+QA 冷窗配方 ×5 leaked=0+全量 57/57+178/178；已知极限=SETTLE 10s 工程值非机理根治（90s 慢 teardown 桥侧无杠杆，零二开）。explorer 累积 95 窗清零（教训 14 执行，累积速率提示环境自动开窗——轮内检查）。
+
+## 用户主线：应用管理功能开工（裁决 0da0b5a 入库）
+- PM 归约（tmp/s81-pm-verdict→docs/verdicts/2026-09-13-app-management-ledger.md）：最小形态=⚙️ 新 tab「✨ 做过的东西」三源只读聚合（数据表/制品/技能）时间倒序+chips+搜索+分页+会话回链；**关键查证=faucet 服务无来源记录**（实跑铁证）→ agent 建账路线（forge_meta 单行表，hints 一句成本）；制品回链天然存在（workspace-map）。裁掉七项（应用级 @/新实体/重命名/模板市场/统一删除/桥侧监听/考古）。
+- 主控改排期：用户点名=触发器开，**即刻 dev 实施**（S1-S4 已派），发布窗口归用户。
+- 微批同窗收口：fuzz s50h 会话自清（620ea97，sid 零增减）+**permission.yaml 热重载 VERIFIED-RUN**（fca3fc5——外部改下一轮即生效双向，机理=goose 高频自 mutate 顺路吸收；B1 面板文案输入「撤销即生效，时机=下一轮」，research/27 遗留#1 关闭）。
