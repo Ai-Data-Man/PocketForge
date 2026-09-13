@@ -1239,7 +1239,8 @@ const MCP_CATALOG = [
     { id: 'sequential-thinking', name: '深度思考', desc: '复杂任务先拆步骤再动手，提升多步推理质量', pkg: '@modelcontextprotocol/server-sequential-thinking', entry: 'node_modules/@modelcontextprotocol/server-sequential-thinking/dist/index.js', license: 'MIT' },
     { id: 'memory-graph', name: '关系图谱记忆', desc: '实体关系图谱（人物/设备台账类结构化记忆），与内置长期记忆互补', pkg: '@modelcontextprotocol/server-memory', entry: 'node_modules/@modelcontextprotocol/server-memory/dist/index.js', license: 'MIT' },
     // s54: fetch（Backlog「MCP 商店最小形态」收尾项）——轻量网页抓取转文本，不开浏览器即可读网页
-    { id: 'fetch', name: '网页抓取', desc: '把网页内容抓下来转成文字（不开浏览器，轻量快速），适合读文章、取表格数据', pkg: 'fetch-mcp', entry: 'node_modules/fetch-mcp/cli.js', license: 'MIT' },
+    // s78e: desc 注记——fetch-mcp 包固有 text/* 白名单（活体实证），接口类(json)目标拒收，员工自动改道
+    { id: 'fetch', name: '网页抓取', desc: '把网页内容抓下来转成文字（不开浏览器，轻量快速），适合读文章、取表格数据。适合网页/文本类；接口类(json)目标会拒收，员工会自动改用其他方式抓', pkg: 'fetch-mcp', entry: 'node_modules/fetch-mcp/cli.js', license: 'MIT' },
 ];
 const MCP_CATALOG_FILE = path.join(ROOT, 'data', 'config', 'mcp-catalog.json');
 // s72: 目录条目校验器上提共用（原 readMcpCatalog 内联 okItem）——市场配置端点写侧同门复验

@@ -1,7 +1,7 @@
 // fuzz 面3（3f80ca9/166607a P3-2 + fuzz 批 P3-1/P3-2 修复）：maskKeys 显示层掩码随机 key 形态矩阵（静态纯函数探针，无桥无网络）。
 // 从 chat.tpl.html 提取 maskKeys 原文执行（report-probe-static 同款手法）。向量族：大小写 header 名/引号变体
 // （JSON 形态/单引号/键值异引号）/多 key 同串/超长 key/空值/仅前缀/12-13 字符掩码边界/Unicode 与 \0 值内混杂/
-// URL query ?apikey=。断言：不崩恒返串、三族（x-api-key/authorization bearer/URL query apikey|api_key|token）
+// URL query ?apikey=。断言：不崩恒返串、五形态（x-api-key/authorization bearer/URL query apikey|api_key|api-key|token/x_api_key 键名 JSON·query 两栖）
 // 全形态掩码到位、≤12 字符全星、13 字符前6后4。P3-1/P3-2 修后：token 贪吃到结构分隔符（引号/空白/行尾/}），
 // Unicode/NUL/字面反斜杠不再断链尾段裸奔；URL query 值段掩码（吃到 & / 引号 / 行尾）。
 'use strict';
@@ -67,6 +67,11 @@ V('值中含 JSON 转义形态 \\u0000 字面', 'X-API-Key: sk-\\u0000abcdefghij
 // URL query 形态 ×2（P3-2 修后进规格：?apikey=/?api_key=/&apikey=/&api_key=/?token=/&token= 值段掩码，与规格内两族共存）
 V('?apikey= 规格内共存', 'curl "https://h/p?apikey=sk-notinspec0000" -H "X-API-Key: ' + K16 + '"', 'sk-notinspec0000');
 V('?API_KEY= 大写变体（i 旗）', '?API_KEY=sk-alsoout000 -H "authorization: Bearer ' + K16 + '"', 'sk-alsoout000');
+// s78e 扩族 ×4：query hyphen 形态（i 旗大小写）+ x_api_key JSON/query 两栖
+V('?api-key= hyphen query 小写', 'curl "https://h/p?api-key=sk-hyphen0000000" ', 'sk-hyphen0000000');
+V('?API-KEY= hyphen query 大写（i 旗）', 'curl "https://h/p?API-KEY=sk-HyphenCap00000" ', 'sk-HyphenCap00000');
+V('x_api_key JSON 形态', '{"x_api_key":"sk-underjs1234567"}', 'sk-underjs1234567');
+V('x_api_key= 裸/query 形态', 'x_api_key=sk-underquery000', 'sk-underquery000');
 
 let bad = [];
 for (const v of vectors) {
