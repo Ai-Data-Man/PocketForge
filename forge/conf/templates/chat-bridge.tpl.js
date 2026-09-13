@@ -1272,24 +1272,37 @@ const MCP_CATALOG_FILE = path.join(ROOT, 'data', 'config', 'mcp-catalog.json');
 // s72: 目录条目校验器上提共用（原 readMcpCatalog 内联 okItem）——市场配置端点写侧同门复验
 // id/pkg/entry 白名单同门：id 进扩展 id+vendor 目录+YAML 键，entry 进 config.yaml 单引号串（禁引号/反斜杠），pkg 进 npm 参数
 // qa返工(P3-4): id/pkg/entry 首字符禁 '-'（npm 参数/正则形态防混淆）
+// qa(s78f P3-2): id 门上提共用——okMcpItem 全量门与 readMcpCatalog 合并入口门（只校合并键）同源，防两份正则漂移
+function okMcpId(id) { return typeof id === 'string' && id[0] !== '-' && /^[\w\-]{1,64}$/.test(id); }
 function okMcpItem(m) {
-    return m && typeof m.id === 'string' && m.id[0] !== '-' && /^[\w\-]{1,64}$/.test(m.id)
+    return m && okMcpId(m.id)
         && ['name', 'desc', 'license'].every(k => typeof m[k] === 'string' && m[k])
         && typeof m.pkg === 'string' && m.pkg[0] !== '-' && /^[@\w.\-/]+$/.test(m.pkg)
         && typeof m.entry === 'string' && m.entry[0] !== '-' && /^[@\w.\-/]+$/.test(m.entry); // @ 容 @scope 包路径（同 pkg）
 }
 function readMcpCatalog() {
-    // 首启不存在→由内置默认生成；坏 JSON/缺 _schema/缺字段/条目非法/id 重复→warn 回落内置默认（不炸、不改写用户文件）
+    // 首启不存在→由内置默认生成；坏 JSON/缺 _schema/id 非法或重复/合并产物仍不合法→warn 回落内置默认（不炸、不改写用户文件）
     const dft = () => MCP_CATALOG.map(x => ({ ...x }));
     if (!FSS.existsSync(MCP_CATALOG_FILE)) {
         try { FSS.mkdirSync(path.dirname(MCP_CATALOG_FILE), { recursive: true }); atomicWrite(MCP_CATALOG_FILE, JSON.stringify({ _schema: 1, catalog: dft() }, null, 2)); } catch {}
         return dft();
     }
     const j = readJson(MCP_CATALOG_FILE, null);
-    if (j && j._schema === 1 && Array.isArray(j.catalog) && j.catalog.length && j.catalog.every(okMcpItem)
+    // qa(s78f P3-2): 整文件优先→字段级合并，存量合法文件不再静默遮蔽模板演进（desc 注记/新条目对旧部署可见）。
+    // 入口门只校 id（合并键）；合并=同 id 逐项（运行时键优先，缺键由模板回填）+ 运行时没有的模板条目全量补尾；
+    // 合并产物整体仍过 okMcpItem 同门——模板外自定义条目无回填源，字段不齐=整体回落（原门语义）。_schema 兼容照旧。
+    // 已知语义：删内置条目会被模板回补（模板=保底目录）；删自定义条目不受影响。
+    if (j && j._schema === 1 && Array.isArray(j.catalog) && j.catalog.length
+        && j.catalog.every(x => x && okMcpId(x.id))
         && new Set(j.catalog.map(x => x.id)).size === j.catalog.length) {
-        for (let i = stateWarnings.length - 1; i >= 0; i--) if (stateWarnings[i].indexOf('mcp-catalog.json') === 0) stateWarnings.splice(i, 1); // qa返工(P3-3): 解析成功清旧警告
-        return j.catalog;
+        const tplById = new Map(MCP_CATALOG.map(t => [t.id, t]));
+        const seen = new Set();
+        const out = j.catalog.map(r => { seen.add(r.id); const t = tplById.get(r.id); return t ? { ...t, ...r } : r; });
+        for (const t of MCP_CATALOG) if (!seen.has(t.id)) out.push({ ...t });
+        if (out.every(okMcpItem)) {
+            for (let i = stateWarnings.length - 1; i >= 0; i--) if (stateWarnings[i].indexOf('mcp-catalog.json') === 0) stateWarnings.splice(i, 1); // qa返工(P3-3): 解析成功清旧警告
+            return out;
+        }
     }
     const warnOnce = msg => { if (!stateWarnings.includes(msg)) stateWarnings.push(msg); console.warn(msg); };
     warnOnce('mcp-catalog.json 无法解析（应为 _schema:1 + catalog 数组且条目字段齐全），已回落内置 MCP 目录');

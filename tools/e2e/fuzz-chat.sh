@@ -228,7 +228,7 @@ assert d.get('ok') is True and d.get('skills'), d.keys()
 assert all(isinstance(s.get('source'),dict) and s['source'].get('subdir') for s in d['skills']), d['skills'][:2]
 "; ck "skillstore remote source carries subdir (s70-B2)" $?
 # s70 切片C: MCP 目录配置化——沙盒探针（首启生成/坏配置回落矩阵/回环/白名单随配置，明细随本日志留痕）
-node "$(dirname "$0")/mcp-catalog-probe.js"; ck "s70 slice-C mcp-catalog config probe (7 asserts)" $?
+node "$(dirname "$0")/mcp-catalog-probe.js"; ck "s70 slice-C mcp-catalog config probe (11 asserts, +4 merge s78f-P3-2)" $?
 # s70 切片C: dev 桥零回归——GET 3 条默认形状（installed/enabled/install 键在）
 curl -s "$B/api/mcpstore" | python -c "
 import sys,json
