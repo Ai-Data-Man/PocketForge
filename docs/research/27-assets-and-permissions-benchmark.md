@@ -6,7 +6,7 @@
 
 - **A 题**：行业正在收敛到「**账号级、自动汇集的生成物清单页**」——Manus 1.5 Library（"a centralized location for all your generated files and artifacts"）与 ChatGPT Library（find/reuse/download/delete 一页）都是近期新增功能；Claude 消费版是**反面教材**（会话产物须手动 Publish 才进侧边栏清单，未发布只能回原对话翻找）；Replit 走项目容器制+检查点回滚。组织维度主流=**时间倒序+来源任务/会话回链**，没有产品按产出类型硬分组；类型只作辅助筛选。命名主流=**agent 自动命名+用户可改名**，无一产品依赖用户命名。
 - **B 题**：「已允许」管理的成熟信息架构有现成双先例——**Chrome 站点设置**（全局默认值+按站点分组清单+单条/整站撤销+授予时点可留「不再问」）面向普通用户，**Google 账号「Third-party apps with account access」**（逐 app 显示权限+接入时长+Remove Access 单键撤销）是「你曾允许过什么」的消费者级一页。开发者侧最完整=Claude Code `/permissions`（Allow/Ask/Deny 三区+每条来源文件标注+即时生效）；**Cursor 无查看/编辑 UI 是反面教材**（forum 实证用户找不到「Always allow」写到了哪）。作用域语义存在分歧：Claude Code/Cursor 的 always=持久落盘，Windsurf 的 MCP always allow=**仅会话内**——「以后都允许」到底多持久必须显式，不能靠用户猜。
-- **两个题共同的落地判断**：设计起点已足够充分（本文 §A.4/§B.4），但 **A、B 双触发器均维持不动**（A=真机「找不回」≥2 次；B=真机误允求助≥1 次）；对标结论的作用是把立项后的设计归约起点固定，类比 plan-mode thaw 裁决「重开时设计起点=research/14 §6，不重新归约」。
+- **两个题共同的落地判断**：设计起点已足够充分（本文 §A.4/§B.4），但 **A、B 双触发器均维持不动**（A=真机「找不回」≥2 次；B=真机误允求助≥1 次）；对标结论的作用是把立项后的设计归约起点固定，类比 plan-mode thaw 裁决「重开时设计起点=research/14 §6，不重新归约」。**〔A 题触发器 2026-09-13 关闭：用户指令命中（裁决 docs/verdicts/2026-09-13-app-management-ledger.md，P32 候选→用户点名主线），s83 当日实施（设计起点=本文 §A.4 原样采用）；B 题触发器维持不动〕**
 
 ## A. 产出物管理对标
 

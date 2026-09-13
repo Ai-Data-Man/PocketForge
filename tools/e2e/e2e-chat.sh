@@ -336,6 +336,15 @@ ck "explain-retry probe 13 ck (SSE length-empty retry + reasoning-ignore + human
 grep -E "^explain-retry-probe" /tmp/explain-retry.log || true
 rm -f /tmp/explain-retry.log
 
+# ---------- 22) 做过的东西三源聚合探针（s83，裁决 2026-09-13-app-management-ledger §3-S4） ----------
+# 活体：/api/assets 三源形状/排序 null 沉底/白名单边界/存量 plm 无账降级/ws→sid→title 回链解析/405；
+# 桩测：排序比较器提取执行；模板锚：前端六标签+搜索（文件名进 hay）+分页+chips+打开三入口+openSession 复用+红线零删除
+rc=0; node "$ROOT/tools/e2e/assets-probe.js" > /tmp/assets-probe.log 2>&1 || rc=$?
+grep -q "FAIL=0" /tmp/assets-probe.log || rc=$?
+ck "assets probe 28 ck (three-source shape + degrade + backlink + whitelist + sort stub + FE anchors)" $rc
+grep -E "^assets-probe" /tmp/assets-probe.log || true
+rm -f /tmp/assets-probe.log
+
 rm -f /tmp/e2e-v1.md
 echo "=============================="
 echo "chat-link E2E: PASS=$PASS FAIL=$FAIL"

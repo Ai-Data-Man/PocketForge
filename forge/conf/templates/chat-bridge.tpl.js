@@ -1521,6 +1521,13 @@ function faucetGet(path, port, key, parse) {
 // （tbl, description, created_at），由 agent 建表时用已有 faucet 工具写入；桥经 _table 通道只读。
 // agent 写的数据按不可信输入处理：缺 tbl 的行跳过、desc 非字符串跳过、超长截断 200 字符。
 const TINFO_TBL = 'forge_table_info'; // s78-C2：读管线并入 faucetGet（上方），tinfo 行硬化解析闭包移至 dbOverview 调用点
+const META_TBL = 'forge_meta'; // s83（裁决 2026-09-13-app-management-ledger §3-S1/S2）：建库建账表（hints 建库留账义务写入，桥只读）
+// s83: 建账时间字段（forge_meta / forge_table_info 的 created_at，agent 写的字符串）→ epoch ms；缺失/非法 → null（时间无=「—」，不得编造）
+function parseAssetTs(v) {
+    if (typeof v !== 'string' || !v.trim()) return null;
+    const t = Date.parse(v.trim());
+    return Number.isFinite(t) ? t : null;
+}
 async function dbOverview() {
     let list;
     try { list = JSON.parse(await faucetCli(['db', 'list', '--json']) || 'x'); } catch { return { ok: false }; }
@@ -1539,7 +1546,7 @@ async function dbOverview() {
         try { names = ((JSON.parse(await faucetCli(['db', 'schema', svc]) || 'x') || {}).tables || []).map(t => (t && t.name) || '').filter(x => DB_NAME_RE.test(x)); } catch {}
         for (const nm of names) {
             if (n >= 50) { truncated++; continue; }
-            entry.tables.push({ name: nm, rows: null, desc: null }); n++;
+            entry.tables.push({ name: nm, rows: null, desc: null, ts: null }); n++;
         }
     }
     if (port && key) {
@@ -1553,10 +1560,19 @@ async function dbOverview() {
                 for (const row of rows) {
                     if (!row || typeof row !== 'object') continue;
                     if (typeof row.tbl !== 'string' || typeof row.description !== 'string') continue;
-                    m.set(row.tbl, row.description.length > 200 ? row.description.slice(0, 200) : row.description);
+                    m.set(row.tbl, { d: row.description.length > 200 ? row.description.slice(0, 200) : row.description, ts: parseAssetTs(row.created_at) }); // s83: created_at 同轮硬化解析（表级时间账，裁决 §3-S2）
                 }
                 return m.size ? m : null;
-            }).then(m => { if (m) for (const t of en.tables) { const d = m.get(t.name); if (d !== undefined) t.desc = d; } })); // IA-3：与行数取数同轮并发，每库一次请求
+            }).then(m => { if (m) for (const t of en.tables) { const e = m.get(t.name); if (e !== undefined) { t.desc = e.d; t.ts = e.ts; } } })); // IA-3：与行数取数同轮并发，每库一次请求
+            // s83: 每库读 forge_meta 建账行（hints 建库留账义务）——desc/ts/source；缺表/无行/坏行 → null 静默降级（存量服务=来源不详，不考古）
+            jobs.push(faucetGet('/api/v1/' + en.service + '/_table/' + META_TBL + '?max_results=2', port, key, b => {
+                const rows = JSON.parse(b).resource;
+                if (!Array.isArray(rows) || !rows.length) return null;
+                const r = rows.find(x => x && typeof x === 'object');
+                if (!r) return null;
+                const src = typeof r.source === 'string' ? r.source.trim() : '';
+                return { desc: typeof r.description === 'string' ? r.description.slice(0, 200) : null, ts: parseAssetTs(r.created_at), source: wsValidId(src) ? src : null };
+            }).then(m => { if (m) en.meta = m; }));
         }
         await Promise.all(jobs);
     }
@@ -1588,6 +1604,89 @@ async function dbTableSchema(svc, tbl) {
     let samples = null;
     if (port && key) samples = await faucetGet('/api/v1/' + svc + '/_table/' + tbl + '?max_results=3', port, key, b => (JSON.parse(b).resource) || []);
     return { ok: true, columns, samples: Array.isArray(samples) ? samples : null };
+}
+
+// ---- s83: 做过的东西——三源只读聚合（GET /api/assets；裁决 2026-09-13-app-management-ledger §3-S2）----
+// 无参数、无持久化（dbOverview 同哲学克隆）；三源=faucet 表（含 forge_meta/forge_table_info 人话与时间账）
+// + 工作区顶层成品文件（扩展名白名单）+ 已装技能；排序=ts 倒序、null 沉底；物理路径不进主字段（零术语）。
+// 已装技能扫描（/api/skills 与 /api/assets 技能源同读法；s83 自 /api/skills 处理器逐字节平移提升为具名函数）
+function scanInstalledSkills() {
+    // scan .agents/skills/*/SKILL.md (project) + conf/goose/config/skills (global-ish)
+    const out = [];
+    const dirs = [path.join(ROOT, '.agents', 'skills')];
+    for (const d of dirs) {
+        try {
+            for (const ent of require('fs').readdirSync(d, { withFileTypes: true })) {
+                if (!ent.isDirectory()) continue;
+                const f = path.join(d, ent.name, 'SKILL.md');
+                try {
+                    const raw = require('fs').readFileSync(f, 'utf8');
+                    const nl = String.fromCharCode(10);
+                    const lines = raw.split(nl);
+                    let meta = {}; const bodyLines = [];
+                    let inFm = false, fmDone = false, fmMulti = null;
+                    for (const line of lines) {
+                        if (!fmDone && line.trim() === '---') { if (inFm) { fmDone = true; continue; } inFm = true; continue; }
+                        if (inFm && !fmDone) {
+                            const mm = line.match(/^([a-zA-Z_]+):\s*(.*)$/);
+                            if (mm) {
+                                if (mm[2] === '|' || mm[2] === '>') { fmMulti = mm[1]; continue; }
+                                meta[mm[1]] = mm[2];
+                            } else if (fmMulti && /^\s+\S/.test(line)) {
+                                meta[fmMulti] = (meta[fmMulti] ? meta[fmMulti] + ' ' : '') + line.trim();
+                            } else { fmMulti = null; }
+                        } else if (fmDone) bodyLines.push(line);
+                    }
+                    const body = bodyLines.join(nl).trim();
+                    const o = originOf(path.join(d, ent.name)); // s70: 来源标记（无/坏 → null=本机随包）
+                    out.push({ name: ent.name, description: (meta.description || '').replace(/^['\"]|['\"]$/g, ''), body: body.slice(0, 4000), path: f, origin: o ? { source: o.source, repo: o.repo || '' } : null });
+                } catch {}
+            }
+        } catch {}
+    }
+    return out;
+}
+const ASSET_FILE_RE = /\.(xlsx|docx|pdf|html|svg|png|jpg|jpeg|csv)$/i; // 成品白名单（裁决 §3-S2）：非白名单不出——替代出路=右栏浏览全部/本对话文件树仍在
+async function assetsOverview() {
+    const items = [];
+    const wsm = readWsMap();
+    const sm = sessionMeta();
+    const srcOf = wsId => { const sid = (wsId && wsm[wsId] && wsm[wsId].sid) || null; return { sid, title: sid ? (sm.bySid.get(sid) || null) : null }; };
+    // 源1 表：dbOverview 扩展读（每库 forge_meta 建账行 + 表级 forge_table_info 说明/时间）
+    const ov = await dbOverview();
+    if (ov.ok) {
+        for (const s of ov.services) {
+            const m = s.meta || null;
+            const src = srcOf(m && m.source);
+            for (const t of s.tables) {
+                if (t.name.indexOf('forge_') === 0) continue; // 建账表不进清单（同 🗄️数据 tab 的 forge_* 系统表边界）
+                items.push({ kind: 'tbl', name: s.service + '.' + t.name, human: t.desc || (m && m.desc) || null, ts: t.ts || (m && m.ts) || null, srcSid: src.sid, srcTitle: src.title, ref: { svc: s.service, tbl: t.name } });
+            }
+        }
+    }
+    // 源2 文件：各工作区顶层成品文件（白名单）；回链=ws-map sid + 会话标题（/api/workspaces 同款管线）
+    try {
+        for (const ent of FSS.readdirSync(ART_DIR, { withFileTypes: true })) {
+            if (!ent.isDirectory() || ent.name.startsWith('.') || !wsValidId(ent.name)) continue;
+            const src = srcOf(ent.name);
+            let ents = [];
+            try { ents = FSS.readdirSync(path.join(ART_DIR, ent.name), { withFileTypes: true }); } catch {}
+            for (const f of ents) {
+                if (!f.isFile() || f.name.startsWith('.') || !ASSET_FILE_RE.test(f.name)) continue;
+                let mt = null;
+                try { mt = FSS.statSync(path.join(ART_DIR, ent.name, f.name)).mtimeMs; } catch {}
+                items.push({ kind: 'file', name: f.name, human: null, ts: mt, srcSid: src.sid, srcTitle: src.title, ref: { ws: ent.name, path: f.name } });
+            }
+        }
+    } catch {}
+    // 源3 技能：/api/skills 同读法；非会话产出无回链锚（前端不渲染来源行），时间=SKILL.md mtime
+    for (const sk of scanInstalledSkills()) {
+        let mt = null;
+        try { mt = FSS.statSync(sk.path).mtimeMs; } catch {}
+        items.push({ kind: 'skill', name: sk.name, human: (sk.description || '') || null, ts: mt, srcSid: null, srcTitle: null, ref: { name: sk.name } });
+    }
+    items.sort((a, b) => ((a.ts == null) - (b.ts == null)) || ((b.ts || 0) - (a.ts || 0))); // ts 倒序，null 沉底
+    return { ok: true, items };
 }
 
 // ---- GET /api/report：本地诊断报告（小白发给帮忙的人看）----
@@ -2249,39 +2348,7 @@ async function handleHttp(req, res) {
     } else if (url === '/healthz') { res.writeHead(200); res.end('ok'); }
     else if (url === '/api/skills') {
         // scan .agents/skills/*/SKILL.md (project) + conf/goose/config/skills (global-ish)
-        const out = [];
-        const dirs = [path.join(ROOT, '.agents', 'skills')];
-        for (const d of dirs) {
-            try {
-                for (const ent of require('fs').readdirSync(d, { withFileTypes: true })) {
-                    if (!ent.isDirectory()) continue;
-                    const f = path.join(d, ent.name, 'SKILL.md');
-                    try {
-                        const raw = require('fs').readFileSync(f, 'utf8');
-                        const nl = String.fromCharCode(10);
-                        const lines = raw.split(nl);
-                        let meta = {}; const bodyLines = [];
-                        let inFm = false, fmDone = false, fmMulti = null;
-                        for (const line of lines) {
-                            if (!fmDone && line.trim() === '---') { if (inFm) { fmDone = true; continue; } inFm = true; continue; }
-                            if (inFm && !fmDone) {
-                                const mm = line.match(/^([a-zA-Z_]+):\s*(.*)$/);
-                                if (mm) {
-                                    if (mm[2] === '|' || mm[2] === '>') { fmMulti = mm[1]; continue; }
-                                    meta[mm[1]] = mm[2];
-                                } else if (fmMulti && /^\s+\S/.test(line)) {
-                                    meta[fmMulti] = (meta[fmMulti] ? meta[fmMulti] + ' ' : '') + line.trim();
-                                } else { fmMulti = null; }
-                            } else if (fmDone) bodyLines.push(line);
-                        }
-                        const body = bodyLines.join(nl).trim();
-                        const o = originOf(path.join(d, ent.name)); // s70: 来源标记（无/坏 → null=本机随包）
-                        out.push({ name: ent.name, description: (meta.description || '').replace(/^['\"]|['\"]$/g, ''), body: body.slice(0, 4000), path: f, origin: o ? { source: o.source, repo: o.repo || '' } : null });
-                    } catch {}
-                }
-            } catch {}
-        }
-        json200(res, out);
+        json200(res, scanInstalledSkills()); // s83: 读法平移至具名函数（/api/assets 技能源共用）
     }
     else if (url.startsWith('/vendor/')) {
         const name = decodeURIComponent(url.slice('/vendor/'.length));
@@ -2782,6 +2849,12 @@ const ext = path.extname(f).toLowerCase();
         dbTableSchema(qp.get('svc') || '', qp.get('tbl') || '')
             .then(out => res.end(JSON.stringify(out)))
             .catch(() => res.end(JSON.stringify({ ok: false, err: '取不了表结构，稍后再试。' })));
+    }
+    else if (url === '/api/assets') {
+        // s83: 做过的东西三源聚合（只读；无参数无持久化，Origin 校验走 handleHttp 顶部全局规则）；仅 GET
+        if (req.method !== 'GET') { res.writeHead(405); res.end(); return; }
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        assetsOverview().then(out => res.end(JSON.stringify(out))).catch(() => res.end(JSON.stringify({ ok: false })));
     }
     else if (url === '/api/sessions/archive') {
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });

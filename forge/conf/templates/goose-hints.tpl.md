@@ -8,6 +8,7 @@
 - 进程管家：process-compose（API http://127.0.0.1:8099）。查看进程：`"__FORGE_ROOT__\bin\pc\process-compose.exe" -p 8099 process list`
 - 数据库网关 faucet：REST http://127.0.0.1:8091 ，MCP 工具 faucet_* 已挂载。
   - 建新库：先建 SQLite 文件 data/sqlite/<名>.db，再 `faucet db add --name <名> --driver sqlite --dsn <绝对路径> --data-dir data/faucet`，然后重启 faucet 进程（pc process restart faucet）。
+  - 建库留账：建新库完成时，在同库建一张 forge_meta 表（三列：description 说明、created_at 建库日期、source 来源）并写一行——description 用一句中文人话说清这个库是给谁做什么的、created_at 填建库日期、source 填本对话工作区目录名（每条消息系统备注里 data/artifacts/ 后面那串）。设置面板「做过的东西」清单靠这行账显示这个库的来历；漏写不会报错（只会显示成来源不详）。刚建的新库要用 faucet REST 直接写（地址见下方「应用运行时清单」），faucet_* MCP 工具可能还看不到新库。
   - 日常读写用 faucet_query / faucet_insert / faucet_update / faucet_describe_table。
   - 数据发现纪律：用户提到数据/表/报表但没给文件时，先用 faucet_list_services + faucet_list_tables 看库里有什么，用一两句人话（哪个服务哪张表、大概多少行、内容是什么）向用户确认后再动手。
   - 引用识别：消息里出现「数据库表 <服务>.<表>」就是 faucet 里的确定表名，直接用 faucet_query 等工具操作它，不猜、不改名、不要求用户澄清。
