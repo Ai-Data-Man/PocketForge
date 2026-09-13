@@ -149,6 +149,22 @@
 
 ### 遗留 UNVERIFIED（不阻塞设计，阻塞实现方案）
 
-1. 桥/外部进程改写 permission.yaml 后运行中 goose 是否热感知重读（决定 B1 撤销的生效时机文案）。
+1. ~~桥/外部进程改写 permission.yaml 后运行中 goose 是否热感知重读（决定 B1 撤销的生效时机文案）~~ → **VERIFIED-RUN（2026-09-13，s82 批 B1 前置关项，结论=热感知，同会话下一轮即生效、无需重启，双向皆然）**：详见末尾「B1 前置验证附注」。
 2. ~~我方权限卡当前实际渲染的按钮集合（B2 核查对象，本机一验即知）~~ → **VERIFIED-RUN（2026-09-13，s79 批 B2 关项，结论=是无需修）**：隔离真 goose v1.50（假 provider+产品 permission.yaml，s78d loadskill 同法）捕获真 request_permission 帧=恰四选项 allow_always/allow_once/reject_once/reject_always（optionId=kind，goose server.rs:1271-1278 构造面源码同证）；前端权限卡分支（chat.tpl.html 原文提取）喂真帧=四按钮全人话（✅ 这次可以/✅ 以后都允许/🚫 这次不行/🚫 以后都别问）零英文回退、逐个可点各回发 acp_reply 携对应 optionId+callId、60s 超时自动「这次不行」（reject_once）。证据：tmp/b2-perm/b2-perm-card-probe.js 10/10 + perm-frame.json 留档。
 3. Manus Library 内部组织细节（搜索/分组粒度），官方文档未披露；不影响设计输入（我们已有更明确的信息架构规范）。
+
+## B1 前置验证附注（s82 批，2026-09-13）
+
+**问题**（§B.3 遗留 UNVERIFIED #1）：外部进程（桥/面板）改写 permission.yaml 后，运行中的 goose 是否热感知重读生效——决定 B1 面板「撤销即生效还是需重启」的文案。
+
+**VERIFIED-RUN 结论：热感知，同会话下一轮 prompt 即生效，无需重启；授予/撤销双向皆然。**
+
+- 实验（tmp/b1-hotperm/hotperm-probe.js，b2-perm 同法隔离：独立 GOOSE_PATH_ROOT + 产品 permission.yaml 拷贝 + 假 OpenAI provider 离线确定性 + GOOSE_MODE=smart_approve，直驱 goose v1.50.0 ACP，零 dev 栈接触；权限回执恒 reject_once=实验侧零 mutate）。工具面=load_skill（产品 yaml smart_approve.ask_before 既有项，smart_approve 模式下必出卡）：
+  - T1 基线：出卡（ask 态确认）。
+  - **外部改文件#1**（user.always_allow 加 `load_skill`，goose 进程不重启不通知）→ T2 **同会话**再触发：**不出卡**（user 段终局放行，71ms）；T3 新会话（同进程）：不出卡。
+  - **外部改文件#2 反向**（删该条目）→ T4 同会话：**出卡**；T5 新会话：出卡。
+- 机理（v1.50.0 源码核对 + 盘面快照物证，与行为互证）：
+  - `PermissionManager::new` 启动时一次性读盘进内存 RwLock（crates/goose/src/config/permission.rs:47-60），`get_permission` 只读内存——**没有文件 watcher，逐次求值不读盘**。若运行期一次 mutate 都不发生，外部改写理论上可无限期滞留。
+  - 唯一换血点=`mutate_permission_map`（#11383：锁 → **重读磁盘最新版** → 应用变更 → 原子写 → `*in_memory_map = latest_map`，permission.rs:196-222）。goose 自身 mutate 会「顺路」把外部改写吸收进内存。
+  - mutate 在普通对话轮次里高频发生：smart_approve 求值序 user 段最先且终局（permission_inspector.rs `inspect`），非 user 命中的工具走注解/LLM judge 路径，judge 判非只读即落 ask_before 缓存（`cache_non_readonly_decision`）、工具注解批刷 ask_before（`apply_tool_annotations`）——都是 mutate。盘面物证：实验每阶段快照（tmp/b1-hotperm/yaml-snapshots/）显示 T1/T2/T4-T5 期间 goose 各重写过一次 yaml（段序重排=HashMap 序归一化），**每次重写都保住了外部刚加/刚删的条目**（s2→s3 差分：重写后 user.always_allow 首行即外部加入的 `- load_skill`；s5→s6 差分：外部删除被保持），终态语义与初始拷贝对账仅多 goose 自身的 `extensionmanager__manage_extensions` 缓存行、零实验残留。
+- B1 文案输入：**「撤销即生效」成立，但生效时机=下一次权限求值/下一轮对话（非即时推送）**。面板撤销（从 user.always_allow 删条目）后，同一运行中 goose 的下一轮即恢复必问；无需重启 goose 或桥。注意两点边界：① 载体是 goose 自身的下一次 mutate（实验中每轮 prompt 都触发；纯零工具轮次理论上存在更长的滞留窗，护航期文案不必暴露此细节，按「下一轮生效」表述即可）；② 外部写若与 goose mutate 并发，goose 侧重读-合并逻辑（#11383 锁+重读）保证外部条目不丢（实验双向往返零丢失实证）。
