@@ -819,7 +819,10 @@ const SID_RESCUED_TEXT = '这个对话的通道已失效，自动恢复也已经
 // s76 遗留⑦（文案家族）：非 NF 的 turn 失败三档人话——措辞缩写自前端错误卡（chat.tpl endStream :977/:980，s25/s50e 既有裁决）；
 // reject 路径没有消息操作条，故不提「取回修改」；桥端只一句话提示，换线按钮等完整交互仍属前端 endStream 路径
 const TURN_KEY_TEXT = '这家服务商的 Key 没配上或不对。到 ⚙️ 设置 → 服务商档案，填好 Key 再发一次。';
-const TURN_DOWN_TEXT = '看起来是大模型服务商那边暂时不通（不是你的操作问题）。等一两分钟再发一次；老不行就换个模型（点上面的模型名字）。';
+// research/26 R3: down 文案补时间预期——「顶部提醒条」=聊天区顶部健康告警条，消失=恢复信号，别无限等
+const TURN_DOWN_TEXT = '看起来是大模型服务商那边暂时不通（不是你的操作问题）。一般几分钟内恢复；顶部提醒条消失就是好了。等一两分钟再发一次；老不行就换个模型（点上面的模型名字）。';
+// research/26 R1: stale-model 错误卡口径（对齐告警条文案）——下架形态等也不会好，卡给出路=换模型
+const TURN_STALE_TEXT = '你正在用的模型已被服务商下架，等也不会好。点 ⚙️ 换一个模型：⟳ 拉取→勾选→保存。';
 const TURN_RETRY_TEXT = '这一轮没完成，请再发一次试试。';
 function sendTurn(ws, sid, text, allowRescue) {
     const id = nextId++;
@@ -848,7 +851,9 @@ function sendTurn(ws, sid, text, allowRescue) {
         if (SESSION_NF_RE.test(etxt)) { ws.send({ sys: 'error', text: TURN_LOST_TEXT }); return; }
         // s76 遗留⑦: 非 NF 失败不再透英文内部错误（原 'turn failed: '+原文），按上方统计同款归类给人话：unauthorized→Key 指引（S26 正则不含 401，归类门须先于 S26 门）；
         // S26 命中（rate/timeout/server）→服务商暂时不通；其余→通用重发。null 守卫在上方 etxt 构造处（qa s76 P2-A：畸形 error:null 帧曾在此 TypeError 打死桥，reject 回调在无 try 的 onAcpData 栈）
-        ws.send({ sys: 'error', text: classifyUpstream(etxt) === 'unauthorized' ? TURN_KEY_TEXT : S26_ERR_RE.test(etxt) ? TURN_DOWN_TEXT : TURN_RETRY_TEXT });
+        // research/26 R1: 错误卡先读最近健康缓存态——stale-model=换模型出路（等也不会好）；down+key=Key 口径；down=不通（TURN_DOWN_TEXT 已含 R3 时间预期）；无态/ok=原按错误文本归类链不动。同因同回合与告警条并存互指：条=常驻锚，卡=出路
+        const hs = healthCache.state;
+        ws.send({ sys: 'error', text: hs === 'stale-model' ? TURN_STALE_TEXT : hs === 'down' && healthCache.kind === 'key' ? TURN_KEY_TEXT : hs === 'down' ? TURN_DOWN_TEXT : classifyUpstream(etxt) === 'unauthorized' ? TURN_KEY_TEXT : S26_ERR_RE.test(etxt) ? TURN_DOWN_TEXT : TURN_RETRY_TEXT });
     } });
     // reject 回调可能来自 onAcpData 栈（不在 handleClient try 内），acp 写失败必须就地接住
     try {

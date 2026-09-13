@@ -285,10 +285,10 @@ ck "delete-latest sid-reuse prompt non-silent (rescue/human-error)" $rc
 grep -E "^SID_A|^RESCUE|^SYS-ERROR" /tmp/sid-reuse-rescue.log || true
 rm -f /tmp/sid-reuse-rescue.log
 
-# ---------- 18b) 救援判据守卫桩测（qa s76 P2-A）：畸形 reject 载荷不崩桥/去重/alive 门 + 非 NF 失败三档人话（s76 遗留⑦），模板提取零网络 ----------
+# ---------- 18b) 救援判据守卫桩测（qa s76 P2-A）：畸形 reject 载荷不崩桥/去重/alive 门 + 非 NF 失败三档人话（s76 遗留⑦）+ 错误卡健康态三档（research/26 R1）+ S26 对 goose 五型穿透（R4），模板提取零网络 ----------
 rc=0; node "$ROOT/tools/e2e/rescue-guard-probe.js" > /tmp/rescue-guard.log 2>&1 || rc=$?
 grep -q "FAIL=0" /tmp/rescue-guard.log || rc=$?
-ck "rescue guard probe 22 ck (null/string/{} payload + dedup + alive gate + non-NF humanized x3)" $rc
+ck "rescue guard probe 31 ck (null/string/{} payload + dedup + alive gate + non-NF humanized x3 + health-state x3/ctrl + S26 five-type penetration R4a-c)" $rc
 grep -E "^rescue-guard-probe" /tmp/rescue-guard.log || true
 rm -f /tmp/rescue-guard.log
 
@@ -307,7 +307,7 @@ rm -f /tmp/ws-rollback.log
 # 旧对象 .raw 兜底、rawOutput-only 形态、live_output 不污染、explain 载荷喂料扩容（rawInput/status/exitCode/toolName/trunc）、桥侧措辞静态钉
 rc=0; node "$ROOT/tools/e2e/toolcard-frames-probe.js" > /tmp/toolcard-frames.log 2>&1 || rc=$?
 grep -q "FAIL=0" /tmp/toolcard-frames.log || rc=$?
-ck "toolcard frames probe 39 ck (dual-form content + rawOutput fallback + explain payload feeding + param-area key masking incl. JSON quote forms)" $rc
+ck "toolcard frames probe 45 ck (dual-form content + rawOutput fallback + explain payload feeding + param-area key masking incl. JSON quote forms + endStream error card health-state research/26 R1/R3)" $rc
 grep -E "^toolcard-frames-probe" /tmp/toolcard-frames.log || true
 rm -f /tmp/toolcard-frames.log
 

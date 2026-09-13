@@ -8,6 +8,7 @@
 //   4) live_output 帧不得污染 _out
 //   5) explain 载荷喂料扩容：rawInput/status/exitCode/toolName/trunc 进载荷；增强 title 形态下 toolName 不从 title 反推
 //   6) 桥侧 explain_tool 喂料措辞静态钉：旧「(空)」歧义措辞不得回潮，新字段进缓存键
+//   9) endStream 错误卡读健康帧（research/26 R1/R3）：stale-model/down+key/down 三档 + 无帧/ok 原链不动
 // 无桥无网络，秒级。已挂 e2e-chat.sh 第 19 节；也可单跑 node tools/e2e/toolcard-frames-probe.js
 'use strict';
 const fs = require('fs');
@@ -192,6 +193,34 @@ if (require.main === module) {
     ck('桥侧空输出无歧义措辞在场', bridgeSrc.includes('（该步骤没有返回文字输出）'));
     ck('桥侧缓存键含 model+新喂料字段+\\0 安全分隔（s78 P3-A 换模型不吃旧解释；防旧键碰撞/跨字段拼接碰撞）', /update\(\[model, t0, o0, i0, stt, ec, String\(msg\.toolName \|\| ''\)\]\.join\('\\u0000'\)\)/.test(bridgeSrc));
     ck('桥侧 user 消息改用拼装 um（rawInput/status/exit_code/toolName 入料）', bridgeSrc.includes("{ role: 'user', content: um }"));
+
+    // 9) research/26 R1/R3: endStream 错误卡读健康帧三档——stale-model=换模型出路（等也不会好）；down+key=Key 口径；
+    //    down=补时间预期（R3）；无帧/ok=原链不动。提取前端 endStream 原文跑，健康帧=healthSync 维护的 lastHealthFrame 桩注入
+    {
+        const mES = html.match(/function endStream\(\)\{ if\(streamEl\)\{[\s\S]*?\n\} \}/);
+        if (!mES) die('NOT FOUND: endStream（模板结构漂移，先改探针）');
+        const mkES = new Function('streamEl', 'mdRender', 'msgButtons', 'chat', 'lastOrig', 'providerList', 'lastHealthFrame', 'document', 'wssend', 'addInfo', 'pendingRetry', 'busy', 'txt', 'submit', mES[0] + '\nreturn endStream;');
+        const runES = (streamText, hf) => {
+            const streamEl = el('div'); streamEl.dataset = {}; streamEl.textContent = streamText;
+            const chat = el('div');
+            mkES(streamEl, t => t, () => el('div'), chat, '帮我做个表', [], hf, { createElement: t => el(t) }, () => {}, () => {}, null, false, { value: '' }, () => {})();
+            const info = (chat.children || []).filter(c => (c.className || '').split(/\s+/).includes('info'));
+            return { text: (info[0] || {}).textContent || '', n: info.length };
+        };
+        const S26TXT = 'Ran into this error: Provider request failed with status 404: model not found.'; // provider_err 段不含 401/key 令牌，文本链必落 down 族
+        const a = runES(S26TXT, { state: 'stale-model' });
+        ck('R1a 前端 stale-model → 换模型出路（不含「等一两分钟」安慰）', a.n === 1 && a.text.startsWith('💡 你正在用的模型已被服务商下架') && a.text.includes('拉取') && !a.text.includes('等一两分钟'));
+        const b = runES(S26TXT, { state: 'down', kind: 'key' });
+        ck('R1b 前端 down+key → Key 口径', b.n === 1 && b.text.includes('这家服务商的 Key 没配上或不对'));
+        const c = runES(S26TXT, { state: 'down' });
+        ck('R3a 前端 down → 补时间预期半句', c.n === 1 && c.text.includes('一般几分钟内恢复；顶部提醒条消失就是好了'));
+        const d = runES(S26TXT, null);
+        ck('R1c 前端无健康帧 → 原链不动（无时间预期半句）', d.n === 1 && d.text.includes('等一两分钟') && !d.text.includes('一般几分钟内恢复'));
+        const e2 = runES(S26TXT, { state: 'ok' });
+        ck('R1d 前端健康 ok → 原链不动（ok 态不劫持错误文本）', e2.n === 1 && e2.text.includes('等一两分钟') && !e2.text.includes('一般几分钟内恢复'));
+        const g = runES('Ran into this error: 401 Unauthorized: api key invalid', null);
+        ck('R1e 前端 401 文本无健康帧 → 既有 Key 分支保持', g.n === 1 && g.text.includes('这家服务商的 Key 没配上或不对'));
+    }
 
     console.log('toolcard-frames-probe PASS=' + pass + ' FAIL=' + fail);
     process.exit(fail ? 1 : 0);

@@ -150,5 +150,5 @@
 ### 遗留 UNVERIFIED（不阻塞设计，阻塞实现方案）
 
 1. 桥/外部进程改写 permission.yaml 后运行中 goose 是否热感知重读（决定 B1 撤销的生效时机文案）。
-2. 我方权限卡当前实际渲染的按钮集合（B2 核查对象，本机一验即知）。
+2. ~~我方权限卡当前实际渲染的按钮集合（B2 核查对象，本机一验即知）~~ → **VERIFIED-RUN（2026-09-13，s79 批 B2 关项，结论=是无需修）**：隔离真 goose v1.50（假 provider+产品 permission.yaml，s78d loadskill 同法）捕获真 request_permission 帧=恰四选项 allow_always/allow_once/reject_once/reject_always（optionId=kind，goose server.rs:1271-1278 构造面源码同证）；前端权限卡分支（chat.tpl.html 原文提取）喂真帧=四按钮全人话（✅ 这次可以/✅ 以后都允许/🚫 这次不行/🚫 以后都别问）零英文回退、逐个可点各回发 acp_reply 携对应 optionId+callId、60s 超时自动「这次不行」（reject_once）。证据：tmp/b2-perm/b2-perm-card-probe.js 10/10 + perm-frame.json 留档。
 3. Manus Library 内部组织细节（搜索/分组粒度），官方文档未披露；不影响设计输入（我们已有更明确的信息架构规范）。
