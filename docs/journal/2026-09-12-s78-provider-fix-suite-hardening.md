@@ -221,3 +221,7 @@
 - 痛点（模型名稳定性）最优解=**官方直连**非自建网关：DeepSeek 官方定价页原文「deepseek-v4-flash 等 legacy 名仍接受」+自动路由 V4.1-Flash；GLM 4.5-Flash 下线自动路由 4.7-Flash——OpenAI 先例三件套官方白送、中转站不给。**事故②形态在官方直连下结构性不存在**。
 - 自建网关可行但定位=dev 聚合件：gpt-load（官方 Windows 安装器+组级别名+凭证池）≥new-api（AGPL+RC 线）>one-api（上游停摆 8 个月）>uni-api（无 Windows 资产）。反方证据如实：本云主机三次中断=妻子链路指本机网关拓扑劣化。
 - 场景裁决：目标机主链路→C 官方直连（面板 host+key 两格，VERIFIED-SRC 单真相源）；dev 机→可选 B gpt-load；A 中转仅过渡。**随收工汇报置顶给用户**。
+
+## catalog 字段级合并（4427603）+§11b 新数据点
+- readMcpCatalog 整文件优先→字段级合并（运行时键优先+缺键模板回填+缺条目补尾；修前红 8/11→修后 11/11 转正 D8 节）；已知语义留档：删内置条目会被模板回补（模板=保底目录）。
+- **§11b 套件内 4/6 红新数据点**（standalone 过/HEAD 对照绿/与 diff 无关，取证 tmp/reclaim-grab-*.log）——推翻「纯瞬态」判断，QA 专项已派（假说：套件前段进程树残态影响 baseline 计数）。
