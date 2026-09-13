@@ -197,3 +197,8 @@
 - **旧归因被否定**：pg stop/start 过渡竞态矩阵 12/12 全绿（热目录端口 1-3s 即开+串跑时间几何不成立）；签名 B（文件未采纳 PG 行）代码仅两路可达，存活假说=采纳写文件被 catch{} 静默吞（FS/AV 锁）→ 根因 UNRESOLVED，观察项收窄「仅签名 B 复现才追」。§11b 19 跑 0 复现判瞬态（扩展 spawn 实测 1.4-1.8s）。
 - 副产物：PFdrill2 僵尸态补丁（/End 再 /Run，冷启 6.0s）；孤儿 postgres backend 家族+1 数据点。
 - 探针容差两处落地（§11b 门 20s/p34 waitPg 50s），复跑双绿。
+
+## UX 启发式自查（tmp/s78-ux-heuristic-audit.md，透镜=agentic-design 32 模式+Nielsen+R1-R4，21 截图）
+- **P1-1 活体实锤**：审批卡「以后都允许」居首位+零持久化预告+全 UI 无撤销——dev 栈 permission.yaml 累积 always_allow 后 smart_approve/approve 两档 shell 零卡直跑，**「重要操作问我」承诺被静默架空**（=妻子机一次点击后的形态，s78e 观察项的证据升级）。改法 a 前端重排文案（本批）；b「已记住的允许」管理面（维持触发器但证据增强）。
+- P2-2：60s 超时零预告（timeoutPreviewed=false 实测）/超时拒后任务未停止连环出卡/decline 工具卡英文原文透出（未过桥人话门）。P2-3：停止零交代/僵尸审批卡/排队消息无标记。P3-4：Tab 可发现性（占位符只提 @）。
+- 做得好七项记录（防重复找茬）：工具卡可见性/✨预览三段/@自解释/健康条三档文案/welcome 动线/顶栏模型/R1-R4 无新违规。
