@@ -1564,14 +1564,20 @@ async function dbOverview() {
                 }
                 return m.size ? m : null;
             }).then(m => { if (m) for (const t of en.tables) { const e = m.get(t.name); if (e !== undefined) { t.desc = e.d; t.ts = e.ts; } } })); // IA-3：与行数取数同轮并发，每库一次请求
-            // s83: 每库读 forge_meta 建账行（hints 建库留账义务）——desc/ts/source；缺表/无行/坏行 → null 静默降级（存量服务=来源不详，不考古）
+            // s83: 每库读 forge_meta 建账行（hints 建库留账义务）——desc/ts/source；缺表/无行 → null 静默降级（存量服务=来源不详，不考古）
+            // s83 返工🟡3: 逐行校验（对齐上方 tinfo :1560-1564 读法纪律）——字段类型合法才算好行，坏行跳过取首个好行；全坏=null 不编造
             jobs.push(faucetGet('/api/v1/' + en.service + '/_table/' + META_TBL + '?max_results=2', port, key, b => {
                 const rows = JSON.parse(b).resource;
                 if (!Array.isArray(rows) || !rows.length) return null;
-                const r = rows.find(x => x && typeof x === 'object');
-                if (!r) return null;
-                const src = typeof r.source === 'string' ? r.source.trim() : '';
-                return { desc: typeof r.description === 'string' ? r.description.slice(0, 200) : null, ts: parseAssetTs(r.created_at), source: wsValidId(src) ? src : null };
+                for (const row of rows) {
+                    if (!row || typeof row !== 'object') continue;
+                    const desc = typeof row.description === 'string' ? row.description.slice(0, 200) : null;
+                    const ts = parseAssetTs(row.created_at);
+                    const src = typeof row.source === 'string' ? row.source.trim() : '';
+                    if (desc === null && ts === null && !wsValidId(src)) continue;
+                    return { desc, ts, source: wsValidId(src) ? src : null };
+                }
+                return null;
             }).then(m => { if (m) en.meta = m; }));
         }
         await Promise.all(jobs);
@@ -1686,7 +1692,9 @@ async function assetsOverview() {
         items.push({ kind: 'skill', name: sk.name, human: (sk.description || '') || null, ts: mt, srcSid: null, srcTitle: null, ref: { name: sk.name } });
     }
     items.sort((a, b) => ((a.ts == null) - (b.ts == null)) || ((b.ts || 0) - (a.ts || 0))); // ts 倒序，null 沉底
-    return { ok: true, items };
+    const out = { ok: true, items };
+    if (!ov.ok) out.tblMiss = true; // s83 返工💭6: faucet 不可达→表静默缺席可观察化（不编造条目，前端一行标记同款「来源不详」诚实降级）
+    return out;
 }
 
 // ---- GET /api/report：本地诊断报告（小白发给帮忙的人看）----

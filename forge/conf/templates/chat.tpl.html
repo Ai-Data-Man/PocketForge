@@ -908,15 +908,23 @@ function openSession(sid){
   tabMenuClose(); // s78 qa P3-D：切会话关 Tab 菜单+清过滤词（侧栏点击/搜索窗选会话/撤回恢复重载全走此口；menu 不关则 Esc 前残留且再按 Tab 被「已开不重置」守卫卡成无操作）
   pendingForNew=false; lastOrig=null; // C3: 切旧会话不补发队列；s50e: 清重发原文，防上一会话原文串进本会话（回放末尾 endStream 可能读它）
   if(pendingQueue.length){ rollbackQueue('你切到了别的对话，刚才排队没发出去的话已放回，稍后再发一次。'); } // C3: 用户改主意切走，别替他发
+  const prevSid=currentSid, prevChat=[...chat.childNodes]; // s83 返工🟡2: 死链 load 失败时还原现场（存节点引用非 innerHTML 串——保住卡上的事件处理器）
   // 先订阅再载入：load 的历史回放通知才能流进 UI
   wssend({type:'subscribe',sessionId:sid});
   chat.innerHTML=''; toolCards.clear();
   currentSid=sid; sessionId=sid;
   [...document.querySelectorAll('.sitem')].forEach(el=>el.classList.remove('active'));
   // 回放末尾 ACP 不发 stop 事件：load 完成后手动收尾，否则最后一条消息停在原始 markdown
+  // s83 返工🟡2: rpc2 只 resolve 从不 reject（catch 原是死代码）；goose 对死 sid 秒回 error 帧（-32002 Session not found）或空回——在 resolve 侧显式判失败甩进 catch
   rpc2('session/load',{sessionId:sid,cwd:window.__root||'.',mcpServers:[]})
-    .then(()=>{ endStream(); setBusy(false); })
-    .catch(()=>addErr('打开会话失败'));
+    .then(d=>{ if(!d||!d.result) throw 0; endStream(); setBusy(false); })
+    .catch(()=>{ // 还原原页面：聊天区不清空、会话指针/侧栏高亮/桥侧绑定还回去，再给人话（不阻塞面板——面板开合由入口自理）
+      chat.innerHTML=''; prevChat.forEach(n=>chat.appendChild(n));
+      currentSid=prevSid; sessionId=prevSid;
+      document.querySelectorAll('.sitem').forEach(el=>el.classList.toggle('active', !!prevSid&&el.dataset.sid===prevSid));
+      if(prevSid) wssend({type:'subscribe',sessionId:prevSid}); // prompt 只信桥侧绑定（s50h FIND-4），必须还绑回原会话
+      addErr('那段对话已经不在了（可能被删过）。东西本身还在，可以直接打开用。');
+    });
 }
 let lastKnownModel=null;
 function renderModelLabel(){
@@ -1817,7 +1825,7 @@ $('db-q').oninput=()=>{ clearTimeout(dbQT); dbQT=setTimeout(dbPaint,200); }; // 
 // ===== ✨ 做过的东西（裁决 2026-09-13-app-management-ledger §3-S3）：三源只读聚合清单 =====
 // R2 规模声明：护航期三源合计 <100 条 → 搜索+分页（12/页卡片档，pageSlice 复用）；类型 chips=筛选非分组（A.4）。
 // R4：主名=人话（表=forge_table_info 说明或「服务.表」结构性兜底；文件=文件名；技能=说明），无=不编造（时间「—」）。
-let madeAll=null, madeQT=null;
+let madeAll=null, madeQT=null, madeTblMiss=false; // s83 返工💭6: 表源缺席标记（faucet 不可达→表静默缺席→一行可见说明）
 const madeFilter={chip:'all',q:''};
 const MADE_KIND_ZH={tbl:'🗄️ 数据表',file:'📄 文件',skill:'✨ 技能'};
 function madeChips(){
@@ -1841,6 +1849,7 @@ function madePaint(){
     box.innerHTML='<div class="fnote">'+(madeAll.length?'没找到跟“'+esc(madeFilter.q)+'”有关的东西。换个词试试，或直接在聊天里问小 forge。':'还没做过的东西。让小 forge 做个报表、存个数据，就会出现在这里。')+'</div>';
     pagerPaint('made-pager',1,1,0,null); return;
   }
+  if(madeTblMiss){ const mn=document.createElement('div'); mn.className='fnote'; mn.style.margin='4px 0'; mn.textContent='表这次没数进来（数据库暂时连不上）；文件和技能不受影响。'; box.appendChild(mn); } // 💭6 同款诚实降级标记
   for(const it of ps.rows){
     const row=document.createElement('div');
     row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line)';
@@ -1867,7 +1876,7 @@ async function loadMadeUI(){
   try{
     const r=await fetch('/api/assets'); const d=await r.json();
     if(!d||!d.ok){ box.innerHTML='<div class="fnote">现在看不到，稍后再试。</div>'; return; }
-    madeAll=d.items||[];
+    madeAll=d.items||[]; madeTblMiss=!!d.tblMiss;
   }catch(e){ box.innerHTML='<div class="fnote">读取失败：'+esc(e.message)+'</div>'; return; }
   madeChips(); madePaint();
 }
@@ -1877,13 +1886,20 @@ function openAsset(it){
   if(it.kind==='tbl'){
     mtabs.db[1]=true; // 防双拉竞态：占掉懒加载位，本次显式刷新为唯一一次（否则两次 loadDbUI 后完成者重绘会折叠掉定位展开；重开面板照旧全部重置）
     showMtab('db');
-    loadDbUI().then(()=>{ $('db-q').value=it.ref.tbl; dbPaint(); const h=[...$('db-list').querySelectorAll('div')].find(el=>/cursor:\s*pointer/i.test(el.getAttribute('style')||'')); if(h) h.click(); }); // 过滤词=表名 → 首个命中行点开展开（cssText 经浏览器归一化带空格，选择器子串不可靠）
+    // s83 返工🟡1: ref.svc 先定位服务分组（组头「📦 服务 · N 张表」），组内表名全等再点——跨服务同名表/子串表名（parts vs parts_e2e）不再盲点首个可点行
+    loadDbUI().then(()=>{
+      $('db-q').value=it.ref.tbl; dbPaint(); // 过滤词=表名（缩窄交互沿用；命中判定不依赖过滤）
+      const g=[...$('db-list').children].find(el=>{ const h=el.firstElementChild; return h&&h.textContent.split(' · ')[0]==='📦 '+it.ref.svc; });
+      if(!g) return;
+      const row=[...g.querySelectorAll(':scope > div:not(:first-child)')].find(r=>r.children[0]&&r.children[0].children[0]&&r.children[0].children[0].textContent===it.ref.tbl);
+      if(row) row.children[0].click(); // 点行头=用户手点同款展开（列级人话+样例）
+    });
   } else if(it.kind==='file'){
     window.open('/preview/'+encodeURIComponent(it.ref.ws+'/'+it.ref.path),'_blank'); // fileTreeEl 同款预览链路
   } else if(it.kind==='skill'){
     $('open-skills').click();
     const t0=Date.now();
-    const iv=setInterval(()=>{ if(installedAll.length||Date.now()-t0>5000){ clearInterval(iv); $('skills-q').value=it.ref.name; paintInstalled(); } },200); // 等弹窗拉完已装清单再过滤定位
+    const iv=setInterval(()=>{ if(installedAll.length||Date.now()-t0>5000){ clearInterval(iv); $('skills-q').value=it.ref.name; paintInstalled(); if(!installedAll.length) $('skills-list').innerHTML='<div class="fnote">技能清单这次没拉到（可能没连上），关掉这个窗口重开试试；技能本身还在。</div>'; } },200); // 等弹窗拉完已装清单再过滤定位；s83 返工💭5: 超时+空清单=拉取失败，一行人话不静默
   }
 }
 
