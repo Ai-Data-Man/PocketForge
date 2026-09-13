@@ -225,3 +225,8 @@
 ## catalog 字段级合并（4427603）+§11b 新数据点
 - readMcpCatalog 整文件优先→字段级合并（运行时键优先+缺键模板回填+缺条目补尾；修前红 8/11→修后 11/11 转正 D8 节）；已知语义留档：删内置条目会被模板回补（模板=保底目录）。
 - **§11b 套件内 4/6 红新数据点**（standalone 过/HEAD 对照绿/与 diff 无关，取证 tmp/reclaim-grab-*.log）——推翻「纯瞬态」判断，QA 专项已派（假说：套件前段进程树残态影响 baseline 计数）。
+
+## QA 专项 s80g：§11b 套件内红根因定案（daa2843）
+- 根因（VERIFIED-RUN）：§11 建会话即删→冷/载窗 close（fire-and-forget）与扩展树装配竞态→**§11 树永久泄漏 9 进程**→§11b baseline 被残树污染（count 永不超 baseline=断言算术问题，s80 门限放宽对此结构性无效）。矩阵 A/B/C 证伪①③+忠实批 3/3 红+observer CSV+pid-birth 定案。
+- 测试基建三修：§11↔§11b 位次对调/reclaim 探针 pid-SET 语义（外来瞬态免疫）+红时自清/§13 pg 假就绪门（grep Ready 命中 Not Ready 子串）。触发配方 3/3 绿+全量双绿。
+- **产品级缺陷转 engineering（批已派）**：建会话秒删=进程永久泄漏（用户可达路径）；修向=close 等装配窗或确认重试。附带登记：冷窗 session/new 快败族/§10 GH_TOKEN 状态依赖红/§18c 沙盒批载竞态/pg 孤儿崩溃环二实锤。
