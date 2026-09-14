@@ -40,3 +40,10 @@
 - 换线（dev）：forge-router.json 池置顶 mimo-v2.5（deepseek-v4.1-flash 留池备回切）+ secrets GOOSE_MODEL_NAME=mimo-v2.5 + pc restart chat-bridge；直连探测 200 正常出话。
 - 补考：e2e-chat 首跑仍 58/59（§18 红，原始日志被 rm -f 吞证）；**修 §18 红时留证**（s81 §11b 同款漏洞补齐）后整卷重跑 **59/59 EXIT=0**（§18 救援路径 TEXT="收到" 实录；首跑红=换线后桥冷态瞬态）。终态基线 **e2e-chat 59/59 + fuzz 189/189 + appcap 13/13** 全绿。
 - 出厂默认模型决策点（归用户）：v0.9.13 包出厂默认=deepseek-v4.1-flash（P6）。官方故障是临时事件且新用户撞死模型有健康告警+换线引导兜底（§8 矩阵 B2 实测该路径可用）——主控建议 v0.9.13 不改、维持现包；若要出厂默认改 mimo-v2.5 需重打包+重过发布门。
+
+## 会话后补 2：用户试玩包（2026-09-15 晨，用户点名「出个包我自己点一点」）
+
+- 出厂默认模型换 **mimo-v2.5**（bootstrap 种子×2/config/tpl 四处，池留 v4.1-flash 备官方恢复后切回；commit 45735c2）；重打包 **dist/PocketForge-20260915-v0.9.13.zip sha256 68ec9823…**（前指纹 799dfd44 作废——发版时以重建为准）。
+- 出厂验证副本（C:\PF-VERIFY，已清）：冷启 healthz 200、config.yaml 物化 GOOSE_MODEL=mimo-v2.5、/api/apps 出厂空态、真会话出厂默认直通回复「收到」。
+- 环境实录：桥固定 8790+单实例去重（s27）——dev 栈在跑时第二实例桥按设计退出；nats 8222 监控口无动态化（pc down 后 TIME_WAIT 窗内重启撞 FTL，观察项）；pc「Terminating 70s」卡态 stop→restart 恢复。用户试玩前 dev 栈已全停。
+- **用户试玩树就绪：C:\PocketForge**（v0.9.13/mimo 出厂/key 预配免引导条/纯 ASCII 路径），等用户双击「启动数字员工.cmd」实测。
