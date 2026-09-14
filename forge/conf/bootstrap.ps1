@@ -105,11 +105,19 @@ foreach ($stubName in @('web-search','goose-doc-guide')) {
 
 # 1c) memory junction：goose-mcp 硬编码 %APPDATA%\Block\goose\config\memory（无视 GOOSE_PATH_ROOT，
 #     见 docs/research/04-goose.md）。NTFS junction 重定向到便携目录（免管理员；卸载=删 junction）。
+#     s85/P4: 守卫从 Test-Path 改为「是 Junction 且 Target 存在」双条件——悬挂 junction 的 Test-Path 同样返回
+#     True，旧守卫在用户改名/搬迁整个文件夹后永不重建（经该路径的记忆读写静默 FileNotFoundError）；失效即删旧重建。
 $memPort = Join-Path $ForgeRoot 'conf\goose\config\memory'
 New-Item -ItemType Directory -Force -Path $memPort | Out-Null
 $memApp  = Join-Path $env:APPDATA 'Block\goose\config\memory'
-if (-not (Test-Path $memApp)) {
+$memOk = $false
+if (Test-Path $memApp) {
+    $memIt = Get-Item $memApp -Force
+    $memOk = ($memIt.LinkType -eq 'Junction') -and (Test-Path ($memIt.Target -join ''))
+}
+if (-not $memOk) {
     New-Item -ItemType Directory -Force -Path (Split-Path $memApp) | Out-Null
+    if (Test-Path $memApp) { Remove-Item $memApp -Force -Recurse }
     cmd /c mklink /J "$memApp" "$memPort" | Out-Null
 }
 
@@ -125,7 +133,7 @@ if (-not (Test-Path $secrets)) {
         'FORGE_AGENT_API_KEY=',
         'FORGE_AGENT_HOST=http://127.0.0.1:20128/v1/',
         # 种子=可选池首模型；2026-09-08 myopencode 线路已死（服务商侧 404），s76 遗留①收尾（幂等补键同此种子）
-        'GOOSE_MODEL_NAME=deepseek-v4-flash'
+        'GOOSE_MODEL_NAME=deepseek-v4.1-flash'
     )
     [IO.File]::WriteAllLines($secrets, $lines)
 } else {
@@ -134,7 +142,7 @@ if (-not (Test-Path $secrets)) {
     $have = @{}
     foreach ($l in $existing) { $k = $l.Split('=')[0]; $have[$k] = $true }
     $add = @()
-    if (-not $have['GOOSE_MODEL_NAME']) { $add += 'GOOSE_MODEL_NAME=deepseek-v4-flash' }
+    if (-not $have['GOOSE_MODEL_NAME']) { $add += 'GOOSE_MODEL_NAME=deepseek-v4.1-flash' }
     if (-not $have['FORGE_AGENT_API_KEY']) { $add += 'FORGE_AGENT_API_KEY=' }
     if (-not $have['FORGE_AGENT_HOST']) { $add += 'FORGE_AGENT_HOST=http://127.0.0.1:20128/v1/' }
     if ($add.Count -gt 0) { Add-Content $secrets ($add -join [Environment]::NewLine) }
