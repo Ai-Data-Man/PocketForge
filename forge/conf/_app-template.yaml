@@ -5,14 +5,15 @@
 #   2. 禁止定义基础设施键（nats/faucet/goose-*）。
 #   3. 数据落 data/，日志走 pc 统一 rotation。
 #   4. 注册后执行: pc project update -f conf/process-compose.yaml -f apps/<name>.yaml
+#   5. 值一律用单引号（s88/R2 实锤：${FORGE_ROOT} 替换出的反斜杠路径在双引号里被当转义符，pc 解析即 FTL）。
 processes:
   myapp-<proc>:
-    command: "<可执行文件或脚本，绝对路径用 ${FORGE_ROOT}>"
-    working_dir: "${FORGE_ROOT}"
+    command: '<可执行文件或脚本，绝对路径用 ${FORGE_ROOT}>'
+    working_dir: '${FORGE_ROOT}'
     is_daemon: true
     availability:
       restart: on_failure
     readiness_probe: # 二选一
       http_get: { host: 127.0.0.1, port: 0, scheme: http, path: / }
-      # exec: { command: "cmd /c exit 0" }
-    log_location: "${FORGE_ROOT}/data/logs/myapp-<proc>.log"
+      # exec: { command: 'cmd /c exit 0' }
+    log_location: '${FORGE_ROOT}/data/logs/myapp-<proc>.log'

@@ -28,6 +28,7 @@
 3. 数据永远写 data/ 下；给用户看的页面默认监听 127.0.0.1。
 4. 重启电脑后一切自动回来——不要把状态写到别处。
 5. 建账留痕：apps/<应用名>.yaml 首行（processes: 之前）写一行注释 `# forge-meta: {"description":"一句中文人话说清这个应用给谁做什么","url":"有网页入口就填 http://127.0.0.1:端口，没有就删掉这项","created_at":"YYYY-MM-DD","source":"系统备注里工作区目录名 data/artifacts/<这串>"}`——管理面板靠它显示人话名和『打开看看』按钮。
+6. yaml 里的值（command/working_dir/log_location）一律照模板用单引号，绝对路径写 ${FORGE_ROOT}——管家替换出来是反斜杠 Windows 路径，放进双引号会被当转义符，整个栈都起不来。
 
 ## 定时任务（用户说"每天/每周/每天早上X点"时用）
 - 做三件事：①写配方 conf/goose/config/recipes/<简短英文id>.yaml（title 用中文名给用户看，description 一句话，instructions 写到时要执行的具体指令，指令里也要写绝对路径）；②选一个 cron 表达式；③执行：
@@ -60,6 +61,7 @@
 ## 应用运行时清单（重要）
 - 你只有这些运行时可用：包内 node（bin/node-v22/node-v22.21.1-win-x64/node.exe）、纯静态 HTML、faucet REST。
 - 禁止假设系统装有 python/perl/其他。自建应用的 command 一律用包内 node 绝对路径，或干脆输出静态 HTML 由 node http 服务。
+- command 写法照抄（只改脚本路径，保持单引号）：`command: '${FORGE_ROOT}/bin/node-v22/node-v22.21.1-win-x64/node.exe ${FORGE_ROOT}/data/artifacts/<工作区>/app.js'`——${FORGE_ROOT} 由管家替换成安装目录，双引号会让反斜杠路径解析失败。
 - 访问数据库用 faucet REST（http://127.0.0.1:8092/api/v1/...，key 在 data/faucet/.apikey）。
 ## 沟通规矩
 - 说人话：术语要么不用，要么一句话解释。
