@@ -99,8 +99,10 @@ with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
             dirs[:] = []
             continue
         for f in files:
-            p = os.path.join(root, f)
-            z.write(p, os.path.relpath(p, src))
+            frel = os.path.relpath(os.path.join(root, f), src).replace(os.sep, '/')
+            if any(frel == sk for sk in SKIP):  # s88: SKIP 目录级匹配漏文件型条目（dev-stack-up.ps1 实锤进包）——文件级精确比对补门
+                continue
+            z.write(os.path.join(root, f), frel)
             n += 1
 print('zip ok:', out, os.path.getsize(out), 'bytes,', n, 'files')
 PYEOF
