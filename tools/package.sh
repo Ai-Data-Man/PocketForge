@@ -90,7 +90,7 @@ PYEOF
 python - "$TMP/forge-pkg" "$OUT" <<'PYEOF'
 import sys, os, zipfile
 src, out = sys.argv[1], sys.argv[2]
-SKIP = ('data/chat-window-profile', 'data/pw-chat-check', 'data/pw-chat-v2check', 'data/backups', 'conf/goose/state', 'conf/goose/data', '.playwright-mcp')
+SKIP = ('data/chat-window-profile', 'data/pw-chat-check', 'data/pw-chat-v2check', 'data/backups', 'conf/goose/state', 'conf/goose/data', '.playwright-mcp', 'tmp', 'conf/dev-stack-up.ps1', 'apps')
 n = 0
 with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
     for root, dirs, files in os.walk(src):
