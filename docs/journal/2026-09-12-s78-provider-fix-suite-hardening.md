@@ -388,3 +388,10 @@
 - 待用户：v0.9.12 发版时机 / faucet v0.1.13 / 官方直连切换（research/30）/ 外网爆破安全处置。
 
 [产出循环 04:53] 第 54 轮全绿（§18c 观察窗 28/30 零复发）——窗口终点最后一轮
+
+## ✅ v0.9.12 发布完成（release id 388128046，2026-09-14 凌晨）
+- 产物：PocketForge-20260914-v0.9.12.zip 323,561,974B / 25,305 文件，sha256 872fcee533a5d4c157d6c09e2ea8914c11ab2d3da973fe439f348c5cc91393b8；双资产（zip+.sha256）上传+**API 下载对账 PASS**（octet-stream 全量拉回逐字节一致）。
+- 发布门：沙盒全新解压冷启（PFdrill2/forge-sbx 通道首用于沙盒——真因=zip 缺 data/logs 空目录致 wrapper 重定向失败，非通道死）cold-surface 15/15+v0.9.12 新面 spot-check（/api/assets、hints 端口动态化在冷箱正确物化为本机端口、scheduler wrapper、SHA256-EXE 54）。
+- 正文=精修版（3,294 chars，含 EDR 段+差量实测数字：25,282 同/约 20 文本+1 exe=goose v1.50）。尖峰检测 WARN=预期（上版包 predates SHA256-EXE 交付物）。
+- 流程教训：①release.sh 假定 tag 已在本地（缺 tag → target_commitish 422）；②branch+tag 须先推 origin（target SHA 远端可解析）；③发布 API 拉资产须 Accept: application/octet-stream。
+- 分支+tag 已推 origin（38b06be..675a84b + v0.9.12）。待用户：faucet v0.1.13 / 官方直连切换 / 外网爆破处置（STATE 挂账）。
