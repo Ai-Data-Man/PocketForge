@@ -1,6 +1,6 @@
 {
   "name": "forge-router",
-  "models": ["deepseek-v4-flash"],
+  "models": ["deepseek-v4.1-flash"],
   "model_provider": "openai",
   "base_url": "http://127.0.0.1:20128/v1",
   "api_key_env": "FORGE_AGENT_API_KEY",
