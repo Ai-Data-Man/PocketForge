@@ -1752,7 +1752,8 @@ function appParseYaml(text) {
         const port = parseInt(probe.port, 10);
         if (Number.isFinite(port) && port > 0) { // 模板占位 port: 0 不合成
             let p = String(probe.path || '/'); if (!p.startsWith('/')) p = '/' + p;
-            probeUrl = String(probe.scheme || 'http') + '://' + String(probe.host || '127.0.0.1') + ':' + port + p;
+            const sch = /^https?$/.test(String(probe.scheme || 'http')) ? String(probe.scheme) : 'http'; // s88 P2-1: scheme 白名单——非 http/https 一律回落 http（与 meta.url 通道对称）
+            probeUrl = sch + '://' + String(probe.host || '127.0.0.1') + ':' + port + p;
         }
     }
     return { procs, probeUrl };

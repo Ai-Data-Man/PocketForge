@@ -3,7 +3,7 @@
 // 覆盖：巨型/二进制字节谱/空文件/纯注释（含伪 forge-meta XSS 向量）/meta JSON 形态变体（数组/数字/字符串/
 // 超长/尾注释）/键名与缩进注入（引号键/tab/深缩进/CRLF/孤 CR）/BOM/scheme 伪协议注入/URL 白名单正负例/
 // 10 路并发一致性/零持久化（conf/apps.env.yaml 与目录快照不变）。
-// 判卷红线：不炸端点（恒 200 ok:true）、输出形状恒定、坏输入不落任何持久化、伪协议 url 不可执行形态。
+// 判卷红线：不炸端点（恒 200 ok:true）、输出形状恒定、坏输入不落任何持久化、伪协议 url 不进输出（白名单/回落 http）。
 // 用法：node tools/e2e/apps-fuzz-probe.js [bridge-base]（缺省 http://127.0.0.1:8790）
 'use strict';
 const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto');
@@ -99,10 +99,9 @@ const cleanup = () => { for (const f of Object.keys(FIX)) { try { fs.unlinkSync(
     ck('F10 键名/缩进注入（引号键/tab/深缩进/孤 CR）不炸且 procs 元素 name 恒 string（端点形状）', !!by['fuzz-shapes'] && by['fuzz-shapes'].procs.every(p => typeof p.name === 'string'));
     ck('F11 CRLF 正常形状可解析（Windows 编辑产物）', by['fuzz-crlf'] && by['fuzz-crlf'].procs.length === 1 && by['fuzz-crlf'].procs[0].name === 'fuzz-crlf-web' && by['fuzz-crlf'].url === 'http://127.0.0.1:18951/', JSON.stringify(by['fuzz-crlf'] && by['fuzz-crlf'].procs));
     ck('F12 BOM 文件：降级不炸（条目在列，形状恒定）', !!by['fuzz-bom']);
-    // scheme 伪协议注入：probeUrl 合成通道固定 '://'+host:port 拼接——javascript:// 后必是 host:port（JS 注释形态，不可执行）
+    // scheme 伪协议注入：probeUrl 合成通道 scheme 白名单（s88 P2-1 修复）——非 http/https 一律回落 http，javascript: 不可能进输出
     const sc = by['fuzz-scheme'];
-    const schemeSafe = !!sc && typeof sc.url === 'string' && /^javascript:\/\/[\w.-]+:\d+\//.test(sc.url) && !/javascript:[^/]/.test(sc.url);
-    ck('F13 scheme 注入只产生注释形态（javascript://host:port/，无可执行 JS 段）——QA 已另报 🟡 scheme 白名单不对称', schemeSafe, 'url=' + (sc && sc.url));
+    ck('F13 scheme 白名单负例：scheme: javascript 回落 http——url 以 http:// 开头（P2-1 修后收紧，非旧注释形态）', !!sc && typeof sc.url === 'string' && sc.url.startsWith('http://'), 'url=' + (sc && sc.url));
     ck('F14 meta.url 白名单正例：HTTPS:// 大写协议通过（i 旗）', by['fuzz-urls'] && by['fuzz-urls'].url === 'HTTPS://ok.example/x', by['fuzz-urls'] && by['fuzz-urls'].url);
     ck('F15 meta.url 白名单负例：data: 伪协议拒（url=null 不放死链）', by['fuzz-urlb'] && by['fuzz-urlb'].url === null, 'url=' + (by['fuzz-urlb'] && by['fuzz-urlb'].url));
     ck('F16 meta.url 引号向量：协议合法即原样输出（前端 esc 转义已核——桥不猜），无伪协议', by['fuzz-urlc'] && /^https?:\/\//i.test(by['fuzz-urlc'].url), 'url=' + (by['fuzz-urlc'] && by['fuzz-urlc'].url));
