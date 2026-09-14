@@ -288,8 +288,9 @@ rm -f /tmp/preupgrade-backup.log
 rc=0; node "$ROOT/tools/e2e/sid-reuse-rescue-probe.js" > /tmp/sid-reuse-rescue.log 2>&1 || rc=$?
 grep -q "PASS" /tmp/sid-reuse-rescue.log || rc=$?
 ck "delete-latest sid-reuse prompt non-silent (rescue/human-error)" $rc
-grep -E "^SID_A|^RESCUE|^SYS-ERROR" /tmp/sid-reuse-rescue.log || true
-rm -f /tmp/sid-reuse-rescue.log
+grep -E "^SID_A|^TEXT|^RESCUE|^SYS-ERROR|hard timeout|silent" /tmp/sid-reuse-rescue.log || true
+# s88：红时留证（s81 §11b 同款——rm -f 无条件删曾吞掉 mimo 换线后的红证据）
+if [ "$rc" = "0" ]; then rm -f /tmp/sid-reuse-rescue.log; else cp /tmp/sid-reuse-rescue.log "$ROOT/tmp/sid-reuse-red-$(date +%H%M%S).log" && rm -f /tmp/sid-reuse-rescue.log; fi
 
 # ---------- 18b) 救援判据守卫桩测（qa s76 P2-A）：畸形 reject 载荷不崩桥/去重/alive 门 + 非 NF 失败三档人话（s76 遗留⑦）+ 错误卡健康态三档（research/26 R1）+ S26 对 goose 五型穿透（R4），模板提取零网络 ----------
 rc=0; node "$ROOT/tools/e2e/rescue-guard-probe.js" > /tmp/rescue-guard.log 2>&1 || rc=$?
