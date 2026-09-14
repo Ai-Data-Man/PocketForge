@@ -129,7 +129,9 @@ if (-not (Test-Path $secrets)) {
     $lines = @(
         "PC_TOKEN=$tok",
         'FAUCET_ADMIN_EMAIL=admin@pocketforge.local',
-        'FAUCET_ADMIN_PW=' + (& $chars).Substring(0,24),
+        # s89/Y1: 括号必加——PS 数组元素里逗号优先级高于 +，裸 'K=' + expr, 会拼成 string+数组 展开成两元素
+        # （首启产物 FAUCET_ADMIN_PW= 与随机串各占一行，s88 §8 字节级首启检视实锤，历版皆然）
+        ('FAUCET_ADMIN_PW=' + (& $chars).Substring(0,24)),
         'FORGE_AGENT_API_KEY=',
         'FORGE_AGENT_HOST=http://127.0.0.1:20128/v1/',
         # 种子=可选池首模型；2026-09-08 myopencode 线路已死（服务商侧 404），s76 遗留①收尾（幂等补键同此种子）
