@@ -540,6 +540,15 @@ done
 for i in 2 3 4 5; do cmp -s "$CT/r1" "$CT/r$i" || OKC=0; done # FINDING-1 收紧：原始响应逐字节一致（表源缺席/条目漂移立即红）
 rm -rf "$CT"
 [ "$OKC" = "1" ]; ck "assets 5 concurrent GETs: each 200/ok/shape+sort intact + byte-identical (s83; FINDING-1 fixed: faucetCli single-flight+backoff)" $?
+
+# ===== s88 追批（s87 遗留①，QA 角色纪律#3）：GET /api/apps 注册面模糊批 =====
+# apps/*.yaml 畸形谱（巨型 2 万键/二进制字节谱/空文件/纯注释 XSS 向量/meta JSON 形态变体/键名缩进注入/BOM/
+# scheme 伪协议/URL 白名单正负例/CRLF）自建自清（fuzz-* 前缀，用后删除回基线）——不炸端点/形状恒定/零持久化/
+# 10 路并发逐字节一致/POST+DELETE 405。断言明细见 apps-fuzz-probe.js（21 asserts）。
+"$FRX/bin/node-v22/node-v22.21.1-win-x64/node.exe" "$(dirname "$0")/apps-fuzz-probe.js" "$B" >/dev/null 2>&1; ck "apps-fuzz malformed registry yaml, 21 asserts (s88)" $?
+# 请求面：畸形/超长 query 被 url 剥离（split('?')[0]）恒 200 不 500
+curl -s -m 20 "$B/api/apps?q=%zz" | grep -q '"ok":true' && curl -s -m 20 "$B/api/apps?q=%00" | grep -q '"ok":true' && curl -s -m 20 -G "$B/api/apps" --data-urlencode "q=$(python -c 'print("Q"*5000)')" | grep -q '"ok":true'; ck "apps malformed/overlong query ignored, no 500 (s88)" $?
+
 echo "=============================="
 echo "fuzz: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" = "0" ]
