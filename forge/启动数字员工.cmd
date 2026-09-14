@@ -6,14 +6,11 @@ set "FORGE_ROOT=%~dp0"
 if "%FORGE_ROOT:~-1%"=="\" set "FORGE_ROOT=%FORGE_ROOT:~0,-1%"
 
 rem ---- s85/P3 guard: PostgreSQL upstream cannot init when the install path itself contains non-ASCII chars (audit section 3).
-rem ---- cmd cannot reliably test non-ASCII itself -> one-line PowerShell probe via env var (no path-quoting hazards).
-powershell -NoProfile -Command "if ($env:FORGE_ROOT -match '[^\x00-\x7F]') { exit 1 }" >nul 2>&1
-if errorlevel 1 (
-  echo [PocketForge] 出错了：这个文件夹的路径里有中文或特殊字符，数字员工没办法从这里启动。
-  echo 请把整个 PocketForge 文件夹移动到纯英文、数字的路径下（例如 D:\PocketForge），再重新双击启动。
-  pause
-  exit /b 1
-)
+rem ---- cmd cannot test non-ASCII itself and cannot echo non-ASCII reliably -> PowerShell probes via env var and,
+rem ---- on failure, prints the Chinese plain-language message (base64 = UTF-8; wording = audit section 3:
+rem ---- folder path has Chinese/special chars, move the whole folder to an English path like D:\PocketForge, restart).
+powershell -NoProfile -Command "$m=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('W1BvY2tldEZvcmdlXSDlh7rplJnkuobvvJrov5nkuKrmlofku7blpLnnmoTot6/lvoTph4zmnInkuK3mlofmiJbnibnmrorlrZfnrKbvvIzmlbDlrZflkZjlt6XmsqHlip7ms5Xku47ov5nph4zlkK/liqjjgIINCuivt+aKiuaVtOS4qiBQb2NrZXRGb3JnZSDmlofku7blpLnnp7vliqjliLDnuq/oi7HmlofjgIHmlbDlrZfnmoTot6/lvoTkuIvvvIjkvovlpoIgRDpcUG9ja2V0Rm9yZ2XvvInvvIzlho3ph43mlrDlj4zlh7vlkK/liqjjgIINCg==')); if ($env:FORGE_ROOT -match '[^\x00-\x7F]') { [Console]::Out.Write($m); exit 1 }"
+if errorlevel 1 ( pause & exit /b 1 )
 
 if not exist "%FORGE_ROOT%\data\logs" mkdir "%FORGE_ROOT%\data\logs"
 
