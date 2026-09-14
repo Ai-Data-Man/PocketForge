@@ -65,3 +65,12 @@
 - 手动/探针侧驱动 `pc project update` 的唯一安全形态=**完整复刻拉起脚本的 -f 列表与环境**；只想「撤掉一个 app」也必须带上全部基础文件（或改走 pc process stop/start 单进程级操作）。
 - 产品路径不受影响：agent 的 env 链（桥→pc 守护→goose）自带 FORGE_ROOT，hints 步骤 2 的命令形态经实测安全。
 - crash-loop 的日志签名=进程 stdout 反复同一条 GBK 乱码错误；看 pc.log 定位，不要猜。
+
+## #30 bash heredoc/echo 传输层吃转义——反斜杠内容禁走 shell 拼接通道（2026-09-14/15 s86-s88）
+
+**现象**：一夜三起同根事故——①s86 模板首版 `\bin` 被写成 `\x08in`（python 源 `\b` 经 heredoc 折半成 `\b`→退格字节，pg-init 早先"通过"是守卫在坏行前退出的假绿）；②PFdrill2 启动 wrapper 内容损坏（`forge` 的 `\f` 被吃成 form-feed→路径变 `PocketForgeorge`，中文被写成 `\u542f` 字面量→任务 exit 1 静默栈不起）；③s88 终验 fixture 的 `\"` 经 heredoc 落盘成字面 `\"`→进程起不来。
+**根因**：本环境 bash 的 heredoc/echo 传输对内容做一层转义解释（`\b→\b`、`\f`、`\"` 等反斜杠序列不保真）；凡内容含反斜杠/非 ASCII，经 shell 拼接通道写盘即损坏。
+**修法/纪律**：
+- 写含反斜杠或中文的文件：一律 Write 工具直写，或 python 内 `chr(92)`/base64 构造敏感字符，**禁止 heredoc/echo 管道**。
+- 写完必做字节级自查（backspace=0x00 计数、目标子串在场、编码断言）——s88 主控修 wrapper 用的"按工作样板字节级等长替换"是同族稳妥形态。
+- 事故签名：`.cmd`/yaml 里出现 `PocketForgeorge` 类缺字路径、`\u542f` 字面量、0x08 字节、`\"` 残留；计划任务 exit 1 零输出。
