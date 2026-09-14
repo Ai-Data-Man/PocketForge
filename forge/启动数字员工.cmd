@@ -1,5 +1,7 @@
 @echo off
 setlocal EnableExtensions
+rem s85/P1: console to UTF-8 so Node/Go stdout renders correctly (audit 2026-09-14 runbook section 1)
+chcp 65001 >nul
 set "FORGE_ROOT=%~dp0"
 if "%FORGE_ROOT:~-1%"=="\" set "FORGE_ROOT=%FORGE_ROOT:~0,-1%"
 if not exist "%FORGE_ROOT%\data\logs" mkdir "%FORGE_ROOT%\data\logs"

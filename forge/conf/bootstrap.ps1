@@ -31,13 +31,15 @@ if (Test-Path $cfgPath) {
 [IO.File]::WriteAllText($cfgPath, $cfg)
 
 # 1b) memory MCP 包装脚本生成（goose spawn 扩展子进程时丢弃父 env → wrapper 内强制便携根）
+#     s85/P2: 模板纯 ASCII + %~dp0 自推导根目录——不依赖代码页，非 ASCII 安装路径下同样可解析（审计 §2 推荐档）；
+#     写出仍做 CRLF 规范化（cmd 解析纪律，模板漂移到 LF 也不进生成物）
 $memTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\memory-mcp.tpl.cmd'))
-$memCmd = $memTpl.Replace('__FORGE_ROOT__', $ForgeRoot)
+$memCmd = $memTpl.Replace("`r`n","`n").Replace("`n","`r`n")
 [IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\memory-mcp.cmd'), $memCmd)
 
-# 1b-3) s66/ADR-0011: pg-init 包装脚本生成（pc oneshot 进程用，幂等守卫在模板内）
+# 1b-3) s66/ADR-0011: pg-init 包装脚本生成（pc oneshot 进程用，幂等守卫在模板内；s85/P2 同 1b 纯 ASCII 方案）
 $pgTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\pg-init.tpl.cmd'))
-[IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\pg-init.cmd'), $pgTpl.Replace('__FORGE_ROOT__', $ForgeRoot))
+[IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\pg-init.cmd'), $pgTpl.Replace("`r`n","`n").Replace("`n","`r`n"))
 
 # 1b-4) s66 阶段二: pg readiness TCP 探活脚本生成（pc exec 的 cmd /C 对内联 -e 有三层引号转义问题，故落文件）
 $probeTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\pg-probe.tpl.js'))
