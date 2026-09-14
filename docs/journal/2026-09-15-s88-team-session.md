@@ -1,0 +1,35 @@
+# 2026-09-14/15 s88 团队会话：应用运行面板 + §8 安装矩阵 + v0.9.13 终包
+
+用户两主线：①应用管理功能理解错误（真用途=展示小forge自建数据应用的地址/运行状态）②严格压缩包安装/升级安装测试，全部功能复测不留异常。窗口 2026-09-14 21:56 → 09-15 05:50。主控调度 9 个子智能体批次（PM×1/engineer×4/QA×2/researcher×1 + 微型批），全部 commit+push origin。
+
+## 批次流水
+
+| 批 | 内容 | 产出 |
+|---|---|---|
+| 1a pm | 主线1 归约→裁决 | docs/verdicts/2026-09-14-app-runtime-panel.md（34f3709）：⚙️ 第 7 tab「🚀 小应用」= apps/*.yaml × pc 状态只读观察面；建账=agent 义务（forge-meta 注释行）；启停/日志/编辑全裁；PROTECTED += apps/ 同批强制；s83 勘误（「应用」折叠为产出物、漏 ADR-0003 运行模型=用户说「理解错误」的根源） |
+| 1b eng | s85 审计 P1-P7 落地 | chcp 65001 成套 + 模板 %~dp0 纯 ASCII + P3 预检（base64 中文提示）+ P4 junction 守卫 + P6 模型名四处 + P7 文档串 + package.sh SKIP(tmp/dev-stack-up/apps) + PROTECTED apps/（f0c0e40..3166fd0）；自愈两事故：cmd if 块中文 echo 切烂、heredoc 吃转义层（教训 #28） |
+| 2 eng | 应用运行面板 S1-S5 | hints 协议第 5 条建账+模板占位（5f7f0f3）；桥 GET /api/apps +171 行自研 YAML 行级解析器零新依赖（7f7b95d）；前端第 7 tab 唯一动作「打开看看」；apps-probe 44ck 入 e2e §23（0feb6e8）；真会话活体 agent 无提示自发落账（51a8960）；教训 #29（pc project update 缺 env=crash-loop） |
+| 3 qa | 两批复审 | tmp/s88-qa-review.md（62403df）：两批通过；P2-1 probeUrl scheme 白名单不对称→微型批一行修（48d36e6）；补 apps-fuzz 21 asserts（fuzz 187→189）；三基线 59/59+189/189+13/13；假9router 勘误（STATE 已同步） |
+| 4a 主控 | 打包 v0.9.13 | 一建包抓到 SKIP 文件级匹配缺陷（目录级漏 conf/dev-stack-up.ps1，工程干跑自证 oracle）→ 文件级比对补门（4f651c5）重建；审计：17 文本变/零 exe/零泄漏 |
+| 4b qa | §8 安装矩阵 | runbook docs/runbooks/2026-09-15-s88-install-matrix.md（31a0d40）：冷装 A1-A7 + 升级装 B1-B5；**四红实测**——R1 聚合器粘行让协议形态 app 下次启动整栈 FTL、R2 模板教双引号 ${FORGE_ROOT} 转义错、R3 栈内升级 runner 随停栈死（status 永卡）、R4 v0.9.12 存量升级删 apps/（旧 runner 无保护）；A5 真模型轮=上游 502 黑洞环境红 |
+| 4c eng | 四红修复 | R1 双聚合器另起行+e2e 钉子（9ee63ea）；R2 单引号化（6a6f496）；Y1 PW 种子（365b37c）；R3 四臂取证定案 pc down 按 PPID 收杀→Start-Process 中介 spawn+完整升级循环演练 done=True（33f0209）；R4 备份集补 apps/（缓解）；journal s89（161d569） |
+| 4d 主控 | 终包+发布门 | 重建终版包 799dfd44…（323,567,788B/25,298 文件）；发布门=终版包冷装冒烟：协议形态 app（forge-meta 首行+单引号）装配→面板 run+url+listenPorts→落真实页→**重启持久**全绿（A6 红格全链转绿）；期间主控自踩 #29 同坑一次（project update 缺 env），launcher 全 env 重启自愈——教训复证 |
+| 支线 | 产品方向调研 | docs/research/2026-09-14-product-direction-scan.md（28af056）：goose 上游零动作/Manus 正交/OpenClaw WATCH 维持；U1/U2 首推项与主线修复重合（方向互证）；产出 U4/T3 六计数/卡点关键词规格改写已 backlog 化（370c21b） |
+
+## 环境事件（主控处置）
+
+- PFdrill2 wrapper（drill-devrel-wrap.cmd）内容损坏（`\f` 被转义吃成 `PocketForgeorge`+`\u542f` 字面量）→ 按工作样板字节级等长替换修复（GBK+CRLF）——与 #28 heredoc 家族同根。
+- dev 栈停/起四次（矩阵让位/恢复/终验让位/恢复），PFdrill2 僵尸态两次均按 s80 补丁（/End→/Run）恢复；新启动器（chcp+P3 预检）经计划任务真实路径首证。
+
+## 终态
+
+- **v0.9.13 终包就绪**（发布时机归用户）：dist/PocketForge-20260915-v0.9.13.zip sha256 799dfd44…；发布草稿 docs/v0.9.13-release-notes-draft.md（含 R4 存量升级手动备份步骤+s89 修复段）。
+- 基线：fuzz 189/189 + appcap 13/13 恒定；e2e-chat 58/59（唯一红=sid-reuse-rescue 依赖 LLM 连通，本窗上游黑洞，上游恢复后复验——代码面无涉，§4-5 协议形态重放 3/3 绿补位）。
+- dev 栈 8 进程健康（PFdrill2 承载）；沙盒零残留；工作树净。
+
+## 遗留
+
+1. 上游模型恢复后：e2e-chat 全量复验 59/59 + e2e.sh 整跑（s89 已抽段重放绿）。
+2. A5 真模型 GUI 等价链路沙盒复验（本窗上游黑洞降级；dev 侧活体 7/9 已证建账，2 红均为探针环境）。
+3. v0.9.13 发布（tag/release 归用户拍板；发版时按惯例重建+发布门复跑）。
+4. QA 留档建议级：appsOverview 单飞合并（a7890ad 先例）/BOM·深缩进 yaml 降级精度——不立项。
