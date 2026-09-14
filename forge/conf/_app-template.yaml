@@ -1,3 +1,4 @@
+# forge-meta: {"description":"<一句中文人话说清这个应用给谁做什么>","url":"<有网页入口就填 http://127.0.0.1:端口，没有就删掉这项>","created_at":"<YYYY-MM-DD>","source":"<本对话工作区目录名>"}
 # 应用注册模板（Agent 复制本文件到 apps/<name>.yaml 并填写）
 # 规则（ADR-0003）：
 #   1. 顶层只写 processes:，进程键名必须以应用名开头（如 myapp-web）。
