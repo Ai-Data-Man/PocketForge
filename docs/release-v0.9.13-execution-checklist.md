@@ -4,7 +4,7 @@
 
 ## 执行步骤
 
-1. **前置复跑**（上游 LLM 恢复后）：`bash tools/e2e/e2e-chat.sh` 全量 59/59（当前 58/59 唯一红=sid-reuse-rescue 依赖 LLM 连通，2026-09-15 04:45 三探仍黑洞）。
+1. ~~**前置复跑**~~ **已完成（2026-09-15 晨）**：deepseek 官方故障期间换线 mimo-v2.5 后 e2e-chat 全量 **59/59**（§18 救援路径实录回话）；基线 59/59+fuzz 189/189+appcap 13/13 全绿。
 2. **tag 先行**（发版流程教训一）：`git tag v0.9.13 && git push origin v0.9.13`（当前分支 experimental/delivery-v1；tag 打在 0681362 或其后收口提交上——39fe8ff 之后的 docs 提交不影响包内容）。
 3. **发布**：`GH_TOKEN=<PAT> bash tools/release.sh v0.9.13`
    - 自动：RELEASE_TAG 精确名打包（会重打包，指纹应与 799dfd44 一致——若不一致说明 tag 后有产品代码变动，停下核对 diff）→ 校验 → 信誉尖峰检测（预期输出「无信誉尖峰」，本版零 exe 变更）→ GitHub Release 创建+双资产上传+回执。
