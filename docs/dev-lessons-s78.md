@@ -55,3 +55,13 @@
 **场景**：用户只给"公司/家/出租屋各一个 IP"的模糊描述，需要从日志定位。
 **方法**：`Microsoft-Windows-TerminalServices-LocalSessionManager/Operational`（TS-LSM）保留的 RDP 成功会话日志比 4624 历史更长（本例 05-20 起 1845 条 vs 4624 仅 33 小时）；其事件 21/24/25 的 Message 内含源网络地址，用正则 `\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b` 提取。再做**行为画像**（小时直方图 + 星期分布 + 连续使用段）与 **geo 多源交叉核验**（vore.top / mir6 / zxinc），即可把"工作日白天固定单 IP / 晚间 5G 动态池 / 周末固定段"三类模式与用户口述地点对齐。
 **判据**：不同 geo 源对同一 IP 结论需一致；用户归属以**行为节律**为主证据（IP 归属地只作辅证，因为 5G CGNAT 池和 IDC 会给出误导性结果）。
+
+## #29 pc project update 按 CLI 客户端 env 插值——手跑必须全 env + 全 -f 文件（2026-09-14 s87）
+
+**现象**：s87 活体探针清理段执行 `pc project update -f <仅 conf/process-compose.yaml>`（execFile 环境来自 git-bash node，无 FORGE_ROOT/FAUCET_PORT）→ `${FORGE_ROOT}` 插值留成字面量 → chat-bridge/faucet/nats 全栈 crash-loop（pc.log 里反复同一条 GBK 乱码错误，实为「系统找不到指定的路径」），桥 ECONNREFUSED。
+**根因**：pc 的 `${VAR}` 配置插值发生在 **CLI 客户端上下文**（project update 把客户端解析后的定义送给守护）——守护自身 env 里的变量救不了客户端缺失的；且 update 是**整组替换**语义：少传一个 -f（ports.env.yaml/apps.env.yaml）= 该组定义整体消失。
+**修法**：恢复 = 重聚合 apps/ + 按 dev-stack-up 全套（3 个 -f + FORGE_ROOT/PC_PORT/FAUCET_PORT/PG_PORT/NO_PROXY 全 env）project update → 8 进程 restarts=0 全健康。
+**要点**：
+- 手动/探针侧驱动 `pc project update` 的唯一安全形态=**完整复刻拉起脚本的 -f 列表与环境**；只想「撤掉一个 app」也必须带上全部基础文件（或改走 pc process stop/start 单进程级操作）。
+- 产品路径不受影响：agent 的 env 链（桥→pc 守护→goose）自带 FORGE_ROOT，hints 步骤 2 的命令形态经实测安全。
+- crash-loop 的日志签名=进程 stdout 反复同一条 GBK 乱码错误；看 pc.log 定位，不要猜。
