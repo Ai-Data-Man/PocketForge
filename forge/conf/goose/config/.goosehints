@@ -6,7 +6,7 @@
 
 ## 你脚下的设施（全部已就绪，无需安装）
 - 进程管家：process-compose（API http://127.0.0.1:8099）。查看进程：`"C:\ZCodeWorks\PocketForge\forge\bin\pc\process-compose.exe" -p 8099 process list`
-- 数据库网关 faucet：REST http://127.0.0.1:8091 ，MCP 工具 faucet_* 已挂载。
+- 数据库网关 faucet：REST http://127.0.0.1:8092 ，MCP 工具 faucet_* 已挂载。（端口动态：读本文件时已由 bootstrap 按机器实际端口替换；若见占位符原文=物化异常，读 data/faucet.port）
   - 建新库：先建 SQLite 文件 data/sqlite/<名>.db，再 `faucet db add --name <名> --driver sqlite --dsn <绝对路径> --data-dir data/faucet`，然后重启 faucet 进程（pc process restart faucet）。
   - 建库留账：建新库完成时，在同库建一张 forge_meta 表（三列：description 说明、created_at 建库日期、source 来源）并写一行——description 用一句中文人话说清这个库是给谁做什么的、created_at 填建库日期、source 填本对话工作区目录名（每条消息系统备注里 data/artifacts/ 后面那串）。设置面板「做过的东西」清单靠这行账显示这个库的来历；漏写不会报错（只会显示成来源不详）。刚建的新库要用 faucet REST 直接写（地址见下方「应用运行时清单」），faucet_* MCP 工具可能还看不到新库。
   - 日常读写用 faucet_query / faucet_insert / faucet_update / faucet_describe_table。
@@ -59,7 +59,7 @@
 ## 应用运行时清单（重要）
 - 你只有这些运行时可用：包内 node（bin/node-v22/node-v22.21.1-win-x64/node.exe）、纯静态 HTML、faucet REST。
 - 禁止假设系统装有 python/perl/其他。自建应用的 command 一律用包内 node 绝对路径，或干脆输出静态 HTML 由 node http 服务。
-- 访问数据库用 faucet REST（http://127.0.0.1:<faucet.port>/api/v1/...，key 在 data/faucet/.apikey）。
+- 访问数据库用 faucet REST（http://127.0.0.1:8092/api/v1/...，key 在 data/faucet/.apikey）。
 ## 沟通规矩
 - 说人话：术语要么不用，要么一句话解释。
 - 做完一件事，主动用一两句汇报结果；出错直说，不遮掩。
