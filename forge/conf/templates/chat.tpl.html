@@ -474,6 +474,7 @@ details.tz[open]>summary::before{content:'▾ '}
     <button class="rtab on mtab" data-pane="ext" role="tab" aria-selected="true">🧠 本事</button>
     <button class="rtab mtab" data-pane="db" role="tab" aria-selected="false">🗄️ 数据</button>
     <button class="rtab mtab" data-pane="made" role="tab" aria-selected="false">✨ 做过的东西</button>
+    <button class="rtab mtab" data-pane="apps" role="tab" aria-selected="false">🚀 小应用</button>
     <button class="rtab mtab" data-pane="mem" role="tab" aria-selected="false">💭 记忆</button>
     <button class="rtab mtab" data-pane="sched" role="tab" aria-selected="false">⏰ 定时</button>
     <button class="rtab mtab" data-pane="mcp" role="tab" aria-selected="false">🔌 插件</button>
@@ -500,6 +501,14 @@ details.tz[open]>summary::before{content:'▾ '}
     <input id="made-q" placeholder="🔍 找做过的东西…（名字/文件名/说明）" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
     <div id="made-list" style="max-height:340px;overflow-y:auto"></div>
     <div id="made-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 0 6px"></div>
+  </div>
+  <div class="mpane" id="mpane-apps" style="display:none">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <h3 style="margin:0;flex:1">小应用</h3>
+      <button id="apps-refresh" class="mini">刷新看看</button>
+    </div>
+    <div class="fnote" style="margin-bottom:10px">小 forge 给你搭的应用——哪个在跑、怎么打开。做过的东西是过去的事，这里的现在开着能用。哪个停了或出错了，跟它说一声就行。</div>
+    <div id="apps-list" style="max-height:340px;overflow-y:auto"></div>
   </div>
   <div class="mpane" id="mpane-mem" style="display:none">
     <h3 style="margin:0 0 8px">小 forge 记住的事</h3>
@@ -1403,7 +1412,7 @@ $('mode').onchange=e=>{
 $('open-settings').onclick=()=>{ $('modal').classList.add('on'); loadProvidersUI(); };
 // s43: 管理面板——本事/记忆/定时任务从设置迁出，一级入口
 // s51: 区块→标签页，懒加载（首次切到该 tab 才拉，拉过缓存不重复拉）
-const mtabs={ext:['loadExtUI',false],db:['loadDbUI',false],made:['loadMadeUI',false],mem:['loadMemUI',false],sched:['loadSchedUI',false],mcp:['loadMcpUI',false]};
+const mtabs={ext:['loadExtUI',false],db:['loadDbUI',false],made:['loadMadeUI',false],apps:['loadAppsUI',false],mem:['loadMemUI',false],sched:['loadSchedUI',false],mcp:['loadMcpUI',false]};
 function showMtab(name){
   document.querySelectorAll('#manage-modal .mtab').forEach(b=>{const on=b.dataset.pane===name;b.classList.toggle('on',on);b.setAttribute('aria-selected',on);});
   document.querySelectorAll('#manage-modal .mpane').forEach(p=>p.style.display=p.id==='mpane-'+name?'':'none');
@@ -1904,6 +1913,62 @@ function openAsset(it){
     const iv=setInterval(()=>{ if(installedAll.length||Date.now()-t0>5000){ clearInterval(iv); $('skills-q').value=it.ref.name; paintInstalled(); if(!installedAll.length) $('skills-list').innerHTML='<div class="fnote">技能清单这次没拉到（可能没连上），关掉这个窗口重开试试；技能本身还在。</div>'; } },200); // 等弹窗拉完已装清单再过滤定位；s83 返工💭5: 超时+空清单=拉取失败，一行人话不静默
   }
 }
+
+// ===== 🚀 小应用（裁决 2026-09-14-app-runtime-panel §3-S3）：apps/*.yaml × pc 状态只读观察面 =====
+// R2 规模声明：终态 <10 个/安装（长驻服务天然低频新建）→ 0-8 档直接列，无搜索无分页；触发器=超 8 条加搜索。
+// R4：主名=meta.description（建时落的人话账）；缺=「〈id〉·小 forge 搭的应用」结构性兜底；时间无=「—」；不编造。
+// 无轮询无推送（打开拉一次+手动刷新；0-8 条规模下实时性无消费者）；唯一动作「打开看看」（url 有才给，不猜不放死链）。
+let appsAll=null, appsNote=null, appsPortsTrunc=false;
+const APP_STATE_ZH={run:'✅ 运行中',stop:'⏹ 已停',fail:'⚠️ 出错了'};
+const APP_PROC_ZH={run:'在跑',stop:'已停',fail:'出错',absent:'下次启动时自动带起'};
+function appsProcZh(p){ return (appsNote&&p.state==='absent')?'状态未知':APP_PROC_ZH[p.state]; } // pc 联系不上→诚实降级，不误称「待启动」
+function appsPaint(){
+  const box=$('apps-list'); if(!box||!appsAll) return;
+  box.innerHTML='';
+  if(!appsAll.length){
+    box.innerHTML='<div class="fnote">小 forge 还没给你搭过应用——跟它说「帮我做个 ××」试试。</div>';
+    if(appsNote){ const n=document.createElement('div'); n.className='fnote'; n.style.margin='4px 0'; n.textContent=appsNote; box.appendChild(n); }
+    return;
+  }
+  for(const a of appsAll){
+    const card=document.createElement('div');
+    card.style.cssText='padding:8px 2px;border-bottom:1px solid var(--line)';
+    const badge=appsNote?'❓ 状态未知':(APP_STATE_ZH[a.state]||'⏹ 已停');
+    const time=a.createdAt?new Date(a.createdAt).toLocaleString('zh',{year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'; // 注册时间无=「—」不编造
+    const procHtml=a.procs.length<=1
+      ?(a.procs.length?'<span>⚙️ '+esc(a.procs[0].name)+'：'+esc(appsProcZh(a.procs[0]))+'</span>':'') // 单进程合并进卡片头
+      :'<div style="margin-top:2px">'+a.procs.map(p=>'<div>⚙️ '+esc(p.name)+'：'+esc(appsProcZh(p))+'</div>').join('')+'</div>';
+    const failTip=(!appsNote&&a.state==='fail')?'<div class="fnote" style="margin-top:2px;color:var(--warn-tx)">出错了——跟小 forge 说一声，让它看看怎么回事。</div>':''; // 补救=对话通道，无按钮
+    const urlWord=a.url?'<button class="mini apps-open" data-url="'+esc(a.url)+'">打开看看</button>'
+      :'<span class="fnote">这个应用没有网页，它在后台做事</span>'; // 不猜、不放死链
+    const src=a.srcSid?'<span>来自对话：'+esc(a.srcTitle||'未命名')+'</span>':'<span>来源不详</span>'; // 无账存量=诚实降级，不考古
+    card.innerHTML='<div style="display:flex;align-items:center;gap:10px"><div style="flex:1;min-width:0">'
+      +'<div style="font-size:.85rem;font-weight:600;word-break:break-all"><span class="bdg">'+badge+'</span> '+esc(a.human||(a.id+' · 小 forge 搭的应用'))+'</div>'
+      +'<div class="fnote" style="margin-top:2px;display:flex;gap:10px;flex-wrap:wrap"><span>注册于 '+time+'</span>'+procHtml+'</div>'+failTip
+      +'<details class="tz" style="margin-top:4px"><summary>详情</summary><div class="fnote" style="margin:6px 0">'
+      +'<div>监听端口：'+(a.listenPorts&&a.listenPorts.length?a.listenPorts.join('、'):'—')+'</div>'
+      +'<div class="apps-src" data-sid="'+(a.srcSid?esc(a.srcSid):'')+'" style="'+(a.srcSid?'cursor:pointer;text-decoration:underline;':'')+'">'+src+'</div>'
+      +'<div>应用文件：'+esc(a.yaml)+'</div></div></details></div><div>'+urlWord+'</div></div>';
+    const openBtn=card.querySelector('.apps-open');
+    if(openBtn) openBtn.onclick=()=>window.open(openBtn.dataset.url,'_blank'); // 唯一动作：有 url 才有按钮
+    const srcEl=card.querySelector('.apps-src');
+    if(srcEl&&srcEl.dataset.sid) srcEl.onclick=()=>{ $('manage-modal').classList.remove('on'); openSession(srcEl.dataset.sid); }; // 复用侧栏既有切会话入口
+    box.appendChild(card);
+  }
+  if(appsNote){ const n=document.createElement('div'); n.className='fnote'; n.style.margin='4px 0'; n.textContent=appsNote; box.appendChild(n); }
+  if(appsPortsTrunc){ const n=document.createElement('div'); n.className='fnote'; n.style.margin='4px 0'; n.textContent='应用有点多，监听端口只查了前几个——想看全的，跟小 forge 说一声。'; box.appendChild(n); }
+}
+async function loadAppsUI(){
+  const box=$('apps-list'); if(!box) return;
+  box.innerHTML='<div class="fnote">正在看看小应用…</div>';
+  try{
+    const r=await fetch('/api/apps'); const d=await r.json();
+    if(!d||!d.ok){ box.innerHTML='<div class="fnote">现在看不到，稍后再试。</div>'; return; }
+    appsAll=d.apps||[]; appsNote=d.note||null; appsPortsTrunc=!!d.portsTruncated;
+  }catch(e){ appsAll=null; box.innerHTML='<div class="fnote">读取失败：'+esc(e.message)+'</div>'; return; }
+  appsPaint();
+}
+$('apps-refresh').onclick=()=>loadAppsUI(); // 手动刷新；无轮询无推送（裁决 §3-S3）
 
 
 $('prov-add').onclick=()=>{

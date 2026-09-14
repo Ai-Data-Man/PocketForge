@@ -1712,6 +1712,157 @@ async function assetsOverview() {
     return out;
 }
 
+// ---- s87: 小应用运行面板（GET /api/apps；裁决 2026-09-14-app-runtime-panel §3-S2）----
+// apps/*.yaml 注册清单 × pc 运行状态的只读观察面：无参数、无持久化、无写通道（dbOverview/assetsOverview 同哲学）。
+// 建账=agent 义务（hints 应用注册协议第 5 条）：yaml 顶部 `# forge-meta: {...}` 注释行；桥解析、缺了降级不考古。
+// 解析器：bin/vendor 无可用 YAML 库，「不升级依赖」纪律优先最小自研——apps/ 源文件全部出自 _app-template.yaml
+// 单一形状，行级解析足够（顶层 processes: 下两缩进键=进程全集，精确键名不猜前缀——test-app.yaml hello-oneshot 反例）。
+function appParseYaml(text) {
+    const lines = String(text || '').split(/\r?\n/);
+    const procs = [];
+    let inProcs = false, probe = null;
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line.trim() || /^\s*#/.test(line)) continue; // 注释行（含 forge-meta 建账行）不参与结构解析
+        if (!inProcs) { if (/^processes:\s*$/.test(line)) inProcs = true; continue; }
+        if (/^\S/.test(line)) break; // processes 段结束（其他顶层键）
+        const mk = line.match(/^  ([^\s:][^:]*):\s*(.*)$/);
+        if (mk) { procs.push(mk[1].trim()); continue; } // 恰两缩进=进程顶层键（精确键名）
+        if (probe !== null) continue; // 只认第一个 http_get（app 级 URL 第 2 层原料）
+        const fl = line.match(/http_get:\s*\{([^}]*)\}/); // 流式：http_get: { host: 127.0.0.1, port: 8199, scheme: http, path: / }
+        if (fl) {
+            const kv = {};
+            for (const part of fl[1].split(',')) { const pm = part.match(/^\s*([\w-]+)\s*:\s*(.*?)\s*$/); if (pm) kv[pm[1]] = pm[2].replace(/^['"]|['"]$/g, ''); }
+            probe = kv; continue;
+        }
+        if (/^\s*http_get:\s*$/.test(line)) { // 块式：后续更深缩进行收 host/port/scheme/path
+            const kv = {}; const base = line.match(/^\s*/)[0].length;
+            for (let j = i + 1; j < lines.length; j++) {
+                const l2 = lines[j];
+                if (!l2.trim() || /^\s*#/.test(l2)) continue;
+                if (l2.match(/^\s*/)[0].length <= base) break;
+                const pm = l2.match(/^\s*([\w-]+)\s*:\s*(.*?)\s*$/);
+                if (pm && (pm[1] === 'host' || pm[1] === 'port' || pm[1] === 'scheme' || pm[1] === 'path')) kv[pm[1]] = pm[2].replace(/^['"]|['"]$/g, '');
+            }
+            probe = kv; continue;
+        }
+    }
+    let probeUrl = null;
+    if (probe) {
+        const port = parseInt(probe.port, 10);
+        if (Number.isFinite(port) && port > 0) { // 模板占位 port: 0 不合成
+            let p = String(probe.path || '/'); if (!p.startsWith('/')) p = '/' + p;
+            probeUrl = String(probe.scheme || 'http') + '://' + String(probe.host || '127.0.0.1') + ':' + port + p;
+        }
+    }
+    return { procs, probeUrl };
+}
+function appReadRegistry() {
+    const dir = path.join(ROOT, 'apps');
+    const out = [];
+    let ents = [];
+    try { ents = FSS.readdirSync(dir, { withFileTypes: true }); } catch { return out; } // 目录不存在=空数组，不报错
+    for (const ent of ents) {
+        if (!ent.isFile() || !/\.yaml$/i.test(ent.name)) continue;
+        let raw = '';
+        try { raw = FSS.readFileSync(path.join(dir, ent.name), 'utf8'); } catch { continue; }
+        let meta = null;
+        const mm = raw.match(/^#[ \t]*forge-meta:[ \t]*(\{.+\})[ \t]*$/m); // 首个 forge-meta 注释行
+        if (mm) { try { meta = JSON.parse(mm[1]); } catch { meta = null; } } // 坏 JSON=当无 meta，不炸端点
+        const p = appParseYaml(raw);
+        let mt = null;
+        try { mt = FSS.statSync(path.join(dir, ent.name)).mtime.toISOString(); } catch {}
+        out.push({ id: ent.name.replace(/\.yaml$/i, ''), meta: meta && typeof meta === 'object' ? meta : null, procs: p.procs, probeUrl: p.probeUrl, mtime: mt, file: 'apps/' + ent.name });
+    }
+    out.sort((a, b) => a.id.localeCompare(b.id));
+    return out;
+}
+function pcExec(args, cb) { // execFile 走 chat-bridge:2151 先例通道（schedToggle 同款读 data/pc.port）
+    let pcPort = '8099';
+    try { pcPort = FSS.readFileSync(path.join(ROOT, 'data', 'pc.port'), 'utf8').trim() || pcPort; } catch {}
+    require('child_process').execFile(path.join(ROOT, 'bin', 'pc', 'process-compose.exe'),
+        ['-p', pcPort].concat(args), { timeout: 10000, windowsHide: true }, cb);
+}
+function procState(e) { // 状态映射用布尔/数值字段，不依赖 status 字符串词汇（裁决 §0：pc Failed 形态无样本）
+    if (e && e.is_running === true) return 'run';
+    if (e && e.is_running === false) return e.exit_code === 0 ? 'stop' : 'fail';
+    return 'absent';
+}
+async function appsOverview() {
+    const reg = appReadRegistry();
+    const wsm = readWsMap(), sm = sessionMeta();
+    // pc 全量进程表一次取（join 基线）；失败=诚实降级：进程态全 absent + note，端点仍 200 不炸
+    let pcMap = null, note = null;
+    try {
+        pcMap = await new Promise((resolve, reject) => {
+            pcExec(['process', 'list', '-o', 'json'], (e, out) => {
+                if (e) return reject(e);
+                try {
+                    const s = String(out || '');
+                    let arr; try { arr = JSON.parse(s); } catch { arr = JSON.parse(s.slice(s.indexOf('['))); } // 容忍 stdout 前置噪音
+                    if (!Array.isArray(arr)) throw new Error('pc list 非数组');
+                    const m = new Map();
+                    for (const it of arr) if (it && typeof it.name === 'string') m.set(it.name, it);
+                    resolve(m);
+                } catch (err) { reject(err); }
+            });
+        });
+    } catch (e) { note = '状态未知：进程管家暂时联系不上，稍后再试。'; }
+    const apps = [];
+    let budget = 8; // listenPorts 子进程调用护栏（裁决待验证项④）：总调用 ≤8 次/请求，超出截断并标记
+    let portsTruncated = false;
+    for (const r of reg) {
+        const meta = r.meta || {};
+        const procs = [];
+        for (const name of r.procs) {
+            const e = pcMap ? pcMap.get(name) : undefined;
+            procs.push({ name, state: procState(e), exitCode: (e && typeof e.exit_code === 'number') ? e.exit_code : null });
+        }
+        // listenPorts：仅入展开详情，不作「打开看看」来源（实听端口≠网页入口，pg 5432 反例）；不在跑的进程无实听端口
+        const listenPorts = [];
+        if (pcMap) {
+            for (const name of r.procs) {
+                const e = pcMap.get(name);
+                if (!e || e.is_running !== true) continue;
+                if (budget <= 0) { portsTruncated = true; break; }
+                budget--;
+                const ports = await new Promise(resolve => {
+                    pcExec(['process', 'ports', name], (e2, out2) => {
+                        if (e2) return resolve([]); // 失败=空数组静默
+                        const mm = String(out2 || '').match(/\[([^\]]*)\]/);
+                        resolve(mm ? mm[1].split(',').map(s => parseInt(s.trim(), 10)).filter(n => Number.isFinite(n)) : []);
+                    });
+                });
+                for (const p of ports) if (!listenPorts.includes(p)) listenPorts.push(p);
+            }
+        }
+        // URL 三层（裁决 §3-S2）：meta.url（agent 建账）> http_get 探针合成（agent 亲配）> null；command 端口正则=红线裁掉
+        let url = r.probeUrl;
+        if (typeof meta.url === 'string' && /^https?:\/\/\S+$/i.test(meta.url)) url = meta.url;
+        apps.push({
+            id: r.id,
+            human: (typeof meta.description === 'string' && meta.description.trim()) ? meta.description.trim() : null,
+            url,
+            createdAt: (typeof meta.created_at === 'string' && meta.created_at.trim()) || r.mtime || null,
+            srcSid: (meta.source && wsm[meta.source] && wsm[meta.source].sid) || null, // ws-map 反解（/api/assets srcOf 同款）
+            srcTitle: null,
+            procs,
+            state: procs.some(p => p.state === 'fail') ? 'fail' : (procs.length && procs.every(p => p.state === 'run') ? 'run' : 'stop'),
+            listenPorts,
+            yaml: r.file, // 物理路径只进折叠技术区（零术语，s83 同款）
+        });
+    }
+    for (const a of apps) if (a.srcSid) a.srcTitle = sm.bySid.get(a.srcSid) || null; // sid→会话标题（sessionMeta 同源）
+    apps.sort((a, b) => {
+        const R = { run: 0, stop: 1, fail: 2 }; // run 在前（裁决 §3-S2）；createdAt 倒序、null 沉底
+        return (R[a.state] - R[b.state]) || ((a.createdAt == null) - (b.createdAt == null)) || (b.createdAt > a.createdAt ? 1 : (b.createdAt < a.createdAt ? -1 : 0));
+    });
+    const out = { ok: true, apps };
+    if (note) out.note = note;
+    if (portsTruncated) out.portsTruncated = true;
+    return out;
+}
+
 // ---- GET /api/report：本地诊断报告（小白发给帮忙的人看）----
 // 隐私黑名单（硬约束）：secrets.env、conf/goose/config/memory/、会话消息正文——绝不读取。
 // 写盘前兜底：含 sk- 形态 key 或 GH_TOKEN 的行整行替换为 <已脱敏>（providers.json 明文 key 已实证存在）。
@@ -2878,6 +3029,12 @@ const ext = path.extname(f).toLowerCase();
         if (req.method !== 'GET') { res.writeHead(405); res.end(); return; }
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         assetsOverview().then(out => res.end(JSON.stringify(out))).catch(() => res.end(JSON.stringify({ ok: false })));
+    }
+    else if (url === '/api/apps') {
+        // s87: 小应用运行面板（只读；无参数无持久化无写通道，Origin 校验走 handleHttp 顶部全局规则）；仅 GET
+        if (req.method !== 'GET') { res.writeHead(405); res.end(); return; }
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        appsOverview().then(out => res.end(JSON.stringify(out))).catch(() => res.end(JSON.stringify({ ok: false })));
     }
     else if (url === '/api/sessions/archive') {
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
