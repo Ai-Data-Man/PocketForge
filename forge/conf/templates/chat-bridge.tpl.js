@@ -2184,7 +2184,11 @@ function preUpgradeBackup(pkg) {
         const name = 'pre-upgrade-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
         const dst = path.join(bdir, name);
         const items = {};
-        for (const rel of ['conf/goose/config', 'data/config']) { // s73 丢失清单全体 + data/config（skill-sources/mcp-catalog）
+        // s89/R4: 备份集补 apps/（用户已注册小应用的 yaml 源）。诚实边界：这里的桥是「升级时正在跑的桥」
+        // ——v0.9.12 桥的备份不含 apps，v0.9.12→v0.9.13 存量升级仍会删 apps（救它只能靠 release notes 的
+        // 手工步骤或事后从 runner 的 data/updates/backup-*/apps/ 拷回）；本修对 v0.9.13+ 桥发起的升级
+        // （v0.9.13→未来版本）与「v0.9.12 用户升级后从 pre-upgrade 备份补回」提供官方恢复源。
+        for (const rel of ['conf/goose/config', 'data/config', 'apps']) { // s73 丢失清单全体 + data/config（skill-sources/mcp-catalog）+ apps/（s89/R4）
             const src = path.join(ROOT, rel.split('/').join(path.sep));
             let n = 0;
             if (FSS.existsSync(src)) { FSS.cpSync(src, path.join(dst, rel.split('/').join(path.sep)), { recursive: true, force: true }); n = countFiles(src); }
@@ -2194,13 +2198,14 @@ function preUpgradeBackup(pkg) {
         FSS.writeFileSync(path.join(dst, '恢复说明.txt'),
             '这是升级前的自动备份（PocketForge 生成，最多保留 3 份，旧的会被清掉）。\r\n' +
             '来源版本：' + APP_VERSION + '\r\n' +
-            '备份内容：conf 下的 config = 模型服务商、能力开关、长期记忆、权限规则、配方；data 下的 config = 技能源与 MCP 商店设置。\r\n' +
-            '什么时候用：升级后发现「它能什么」开关、服务商、记忆或技能源丢了，就按下面步骤放回。\r\n' +
+            '备份内容：conf 下的 config = 模型服务商、能力开关、长期记忆、权限规则、配方；data 下的 config = 技能源与 MCP 商店设置；apps = 你注册过的小应用。\r\n' +
+            '什么时候用：升级后发现「它能什么」开关、服务商、记忆或技能源丢了，或「小应用」清单空了，就按下面步骤放回。\r\n' +
             '恢复步骤：\r\n' +
             '  1. 运行「停止数字员工.cmd」完全退出\r\n' +
             '  2. 把本文件夹里 conf 下的 config 文件夹，整个复制到安装目录的 conf\\goose\\ 下覆盖\r\n' +
             '  3. 把本文件夹里 data 下的 config 文件夹，整个复制到安装目录的 data\\ 下覆盖\r\n' +
-            '  4. 双击「启动数字员工.cmd」\r\n');
+            '  4. 若「小应用」清单空了，把本文件夹里 apps 下的全部 yaml 文件复制到安装目录的 apps\\ 里\r\n' +
+            '  5. 双击「启动数字员工.cmd」\r\n');
         const all = FSS.readdirSync(bdir).filter(n => /^pre-upgrade-/.test(n)).sort();
         while (all.length > 3) FSS.rmSync(path.join(bdir, all.shift()), { recursive: true, force: true });
         console.log('pre-upgrade backup: ' + name + ' ' + JSON.stringify(items));
@@ -2582,7 +2587,18 @@ async function handleHttp(req, res) {
                 preUpgradeBackup(b.staged ? 'zip:' + b.staged + ':' + FSS.statSync(path.join(ROOT, 'data', 'updates', b.staged)).size : 'url:' + b.url);
                 FSS.mkdirSync(path.join(ROOT, 'data', 'updates'), { recursive: true });
                 FSS.writeFileSync(path.join(ROOT, 'data', 'updates', 'status.json'), JSON.stringify({ stage: 'starting', ok: false, msg: '升级器启动中…', ts: Date.now() }));
-                spawn(process.execPath, [path.join(ROOT, 'bin', 'update-runner.js'), ...runnerArgs], { detached: true, stdio: 'ignore' }).unref();
+                // s89/R3: pc down 按 PPID 可达性收杀托管进程的后代——直接 detached spawn 的 runner 会在
+                // stop 段随桥陪葬（s88 B3 实锤；C:\PF-FIX 三臂对照：A=旧形态死、C=windowsHide/stdio 文件
+                // 变体同死、B=Start-Process 中介存活）。改走 2668 行同款 base64 Start-Process：中介即时
+                // 退出 → runner 的 PPID 链 spawn 期即断、脱离桥的进程树；runner 的落盘日志/心跳/20min
+                // 超时回滚护栏（s75）在此形态下才真正可达。-WindowStyle Hidden：node 是控制台程序，缺省
+                // 会弹整窗跑满升级全程。参数逐个 base64 过渡（PS 双引号串零插值零转义面）。
+                const updNode = Buffer.from(process.execPath, 'utf8').toString('base64');
+                const updArgs = [path.join(ROOT, 'bin', 'update-runner.js'), ...runnerArgs]
+                    .map(a => '"' + Buffer.from(a, 'utf8').toString('base64') + '"').join(',');
+                spawn('powershell', ['-NoProfile', '-Command',
+                    '$n=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("' + updNode + '"));$a=@(' + updArgs + ')|ForEach-Object{[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_))};Start-Process -FilePath $n -ArgumentList ($a|ForEach-Object{\'"\'+$_+\'"\'}) -WindowStyle Hidden'],
+                    { stdio: 'ignore', windowsHide: true }).unref();
                 res.end(JSON.stringify({ ok: true }));
             } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
         });
