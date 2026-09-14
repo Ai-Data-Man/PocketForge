@@ -41,8 +41,10 @@ echo [PocketForge] starting... pc=%PC_PORT% faucet=%FAUCET_PORT%
 cd /d "%FORGE_ROOT%"
 
 rem ---- aggregate registered apps (apps\*.yaml) into conf\apps.env.yaml ----
+rem s89/R1: joined 内容必须另起一行——协议形态（forge-meta 首行注释）的 app 剥掉 processes: 行后
+rem 文件体首行是注释，直接粘在 processes: 后会拼成 "processes:# forge-meta…"（注释失效+{ 进 flow mapping）→ pc up FTL
 set "APP_ARGS="
-powershell -NoProfile -Command "$d='%FORGE_ROOT%\apps'; $out='%FORGE_ROOT%\conf\apps.env.yaml'; if((Test-Path $d) -and (Get-ChildItem $d -Filter *.yaml).Count -gt 0){ $c=Get-ChildItem $d -Filter *.yaml | Sort-Object Name | ForEach-Object { (Get-Content $_.FullName -Raw) -replace '(?m)^processes:\s*$','' }; [IO.File]::WriteAllText($out, ('processes:' + ($c -join [Environment]::NewLine))) } else { [IO.File]::WriteAllText($out, 'processes: {}') }" >nul 2>&1
+powershell -NoProfile -Command "$d='%FORGE_ROOT%\apps'; $out='%FORGE_ROOT%\conf\apps.env.yaml'; if((Test-Path $d) -and (Get-ChildItem $d -Filter *.yaml).Count -gt 0){ $c=Get-ChildItem $d -Filter *.yaml | Sort-Object Name | ForEach-Object { (Get-Content $_.FullName -Raw) -replace '(?m)^processes:\s*$','' }; [IO.File]::WriteAllText($out, ('processes:' + [Environment]::NewLine + ($c -join [Environment]::NewLine))) } else { [IO.File]::WriteAllText($out, 'processes: {}') }" >nul 2>&1
 
 "%FORGE_ROOT%\bin\pc\process-compose.exe" up -f "%FORGE_ROOT%\conf\process-compose.yaml" -f "%FORGE_ROOT%\conf\ports.env.yaml" -f "%FORGE_ROOT%\conf\apps.env.yaml" -p %PC_PORT% -t=false
 echo [PocketForge] all stopped.

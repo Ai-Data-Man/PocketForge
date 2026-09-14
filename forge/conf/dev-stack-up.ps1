@@ -20,12 +20,14 @@ $env:NO_PROXY = '127.0.0.1,localhost'
 $env:no_proxy = '127.0.0.1,localhost'
 
 # aggregate apps
+# s89/R1: joined 内容另起一行——协议形态（forge-meta 首行）app 剥 processes: 行后首行是注释，
+# 直接粘 processes: 后 = "processes:# forge-meta…" 注释失效 → pc up FTL（启动数字员工.cmd 同款修复）
 $d = Join-Path $ForgeRoot 'apps'
 $out = Join-Path $ForgeRoot 'conf\apps.env.yaml'
 $yamls = @(Get-ChildItem $d -Filter *.yaml -ErrorAction SilentlyContinue | Sort-Object Name)
 if ($yamls.Count -gt 0) {
     $c = $yamls | ForEach-Object { (Get-Content $_.FullName -Raw) -replace '(?m)^processes:\s*$', '' }
-    [IO.File]::WriteAllText($out, ('processes:' + ($c -join [Environment]::NewLine)))
+    [IO.File]::WriteAllText($out, ('processes:' + [Environment]::NewLine + ($c -join [Environment]::NewLine)))
 } else {
     [IO.File]::WriteAllText($out, 'processes: {}')
 }

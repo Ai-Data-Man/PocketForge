@@ -66,7 +66,10 @@ APP_YAML_WIN=$(cygpath -w "$FORGE/apps/e2e-report.yaml")
 python - "$APP_YAML_WIN" "$(cygpath -w "$ROOT/tools/e2e")" <<'PYEOF'
 import sys, io
 app_yaml, e2e_dir = sys.argv[1], sys.argv[2].replace('\\', '/')
+# s89: fixture 用协议形态（forge-meta 首行注释 + 全单引号）——R1/R2 回归钉子：下次启动聚合器
+# 必须让这种形态照常过（s88 A6 红的正是它）；朴素形态由 apps-probe fixture 族另行覆盖
 content = (
+ "# forge-meta: {\"description\":\"e2e 库存报表查询页\",\"url\":\"http://127.0.0.1:8199/fake-plm.html\",\"created_at\":\"2026-09-15\",\"source\":\"e2e\"}\n"
  "processes:\n"
  "  e2e-report:\n"
  "    command: 'cmd /c cd /d " + e2e_dir + " && python -m http.server 8199'\n"
