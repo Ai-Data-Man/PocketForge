@@ -4,6 +4,17 @@ rem s85/P1: console to UTF-8 so Node/Go stdout renders correctly (audit 2026-09-
 chcp 65001 >nul
 set "FORGE_ROOT=%~dp0"
 if "%FORGE_ROOT:~-1%"=="\" set "FORGE_ROOT=%FORGE_ROOT:~0,-1%"
+
+rem ---- s85/P3 guard: PostgreSQL upstream cannot init when the install path itself contains non-ASCII chars (audit section 3).
+rem ---- cmd cannot reliably test non-ASCII itself -> one-line PowerShell probe via env var (no path-quoting hazards).
+powershell -NoProfile -Command "if ($env:FORGE_ROOT -match '[^\x00-\x7F]') { exit 1 }" >nul 2>&1
+if errorlevel 1 (
+  echo [PocketForge] 出错了：这个文件夹的路径里有中文或特殊字符，数字员工没办法从这里启动。
+  echo 请把整个 PocketForge 文件夹移动到纯英文、数字的路径下（例如 D:\PocketForge），再重新双击启动。
+  pause
+  exit /b 1
+)
+
 if not exist "%FORGE_ROOT%\data\logs" mkdir "%FORGE_ROOT%\data\logs"
 
 rem ---- bootstrap: goose config / secrets / ports (see conf\bootstrap.ps1) ----
