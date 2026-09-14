@@ -15,7 +15,7 @@
 - 产生新决策 → 新建 `DECISIONS/00NN-*.md`（禁止改旧 ADR 正文，只能 supersede）。
 - 关键外部事实首次确立/变更 → 更新 `docs/research/` 对应底稿。
 - 追加 `docs/journal/YYYY-MM-DD-sNN-*.md` 会话记录（要点式，短）。
-- `git commit`，message 引用 ADR/STATE 变化；小步多次提交。
+- `git commit` 并 push（2026-09-14 s85 用户拍板：变更必须提交且推送远端，本地提交不算落账），message 引用 ADR/STATE 变化；小步多次提交。
 
 ## 2. 硬约束（违反任意一条 = 立即停止并回到设计）
 1. 目标机：企业 Windows 10/11，无本地管理员权限 → 一切组件解压即用，禁止 installer/MSI。
