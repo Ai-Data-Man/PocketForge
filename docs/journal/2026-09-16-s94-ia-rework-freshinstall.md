@@ -53,4 +53,8 @@
   - F-11 二轮根因（e03f511）：**向量二=ws 中途掉线重连不重订阅**——桥 drop() 摘死连接正确，前端 onopen 对 sessionId≠null 只 ensureWs 不订阅→新连接无成员籍→turn 帧按无订阅者丢弃（info/权限卡广播帧仍达=「看起来连着」）。修=onopen 重发 subscribe(sessionId)（复用既有协议，UI 无感）。判别探针修前红（CDP 实录零 turn 帧）/修后绿 3/3。七组沙盒排除链证明桥端无其余向量；`<-> 20260915` 为日志 slice(0,8) 截断非缺陷。
 - 终态基线：**e2e-chat 61/61 + fuzz 190/190**（新 §24 model-fallback/§25 skill-desc + ia3-tinfo F-7 断言，只增不减）；ws-subscribe-race 24/24 锚点零适配。
 - 环境：沙盒 ia1-ia4 整删（§8.1）+零进程零端口核对；启动器 TUI 窗口残留是目录占用元凶（停栈后窗口不关=新观察项）；PFdrill2 僵尸态复发一次 /End+/Run 处置；系统代理 ProxyEnable 已恢复 1（ProxyOverride 追加的 111.228.54.166 保留无害）；dev 栈终态 healthz 200。
-- 遗留挂账：①热重启窗口内 in-flight subscribe(null) 静默丢弃（独立跟进）；②停止脚本停栈后启动器 TUI 窗口残留（观感+目录占用，下批小修候选）；③faucet REST /api/v1/services 路由 404（ia1 用过该路径——版本路由面待核，非阻断）；④QA P3-1（A3 等价断言）随下次探针批；⑤发布收尾仍挂用户（v0.9.13 release 草稿态处置+指纹更新——本会话 iat 系列不入 dist 发布序）。
+- 遗留挂账：①热重启窗口内 in-flight subscribe(null) 静默丢弃（独立跟进）；②~~停止后启动器 TUI 窗口残留~~ → **s94-b3 已修（f2ae53b）**：根因=启动器尾部无条件 pause 占窗占目录；改 errorlevel 门控（正常停栈收窗/启动失败留窗可读日志），沙盒三循环 WIN-GONE+RENAME-OK+坏配置留窗实证；③faucet REST /api/v1/services 路由 404（版本路由面待核，非阻断）；④~~QA P3-1 探针等价断言~~ → **已修（51c52a6）**：A3b=台账 skill 集=={种子}∪实扫 origin:self 集，29→30ck，产品成功态不再假红；⑤QA P4-5 退化档热重启去重失效 → **已修（762eedc+ed097fb）**：sig2 与 spawnAcp 同源三级回落链，M9 桩测 12→13ck；⑥发布收尾仍挂用户（v0.9.13 release 草稿态处置+指纹更新——本会话 iat 系列不入 dist 发布序）。
+
+## s94-b3 小批（05:2x 收口）
+
+三只遗留项修复（见上②④⑤），全量 e2e 61/61+fuzz 190/190 只增不减。插曲：工程用 dev-stack-up.ps1 从提权会话重启 dev 栈触发 pg 拒管理员令牌 5 红（s67/s90 家族），按 PFdrill2 通道重拉后复跑全绿——**本机 dev 栈重启唯一正确通道=PFdrill2 任务**再实证。
