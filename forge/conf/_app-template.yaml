@@ -13,6 +13,8 @@ processes:
     is_daemon: true
     availability:
       restart: on_failure
+      max_restarts: 3     # s92：必须有上限——坏应用无上限重启会持续烧 CPU（QA 实测 3 分钟 restarts=31）
+      backoff_seconds: 5
     readiness_probe: # 二选一
       http_get: { host: 127.0.0.1, port: 0, scheme: http, path: / }
       # exec: { command: 'cmd /c exit 0' }

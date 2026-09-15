@@ -426,14 +426,22 @@ function pgTryConnect() {
     const port = pgPort();
     if (!port) return pgDowngrade(PG_WARN + '没找到数据库端口，已用本地文件保存');
     // s92: 首启就绪门——PG 还在 recover/启动中时裸连接会被 postgres 逐个拒绝并记 FATAL（用户可见假故障），
-    // 且我们这边会误报「没连上数据库」的惊悚降级告警。等 postgres 自己写下 ready 行再连（零连接成本）；
-    // 探不到（日志被清/轮换）则按老路直接连，行为不退化。
+    // 且我们这边会误报「没连上数据库」的惊悚降级告警。判据=TCP 端口可连（bin/pg-probe.js，FIN 半关零日志）。
+    // 注意：**不得依赖 data/logs/pg.log**——实测受限令牌启动路径下该文件恒 0 字节（F1 复盘 2026-09-15）。
+    // 门探不通时按 2s 重试（不降级、不告警）；端口文件缺失等异常态走老路直接连，行为不退化。
     try {
-        const pgLog = FSS.readFileSync(path.join(ROOT, 'data', 'logs', 'pg.log'), 'utf8');
-        if (pgLog && !/ready to accept connections/.test(pgLog)) {
-            pgStore.mode = 'connecting';
-            setTimeout(() => { pgStore.mode = 'off'; if (pgExpected()) pgTryConnect(); }, 2000).unref();
-            return;
+        const probe = path.join(ROOT, 'bin', 'pg-probe.js');
+        if (FSS.existsSync(probe) && FSS.existsSync(path.join(ROOT, 'data', 'pg.port'))) {
+            let open = false;
+            try {
+                require('child_process').execFileSync(process.execPath, [probe, path.join(ROOT, 'data', 'pg.port')], { stdio: 'pipe', timeout: 4000 });
+                open = true;
+            } catch { open = false; }
+            if (!open) {
+                pgStore.mode = 'connecting';
+                setTimeout(() => { pgStore.mode = 'off'; if (pgExpected()) pgTryConnect(); }, 2000).unref();
+                return;
+            }
         }
     } catch {}
     pgStore.mode = 'connecting';
