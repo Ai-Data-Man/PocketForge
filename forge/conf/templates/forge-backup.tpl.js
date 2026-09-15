@@ -46,8 +46,27 @@ function pgDumpWithWait(db, dump, tries) {
     // 返回：'' = 成功；非空字符串 = 失败原因（不抛异常）
     if (!waitPgPort(30000)) return 'PG port not open within 30s';
     sleepSync(1500); // settle：端口监听 ≠ 接受连接（recovery 窗口实测 0.1-3s）——避开首个连接的瞬时拒绝
+    const PgExe = path.join(ROOT, 'bin', 'pg', 'bin', 'psql.exe');
+    // s93/F3: forge_bridge 由桥启动时创建（实测 +30s 左右）。盲试 pg_dump 每次失败都会让 postgres 记一条
+    // FATAL（首启黑窗口刷 12 行假故障——QA 实测）。改为先用 psql 连 postgres 库**查库是否存在**
+    // （该连接必然成功、零 FATAL），存在才 dump；窗口 20×2.5s=50s 覆盖桥建库。
+    const dbKnown = db !== 'postgres' && fs.existsSync(PgExe);
+    const maxTry = dbKnown ? 20 : tries;
     let lastMsg = '';
-    for (let i = 0; i < tries; i++) {
+    for (let i = 0; i < maxTry; i++) {
+        if (dbKnown) {
+            let exists = false;
+            try {
+                const out = execFileSync(PgExe, ['-h', '127.0.0.1', '-p', pgPort, '-U', 'postgres', '-d', 'postgres', '-tAc',
+                    `SELECT 1 FROM pg_database WHERE datname = '${db}'`], { stdio: 'pipe', timeout: 8000 }).toString().trim();
+                exists = out === '1';
+            } catch (e) {
+                lastMsg = 'psql check failed: ' + ((e.stderr && e.stderr.toString().trim().split('\n')[0]) || e.message).slice(0, 120);
+                sleepSync(2500);
+                continue;
+            }
+            if (!exists) { lastMsg = 'db not created yet'; sleepSync(2500); continue; }
+        }
         try {
             execFileSync(pgDumpExe, ['-h', '127.0.0.1', '-p', pgPort, '-U', 'postgres', '-d', db, '-Fp', '-f', dump], { stdio: 'pipe', timeout: 10000 });
             return '';
