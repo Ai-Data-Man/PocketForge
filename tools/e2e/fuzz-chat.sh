@@ -477,6 +477,12 @@ node "$(dirname "$0")/mask-fuzz-probe.js" >/dev/null 2>&1; ck "maskKeys display-
 # 端点面（活体只读）：无参形状稳定（三源字段齐）/POST 405/畸形 query 不 500；
 # 数据面（探针自建自清，详见 assets-fuzz-probe.js）：forge_meta+tinfo 极端行冲突与降级/ws 目录名畸形/成品文件名极端/千行表；
 # 并发面：5 并发 GET 每响应形状完备 + 5 份逐字节一致（FINDING-1 已修，oracle 已收紧，见下方注记）
+# ia-rework（裁决 2026-09-15-made-ledger-ia-rework §3-S3 种子法）：台账仅收 origin:self 技能，本机 0 self →
+# 种子保「三源在场」断言强度不减（断言只增不减纪律）；用后自清（s82），重复运行 mkdir -p 幂等
+ASSEED="$FR/.agents/skills/__probe-self-ledger"
+trap 'rm -rf "$ASSEED"' EXIT
+mkdir -p "$ASSEED" && printf -- '---\nname: __probe-self-ledger\ndescription: fuzz seed\n---\nbody\n' > "$ASSEED/SKILL.md"
+printf '{"_schema":1,"source":"self","installed_at":"t"}' > "$ASSEED/origin.json"
 curl -s "$B/api/assets" | python -c "
 import sys,json
 d=json.load(sys.stdin)
@@ -491,6 +497,8 @@ for i in d['items']:
     assert i['srcTitle'] is None or isinstance(i['srcTitle'],str)
     assert isinstance(i['ref'],dict)
 "; ck "assets GET no-param shape stable, three sources present (s83)" $?
+rm -rf "$ASSEED"; trap - EXIT
+[ ! -d "$ASSEED" ]; ck "ia-rework self-seed cleaned up (fuzz)" $?
 [ "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/assets")" = "405" ]; ck "assets POST refused 405 (s83)" $?
 Q5K=$(printf 'x%.0s' {1..5000})
 curl -s -m 15 -G "$B/api/assets" --data-urlencode "q=$Q5K" | grep -q '"ok":true'; ck "assets overlong query ignored, no 500 (s83)" $?

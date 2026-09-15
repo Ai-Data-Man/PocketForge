@@ -11,8 +11,19 @@ function get(p) {
         r.on('error', rej); r.on('timeout', () => { r.destroy(); rej(new Error('timeout')); });
     });
 }
+// ia-rework S3（裁决 2026-09-15-made-ledger-ia-rework §3-S3）：台账仅收自沉淀技能后，本机 0 个 self → A3 改为自建种子
+// __probe-self-ledger（origin.source=self，同 S1 验收 2 形态）后断言在场；s82 用后自清纪律（重复运行先 force rm）
+const SEED_DIR = path.join(ROOT, 'forge', '.agents', 'skills', '__probe-self-ledger');
+function seedSelfLedger() {
+    try { fs.rmSync(SEED_DIR, { recursive: true, force: true }); } catch {}
+    fs.mkdirSync(SEED_DIR, { recursive: true });
+    fs.writeFileSync(path.join(SEED_DIR, 'SKILL.md'), '---\nname: __probe-self-ledger\ndescription: ia-rework probe seed\n---\nprobe body\n');
+    fs.writeFileSync(path.join(SEED_DIR, 'origin.json'), JSON.stringify({ _schema: 1, source: 'self', installed_at: new Date().toISOString() }, null, 2));
+}
+function cleanSelfLedger() { try { fs.rmSync(SEED_DIR, { recursive: true, force: true }); } catch {} }
 
 (async () => {
+    seedSelfLedger();
     // ===== 活体端点 =====
     let j = null;
     try { j = JSON.parse((await get('/api/assets')).body); } catch (e) { ck('A1 /api/assets 可达且 ok:true', false, e.message); }
@@ -25,7 +36,7 @@ function get(p) {
     ck('A2 条目统一模型形状（kind/name/human/ts/srcSid/srcTitle/ref）', shapeOk);
     const byKind = {};
     items.forEach(i => byKind[i.kind] = (byKind[i.kind] || 0) + 1);
-    ck('A3 三源各在列（tbl/file/skill ≥1）', (byKind.tbl || 0) >= 1 && (byKind.file || 0) >= 1 && (byKind.skill || 0) >= 1, JSON.stringify(byKind));
+    ck('A3 三源各在列（tbl/file/skill ≥1，skill=种子 self 技能源——ia-rework 后内置/市场不入账）', (byKind.tbl || 0) >= 1 && (byKind.file || 0) >= 1 && (byKind.skill || 0) >= 1 && items.filter(i => i.kind === 'skill').every(i => i.name === '__probe-self-ledger'), JSON.stringify(byKind));
     let sorted = true;
     for (let k = 1; k < items.length; k++) {
         const a = items[k - 1].ts, b = items[k].ts;
@@ -44,6 +55,10 @@ function get(p) {
     let post = 0;
     try { post = (await new Promise((res, rej) => { const r = http.request({ host: '127.0.0.1', port: 8790, path: '/api/assets', method: 'POST' }, x => res(x.statusCode)); r.on('error', rej); r.end(); })); } catch {}
     ck('A10 非 GET 拒 405', post === 405, 'status=' + post);
+    // A11（裁决 §3-S3 新增「内置技能零误归因」；编号避让既有 A10）：前提=此五名为随包保留名（skillInstallBlocked 防同名安装），台账 skill 条目命中即误归因回归
+    const BUILTIN_RESERVED = ['artifact-versioning', 'forge-selfcheck', 'scrape-table-to-db', 'see-image', 'skill-sediment'];
+    const misattr = items.filter(i => i.kind === 'skill' && BUILTIN_RESERVED.indexOf(i.name) >= 0).map(i => i.name);
+    ck('A11 内置技能零误归因（kind:skill 不命中随包保留名黑名单）', misattr.length === 0, 'hit=' + JSON.stringify(misattr));
 
     // ===== 桥模板提取（锚点漂移=显式红，不误报）=====
     const bridge = fs.readFileSync(path.join(ROOT, 'forge', 'conf', 'templates', 'chat-bridge.tpl.js'), 'utf8');
@@ -78,6 +93,8 @@ function get(p) {
     const openAssetFn = html.match(/function openAsset\(it\)\{[\s\S]*?\n\}/);
     ck('C12 红线：openAsset 动作面=打开/定位（无写通道、无 confirm 删除族）', !!openAssetFn && !/delete|uninstall|POST/.test(openAssetFn[0]));
 
+    cleanSelfLedger(); // s82 用后自清（s83 探针种子纪律）；清理失败不吞证——下方残留即红
+    if (fs.existsSync(SEED_DIR)) ck('S 探针种子清理', false, 'residual=' + SEED_DIR);
     console.log('assets-probe: PASS=' + pass + ' FAIL=' + fail);
     process.exit(fail ? 1 : 0);
-})().catch(e => { console.error('FATAL', e); process.exit(2); });
+})().catch(e => { cleanSelfLedger(); console.error('FATAL', e); process.exit(2); });
