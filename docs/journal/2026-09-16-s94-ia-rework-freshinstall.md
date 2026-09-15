@@ -58,3 +58,10 @@
 ## s94-b3 小批（05:2x 收口）
 
 三只遗留项修复（见上②④⑤），全量 e2e 61/61+fuzz 190/190 只增不减。插曲：工程用 dev-stack-up.ps1 从提权会话重启 dev 栈触发 pg 拒管理员令牌 5 红（s67/s90 家族），按 PFdrill2 通道重拉后复跑全绿——**本机 dev 栈重启唯一正确通道=PFdrill2 任务**再实证。
+
+## s94b 发布（06:1x，用户令「请发布一版」）
+
+- v0.9.13 中止处置：删 release（id 389163812，资产/说明指纹不符）+ tag 留档；**v0.9.14 发布**（并入 s90-s94 全量）。
+- 发布门（§8 出厂包全新解压冷装，C:\PF-TEST\rel）：冷启 3s/首启供给/welcome/五端点/停栈收窗（b3 出厂实证）/pg 零 FATAL/备份链/logscan 唯一良性 WARN——全绿，沙盒整删。
+- 发布：tag+release+双资产（zip 323,590,457B / sha a7b9428c…）+正文精修稿 PATCH+API 对账（latest=v0.9.14，sha 资产=发布门包逐字节，exe 零尖峰）。可复现构建再证：release.sh 重打包同 sha。
+- 环境：dev 栈复位（PFdrill2 /End+/Run）。
