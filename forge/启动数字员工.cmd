@@ -13,12 +13,13 @@ powershell -NoProfile -Command "$m=[Text.Encoding]::UTF8.GetString([Convert]::Fr
 if errorlevel 1 ( pause & exit /b 1 )
 
 rem ---- s90: PostgreSQL refuses to run under an elevated token (user hit it 2026-09-15: double-click on the
-rem ---- built-in Administrator account => pg crash-loop => "database not connected" fallback). Detect the HIGH
-rem ---- integrity level via whoami /groups (S-1-16-12288; PowerShell .Groups does NOT expose integrity SIDs -
-rem ---- empirically verified both contexts 2026-09-15) and relaunch under a restricted token (runas trustlevel,
-rem ---- no admin rights needed). Detection command is base64 (EncodedCommand) - quoting hell avoided.
+rem ---- built-in Administrator account => pg crash-loop => "database not connected" fallback). Relaunch
+rem ---- ourselves under a restricted token (runas trustlevel - no admin rights needed) when elevated.
+rem ---- Detection = conf\elev-check.ps1 (IsInRole on Administrators; restricted tokens report False because the
+rem ---- group becomes deny-only - the SAME criterion PG itself uses). Do NOT key on the integrity SID
+rem ---- S-1-16-12288: restricted tokens keep it (measured 2026-09-15) => would reopen windows forever.
 if "%~1"=="relaunched" goto after_relaunch
-for /f "delims=" %%a in ('powershell -NoProfile -EncodedCommand JABvAD0AKAAmACAAIgAkAGUAbgB2ADoAUwB5AHMAdABlAG0AUgBvAG8AdABcAFMAeQBzAHQAZQBtADMAMgBcAHcAaABvAGEAbQBpAC4AZQB4AGUAIgAgAC8AZwByAG8AdQBwAHMAIAB8ACAATwB1AHQALQBTAHQAcgBpAG4AZwApADsAIABpAGYAKAAkAG8AIAAtAG0AYQB0AGMAaAAgACcAUwAtADEALQAxADYALQAxADIAMgA4ADgAJwApAHsAJwBIAEkARwBIACcAfQBlAGwAcwBlAHsAJwBMAE8AVwAnAH0A 2^>nul') do set "FORGE_IL=%%a"
+for /f "delims=" %%a in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%FORGE_ROOT%\conf\elev-check.ps1" 2^>nul') do set "FORGE_IL=%%a"
 if not "%FORGE_IL%"=="HIGH" goto after_relaunch
 powershell -NoProfile -Command "$m=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('W1BvY2tldEZvcmdlXSDmo4DmtYvliLDlvZPliY3mmK/nrqHnkIblkZjouqvku73lkK/liqjigJTigJTmlbDmja7lupPlh7rkuo7lronlhajkuI3lhYHorrjku6XnrqHnkIblkZjov5DooYzjgIIK5q2j5Zyo6Ieq5Yqo5pS555So5pmu6YCa5p2D6ZmQ6YeN5paw5ZCv5Yqo77yM6K+356iN5YCZ4oCmCg==')); [Console]::Out.Write($m)"
 rem ---- s90: the "relaunched" marker must sit INSIDE the quoted runas argument (empirically: "path arg" works,
