@@ -72,4 +72,11 @@ powershell -NoProfile -Command "$d='%FORGE_ROOT%\apps'; $out='%FORGE_ROOT%\conf\
 
 "%FORGE_ROOT%\bin\pc\process-compose.exe" up -f "%FORGE_ROOT%\conf\process-compose.yaml" -f "%FORGE_ROOT%\conf\ports.env.yaml" -f "%FORGE_ROOT%\conf\apps.env.yaml" -p %PC_PORT% -t=false
 echo [PocketForge] all stopped.
-pause
+rem ---- s94-b3: pc attach exit closes this window - a trailing pause left the console window
+rem ---- alive after stop (its CWD = install root blocked folder deletion; 4 sandboxes = 4 windows).
+rem ---- Non-zero pc exit (config/port error) still pauses so the failure stays readable.
+if errorlevel 1 (
+  echo [PocketForge] startup failed - see data\logs\pc.log
+  pause
+)
+exit /b 0
