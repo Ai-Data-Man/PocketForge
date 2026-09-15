@@ -35,7 +35,13 @@ if (pgPort && fs.existsSync(pgDumpExe)) {
         } catch (e) {
             try { fs.unlinkSync(dump); } catch {} // best-effort: 中途断连/超时的残缺 sql 不随 zip 分发
             const msg = (e.stderr && e.stderr.toString().trim().split('\n')[0]) || String(e.message).split('\n')[0];
-            console.warn(`pg_dump skipped: ${msg.trim()}`);
+            // s92: 首启时序——备份与桥同时启动，桥尚未建 forge_bridge 时 pg_dump 必报「database does not exist」。
+            // 这是正常时序不是故障（下次启动/下次备份会带上），故按信息级记录，保持启动日志零 ERROR。
+            if (/does not exist/.test(msg) && db !== 'postgres') {
+                console.log(`pg_dump skipped: ${db} 尚未建库（首启时序，正常），下次备份会带上`);
+            } else {
+                console.warn(`pg_dump skipped: ${msg.trim()}`);
+            }
         }
     }
 } else {
