@@ -123,8 +123,8 @@ if (-not $memOk) {
 
 # 2) 首启 secrets
 $secrets = Join-Path $ForgeRoot 'data\secrets.env'
+$chars = { -join ((48..57)+(65..90)+(97..122) | Get-Random -Count 32 | ForEach-Object { [char]$_ }) } # s94 F-6: 提到 if 外——幂等补缺 FAUCET_ADMIN_PW 也要用
 if (-not (Test-Path $secrets)) {
-    $chars = { -join ((48..57)+(65..90)+(97..122) | Get-Random -Count 32 | ForEach-Object { [char]$_ }) }
     $tok = & $chars
     $lines = @(
         "PC_TOKEN=$tok",
@@ -147,6 +147,9 @@ if (-not (Test-Path $secrets)) {
     if (-not $have['GOOSE_MODEL_NAME']) { $add += 'GOOSE_MODEL_NAME=mimo-v2.5' }
     if (-not $have['FORGE_AGENT_API_KEY']) { $add += 'FORGE_AGENT_API_KEY=' }
     if (-not $have['FORGE_AGENT_HOST']) { $add += 'FORGE_AGENT_HOST=http://127.0.0.1:20128/v1/' }
+    # s94 F-6: faucet 首启供给（bootstrap 5h + pc oneshot faucet-provision）需要确定性 admin 凭据
+    if (-not $have['FAUCET_ADMIN_EMAIL']) { $add += 'FAUCET_ADMIN_EMAIL=admin@pocketforge.local' }
+    if (-not $have['FAUCET_ADMIN_PW']) { $add += ('FAUCET_ADMIN_PW=' + (& $chars).Substring(0,24)) }
     if ($add.Count -gt 0) { Add-Content $secrets ($add -join [Environment]::NewLine) }
 }
 
@@ -222,6 +225,11 @@ if (Test-Path $visTpl) { Copy-Item $visTpl $visOut -Force }
 #     须由 wrapper 持管道，见模板头注；process-compose.yaml goose-scheduler 指向本产物）
 $schedTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\goose-scheduler.tpl.js'))
 [IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\goose-scheduler.js'), $schedTpl)
+
+# 5h) s94 F-6: faucet 首启供给脚本生成（admin/forge-admin 角色/agent key → data/faucet/.apikey；
+#     幂等+失败不阻断；由 pc oneshot「faucet-provision」在 faucet 端口就绪后执行，见模板头注）
+$provTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\faucet-provision.tpl.js'))
+[IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\faucet-provision.js'), $provTpl)
 
 # 5c) 首启欢迎页（仅首次：data/welcome.done 不存在时生成 html 并由启动器打开）
 $done = Join-Path $ForgeRoot 'data\welcome.done'
