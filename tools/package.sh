@@ -42,8 +42,11 @@ declare -A SRC=(
  [nats-server.Apache-2.0]="$FORGE/bin/nats-server/nats-server-v2.14.5-windows-amd64/LICENSE"
  [nats-cli.Apache-2.0]="$FORGE/bin/nats-cli/nats-0.4.0-windows-amd64/LICENSE"
  [faucet.MIT]="$FORGE/bin/faucet/LICENSE"
- [goose.Apache-2.0]="https://raw.githubusercontent.com/aaif-goose/goose/main/LICENSE"
- [node.MIT]="https://raw.githubusercontent.com/nodejs/node/main/LICENSE"
+ # s93: 一律从包内来源取（node/goose 曾从 GitHub raw 拉——上游 main 分支 LICENSE 是活文档，
+ # 会随依赖增长 → 同一 commit 两次打包字节不同（实测 +59 行），"验证物≠发布物"。
+ # 包内各发行版自带 LICENSE 即该版本真实许可文本，且保证构建确定性（同输入同字节）。
+ [goose.Apache-2.0]="$FORGE/vendor-licenses/goose.Apache-2.0"
+ [node.MIT]="$FORGE/bin/node-v22/node-v22.21.1-win-x64/LICENSE"
  [playwright-mcp.Apache-2.0]="$FORGE/bin/pw-mcp/node_modules/@playwright/mcp/LICENSE"
  [isomorphic-git.MIT]="$FORGE/bin/vendor/artifact-vcs/node_modules/isomorphic-git/LICENSE.md"
  [DOMPurify.Apache-2.0]="$FORGE/vendor-licenses/DOMPurify.Apache-2.0"
@@ -92,6 +95,9 @@ import sys, os, zipfile
 src, out = sys.argv[1], sys.argv[2]
 SKIP = ('data/chat-window-profile', 'data/pw-chat-check', 'data/pw-chat-v2check', 'data/backups', 'conf/goose/state', 'conf/goose/data', '.playwright-mcp', 'tmp', 'conf/dev-stack-up.ps1', 'apps')
 n = 0
+# s93: 可复现构建——条目时间戳归一为固定值（原样写入导致同内容两次构建 zip 字节不同，
+# "验证过的包 ≠ 发布的包"无法自证；实测 25300 文件内容全同、仅时间戳致 sha256 相异）
+FIXED_TS = (2026, 1, 1, 0, 0, 0)
 with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
     for root, dirs, files in os.walk(src):
         rel = os.path.relpath(root, src).replace(os.sep, '/')
@@ -102,7 +108,11 @@ with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
             frel = os.path.relpath(os.path.join(root, f), src).replace(os.sep, '/')
             if any(frel == sk for sk in SKIP):  # s88: SKIP 目录级匹配漏文件型条目（dev-stack-up.ps1 实锤进包）——文件级精确比对补门
                 continue
-            z.write(os.path.join(root, f), frel)
+            zi = zipfile.ZipInfo(frel, date_time=FIXED_TS)
+            zi.compress_type = zipfile.ZIP_DEFLATED
+            zi.external_attr = 0o644 << 16  # 内容/权限位固定（位掩码差异同样会改字节）
+            with open(os.path.join(root, f), 'rb') as fh:
+                z.writestr(zi, fh.read())
             n += 1
 print('zip ok:', out, os.path.getsize(out), 'bytes,', n, 'files')
 PYEOF
