@@ -67,6 +67,16 @@ $NOTES
 $(cat "$SHA")
 \`\`\`
 部署：解压即用（详阅包内 使用说明.md）。"
+# s92: 精修发布说明优先——RELEASE_NOTES_FILE=<repo 相对路径> 时用其正文（v0.9.11/12 精修正文先例）
+if [ -n "${RELEASE_NOTES_FILE:-}" ] && [ -f "$ROOT/$RELEASE_NOTES_FILE" ]; then
+  BODY="$(cat "$ROOT/$RELEASE_NOTES_FILE")
+
+## 校验
+\`\`\`
+$(cat "$SHA")
+\`\`\`"
+  echo "[正文] 使用精修发布说明: $RELEASE_NOTES_FILE"
+fi
 
 # 4) 创建 release（API 会按 target_commitish 自动建远程 tag）
 SHA_C=$(git -C "$ROOT" rev-parse "$TAG^{commit}")
