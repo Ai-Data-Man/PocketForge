@@ -1,0 +1,43 @@
+{
+  "ts": "2026-09-15-10-08-14",
+  "from": "v0.9.12",
+  "to": "v0.9.13",
+  "applied": [
+    "bin/chat-bridge.js",
+    "bin/forge-backup.js",
+    "bin/pg-init.cmd",
+    "bin/python/Lib/site-packages/win32/lib/__pycache__/pywin32_bootstrap.cpython-312.pyc",
+    "bin/update-runner.js",
+    "conf/bootstrap.ps1",
+    "conf/goose/config/.goosehints",
+    "conf/process-compose.yaml",
+    "conf/templates/chat-bridge.tpl.js",
+    "conf/templates/chat.tpl.html",
+    "conf/templates/forge-backup.tpl.js",
+    "conf/templates/goose-config.tpl.yaml",
+    "conf/templates/goose-hints.tpl.md",
+    "conf/templates/memory-mcp.tpl.cmd",
+    "conf/templates/pg-init.tpl.cmd",
+    "conf/templates/update-runner.tpl.js",
+    "conf/_app-template.yaml",
+    "VERSION",
+    "使用说明.md",
+    "停止数字员工.cmd",
+    "启动数字员工.cmd"
+  ],
+  "added": [
+    "conf/elev-check.ps1",
+    "conf/start-preflight.ps1"
+  ],
+  "deleted": [
+    "apps/qa-demo.yaml",
+    "bin/memory-mcp.cmd",
+    "conf/dev-stack-up.ps1",
+    "tmp/faucet-openapi.json",
+    "tmp/openapi.json",
+    "tmp/s78-agg.js",
+    "tmp/s78-init.js",
+    "tmp/s78-meta.js",
+    "tmp/s78exam-init.js"
+  ]
+}

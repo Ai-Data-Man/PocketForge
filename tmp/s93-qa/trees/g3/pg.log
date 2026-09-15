@@ -1,0 +1,4 @@
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 17:55:06.760 CST [1124] LOG:  starting PostgreSQL 17.11 on x86_64-windows, compiled by msvc-19.44.35228, 64-bit\r"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 17:55:06.761 CST [1124] LOG:  listening on IPv4 address \"127.0.0.1\", port 5432\r"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 17:55:06.811 CST [2256] LOG:  database system was shut down at 2026-09-15 17:55:03 CST"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 17:55:06.846 CST [1124] LOG:  database system is ready to accept connections\r"}

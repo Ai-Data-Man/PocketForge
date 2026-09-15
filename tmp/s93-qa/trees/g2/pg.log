@@ -1,0 +1,12 @@
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:29:50.592 CST [7416] LOG:  starting PostgreSQL 17.11 on x86_64-windows, compiled by msvc-19.44.35228, 64-bit\r"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:29:50.593 CST [7416] LOG:  listening on IPv4 address \"127.0.0.1\", port 5432\r"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:29:50.685 CST [21524] LOG:  database system was interrupted; last known up at 2026-09-15 17:53:16 CST"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:29:50.991 CST [21524] LOG:  database system was not properly shut down; automatic recovery in progress"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:29:50.996 CST [21524] LOG:  redo starts at 0/156A4C8"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:29:51.187 CST [21524] LOG:  invalid record length at 0/19E4C60: expected at least 24, got 0"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:29:51.187 CST [21524] LOG:  redo done at 0/19E4C28 system usage: CPU: user: 0.00 s, system: 0.04 s, elapsed: 0.19 s"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:29:51.193 CST [15704] LOG:  checkpoint starting: end-of-recovery immediate wait"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:29:51.608 CST [15704] LOG:  checkpoint complete: wrote 981 buffers (6.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.112 s, sync=0.286 s, total=0.417 s; sync files=317, longest=0.004 s, average=0.001 s; distance=4586 kB, estimate=4586 kB; lsn=0/19E4C60, redo lsn=0/19E4C60"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:29:51.944 CST [7416] LOG:  database system is ready to accept connections\r"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:30:06.673 CST [7416] LOG:  background writer process (PID 15400) exited with exit code 1\r"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:30:06.673 CST [7416] LOG:  terminating any other active server processes\r"}

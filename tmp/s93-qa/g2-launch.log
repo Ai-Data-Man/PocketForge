@@ -1,0 +1,95 @@
+[bootstrap] permission.yaml seeded from template (first run)
+[PocketForge] first run: welcome.html ready
+[PocketForge] starting... pc=8099 faucet=8091
+[PocketForge] starting... pc=8099 faucet=8091
+{"level":"debug","error":"could not locate `process-compose` in any of the following paths: [C:\\Users\\Administrator\\AppData\\Local C:\\ProgramData C:\\Users\\Administrator\\AppData\\Roaming]","time":"2026-09-15T17:53:09+08:00","message":"Path not found for process compose config home"}
+{"level":"debug","error":"could not locate `process-compose` in any of the following paths: [C:\\Users\\Administrator\\AppData\\Local C:\\ProgramData C:\\Users\\Administrator\\AppData\\Roaming]","time":"2026-09-15T17:53:09+08:00","message":"Path not found for process compose config home"}
+]0;process-compose: lavm-138s0y6v2o/C:\PF-QA\g2[nats	] [12092] 2026/09/15 17:53:09.365560 [INF] Starting nats-server
+[nats	] [12092] 2026/09/15 17:53:09.376561 [INF]   Version:  2.14.5
+[nats	] [12092] 2026/09/15 17:53:09.376561 [INF]   Git:      [d3bc045]
+[nats	] [12092] 2026/09/15 17:53:09.376561 [INF]   Name:     NBOE7ZMYYIWELF5EZ2X5GJZQAMODYW4KWZNBGDAUNX4MLTETHUD7WWXP
+[nats	] [12092] 2026/09/15 17:53:09.376561 [INF]   Node:     KyF8TDt6
+[nats	] [12092] 2026/09/15 17:53:09.376561 [INF]   ID:       NBOE7ZMYYIWELF5EZ2X5GJZQAMODYW4KWZNBGDAUNX4MLTETHUD7WWXP
+[nats	] [12092] 2026/09/15 17:53:09.378560 [INF] Starting http monitor on 127.0.0.1:8222
+[nats	] [12092] 2026/09/15 17:53:09.378560 [INF] Starting JetStream
+[nats	] [12092] 2026/09/15 17:53:09.379559 [INF]     _ ___ _____ ___ _____ ___ ___   _   __  __
+[nats	] [12092] 2026/09/15 17:53:09.379559 [INF]  _ | | __|_   _/ __|_   _| _ \ __| /_\ |  \/  |
+[nats	] [12092] 2026/09/15 17:53:09.379559 [INF] | || | _|  | | \__ \ | | |   / _| / _ \| |\/| |
+[nats	] [12092] 2026/09/15 17:53:09.379559 [INF]  \__/|___| |_| |___/ |_| |_|_\___/_/ \_\_|  |_|
+[nats	] [12092] 2026/09/15 17:53:09.379559 [INF] 
+[nats	] [12092] 2026/09/15 17:53:09.379559 [INF]          https://docs.nats.io/jetstream
+[nats	] [12092] 2026/09/15 17:53:09.379559 [INF] 
+[nats	] [12092] 2026/09/15 17:53:09.379559 [INF] ---------------- JETSTREAM ----------------
+[nats	] [12092] 2026/09/15 17:53:09.379559 [INF]   Strict:          true
+[nats	] [12092] 2026/09/15 17:53:09.379559 [INF]   Max Memory:      12.00 GB
+[nats	] [12092] 2026/09/15 17:53:09.379559 [INF]   Max Storage:     1.00 TB
+[nats	] [12092] 2026/09/15 17:53:09.379559 [INF]   Store Directory: "C:\PF-QA\g2\data\js\jetstream"
+[nats	] [12092] 2026/09/15 17:53:09.379559 [INF]   API Level:       4
+[nats	] [12092] 2026/09/15 17:53:09.379559 [INF] -------------------------------------------
+[nats	] [12092] 2026/09/15 17:53:09.382093 [INF] Took 3.5323ms to start JetStream
+[nats	] [12092] 2026/09/15 17:53:09.382093 [INF] Listening for client connections on 127.0.0.1:4222
+[nats	] [12092] 2026/09/15 17:53:09.382093 [INF] Server is ready
+[faucet	] 
+[faucet	]  _____ _   _   _  ___ ___ _____
+[faucet	] |  ___/ \ | | | |/ __| __|_   _|
+[faucet	] | |_ / _ \| |_| | (__|  _| | |
+[faucet	] |_| /_/ \_\___,_|\___|___| |_|
+[faucet	] 
+[faucet	] time=2026-09-15T17:53:09.452+08:00 level=INFO msg="config store initialized" path=C:/PF-QA/g2/data/faucet
+[faucet	] time=2026-09-15T17:53:09.452+08:00 level=INFO msg="connector registry initialized" drivers="[postgres mysql mssql oracle snowflake sqlite]"
+[faucet	] time=2026-09-15T17:53:09.453+08:00 level=WARN msg="no admin account found — visit /setup or run: faucet admin create --email admin@example.com --password changeme123"
+[faucet	] Anonymous usage stats are enabled to help improve Faucet.
+[faucet	] Disable with: faucet config set telemetry.enabled false  (or set FAUCET_TELEMETRY=0)
+[faucet	] See: https://github.com/faucetdb/faucet/blob/main/TELEMETRY.md
+[faucet	] 
+[faucet	] time=2026-09-15T17:53:09.458+08:00 level=INFO msg="telemetry enabled" docs=https://github.com/faucetdb/faucet/blob/main/TELEMETRY.md
+[faucet	] → Faucet v0.1.12 | Database → API in seconds
+[faucet	] → Listening on http://127.0.0.1:8091
+[faucet	] → Admin UI:   http://127.0.0.1:8091/admin
+[faucet	] → OpenAPI:    http://127.0.0.1:8091/openapi.json
+[faucet	] → MCP:        http://127.0.0.1:8091/mcp
+[faucet	] → Connected databases: 0
+[faucet	] 
+[faucet	] → First run detected! Set up your admin account:
+[faucet	] →   Web UI:  http://127.0.0.1:8091/setup
+[faucet	] →   CLI:     faucet admin create --email admin@example.com --password changeme123
+[faucet	] →   Env:     FAUCET_ADMIN_EMAIL=... FAUCET_ADMIN_PASSWORD=... faucet serve
+[faucet	] 
+[faucet	] time=2026-09-15T17:53:09.633+08:00 level=INFO msg="server starting" addr=127.0.0.1:8091
+[chat-bridge	] chat bridge v2 on http://127.0.0.1:8790
+[chat-bridge	] ACP initialized: goose | provider: secrets.env | model: mimo-v2.5
+[faucet-rawsql	] raw_sql enabled on 0 services
+[faucet-rawsql	] (node:12956) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+[faucet-rawsql	] (Use `node --trace-warnings ...` to show where the warning was created)
+[pg	] 2026-09-15 17:53:16.642 CST [15312] LOG:  starting PostgreSQL 17.11 on x86_64-windows, compiled by msvc-19.44.35228, 64-bit
+[pg	] 2026-09-15 17:53:16.643 CST [15312] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+[pg	] 2026-09-15 17:53:16.685 CST [13776] LOG:  database system was shut down at 2026-09-15 17:53:13 CST
+[pg	] 2026-09-15 17:53:16.719 CST [15312] LOG:  database system is ready to accept connections
+[daily-backup	] node:fs:1739
+[daily-backup	]   const stats = binding.stat(
+[daily-backup	]                         ^
+[daily-backup	] 
+[daily-backup	] Error: ENOENT: no such file or directory, stat 'C:\PF-QA\g2\data\pg-dumps\pg-2026-09-15T09-53-14.sql'
+[daily-backup	]     at Object.statSync (node:fs:1739:25)
+[daily-backup	]     at Object.<anonymous> (C:\PF-QA\g2\bin\forge-backup.js:65:53)
+[daily-backup	]     at Module._compile (node:internal/modules/cjs/loader:1706:14)
+[daily-backup	]     at Object..js (node:internal/modules/cjs/loader:1839:10)
+[daily-backup	]     at Module.load (node:internal/modules/cjs/loader:1441:32)
+[daily-backup	]     at Function._load (node:internal/modules/cjs/loader:1263:12)
+[daily-backup	]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[daily-backup	]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[daily-backup	]     at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+[daily-backup	]     at node:internal/main/run_main_module:36:49 {
+[daily-backup	]   errno: -4058,
+[daily-backup	]   code: 'ENOENT',
+[daily-backup	]   syscall: 'stat',
+[daily-backup	]   path: 'C:\\PF-QA\\g2\\data\\pg-dumps\\pg-2026-09-15T09-53-14.sql'
+[daily-backup	] }
+[daily-backup	] 
+[daily-backup	] Node.js v22.21.1
+[chat-bridge	] pg store ready: forge_bridge on 127.0.0.1:5432
+[chat-bridge	] pg arch reconcile: file=0 pg=0 adopted=0
+[chat-bridge	] pg wsmap reconcile: file=0 pg=0 adopted=0
+[chat-bridge	] pg usage backfill ok (1 files)
+[PocketForge] all stopped.
+Press any key to continue . . . 

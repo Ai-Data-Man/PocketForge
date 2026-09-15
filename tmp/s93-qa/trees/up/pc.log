@@ -1,0 +1,510 @@
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.176227 [INF] Starting nats-server"}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.200180 [INF]   Version:  2.14.5"}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.200180 [INF]   Git:      [d3bc045]"}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.200180 [INF]   Name:     NAXDRMGJ4XCVI2N6IBVRHQIIE2HMNMDUKHJVIZO4Q5FSUJCH6RBAAFCB"}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.200180 [INF]   Node:     LH2PxhHj"}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.200180 [INF]   ID:       NAXDRMGJ4XCVI2N6IBVRHQIIE2HMNMDUKHJVIZO4Q5FSUJCH6RBAAFCB"}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.202180 [INF] Starting http monitor on 127.0.0.1:8222"}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.202180 [INF] Starting JetStream"}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.203180 [INF]     _ ___ _____ ___ _____ ___ ___   _   __  __"}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.203180 [INF]  _ | | __|_   _/ __|_   _| _ \\ __| /_\\ |  \\/  |"}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.203180 [INF] | || | _|  | | \\__ \\ | | |   / _| / _ \\| |\\/| |"}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.203180 [INF]  \\__/|___| |_| |___/ |_| |_|_\\___/_/ \\_\\_|  |_|"}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.203180 [INF] "}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.203180 [INF]          https://docs.nats.io/jetstream"}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.203180 [INF] "}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.203180 [INF] ---------------- JETSTREAM ----------------"}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.203180 [INF]   Strict:          true"}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.203180 [INF]   Max Memory:      12.00 GB"}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.203180 [INF]   Max Storage:     1.00 TB"}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.203180 [INF]   Store Directory: \"C:\\PF-QA\\up\\data\\js\\jetstream\""}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.203180 [INF]   API Level:       4"}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.203180 [INF] -------------------------------------------"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"info","process":"faucet","replica":0,"message":" _____ _   _   _  ___ ___ _____"}
+{"level":"info","process":"faucet","replica":0,"message":"|  ___/ \\ | | | |/ __| __|_   _|"}
+{"level":"info","process":"faucet","replica":0,"message":"| |_ / _ \\| |_| | (__|  _| | |"}
+{"level":"info","process":"faucet","replica":0,"message":"|_| /_/ \\_\\___,_|\\___|___| |_|"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.229139 [INF] Took 26.9594ms to start JetStream"}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.230138 [INF] Listening for client connections on 127.0.0.1:4222"}
+{"level":"error","process":"nats","replica":0,"message":"[16780] 2026/09/15 17:56:37.230138 [INF] Server is ready"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:56:37.744+08:00 level=INFO msg=\"config store initialized\" path=C:/PF-QA/up/data/faucet"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:56:37.744+08:00 level=INFO msg=\"connector registry initialized\" drivers=\"[postgres mysql mssql oracle snowflake sqlite]\""}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:56:37.745+08:00 level=WARN msg=\"no admin account found — visit /setup or run: faucet admin create --email admin@example.com --password changeme123\""}
+{"level":"error","process":"faucet","replica":0,"message":"Anonymous usage stats are enabled to help improve Faucet."}
+{"level":"error","process":"faucet","replica":0,"message":"Disable with: faucet config set telemetry.enabled false  (or set FAUCET_TELEMETRY=0)"}
+{"level":"error","process":"faucet","replica":0,"message":"See: https://github.com/faucetdb/faucet/blob/main/TELEMETRY.md"}
+{"level":"error","process":"faucet","replica":0}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:56:37.759+08:00 level=INFO msg=\"telemetry enabled\" docs=https://github.com/faucetdb/faucet/blob/main/TELEMETRY.md"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Faucet v0.1.12 | Database → API in seconds"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Listening on http://127.0.0.1:8091"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Admin UI:   http://127.0.0.1:8091/admin"}
+{"level":"info","process":"faucet","replica":0,"message":"→ OpenAPI:    http://127.0.0.1:8091/openapi.json"}
+{"level":"info","process":"faucet","replica":0,"message":"→ MCP:        http://127.0.0.1:8091/mcp"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Connected databases: 0"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"info","process":"faucet","replica":0,"message":"→ First run detected! Set up your admin account:"}
+{"level":"info","process":"faucet","replica":0,"message":"→   Web UI:  http://127.0.0.1:8091/setup"}
+{"level":"info","process":"faucet","replica":0,"message":"→   CLI:     faucet admin create --email admin@example.com --password changeme123"}
+{"level":"info","process":"faucet","replica":0,"message":"→   Env:     FAUCET_ADMIN_EMAIL=... FAUCET_ADMIN_PASSWORD=... faucet serve"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:56:37.778+08:00 level=INFO msg=\"server starting\" addr=127.0.0.1:8091"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"chat bridge v2 on http://127.0.0.1:8790"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"ACP initialized: goose | provider: secrets.env | model: deepseek-v4-flash"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:56:41.902+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=3.014 bytes=39 request_id=01a0a47f-4f2b-7890-84ae-5be3dea03ea0 remote_addr=127.0.0.1:59678"}
+{"level":"info","process":"faucet-rawsql","replica":0,"message":"raw_sql enabled on 0 services"}
+{"level":"error","process":"faucet-rawsql","replica":0,"message":"(node:17396) ExperimentalWarning: SQLite is an experimental feature and might change at any time"}
+{"level":"error","process":"faucet-rawsql","replica":0,"message":"(Use `node --trace-warnings ...` to show where the warning was created)"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:56:46.941+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=2.04 bytes=39 request_id=01a0a47f-62db-7488-aa58-77e391fbf8f5 remote_addr=127.0.0.1:59686"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:56:51.889+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=1.995 bytes=39 request_id=01a0a47f-762f-7dac-b502-757e6484e3b3 remote_addr=127.0.0.1:59690"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:56:56.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a47f-89b7-78ba-ab8f-874494b85751 remote_addr=127.0.0.1:59709"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:57:01.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a47f-9d3f-7b21-8999-9a8eec143b97 remote_addr=127.0.0.1:59719"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:57:06.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a47f-b0c7-7676-b19b-2146cc75c2c9 remote_addr=127.0.0.1:59742"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg store ready: forge_bridge on 127.0.0.1:5432"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg arch reconcile: file=0 pg=0 adopted=0"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg wsmap reconcile: file=0 pg=0 adopted=0"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg usage backfill ok (1 files)"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:57:11.888+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a47f-c450-71a6-a9e8-f58880de15d7 remote_addr=127.0.0.1:59762"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"update upload staged: PocketForge-20260915-v0.9.13.zip 323573558 bytes"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:57:16.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a47f-d7d7-7def-9608-d1f165931c9c remote_addr=127.0.0.1:59772"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"update upload verified: PocketForge-20260915-v0.9.13.zip"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:57:21.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a47f-eb5f-7695-a184-4239d44a9049 remote_addr=127.0.0.1:59790"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:57:26.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a47f-fee7-77c1-b5a8-024032f41bc2 remote_addr=127.0.0.1:59805"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:57:31.888+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a480-1270-7111-9d40-553f9b7f7042 remote_addr=127.0.0.1:59825"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:57:36.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a480-25f7-77c7-96bb-b3cad4584554 remote_addr=127.0.0.1:59840"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pre-upgrade backup: pre-upgrade-2026-09-15T09-57-37 {\"conf/goose/config\":7,\"data/config\":1}"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:57:41.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a480-397f-76ec-b45c-e556698c9954 remote_addr=127.0.0.1:59860"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:57:46.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a480-4d07-7482-a401-69bc2d7a34de remote_addr=127.0.0.1:59871"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:57:51.888+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=1.002 bytes=39 request_id=01a0a480-608f-7d5d-ae83-e87e343aadda remote_addr=127.0.0.1:59889"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:57:56.898+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=1.048 bytes=39 request_id=01a0a480-7421-76e6-834b-9898b958b05f remote_addr=127.0.0.1:59903"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:58:01.895+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0.807 bytes=39 request_id=01a0a480-87a6-7976-baf7-61d83f0268ee remote_addr=127.0.0.1:59919"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:58:06.889+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a480-9b29-723e-86fe-3cd9915efb08 remote_addr=127.0.0.1:59929"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:58:11.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a480-aeaf-78db-bc7e-896fbdec1d8e remote_addr=127.0.0.1:59941"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:58:16.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a480-c237-79ce-8c6d-aeaa98659ab3 remote_addr=127.0.0.1:59946"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:58:21.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a480-d5bf-75f7-b618-e36634200966 remote_addr=127.0.0.1:59951"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:58:26.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a480-e947-7b8f-ae76-4aec266c86f7 remote_addr=127.0.0.1:59955"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:58:31.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a480-fccf-7496-aa75-826ab91d95eb remote_addr=127.0.0.1:59960"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:58:36.888+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a481-1058-71aa-84b1-bb39456225de remote_addr=127.0.0.1:59968"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:58:41.888+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a481-23e0-7384-8f4c-9133537fbd37 remote_addr=127.0.0.1:59974"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:58:46.888+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a481-3768-72d1-8c6c-21bdd1ee4189 remote_addr=127.0.0.1:59985"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:58:51.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a481-4aef-7619-9270-ea6d5d38d820 remote_addr=127.0.0.1:59990"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:58:56.888+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=1.005 bytes=39 request_id=01a0a481-5e77-7acc-b585-87e015a375dc remote_addr=127.0.0.1:59998"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:59:01.891+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=1.003 bytes=39 request_id=01a0a481-7202-7523-8695-f32e1860f559 remote_addr=127.0.0.1:60006"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:59:06.889+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a481-8589-7d11-9155-7f0fd3e61669 remote_addr=127.0.0.1:60017"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:59:11.890+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=2.106 bytes=39 request_id=01a0a481-9910-769e-a85a-83eca23d044b remote_addr=127.0.0.1:60025"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:59:16.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a481-ac97-77f9-bef0-54576b9df944 remote_addr=127.0.0.1:60030"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:59:21.893+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a481-c025-7cb9-b75b-daea2046447f remote_addr=127.0.0.1:60039"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:59:26.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a481-d3a7-787c-a726-076c141e5387 remote_addr=127.0.0.1:60046"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:59:31.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a481-e72f-7a80-893c-4940e3ff8f40 remote_addr=127.0.0.1:60057"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:59:36.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a481-fab7-7c4a-8503-046e0c3b2129 remote_addr=127.0.0.1:60063"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:59:41.888+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a482-0e40-7256-9350-4e47cf9827c1 remote_addr=127.0.0.1:60074"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:59:46.889+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0.994 bytes=39 request_id=01a0a482-21c8-7437-9c94-187cb0ddb189 remote_addr=127.0.0.1:60078"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:59:51.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a482-354f-7c80-bbe3-6315b8577fd0 remote_addr=127.0.0.1:60088"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:59:56.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a482-48d7-7a97-a790-f63955068ccf remote_addr=127.0.0.1:60092"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:00:01.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a482-5c5f-7617-961e-e3073befec67 remote_addr=127.0.0.1:60096"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:00:06.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a482-6fe7-743b-b7de-444e3a6df080 remote_addr=127.0.0.1:60113"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:00:11.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a482-836f-79ea-ab97-c4c698558660 remote_addr=127.0.0.1:60117"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:00:16.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a482-96f7-7d87-986b-3b9f9e6a542b remote_addr=127.0.0.1:60132"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:00:21.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a482-aa7f-78f6-bf0b-4cc31d05ff2b remote_addr=127.0.0.1:60146"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:00:26.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a482-be07-7d10-9d2c-af59b8cfa54c remote_addr=127.0.0.1:60151"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:00:31.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a482-d18f-7663-8aee-4cb505dc3f5e remote_addr=127.0.0.1:60156"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:00:36.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a482-e517-77f3-a18d-c9cf1adb046f remote_addr=127.0.0.1:60161"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:00:41.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a482-f89f-74b8-989e-dce0d816c967 remote_addr=127.0.0.1:60166"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:00:46.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a483-0c27-789a-8ca0-e9f586bfd156 remote_addr=127.0.0.1:60171"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:00:51.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a483-1faf-765c-bb7b-161e5dab0d53 remote_addr=127.0.0.1:60175"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:00:56.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a483-3337-7e93-b263-69547b30a486 remote_addr=127.0.0.1:60187"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:01:01.889+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a483-46c1-7aab-ac2f-d4d372deb86f remote_addr=127.0.0.1:60191"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:01:06.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a483-5a47-780d-974f-ebdbd68adc65 remote_addr=127.0.0.1:60201"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:01:11.891+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=1.031 bytes=39 request_id=01a0a483-6dd2-71c2-b3b7-089fd8c3e6f6 remote_addr=127.0.0.1:60206"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:01:16.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a483-8157-7963-9de8-ba1b9e8b9a59 remote_addr=127.0.0.1:60211"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:01:21.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a483-94df-7874-ac66-81da64c3a2c7 remote_addr=127.0.0.1:60220"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:01:26.888+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a483-a868-723d-8e01-3dfa410a8008 remote_addr=127.0.0.1:60233"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:01:31.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a483-bbef-7985-8fc7-4dfa0091978a remote_addr=127.0.0.1:60237"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:01:36.888+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a483-cf78-7268-8dfa-15a0a0413e2c remote_addr=127.0.0.1:60243"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:01:41.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a483-e2ff-743c-92cd-e399e9e8ff4a remote_addr=127.0.0.1:60252"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:01:46.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a483-f687-7748-a427-98201535d60e remote_addr=127.0.0.1:60262"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:01:51.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a484-0a0f-7c98-bdf1-633db1ff6740 remote_addr=127.0.0.1:60266"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:01:56.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a484-1d97-7a81-bab7-a9c3a9260a7f remote_addr=127.0.0.1:60271"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:02:01.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a484-311f-7dd6-94c4-e07c144aa230 remote_addr=127.0.0.1:60279"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:02:06.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a484-44a7-7c7e-950f-c5537319b362 remote_addr=127.0.0.1:60289"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:02:11.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a484-582f-768a-94d9-f38de767b233 remote_addr=127.0.0.1:60300"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:02:16.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a484-6bb7-7297-8a9f-b0a298b95385 remote_addr=127.0.0.1:60310"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:02:21.888+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0.996 bytes=39 request_id=01a0a484-7f3f-7c51-8930-7e3a777779a4 remote_addr=127.0.0.1:60323"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:02:26.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a484-92c7-74c9-b59e-03b132c63068 remote_addr=127.0.0.1:60334"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:02:31.890+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a484-a652-716f-a7ec-be807f25e450 remote_addr=127.0.0.1:60345"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:02:36.889+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a484-b9d9-77a4-8fda-6697fd38cda3 remote_addr=127.0.0.1:60353"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:02:41.891+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a484-cd63-73fd-960e-1d75e5a04df6 remote_addr=127.0.0.1:60362"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:02:46.891+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a484-e0eb-752d-9d28-153ca9e5b373 remote_addr=127.0.0.1:60367"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:02:51.888+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0.998 bytes=39 request_id=01a0a484-f46f-769f-aa1d-ec03f6c711f7 remote_addr=127.0.0.1:60372"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:02:56.890+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a485-07fa-7a3d-a1db-124ea0159607 remote_addr=127.0.0.1:60381"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:03:01.890+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a485-1b82-78a8-9b5f-9e5eea520a5e remote_addr=127.0.0.1:60387"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:03:06.893+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0.995 bytes=39 request_id=01a0a485-2f0c-7353-bef2-57eeb87c472a remote_addr=127.0.0.1:60396"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:03:11.894+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0.381 bytes=39 request_id=01a0a485-4295-7ca4-8ec9-010612cdd385 remote_addr=127.0.0.1:60405"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:03:16.889+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0.983 bytes=39 request_id=01a0a485-5618-7979-90e0-93fd71d3aedd remote_addr=127.0.0.1:60414"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:03:21.889+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a485-69a1-70b4-8e89-892d4b07ea07 remote_addr=127.0.0.1:60426"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:03:26.913+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a485-7d41-7b2e-93f8-ba39360083b5 remote_addr=127.0.0.1:60428"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:03:32.004+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a485-9124-7894-936f-88426785652f remote_addr=127.0.0.1:60436"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:03:36.890+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a485-a43a-762f-bd3c-e5dab0e2f370 remote_addr=127.0.0.1:60448"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:03:41.892+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a485-b7c4-74af-9bdb-3d5b16368db7 remote_addr=127.0.0.1:60455"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:03:46.890+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a485-cb4a-767e-9fc8-c6d9ce6a4e5e remote_addr=127.0.0.1:60459"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:03:51.899+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0.537 bytes=39 request_id=01a0a485-deda-7bf7-affd-4f689d6ad46c remote_addr=127.0.0.1:60463"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:03:56.892+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a485-f25c-7c56-bc9f-252e57ac9e99 remote_addr=127.0.0.1:60468"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:04:01.908+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a486-05f4-779c-bc2f-14ae028f6e64 remote_addr=127.0.0.1:60474"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:04:06.926+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a486-198e-70d6-ac0d-66aeffc6ec77 remote_addr=127.0.0.1:60483"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:04:11.893+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a486-2cf5-7a0e-b8b8-101c1cf39e03 remote_addr=127.0.0.1:60488"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:04:16.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a486-4077-7d00-ae7d-9246f75b2118 remote_addr=127.0.0.1:60493"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:04:21.888+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a486-5400-7984-9cf2-c17a580ba95b remote_addr=127.0.0.1:60498"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:04:26.887+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a486-6787-7285-8168-c566238fbff1 remote_addr=127.0.0.1:60507"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:04:31.893+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a486-7b15-78f8-86c3-db2b24def325 remote_addr=127.0.0.1:60512"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:04:36.895+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a486-8e9f-7090-b219-a0c6831d6e70 remote_addr=127.0.0.1:60515"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:04:41.904+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a486-a230-7b58-9a68-7864f1e6a2fa remote_addr=127.0.0.1:60521"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:04:46.891+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=1.05 bytes=39 request_id=01a0a486-b5aa-728a-b579-ecc66988496f remote_addr=127.0.0.1:60526"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:04:51.892+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a486-c934-71c6-ac1e-4aaf241cea54 remote_addr=127.0.0.1:60534"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:04:56.892+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a486-dcbc-7d26-a68a-8cb6d76a33ed remote_addr=127.0.0.1:60545"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:05:01.889+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a486-f041-713c-bc82-88d07004d4f9 remote_addr=127.0.0.1:60549"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:05:06.931+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=1.037 bytes=39 request_id=01a0a487-03f2-751d-8d20-4e6f365fbc3f remote_addr=127.0.0.1:60564"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:05:11.899+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0.993 bytes=39 request_id=01a0a487-175a-7b0f-a390-fbff7e61464a remote_addr=127.0.0.1:60568"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:05:16.890+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0.514 bytes=39 request_id=01a0a487-2ad9-7d7e-8e71-884c319930c7 remote_addr=127.0.0.1:60579"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:05:21.893+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=1 bytes=39 request_id=01a0a487-3e64-7b7a-96c6-13f79c1c8f72 remote_addr=127.0.0.1:60590"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:05:26.890+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0.192 bytes=39 request_id=01a0a487-51ea-750c-a125-5745e989d2f0 remote_addr=127.0.0.1:60594"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:05:31.890+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a487-6572-75e4-b348-0b405e1368d7 remote_addr=127.0.0.1:60609"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:05:36.893+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a487-78fd-7249-9c46-d82bd3089916 remote_addr=127.0.0.1:60615"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:05:41.890+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a487-8c82-79ba-ac9c-0158d1e89597 remote_addr=127.0.0.1:60621"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:05:46.891+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=1.001 bytes=39 request_id=01a0a487-a00a-7bee-a2e5-684e618afee1 remote_addr=127.0.0.1:60627"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:05:51.893+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=1.011 bytes=39 request_id=01a0a487-b394-7a76-ad41-669f6943a31d remote_addr=127.0.0.1:60635"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:05:56.890+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a487-c71a-7592-9582-d52a214cc9f6 remote_addr=127.0.0.1:60640"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:06:01.889+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a487-daa1-7dd0-8483-7d596c7f1ccd remote_addr=127.0.0.1:60645"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:06:06.891+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a487-ee2b-7a3a-8a2f-d5aaa272e604 remote_addr=127.0.0.1:60654"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:06:11.890+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a488-01b2-771e-a767-09be77ed6380 remote_addr=127.0.0.1:60660"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:06:16.888+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0.996 bytes=39 request_id=01a0a488-1537-76d6-9946-c4bb1824b4d8 remote_addr=127.0.0.1:60664"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:06:21.890+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a488-28c2-7e13-9f4a-71c91f32c935 remote_addr=127.0.0.1:60670"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:06:26.909+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a488-3c5d-7543-bbea-24812061510f remote_addr=127.0.0.1:60674"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:06:31.891+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a488-4fd3-72f2-8942-51f8be5292aa remote_addr=127.0.0.1:60680"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:06:36.891+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a488-635b-76d7-b946-6680f7343a1d remote_addr=127.0.0.1:60683"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:06:41.892+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a488-76e4-7cb9-a2c9-d9a4eb1310d9 remote_addr=127.0.0.1:60689"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:06:46.892+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a488-8a6c-774f-bde3-2e59e70c3397 remote_addr=127.0.0.1:60693"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:06:51.890+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a488-9df2-73e9-bf32-efb5539d72e9 remote_addr=127.0.0.1:60699"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:06:56.893+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a488-b17d-727a-b9ed-a0d411e6fc71 remote_addr=127.0.0.1:60704"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:07:01.890+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a488-c502-7030-8b0e-31b31c95cecb remote_addr=127.0.0.1:60711"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:07:06.891+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a488-d88b-7bd3-a1fd-5904d1972eca remote_addr=127.0.0.1:60720"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:07:11.894+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a488-ec16-74cc-bddc-408f4e6fb3da remote_addr=127.0.0.1:60734"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:07:16.890+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a488-ff9a-79f5-89f2-f0e768f6c376 remote_addr=127.0.0.1:60738"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:07:21.888+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0.998 bytes=39 request_id=01a0a489-131f-7a97-9214-371270ec0870 remote_addr=127.0.0.1:60748"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:07:26.891+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a489-26ab-7be3-91ea-c8d81bdd8dd5 remote_addr=127.0.0.1:60752"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:07:31.892+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a489-3a34-74bb-b8d0-c58dba8f29c6 remote_addr=127.0.0.1:60758"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:07:36.895+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a489-4dbf-754d-8ce4-2c5c9e27938f remote_addr=127.0.0.1:60769"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:07:41.894+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0.154 bytes=39 request_id=01a0a489-6146-7224-9394-f84e23c01aab remote_addr=127.0.0.1:60776"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:07:46.892+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0.999 bytes=39 request_id=01a0a489-74cb-78d8-b1cc-046d6c42923b remote_addr=127.0.0.1:60780"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:07:51.889+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a489-8851-7a0a-94bc-09a6d29a3d1f remote_addr=127.0.0.1:60784"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:07:56.897+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=1.034 bytes=39 request_id=01a0a489-9be0-701e-95ea-f7c54266ecca remote_addr=127.0.0.1:60789"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:08:01.904+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=8.031 bytes=39 request_id=01a0a489-af68-778a-aadc-30f7ed20369f remote_addr=127.0.0.1:60794"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:08:06.888+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=39 request_id=01a0a489-c2e8-7c33-87fa-ec23a5aac5af remote_addr=127.0.0.1:60809"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:08:11.958+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=1.029 bytes=39 request_id=01a0a489-d6b5-72a2-9f6a-5fe1670177dd remote_addr=127.0.0.1:60818"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.147933 [INF] Starting nats-server"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.157813 [INF]   Version:  2.14.5"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.157813 [INF]   Git:      [d3bc045]"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.157813 [INF]   Name:     NAYHEH3TZW7JWU5X5CQ2QS5XH7Y7IWGDXXCE5HNOIOFV2WDK7RATQBWL"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.157813 [INF]   Node:     XfyhzLvI"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.157813 [INF]   ID:       NAYHEH3TZW7JWU5X5CQ2QS5XH7Y7IWGDXXCE5HNOIOFV2WDK7RATQBWL"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.159189 [INF] Starting http monitor on 127.0.0.1:8222"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.159189 [INF] Starting JetStream"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.160190 [INF]     _ ___ _____ ___ _____ ___ ___   _   __  __"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.160190 [INF]  _ | | __|_   _/ __|_   _| _ \\ __| /_\\ |  \\/  |"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.160190 [INF] | || | _|  | | \\__ \\ | | |   / _| / _ \\| |\\/| |"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.160190 [INF]  \\__/|___| |_| |___/ |_| |_|_\\___/_/ \\_\\_|  |_|"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.160190 [INF] "}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.160190 [INF]          https://docs.nats.io/jetstream"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.160190 [INF] "}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.160190 [INF] ---------------- JETSTREAM ----------------"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.160190 [INF]   Strict:          true"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.160190 [INF]   Max Memory:      12.00 GB"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:27:17.216+08:00 level=INFO msg=\"config store initialized\" path=C:/PF-QA/up/data/faucet"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.160190 [INF]   Max Storage:     1.00 TB"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.160190 [INF]   Store Directory: \"C:\\PF-QA\\up\\data\\js\\jetstream\""}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.160190 [INF]   API Level:       4"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.160190 [INF] -------------------------------------------"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.162188 [INF] Took 2.9992ms to start JetStream"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.162188 [INF] Listening for client connections on 127.0.0.1:4222"}
+{"level":"error","process":"chat-bridge","replica":0,"message":"(node:9820) ExperimentalWarning: SQLite is an experimental feature and might change at any time"}
+{"level":"error","process":"nats","replica":0,"message":"[17172] 2026/09/15 18:27:17.162188 [INF] Server is ready"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"chat bridge v2 on http://127.0.0.1:8790"}
+{"level":"error","process":"chat-bridge","replica":0,"message":"(Use `node --trace-warnings ...` to show where the warning was created)"}
+{"level":"info","process":"faucet","replica":0,"message":" _____ _   _   _  ___ ___ _____"}
+{"level":"info","process":"faucet","replica":0,"message":"|  ___/ \\ | | | |/ __| __|_   _|"}
+{"level":"info","process":"faucet","replica":0,"message":"| |_ / _ \\| |_| | (__|  _| | |"}
+{"level":"info","process":"faucet","replica":0,"message":"|_| /_/ \\_\\___,_|\\___|___| |_|"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"info","process":"faucet","replica":0,"message":"→ Faucet v0.1.12 | Database → API in seconds"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Listening on http://127.0.0.1:8091"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Admin UI:   http://127.0.0.1:8091/admin"}
+{"level":"info","process":"faucet","replica":0,"message":"→ OpenAPI:    http://127.0.0.1:8091/openapi.json"}
+{"level":"info","process":"faucet","replica":0,"message":"→ MCP:        http://127.0.0.1:8091/mcp"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Connected databases: 0"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"info","process":"faucet","replica":0,"message":"→ First run detected! Set up your admin account:"}
+{"level":"info","process":"faucet","replica":0,"message":"→   Web UI:  http://127.0.0.1:8091/setup"}
+{"level":"info","process":"faucet","replica":0,"message":"→   CLI:     faucet admin create --email admin@example.com --password changeme123"}
+{"level":"info","process":"faucet","replica":0,"message":"→   Env:     FAUCET_ADMIN_EMAIL=... FAUCET_ADMIN_PASSWORD=... faucet serve"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"info","process":"chat-bridge","replica":0,"message":"ACP initialized: goose | provider: secrets.env | model: deepseek-v4-flash"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:27:17.216+08:00 level=INFO msg=\"connector registry initialized\" drivers=\"[postgres mysql mssql oracle snowflake sqlite]\""}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:27:17.217+08:00 level=WARN msg=\"no admin account found — visit /setup or run: faucet admin create --email admin@example.com --password changeme123\""}
+{"level":"error","process":"faucet","replica":0,"message":"Anonymous usage stats are enabled to help improve Faucet."}
+{"level":"error","process":"faucet","replica":0,"message":"Disable with: faucet config set telemetry.enabled false  (or set FAUCET_TELEMETRY=0)"}
+{"level":"error","process":"faucet","replica":0,"message":"See: https://github.com/faucetdb/faucet/blob/main/TELEMETRY.md"}
+{"level":"error","process":"faucet","replica":0}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:27:17.217+08:00 level=INFO msg=\"telemetry enabled\" docs=https://github.com/faucetdb/faucet/blob/main/TELEMETRY.md"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:27:17.280+08:00 level=INFO msg=\"server starting\" addr=127.0.0.1:8091"}
+{"level":"info","process":"faucet-rawsql","replica":0,"message":"raw_sql enabled on 0 services"}
+{"level":"error","process":"faucet-rawsql","replica":0,"message":"(node:16192) ExperimentalWarning: SQLite is an experimental feature and might change at any time"}
+{"level":"error","process":"faucet-rawsql","replica":0,"message":"(Use `node --trace-warnings ...` to show where the warning was created)"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"{"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  severity_local: 'NOTICE',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  severity: 'NOTICE',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  code: '42P07',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  message: 'relation \"schema_migrations\" already exists, skipping',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  file: 'parse_utilcmd.c',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  line: '210',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  routine: 'transformCreateStmt'"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"}"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg store ready: forge_bridge on 127.0.0.1:5432"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg usage backfill: max-merged today row (P3-4)"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg arch reconcile: file=0 pg=0 adopted=0"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg wsmap reconcile: file=0 pg=0 adopted=0"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg usage backfill ok (1 files)"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.036845 [INF] Starting nats-server"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.051073 [INF]   Version:  2.14.5"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.051073 [INF]   Git:      [d3bc045]"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.051073 [INF]   Name:     NBJXJNBRPKMYPWN2N6ZWDOBEPYP7NHN6NMZ2OJS337HMYAGSUP6OKD22"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.051073 [INF]   Node:     yJX7X2r6"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.051073 [INF]   ID:       NBJXJNBRPKMYPWN2N6ZWDOBEPYP7NHN6NMZ2OJS337HMYAGSUP6OKD22"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.052073 [INF] Starting http monitor on 127.0.0.1:8222"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.052073 [INF] Starting JetStream"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.053070 [INF]     _ ___ _____ ___ _____ ___ ___   _   __  __"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.053070 [INF]  _ | | __|_   _/ __|_   _| _ \\ __| /_\\ |  \\/  |"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.053070 [INF] | || | _|  | | \\__ \\ | | |   / _| / _ \\| |\\/| |"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.053070 [INF]  \\__/|___| |_| |___/ |_| |_|_\\___/_/ \\_\\_|  |_|"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.053070 [INF] "}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.053070 [INF]          https://docs.nats.io/jetstream"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.053070 [INF] "}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.053070 [INF] ---------------- JETSTREAM ----------------"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.053070 [INF]   Strict:          true"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.053070 [INF]   Max Memory:      12.00 GB"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.053070 [INF]   Max Storage:     1.00 TB"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.053070 [INF]   Store Directory: \"C:\\PF-QA\\up\\data\\js\\jetstream\""}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.053070 [INF]   API Level:       4"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.053070 [INF] -------------------------------------------"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.053070 [INF] Took 997.1µs to start JetStream"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.054071 [INF] Listening for client connections on 127.0.0.1:4222"}
+{"level":"error","process":"nats","replica":0,"message":"[21420] 2026/09/15 18:28:37.054071 [INF] Server is ready"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"info","process":"faucet","replica":0,"message":" _____ _   _   _  ___ ___ _____"}
+{"level":"info","process":"faucet","replica":0,"message":"|  ___/ \\ | | | |/ __| __|_   _|"}
+{"level":"info","process":"faucet","replica":0,"message":"| |_ / _ \\| |_| | (__|  _| | |"}
+{"level":"info","process":"faucet","replica":0,"message":"|_| /_/ \\_\\___,_|\\___|___| |_|"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"info","process":"faucet","replica":0,"message":"→ Faucet v0.1.12 | Database → API in seconds"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Listening on http://127.0.0.1:8091"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Admin UI:   http://127.0.0.1:8091/admin"}
+{"level":"info","process":"faucet","replica":0,"message":"→ OpenAPI:    http://127.0.0.1:8091/openapi.json"}
+{"level":"info","process":"faucet","replica":0,"message":"→ MCP:        http://127.0.0.1:8091/mcp"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Connected databases: 0"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"info","process":"faucet","replica":0,"message":"→ First run detected! Set up your admin account:"}
+{"level":"info","process":"faucet","replica":0,"message":"→   Web UI:  http://127.0.0.1:8091/setup"}
+{"level":"info","process":"faucet","replica":0,"message":"→   CLI:     faucet admin create --email admin@example.com --password changeme123"}
+{"level":"info","process":"faucet","replica":0,"message":"→   Env:     FAUCET_ADMIN_EMAIL=... FAUCET_ADMIN_PASSWORD=... faucet serve"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:28:37.064+08:00 level=INFO msg=\"config store initialized\" path=C:/PF-QA/up/data/faucet"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:28:37.064+08:00 level=INFO msg=\"connector registry initialized\" drivers=\"[postgres mysql mssql oracle snowflake sqlite]\""}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:28:37.065+08:00 level=WARN msg=\"no admin account found — visit /setup or run: faucet admin create --email admin@example.com --password changeme123\""}
+{"level":"error","process":"faucet","replica":0,"message":"Anonymous usage stats are enabled to help improve Faucet."}
+{"level":"error","process":"faucet","replica":0,"message":"Disable with: faucet config set telemetry.enabled false  (or set FAUCET_TELEMETRY=0)"}
+{"level":"error","process":"faucet","replica":0,"message":"See: https://github.com/faucetdb/faucet/blob/main/TELEMETRY.md"}
+{"level":"error","process":"faucet","replica":0}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:28:37.065+08:00 level=INFO msg=\"telemetry enabled\" docs=https://github.com/faucetdb/faucet/blob/main/TELEMETRY.md"}
+{"level":"error","process":"chat-bridge","replica":0,"message":"(node:15068) ExperimentalWarning: SQLite is an experimental feature and might change at any time"}
+{"level":"error","process":"chat-bridge","replica":0,"message":"(Use `node --trace-warnings ...` to show where the warning was created)"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"chat bridge v2 on http://127.0.0.1:8790"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"ACP initialized: goose | provider: secrets.env | model: deepseek-v4-flash"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:28:37.217+08:00 level=INFO msg=\"server starting\" addr=127.0.0.1:8091"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"info","process":"faucet-rawsql","replica":0,"message":"raw_sql enabled on 0 services"}
+{"level":"error","process":"faucet-rawsql","replica":0,"message":"(node:20048) ExperimentalWarning: SQLite is an experimental feature and might change at any time"}
+{"level":"error","process":"faucet-rawsql","replica":0,"message":"(Use `node --trace-warnings ...` to show where the warning was created)"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"{"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  severity_local: 'NOTICE',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  severity: 'NOTICE',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  code: '42P07',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  message: 'relation \"schema_migrations\" already exists, skipping',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  file: 'parse_utilcmd.c',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  line: '210',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  routine: 'transformCreateStmt'"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"}"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg store ready: forge_bridge on 127.0.0.1:5432"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg usage backfill: max-merged today row (P3-4)"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg arch reconcile: file=0 pg=0 adopted=0"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg wsmap reconcile: file=0 pg=0 adopted=0"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg usage backfill ok (1 files)"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}
+{"level":"info","process":"qa-demo","replica":0,"message":"\n"}
+{"level":"error","process":"qa-demo","replica":0,"message":"'python' is not recognized as an internal or external command,\r"}
+{"level":"error","process":"qa-demo","replica":0,"message":"operable program or batch file.\r"}

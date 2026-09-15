@@ -1,0 +1,23 @@
+{"level":"error","process":"pg","replica":0,"message":"Execution of PostgreSQL by a user with administrative permissions is not\r"}
+{"level":"error","process":"pg","replica":0,"message":"permitted.\r"}
+{"level":"error","process":"pg","replica":0,"message":"The server must be started under an unprivileged user ID to prevent\r"}
+{"level":"error","process":"pg","replica":0,"message":"possible system security compromises.  See the documentation for\r"}
+{"level":"error","process":"pg","replica":0,"message":"more information on how to properly start the server.\r"}
+{"level":"info","process":"pg","replica":0,"message":"\n"}
+{"level":"error","process":"pg","replica":0,"message":"Execution of PostgreSQL by a user with administrative permissions is not\r"}
+{"level":"error","process":"pg","replica":0,"message":"permitted.\r"}
+{"level":"error","process":"pg","replica":0,"message":"The server must be started under an unprivileged user ID to prevent\r"}
+{"level":"error","process":"pg","replica":0,"message":"possible system security compromises.  See the documentation for\r"}
+{"level":"error","process":"pg","replica":0,"message":"more information on how to properly start the server.\r"}
+{"level":"info","process":"pg","replica":0,"message":"\n"}
+{"level":"error","process":"pg","replica":0,"message":"Execution of PostgreSQL by a user with administrative permissions is not\r"}
+{"level":"error","process":"pg","replica":0,"message":"permitted.\r"}
+{"level":"error","process":"pg","replica":0,"message":"The server must be started under an unprivileged user ID to prevent\r"}
+{"level":"error","process":"pg","replica":0,"message":"possible system security compromises.  See the documentation for\r"}
+{"level":"error","process":"pg","replica":0,"message":"more information on how to properly start the server.\r"}
+{"level":"info","process":"pg","replica":0,"message":"\n"}
+{"level":"error","process":"pg","replica":0,"message":"Execution of PostgreSQL by a user with administrative permissions is not\r"}
+{"level":"error","process":"pg","replica":0,"message":"permitted.\r"}
+{"level":"error","process":"pg","replica":0,"message":"The server must be started under an unprivileged user ID to prevent\r"}
+{"level":"error","process":"pg","replica":0,"message":"possible system security compromises.  See the documentation for\r"}
+{"level":"error","process":"pg","replica":0,"message":"more information on how to properly start the server.\r"}

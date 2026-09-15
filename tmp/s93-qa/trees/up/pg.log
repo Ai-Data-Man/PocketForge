@@ -1,0 +1,12 @@
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:28:37.242 CST [3764] LOG:  starting PostgreSQL 17.11 on x86_64-windows, compiled by msvc-19.44.35228, 64-bit\r"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:28:37.243 CST [3764] LOG:  listening on IPv4 address \"127.0.0.1\", port 5432\r"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:28:37.303 CST [2304] LOG:  database system was interrupted; last known up at 2026-09-15 18:27:17 CST"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:28:37.557 CST [2304] LOG:  database system was not properly shut down; automatic recovery in progress"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:28:37.561 CST [2304] LOG:  redo starts at 0/1A2A378"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:28:37.563 CST [2304] LOG:  invalid record length at 0/1A2A6E8: expected at least 24, got 0"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:28:37.563 CST [2304] LOG:  redo done at 0/1A2A6B0 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:28:37.568 CST [10252] LOG:  checkpoint starting: end-of-recovery immediate wait"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:28:37.591 CST [10252] LOG:  checkpoint complete: wrote 4 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.004 s, sync=0.004 s, total=0.025 s; sync files=3, longest=0.002 s, average=0.002 s; distance=0 kB, estimate=0 kB; lsn=0/1A2A6E8, redo lsn=0/1A2A6E8"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:28:37.620 CST [3764] LOG:  database system is ready to accept connections\r"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 18:29:33.552 CST [14492] LOG:  could not receive data from client: An existing connection was forcibly closed by the remote host.\r"}
+{"level":"error","process":"pg","replica":0,"message":"\t"}

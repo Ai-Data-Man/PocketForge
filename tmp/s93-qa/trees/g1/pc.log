@@ -1,0 +1,338 @@
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.334350 [INF] Starting nats-server"}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.345348 [INF]   Version:  2.14.5"}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.345348 [INF]   Git:      [d3bc045]"}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.345348 [INF]   Name:     NDZRSIBVADCUNASGTJXO2NYXUUPBTEI7D5N4I45NNZFTCLGX2G74UIQQ"}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.345348 [INF]   Node:     mVqB7pTO"}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.345348 [INF]   ID:       NDZRSIBVADCUNASGTJXO2NYXUUPBTEI7D5N4I45NNZFTCLGX2G74UIQQ"}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.346349 [INF] Starting http monitor on 127.0.0.1:8222"}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.346349 [INF] Starting JetStream"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"info","process":"faucet","replica":0,"message":" _____ _   _   _  ___ ___ _____"}
+{"level":"info","process":"faucet","replica":0,"message":"|  ___/ \\ | | | |/ __| __|_   _|"}
+{"level":"info","process":"faucet","replica":0,"message":"| |_ / _ \\| |_| | (__|  _| | |"}
+{"level":"info","process":"faucet","replica":0,"message":"|_| /_/ \\_\\___,_|\\___|___| |_|"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.412501 [INF]     _ ___ _____ ___ _____ ___ ___   _   __  __"}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.412501 [INF]  _ | | __|_   _/ __|_   _| _ \\ __| /_\\ |  \\/  |"}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.412501 [INF] | || | _|  | | \\__ \\ | | |   / _| / _ \\| |\\/| |"}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.412501 [INF]  \\__/|___| |_| |___/ |_| |_|_\\___/_/ \\_\\_|  |_|"}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.412501 [INF] "}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.412501 [INF]          https://docs.nats.io/jetstream"}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.412501 [INF] "}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.412501 [INF] ---------------- JETSTREAM ----------------"}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.412501 [INF]   Strict:          true"}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.412501 [INF]   Max Memory:      12.00 GB"}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.412501 [INF]   Max Storage:     1.00 TB"}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.412501 [INF]   Store Directory: \"C:\\PF-QA\\g1\\data\\js\\jetstream\""}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.412501 [INF]   API Level:       4"}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.412501 [INF] -------------------------------------------"}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.499960 [INF] Took 153.6105ms to start JetStream"}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.499960 [INF] Listening for client connections on 127.0.0.1:4222"}
+{"level":"error","process":"nats","replica":0,"message":"[22484] 2026/09/15 17:34:32.499960 [INF] Server is ready"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:34:34.000+08:00 level=INFO msg=\"config store initialized\" path=C:/PF-QA/g1/data/faucet"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:34:34.000+08:00 level=INFO msg=\"connector registry initialized\" drivers=\"[postgres mysql mssql oracle snowflake sqlite]\""}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:34:34.001+08:00 level=WARN msg=\"no admin account found — visit /setup or run: faucet admin create --email admin@example.com --password changeme123\""}
+{"level":"error","process":"faucet","replica":0,"message":"Anonymous usage stats are enabled to help improve Faucet."}
+{"level":"error","process":"faucet","replica":0,"message":"Disable with: faucet config set telemetry.enabled false  (or set FAUCET_TELEMETRY=0)"}
+{"level":"error","process":"faucet","replica":0,"message":"See: https://github.com/faucetdb/faucet/blob/main/TELEMETRY.md"}
+{"level":"error","process":"faucet","replica":0}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:34:34.100+08:00 level=INFO msg=\"telemetry enabled\" docs=https://github.com/faucetdb/faucet/blob/main/TELEMETRY.md"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"chat bridge v2 on http://127.0.0.1:8790"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Faucet v0.1.12 | Database → API in seconds"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Listening on http://127.0.0.1:8091"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Admin UI:   http://127.0.0.1:8091/admin"}
+{"level":"info","process":"faucet","replica":0,"message":"→ OpenAPI:    http://127.0.0.1:8091/openapi.json"}
+{"level":"info","process":"faucet","replica":0,"message":"→ MCP:        http://127.0.0.1:8091/mcp"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Connected databases: 0"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"info","process":"faucet","replica":0,"message":"→ First run detected! Set up your admin account:"}
+{"level":"info","process":"faucet","replica":0,"message":"→   Web UI:  http://127.0.0.1:8091/setup"}
+{"level":"info","process":"faucet","replica":0,"message":"→   CLI:     faucet admin create --email admin@example.com --password changeme123"}
+{"level":"info","process":"faucet","replica":0,"message":"→   Env:     FAUCET_ADMIN_EMAIL=... FAUCET_ADMIN_PASSWORD=... faucet serve"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:34:34.278+08:00 level=INFO msg=\"server starting\" addr=127.0.0.1:8091"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"ACP initialized: goose | provider: secrets.env | model: mimo-v2.5"}
+{"level":"info","process":"faucet-rawsql","replica":0,"message":"raw_sql enabled on 0 services"}
+{"level":"error","process":"faucet-rawsql","replica":0,"message":"(node:19468) ExperimentalWarning: SQLite is an experimental feature and might change at any time"}
+{"level":"error","process":"faucet-rawsql","replica":0,"message":"(Use `node --trace-warnings ...` to show where the warning was created)"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg store ready: forge_bridge on 127.0.0.1:5432"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg arch reconcile: file=0 pg=0 adopted=0"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg wsmap reconcile: file=0 pg=0 adopted=0"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg usage backfill ok (1 files)"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:36:01.413+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0.6 bytes=15 request_id=01a0a46c-6185-73c9-a4fd-a88d739df0de remote_addr=127.0.0.1:57621"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:37:55.831+08:00 level=INFO msg=request method=GET path=/healthz status=200 duration_ms=0 bytes=15 request_id=01a0a46e-2077-7e63-8cf9-42fd2da53df0 remote_addr=127.0.0.1:57828"}
+{"level":"error","process":"chat-bridge","replica":0,"message":"(node:2704) ExperimentalWarning: SQLite is an experimental feature and might change at any time"}
+{"level":"error","process":"chat-bridge","replica":0,"message":"(Use `node --trace-warnings ...` to show where the warning was created)"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.549057 [INF] Starting nats-server"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:43:23.560+08:00 level=INFO msg=\"config store initialized\" path=C:/PF-QA/g1/data/faucet"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.558065 [INF]   Version:  2.14.5"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.558065 [INF]   Git:      [d3bc045]"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.558065 [INF]   Name:     ND6WRXPNBIOHFYXPVQ73LSIDIPZQIG5UCLQGQLGE2ANHSGIM3HYCCONQ"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.558065 [INF]   Node:     givFuzRc"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.558065 [INF]   ID:       ND6WRXPNBIOHFYXPVQ73LSIDIPZQIG5UCLQGQLGE2ANHSGIM3HYCCONQ"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.559064 [INF] Starting http monitor on 127.0.0.1:8222"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.559064 [INF] Starting JetStream"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.560065 [INF]     _ ___ _____ ___ _____ ___ ___   _   __  __"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.560065 [INF]  _ | | __|_   _/ __|_   _| _ \\ __| /_\\ |  \\/  |"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.560065 [INF] | || | _|  | | \\__ \\ | | |   / _| / _ \\| |\\/| |"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.560065 [INF]  \\__/|___| |_| |___/ |_| |_|_\\___/_/ \\_\\_|  |_|"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.560065 [INF] "}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.560065 [INF]          https://docs.nats.io/jetstream"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.560065 [INF] "}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.560065 [INF] ---------------- JETSTREAM ----------------"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.560065 [INF]   Strict:          true"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.560065 [INF]   Max Memory:      12.00 GB"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.560065 [INF]   Max Storage:     1.00 TB"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.560065 [INF]   Store Directory: \"C:\\PF-QA\\g1\\data\\js\\jetstream\""}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.560065 [INF]   API Level:       4"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.560065 [INF] -------------------------------------------"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.562057 [INF] Took 2.9931ms to start JetStream"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.562057 [INF] Listening for client connections on 127.0.0.1:4222"}
+{"level":"error","process":"nats","replica":0,"message":"[12292] 2026/09/15 17:43:23.562057 [INF] Server is ready"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:43:23.560+08:00 level=INFO msg=\"connector registry initialized\" drivers=\"[postgres mysql mssql oracle snowflake sqlite]\""}
+{"level":"error","process":"chat-bridge","replica":0,"message":"(node:9720) ExperimentalWarning: SQLite is an experimental feature and might change at any time"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"chat bridge v2 on http://127.0.0.1:8790"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:43:23.561+08:00 level=WARN msg=\"no admin account found — visit /setup or run: faucet admin create --email admin@example.com --password changeme123\""}
+{"level":"error","process":"faucet","replica":0,"message":"Anonymous usage stats are enabled to help improve Faucet."}
+{"level":"error","process":"faucet","replica":0,"message":"Disable with: faucet config set telemetry.enabled false  (or set FAUCET_TELEMETRY=0)"}
+{"level":"error","process":"faucet","replica":0,"message":"See: https://github.com/faucetdb/faucet/blob/main/TELEMETRY.md"}
+{"level":"error","process":"faucet","replica":0}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:43:23.561+08:00 level=INFO msg=\"telemetry enabled\" docs=https://github.com/faucetdb/faucet/blob/main/TELEMETRY.md"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:43:23.626+08:00 level=INFO msg=\"server starting\" addr=127.0.0.1:8091"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"ACP initialized: goose | provider: secrets.env | model: mimo-v2.5"}
+{"level":"error","process":"chat-bridge","replica":0,"message":"(Use `node --trace-warnings ...` to show where the warning was created)"}
+{"level":"info","process":"faucet","replica":0,"message":" _____ _   _   _  ___ ___ _____"}
+{"level":"info","process":"faucet","replica":0,"message":"|  ___/ \\ | | | |/ __| __|_   _|"}
+{"level":"info","process":"faucet-rawsql","replica":0,"message":"raw_sql enabled on 0 services"}
+{"level":"error","process":"faucet-rawsql","replica":0,"message":"(node:8876) ExperimentalWarning: SQLite is an experimental feature and might change at any time"}
+{"level":"info","process":"faucet","replica":0,"message":"| |_ / _ \\| |_| | (__|  _| | |"}
+{"level":"info","process":"faucet","replica":0,"message":"|_| /_/ \\_\\___,_|\\___|___| |_|"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"info","process":"faucet","replica":0,"message":"→ Faucet v0.1.12 | Database → API in seconds"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Listening on http://127.0.0.1:8091"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Admin UI:   http://127.0.0.1:8091/admin"}
+{"level":"info","process":"faucet","replica":0,"message":"→ OpenAPI:    http://127.0.0.1:8091/openapi.json"}
+{"level":"info","process":"faucet","replica":0,"message":"→ MCP:        http://127.0.0.1:8091/mcp"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Connected databases: 0"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"info","process":"faucet","replica":0,"message":"→ First run detected! Set up your admin account:"}
+{"level":"info","process":"faucet","replica":0,"message":"→   Web UI:  http://127.0.0.1:8091/setup"}
+{"level":"info","process":"faucet","replica":0,"message":"→   CLI:     faucet admin create --email admin@example.com --password changeme123"}
+{"level":"info","process":"faucet","replica":0,"message":"→   Env:     FAUCET_ADMIN_EMAIL=... FAUCET_ADMIN_PASSWORD=... faucet serve"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"error","process":"faucet-rawsql","replica":0,"message":"(Use `node --trace-warnings ...` to show where the warning was created)"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"{"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  severity_local: 'NOTICE',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  severity: 'NOTICE',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  code: '42P07',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  message: 'relation \"schema_migrations\" already exists, skipping',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  file: 'parse_utilcmd.c',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  line: '210',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  routine: 'transformCreateStmt'"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"}"}
+{"level":"info","proce{"level":"info","process":"faucet","replica":0}
+{"level":"info","process":"faucet","replica":0,"message":" _____ _   _   _  ___ ___ _____"}
+{"level":"info","process":"faucet","replica":0,"message":"|  ___/ \\ | | | |/ __| __|_   _|"}
+{"level":"info","process":"faucet","replica":0,"message":"| |_ / _ \\| |_| | (__|  _| | |"}
+{"level":"info","process":"faucet","replica":0,"message":"|_| /_/ \\_\\___,_|\\___|___| |_|"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:50:00.225+08:00 level=INFO msg=\"config store initialized\" path=C:/PF-QA/g1/data/faucet"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:50:00.225+08:00 level=INFO msg=\"connector registry initialized\" drivers=\"[postgres mysql mssql oracle snowflake sqlite]\""}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:50:00.226+08:00 level=WARN msg=\"no admin account found — visit /setup or run: faucet admin create --email admin@example.com --password changeme123\""}
+{"level":"error","process":"faucet","replica":0,"message":"Anonymous usage stats are enabled to help improve Faucet."}
+{"level":"error","process":"faucet","replica":0,"message":"Disable with: faucet config set telemetry.enabled false  (or set FAUCET_TELEMETRY=0)"}
+{"level":"error","process":"faucet","replica":0,"message":"See: https://github.com/faucetdb/faucet/blob/main/TELEMETRY.md"}
+{"level":"error","process":"faucet","replica":0}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:50:00.226+08:00 level=INFO msg=\"telemetry enabled\" docs=https://github.com/faucetdb/faucet/blob/main/TELEMETRY.md"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.233615 [INF] Starting nats-server"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.242612 [INF]   Version:  2.14.5"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.242612 [INF]   Git:      [d3bc045]"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.242612 [INF]   Name:     NBT56HS2K72LNMQV3LFSNFTTN2QOD3J66QET6SV54K7N6TCQNHEMLQZ2"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.242612 [INF]   Node:     hLL86m1z"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.242612 [INF]   ID:       NBT56HS2K72LNMQV3LFSNFTTN2QOD3J66QET6SV54K7N6TCQNHEMLQZ2"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.244345 [INF] Starting http monitor on 127.0.0.1:8222"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.244345 [INF] Starting JetStream"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.245343 [INF]     _ ___ _____ ___ _____ ___ ___   _   __  __"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.245343 [INF]  _ | | __|_   _/ __|_   _| _ \\ __| /_\\ |  \\/  |"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.245343 [INF] | || | _|  | | \\__ \\ | | |   / _| / _ \\| |\\/| |"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.245343 [INF]  \\__/|___| |_| |___/ |_| |_|_\\___/_/ \\_\\_|  |_|"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.245343 [INF] "}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.245343 [INF]          https://docs.nats.io/jetstream"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.245343 [INF] "}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.245343 [INF] ---------------- JETSTREAM ----------------"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.245343 [INF]   Strict:          true"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.245343 [INF]   Max Memory:      12.00 GB"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.245343 [INF]   Max Storage:     1.00 TB"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.245343 [INF]   Store Directory: \"C:\\PF-QA\\g1\\data\\js\\jetstream\""}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.245343 [INF]   API Level:       4"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.245343 [INF] -------------------------------------------"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.246344 [INF] Took 1.9992ms to start JetStream"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.246344 [INF] Listening for client connections on 127.0.0.1:4222"}
+{"level":"error","process":"nats","replica":0,"message":"[22012] 2026/09/15 17:50:00.246344 [INF] Server is ready"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Faucet v0.1.12 | Database → API in seconds"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Listening on http://127.0.0.1:8091"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Admin UI:   http://127.0.0.1:8091/admin"}
+{"level":"info","process":"faucet","replica":0,"message":"→ OpenAPI:    http://127.0.0.1:8091/openapi.json"}
+{"level":"info","process":"faucet","replica":0,"message":"→ MCP:        http://127.0.0.1:8091/mcp"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Connected databases: 0"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"info","process":"faucet","replica":0,"message":"→ First run detected! Set up your admin account:"}
+{"level":"info","process":"faucet","replica":0,"message":"→   Web UI:  http://127.0.0.1:8091/setup"}
+{"level":"info","process":"faucet","replica":0,"message":"→   CLI:     faucet admin create --email admin@example.com --password changeme123"}
+{"level":"info","process":"faucet","replica":0,"message":"→   Env:     FAUCET_ADMIN_EMAIL=... FAUCET_ADMIN_PASSWORD=... faucet serve"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"error","process":"chat-bridge","replica":0,"message":"(node:19036) ExperimentalWarning: SQLite is an experimental feature and might change at any time"}
+{"level":"error","process":"chat-bridge","replica":0,"message":"(Use `node --trace-warnings ...` to show where the warning was created)"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"chat bridge v2 on http://127.0.0.1:8790"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"ACP initialized: goose | provider: secrets.env | model: mimo-v2.5"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T17:50:00.381+08:00 level=INFO msg=\"server starting\" addr=127.0.0.1:8091"}
+{"level":"info","process":"faucet-rawsql","replica":0,"message":"raw_sql enabled on 0 services"}
+{"level":"error","process":"faucet-rawsql","replica":0,"message":"(node:5984) ExperimentalWarning: SQLite is an experimental feature and might change at any time"}
+{"level":"error","process":"faucet-rawsql","replica":0,"message":"(Use `node --trace-warnings ...` to show where the warning was created)"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"{"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  severity_local: 'NOTICE',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  severity: 'NOTICE',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  code: '42P07',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  message: 'relation \"schema_migrations\" already exists, skipping',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  file: 'parse_utilcmd.c',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  line: '210',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  routine: 'transformCreateStmt'"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"}"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg store ready: forge_bridge on 127.0.0.1:5432"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg usage backfill: max-merged today row (P3-4)"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg arch reconcile: file=0 pg=0 adopted=0"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg wsmap reconcile: file=0 pg=0 adopted=0"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg usage backfill ok (1 files)"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.429016 [INF] Starting nats-server"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.545786 [INF]   Version:  2.14.5"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.545786 [INF]   Git:      [d3bc045]"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.545786 [INF]   Name:     NC3ONTUYKRQFDLR5ZTTMSMKWJ4AF2S6YOY35TTWTGXHOC4XFUR2L2M7J"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.545786 [INF]   Node:     Np6gw7DU"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.545786 [INF]   ID:       NC3ONTUYKRQFDLR5ZTTMSMKWJ4AF2S6YOY35TTWTGXHOC4XFUR2L2M7J"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.591029 [INF] Starting http monitor on 127.0.0.1:8222"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.592021 [INF] Starting JetStream"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.597021 [INF]     _ ___ _____ ___ _____ ___ ___   _   __  __"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.597021 [INF]  _ | | __|_   _/ __|_   _| _ \\ __| /_\\ |  \\/  |"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.597021 [INF] | || | _|  | | \\__ \\ | | |   / _| / _ \\| |\\/| |"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.597021 [INF]  \\__/|___| |_| |___/ |_| |_|_\\___/_/ \\_\\_|  |_|"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.597021 [INF] "}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.597021 [INF]          https://docs.nats.io/jetstream"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.597021 [INF] "}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.597021 [INF] ---------------- JETSTREAM ----------------"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.597021 [INF]   Strict:          true"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.597021 [INF]   Max Memory:      12.00 GB"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.597021 [INF]   Max Storage:     1.00 TB"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.597021 [INF]   Store Directory: \"C:\\PF-QA\\g1\\data\\js\\jetstream\""}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.597021 [INF]   API Level:       4"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.597021 [INF] -------------------------------------------"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.603017 [INF] Took 9.9982ms to start JetStream"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.604017 [INF] Listening for client connections on 127.0.0.1:4222"}
+{"level":"error","process":"nats","replica":0,"message":"[1812] 2026/09/15 18:10:53.604017 [INF] Server is ready"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"info","process":"faucet","replica":0,"message":" _____ _   _   _  ___ ___ _____"}
+{"level":"info","process":"faucet","replica":0,"message":"|  ___/ \\ | | | |/ __| __|_   _|"}
+{"level":"info","process":"faucet","replica":0,"message":"| |_ / _ \\| |_| | (__|  _| | |"}
+{"level":"info","process":"faucet","replica":0,"message":"|_| /_/ \\_\\___,_|\\___|___| |_|"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:10:53.880+08:00 level=INFO msg=\"config store initialized\" path=C:/PF-QA/g1/data/faucet"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:10:53.880+08:00 level=INFO msg=\"connector registry initialized\" drivers=\"[postgres mysql mssql oracle snowflake sqlite]\""}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:10:53.881+08:00 level=WARN msg=\"no admin account found — visit /setup or run: faucet admin create --email admin@example.com --password changeme123\""}
+{"level":"error","process":"faucet","replica":0,"message":"Anonymous usage stats are enabled to help improve Faucet."}
+{"level":"error","process":"faucet","replica":0,"message":"Disable with: faucet config set telemetry.enabled false  (or set FAUCET_TELEMETRY=0)"}
+{"level":"error","process":"faucet","replica":0,"message":"See: https://github.com/faucetdb/faucet/blob/main/TELEMETRY.md"}
+{"level":"error","process":"faucet","replica":0}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:10:53.881+08:00 level=INFO msg=\"telemetry enabled\" docs=https://github.com/faucetdb/faucet/blob/main/TELEMETRY.md"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Faucet v0.1.12 | Database → API in seconds"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Listening on http://127.0.0.1:8091"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Admin UI:   http://127.0.0.1:8091/admin"}
+{"level":"info","process":"faucet","replica":0,"message":"→ OpenAPI:    http://127.0.0.1:8091/openapi.json"}
+{"level":"info","process":"faucet","replica":0,"message":"→ MCP:        http://127.0.0.1:8091/mcp"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Connected databases: 0"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"info","process":"faucet","replica":0,"message":"→ First run detected! Set up your admin account:"}
+{"level":"info","process":"faucet","replica":0,"message":"→   Web UI:  http://127.0.0.1:8091/setup"}
+{"level":"info","process":"faucet","replica":0,"message":"→   CLI:     faucet admin create --email admin@example.com --password changeme123"}
+{"level":"info","process":"faucet","replica":0,"message":"→   Env:     FAUCET_ADMIN_EMAIL=... FAUCET_ADMIN_PASSWORD=... faucet serve"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"error","process":"chat-bridge","replica":0,"message":"(node:16672) ExperimentalWarning: SQLite is an experimental feature and might change at any time"}
+{"level":"error","process":"chat-bridge","replica":0,"message":"(Use `node --trace-warnings ...` to show where the warning was created)"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"chat bridge v2 on http://127.0.0.1:8790"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:10:54.598+08:00 level=INFO msg=\"server starting\" addr=127.0.0.1:8091"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"ACP initialized: goose | provider: secrets.env | model: mimo-v2.5"}
+{"level":"info","process":"faucet-rawsql","replica":0,"message":"raw_sql enabled on 0 services"}
+{"level":"error","process":"faucet-rawsql","replica":0,"message":"(node:15264) ExperimentalWarning: SQLite is an experimental feature and might change at any time"}
+{"level":"error","process":"faucet-rawsql","replica":0,"message":"(Use `node --trace-warnings ...` to show where the warning was created)"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"{"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  severity_local: 'NOTICE',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  severity: 'NOTICE',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  code: '42P07',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  message: 'relation \"schema_migrations\" already exists, skipping',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  file: 'parse_utilcmd.c',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  line: '210',"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"  routine: 'transformCreateStmt'"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"}"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg store ready: forge_bridge on 127.0.0.1:5432"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg usage backfill: max-merged today row (P3-4)"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg arch reconcile: file=0 pg=0 adopted=0"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg wsmap reconcile: file=0 pg=0 adopted=0"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"pg usage backfill ok (1 files)"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.316417 [INF] Starting nats-server"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.331610 [INF]   Version:  2.14.5"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.331610 [INF]   Git:      [d3bc045]"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.331610 [INF]   Name:     NDMOX4KINYF72OEWRTZHYOKH4TQ4K7PBDWKMK5IKGTSBQPW6TIVQQXFM"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.331610 [INF]   Node:     NwZqxxt7"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.331610 [INF]   ID:       NDMOX4KINYF72OEWRTZHYOKH4TQ4K7PBDWKMK5IKGTSBQPW6TIVQQXFM"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.363693 [INF] Starting http monitor on 127.0.0.1:8222"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.363693 [INF] Starting JetStream"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.363693 [INF]     _ ___ _____ ___ _____ ___ ___   _   __  __"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.363693 [INF]  _ | | __|_   _/ __|_   _| _ \\ __| /_\\ |  \\/  |"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.363693 [INF] | || | _|  | | \\__ \\ | | |   / _| / _ \\| |\\/| |"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.363693 [INF]  \\__/|___| |_| |___/ |_| |_|_\\___/_/ \\_\\_|  |_|"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.363693 [INF] "}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.363693 [INF]          https://docs.nats.io/jetstream"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.363693 [INF] "}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.363693 [INF] ---------------- JETSTREAM ----------------"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.363693 [INF]   Strict:          true"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.363693 [INF]   Max Memory:      12.00 GB"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.363693 [INF]   Max Storage:     1.00 TB"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.363693 [INF]   Store Directory: \"C:\\PF-QA\\g1\\data\\js\\jetstream\""}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.363693 [INF]   API Level:       4"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.363693 [INF] -------------------------------------------"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.365703 [INF] Took 2.0103ms to start JetStream"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.365703 [INF] Listening for client connections on 127.0.0.1:4222"}
+{"level":"error","process":"nats","replica":0,"message":"[19612] 2026/09/15 18:17:19.365703 [INF] Server is ready"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"info","process":"faucet","replica":0,"message":" _____ _   _   _  ___ ___ _____"}
+{"level":"info","process":"faucet","replica":0,"message":"|  ___/ \\ | | | |/ __| __|_   _|"}
+{"level":"info","process":"faucet","replica":0,"message":"| |_ / _ \\| |_| | (__|  _| | |"}
+{"level":"info","process":"faucet","replica":0,"message":"|_| /_/ \\_\\___,_|\\___|___| |_|"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:17:19.414+08:00 level=INFO msg=\"config store initialized\" path=C:/PF-QA/g1/data/faucet"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:17:19.414+08:00 level=INFO msg=\"connector registry initialized\" drivers=\"[postgres mysql mssql oracle snowflake sqlite]\""}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:17:19.415+08:00 level=WARN msg=\"no admin account found — visit /setup or run: faucet admin create --email admin@example.com --password changeme123\""}
+{"level":"error","process":"faucet","replica":0,"message":"Anonymous usage stats are enabled to help improve Faucet."}
+{"level":"error","process":"faucet","replica":0,"message":"Disable with: faucet config set telemetry.enabled false  (or set FAUCET_TELEMETRY=0)"}
+{"level":"error","process":"faucet","replica":0,"message":"See: https://github.com/faucetdb/faucet/blob/main/TELEMETRY.md"}
+{"level":"error","process":"faucet","replica":0}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:17:19.416+08:00 level=INFO msg=\"telemetry enabled\" docs=https://github.com/faucetdb/faucet/blob/main/TELEMETRY.md"}
+{"level":"error","process":"chat-bridge","replica":0,"message":"(node:18780) ExperimentalWarning: SQLite is an experimental feature and might change at any time"}
+{"level":"error","process":"chat-bridge","replica":0,"message":"(Use `node --trace-warnings ...` to show where the warning was created)"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"chat bridge v2 on http://127.0.0.1:8790"}
+{"level":"info","process":"chat-bridge","replica":0,"message":"ACP initialized: goose | provider: secrets.env | model: mimo-v2.5"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Faucet v0.1.12 | Database → API in seconds"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Listening on http://127.0.0.1:8091"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Admin UI:   http://127.0.0.1:8091/admin"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T18:17:19.500+08:00 level=INFO msg=\"server starting\" addr=127.0.0.1:8091"}
+{"level":"info","process":"faucet","replica":0,"message":"→ OpenAPI:    http://127.0.0.1:8091/openapi.json"}
+{"level":"info","process":"faucet","replica":0,"message":"→ MCP:        http://127.0.0.1:8091/mcp"}
+{"level":"info","process":"faucet","replica":0,"message":"→ Connected databases: 0"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"info","process":"faucet","replica":0,"message":"→ First run detected! Set up your admin account:"}
+{"level":"info","process":"faucet","replica":0,"message":"→   Web UI:  http://127.0.0.1:8091/setup"}
+{"level":"info","process":"faucet","replica":0,"message":"→   CLI:     faucet admin create --email admin@example.com --password changeme123"}
+{"level":"info","process":"faucet","replica":0,"message":"→   Env:     FAUCET_ADMIN_EMAIL=... FAUCET_ADMIN_PASSWORD=... faucet serve"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"info","process":"faucet-rawsql","replica":0,"message":"raw_sql enabled on 0 services"}
+{"level":"error","process":"faucet-rawsql","replica":0,"message":"(node:14808) ExperimentalWarning: SQLite is an experimental feature and might change at any time"}
+{"level":"error","process":"faucet-rawsql","replica":0,"message":"(Use `node --trace-warnings ...` to show where the warning was created)"}
