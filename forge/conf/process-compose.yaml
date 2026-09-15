@@ -24,11 +24,10 @@ processes:
     availability:
       restart: 'on_failure'
     readiness_probe:
-      http_get:
-        host: 127.0.0.1
-        port: ${FAUCET_PORT}
-        scheme: http
-        path: /healthz
+      # s90: 探针 http_get→TCP（复用 pg-probe 同款，传 faucet.port 文件）——HTTP /healthz 每 5s 一探=faucet
+      # 记一行 access 日志，黑窗口被探活噪音刷屏（用户实录 2026-09-15）；TCP 裸连接实测零日志（27→27 行）
+      exec:
+        command: '${FORGE_ROOT}/bin/node-v22/node-v22.21.1-win-x64/node.exe ${FORGE_ROOT}/bin/pg-probe.js ${FORGE_ROOT}/data/faucet.port'
       period_seconds: 5
       failure_threshold: 12
 

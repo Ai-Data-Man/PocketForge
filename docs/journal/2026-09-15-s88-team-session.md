@@ -47,3 +47,11 @@
 - 出厂验证副本（C:\PF-VERIFY，已清）：冷启 healthz 200、config.yaml 物化 GOOSE_MODEL=mimo-v2.5、/api/apps 出厂空态、真会话出厂默认直通回复「收到」。
 - 环境实录：桥固定 8790+单实例去重（s27）——dev 栈在跑时第二实例桥按设计退出；nats 8222 监控口无动态化（pc down 后 TIME_WAIT 窗内重启撞 FTL，观察项）；pc「Terminating 70s」卡态 stop→restart 恢复。用户试玩前 dev 栈已全停。
 - **用户试玩树就绪：C:\PocketForge**（v0.9.13/mimo 出厂/key 预配免引导条/纯 ASCII 路径），等用户双击「启动数字员工.cmd」实测。
+
+## 会话后补 3：用户实测反馈两修（2026-09-15 上午，用户双击试玩实录）
+
+用户反馈：①黑窗口 `数据库存储：没连上数据库…已用本地文件保存` ②faucet healthz 日志被动刷屏很快。
+
+**①根因（VERIFIED-RUN）**：用户机器上双击=**高完整性令牌**启动（内置 Administrator 账户：实测本会话 shell 的 whoami /groups 就是 High——该账户 UAC 过滤不生效），PostgreSQL 拒绝以管理员权限运行（pg.log 原句 `Execution of PostgreSQL by a user with administrative permissions is not permitted`）→ pg crash-loop → 桥按设计降级 file 态（文案即此）。与路径/包无关，是"管理员双击"场景的产品缺陷。**修复=启动器 s90 段**：whoami /groups 查 S-1-16-12288 完整性 SID（PowerShell .Groups **不**暴露完整性 SID——两上下文对照实测，两版检测法皆空集合）→ HIGH 时打印人话（base64 EncodedCommand 通道，沿用 P3 先例）并 `runas /trustlevel:0x20000 "%~f0 relaunched"` 自动降权重启；标记参数必须在引号对内（`"path" arg` 形态参数被静默吞——单变量实测）。**端到端实证**：本 shell（HIGH）经 wrapper 启动用户树 → 提示正确 → 子窗降权 → 30-45s 后 bridge 200/faucet 200/postgres 进程在 → `/api/db/overview` 200。
+**②根因（VERIFIED-RUN）**：faucet readiness 用 `http_get /healthz`，pc 每 5s 探一次，faucet 每次记一行 access 日志 → 黑窗口刷屏。**修复**：探针换 TCP（复用 pg-probe.js，传 faucet.port）——裸 TCP 连接实测零 access 日志（27→27 行），pg 同款先例 s66 已在用。实证：修复后实例 pc 日志 30s 增量 0 字节、healthz 行数 0。
+**遗留观察**：桥侧 `/api/db/overview` 的 PG 态在降权实例上正常；`fsutil`/`icacls` 未涉。
