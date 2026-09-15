@@ -747,6 +747,7 @@ function bindWs(ws, sid) { // s78 P2-B 同族①: 重绑必摘旧会话成员籍
 const explainCache = new Map(); // explain_tool 解释缓存：键=sha1(title+'\n'+output切片)，LRU 上限 200 条（2026-09-06 提速）
 const optimizeCache = new Map(); // optimize_prompt 缓存：键=sha1(model+\0+text+\0+context)（裁决 batch2 §4.2-2 全载荷进键），LRU 上限 200 条
 
+let lastSpawnEnv = ''; // s94-b2 F-3: spawnAcp 落地时写入（见函数尾），面板保存路径的重启去重指纹
 function spawnAcp() {
     const act = activeProvider();
     const env = {
@@ -781,6 +782,7 @@ function spawnAcp() {
     // s71(G1): env 会压 config（base.rs get_param 先读 env）——显式剥离父环境可能携带的 GOOSE_MODE
     // （pc yaml/启动器残留），确保回落 config.yaml 的 smart_approve，permission.yaml 真实生效
     delete env.GOOSE_MODE;
+    lastSpawnEnv = ((act && act.name) || 'secrets.env') + '\0' + env.GOOSE_MODEL + '\0' + env.OPENAI_HOST + '\0' + env.OPENAI_API_KEY; // s94-b2 F-3: 本次落地的 env 指纹——面板连打保存时同指纹重启是纯噪音（杀进程+假切换播报），providers 保存路径据此跳过
     const child = spawn(GOOSE, ['acp'], { env, stdio: ['pipe', 'pipe', 'pipe'] });
     child.stdout.on('data', chunk => onAcpData(chunk));
     child.stderr.on('data', d => process.stderr.write('[acp] ' + d));
@@ -1006,6 +1008,24 @@ async function hotRestartProvider() {
     acp = spawnAcp();
     await init();
     for (const ws of allClients) ws.send({ sys: 'provider_switched', provider: (activeProvider() || {}).name, model: env0Model() });
+}
+
+// ---- s94-b2 F-3: 会话模型对账（ia2 实录根因修复） ----
+// 模型随 spawn env 在 session/new 时钉进会话并持久化（model_config_json），热重启只换 env 不追改既有
+// 会话；goose evicted-restore 按 DB 原样回放旧模型——ia2 首配三连重启后全部 llm_request 仍跑种子模型
+// mimo-v2.5，UI 却宣称已切 glm-5.3-flash。修法：每个 sid 在 prompt 前对账 effectiveModel（s78c 单一
+// 真相源，只读不改），不一致先 set_config_option 追改再发 turn（响应回来说明 on_set_model 已完成，
+// 天然与 prompt 串行）。同值只追改一次；失败/超时放行本轮，下轮再试（真死的会话由 prompt 自身错误链兜底）。
+const sidModelApplied = new Map(); // sid -> 已确认落到 goose 会话的模型
+function applyModelBeforeTurn(sid, model, next) {
+    const id = nextId++;
+    let done = false;
+    const t = setTimeout(() => { if (!done) { done = true; next(); } }, 15000); // goose 挂起不应答不得扣住回合
+    if (t.unref) t.unref();
+    waiting.set(id, { ws: null, resolve: () => { if (done) return; done = true; clearTimeout(t); sidModelApplied.set(sid, model); next(); }, reject: () => { if (done) return; done = true; clearTimeout(t); next(); } });
+    try {
+        acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/set_config_option', params: { sessionId: sid, configId: 'model', value: model } }) + '\n');
+    } catch (e) { if (!done) { done = true; clearTimeout(t); waiting.delete(id); next(); } } // acp 已死：直接放行，prompt 自身的写失败人话收口
 }
 
 function fetchBufJson(url) {
@@ -3638,6 +3658,7 @@ function handleClient(ws, msg) {
                             lastModelOverride = msg.model; // qa s78b P3-2: 新会话显式带模型（顶栏当前模型）=生效模型，探测目标随行
                             const mid = nextId++;
                             acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: mid, method: 'session/set_config_option', params: { sessionId: res.sessionId, configId: 'model', value: msg.model } }) + '\n');
+                            sidModelApplied.set(res.sessionId, msg.model); // s94-b2 F-3: 记账（乐观：写失败=acp 已死，prompt 同死由其错误链收口）
                         }
                     } else {
                         // B1: session/new 失败——resolve 收到的是整条 error 帧；无此分支前端等不到 subscribed，pendingQueue 永久搁浅
@@ -3667,7 +3688,12 @@ function handleClient(ws, msg) {
             statsBump('messages'); // P31-③: 用户发出 prompt 计数（agent 回复不计）
             const firstTurn = wsFirstPrompt.get(ws) !== false;
             wsFirstPrompt.set(ws, false);
-            sendTurn(ws, sid, msg.text, firstTurn); // research/18 断点①: 错误帧→reject 人话/首轮单次救援（sendTurn）
+            // s94-b2 F-3: 发 turn 前对账会话模型——热重启/换档后既有会话仍钉着旧模型（evicted-restore 按 DB 回放），
+            // 不追改就会出现「UI 宣称已切、实跑还是种子模型」（ia2 全部 llm_request=mimo-v2.5）。
+            const wantModel = effectiveModel(activeProvider());
+            const goTurn = () => sendTurn(ws, sid, msg.text, firstTurn); // research/18 断点①: 错误帧→reject 人话/首轮单次救援（sendTurn）
+            if (wantModel && sidModelApplied.get(sid) !== wantModel) applyModelBeforeTurn(sid, wantModel, goTurn);
+            else goTurn();
             return;
         }
 
@@ -3911,7 +3937,14 @@ function handleClient(ws, msg) {
             const act = list.find(p => p.active);
             if (act) rewriteSecretsEnv({ model: act.models && act.models[0] || '', host: act.host || '', key: act.key || '' });
             ws.send({ sys: 'providers', list: list.map(pr => ({ name: pr.name, host: pr.host, models: pr.models || [], active: !!pr.active, hasKey: !!pr.key })) });
-            if (needRestart) { lastModelOverride = ''; hotRestartProvider().catch(e => console.error('hot restart failed', e)); } // qa s78c P3-1: 面板换档/改池清除 override——生效模型随档回落池首（防同名模型跨家碰撞时探测/重启假锚旧选择）
+            if (needRestart) {
+                lastModelOverride = ''; // qa s78c P3-1: 面板换档/改池清除 override——生效模型随档回落池首（防同名模型跨家碰撞时探测/重启假锚旧选择）
+                // s94-b2 F-3: env 指纹与上次落地一致的热重启是纯噪音——ia2 首配连打保存触发三连重启：
+                // 三条「✅ 已切到…」重复播报 + 三代 acp 进程更替（回合竞态燃料），env 实质没变。跳过。
+                const act2 = activeProvider();
+                const sig2 = ((act2 && act2.name) || 'secrets.env') + '\0' + effectiveModel(act2) + '\0' + (act2 && act2.host) + '\0' + (act2 && act2.key);
+                if (sig2 !== lastSpawnEnv) hotRestartProvider().catch(e => console.error('hot restart failed', e));
+            }
             return;
         }
 
@@ -3927,7 +3960,7 @@ function handleClient(ws, msg) {
                     const id = nextId++;
                     acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/set_config_option', params: { sessionId, configId: 'model', value: msg.model } }) + '\n');
                     waiting.set(id, { ws, resolve: (res) => {
-                        if (res && res.configOptions) ws.send({ sys: 'model_switched', model: msg.model, provider: target.name });
+                        if (res && res.configOptions) { sidModelApplied.set(sessionId, msg.model); ws.send({ sys: 'model_switched', model: msg.model, provider: target.name }); } // s94-b2 F-3: 成功才记账，失败留给 prompt 前对账重试
                         else ws.send({ sys: 'error', text: '切换失败，试试重开对话' });
                     }});
                 };
