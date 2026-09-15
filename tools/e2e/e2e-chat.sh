@@ -348,7 +348,7 @@ rm -f /tmp/explain-retry.log
 # 桩测：排序比较器提取执行；模板锚：前端六标签+搜索（文件名进 hay）+分页+chips+打开三入口+openSession 复用+红线零删除
 rc=0; node "$ROOT/tools/e2e/assets-probe.js" > /tmp/assets-probe.log 2>&1 || rc=$?
 grep -q "FAIL=0" /tmp/assets-probe.log || rc=$?
-ck "assets probe 29 ck (three-source shape + degrade + backlink + whitelist + builtin zero-misattribution + sort stub + FE anchors)" $rc
+ck "assets probe 30 ck (three-source shape + degrade + backlink + whitelist + builtin zero-misattribution + self-set equivalence + sort stub + FE anchors)" $rc
 grep -E "^assets-probe" /tmp/assets-probe.log || true
 rm -f /tmp/assets-probe.log
 

@@ -14,13 +14,19 @@ function get(p) {
 // ia-rework S3（裁决 2026-09-15-made-ledger-ia-rework §3-S3）：台账仅收自沉淀技能后，本机 0 个 self → A3 改为自建种子
 // __probe-self-ledger（origin.source=self，同 S1 验收 2 形态）后断言在场；s82 用后自清纪律（重复运行先 force rm）
 const SEED_DIR = path.join(ROOT, 'forge', '.agents', 'skills', '__probe-self-ledger');
+// A3b 判别力种子：模拟产品成功态——本机已有真实 self 技能在场（修前 A3 every(==种子) 在此形态必假红）
+const SEED_DIR2 = path.join(ROOT, 'forge', '.agents', 'skills', '__probe-self-real');
 function seedSelfLedger() {
     try { fs.rmSync(SEED_DIR, { recursive: true, force: true }); } catch {}
     fs.mkdirSync(SEED_DIR, { recursive: true });
     fs.writeFileSync(path.join(SEED_DIR, 'SKILL.md'), '---\nname: __probe-self-ledger\ndescription: ia-rework probe seed\n---\nprobe body\n');
     fs.writeFileSync(path.join(SEED_DIR, 'origin.json'), JSON.stringify({ _schema: 1, source: 'self', installed_at: new Date().toISOString() }, null, 2));
+    try { fs.rmSync(SEED_DIR2, { recursive: true, force: true }); } catch {}
+    fs.mkdirSync(SEED_DIR2, { recursive: true });
+    fs.writeFileSync(path.join(SEED_DIR2, 'SKILL.md'), '---\nname: __probe-self-real\ndescription: ia-rework probe seed 2\n---\nprobe body\n');
+    fs.writeFileSync(path.join(SEED_DIR2, 'origin.json'), JSON.stringify({ _schema: 1, source: 'self', installed_at: new Date().toISOString() }, null, 2));
 }
-function cleanSelfLedger() { try { fs.rmSync(SEED_DIR, { recursive: true, force: true }); } catch {} }
+function cleanSelfLedger() { for (const d of [SEED_DIR, SEED_DIR2]) { try { fs.rmSync(d, { recursive: true, force: true }); } catch {} } }
 
 (async () => {
     seedSelfLedger();
@@ -36,7 +42,22 @@ function cleanSelfLedger() { try { fs.rmSync(SEED_DIR, { recursive: true, force:
     ck('A2 条目统一模型形状（kind/name/human/ts/srcSid/srcTitle/ref）', shapeOk);
     const byKind = {};
     items.forEach(i => byKind[i.kind] = (byKind[i.kind] || 0) + 1);
-    ck('A3 三源各在列（tbl/file/skill ≥1，skill=种子 self 技能源——ia-rework 后内置/市场不入账）', (byKind.tbl || 0) >= 1 && (byKind.file || 0) >= 1 && (byKind.skill || 0) >= 1 && items.filter(i => i.kind === 'skill').every(i => i.name === '__probe-self-ledger'), JSON.stringify(byKind));
+    ck('A3 三源各在列（tbl/file/skill ≥1，skill=种子 self 技能源——ia-rework 后内置/市场不入账）', (byKind.tbl || 0) >= 1 && (byKind.file || 0) >= 1 && (byKind.skill || 0) >= 1, JSON.stringify(byKind));
+    // A3b（qa ia-rework P3-1 等价断言）：期望集 = {种子} ∪ 运行时实扫 origin:self 目录（scanInstalledSkills 同构：
+    // SKILL.md 可读 + origin.json source==='self'；坏 JSON/他 source 不入）——真实 self 技能出现（产品成功态）不再假红
+    const expectSelf = new Set(['__probe-self-ledger']);
+    const SK_DIR = path.join(ROOT, 'forge', '.agents', 'skills');
+    try {
+        for (const ent of fs.readdirSync(SK_DIR, { withFileTypes: true })) {
+            if (!ent.isDirectory()) continue;
+            try {
+                fs.readFileSync(path.join(SK_DIR, ent.name, 'SKILL.md'), 'utf8');
+                if (JSON.parse(fs.readFileSync(path.join(SK_DIR, ent.name, 'origin.json'), 'utf8')).source === 'self') expectSelf.add(ent.name);
+            } catch {}
+        }
+    } catch {}
+    const gotSkills = new Set(items.filter(i => i.kind === 'skill').map(i => i.name));
+    ck('A3b 台账 skill 名单集合 === {种子} ∪ 实扫 origin:self 集（等价断言，不焊死本机 0 self）', gotSkills.size === expectSelf.size && [...gotSkills].every(n => expectSelf.has(n)), 'got=' + JSON.stringify([...gotSkills]) + ' expect=' + JSON.stringify([...expectSelf]));
     let sorted = true;
     for (let k = 1; k < items.length; k++) {
         const a = items[k - 1].ts, b = items[k].ts;
@@ -94,7 +115,7 @@ function cleanSelfLedger() { try { fs.rmSync(SEED_DIR, { recursive: true, force:
     ck('C12 红线：openAsset 动作面=打开/定位（无写通道、无 confirm 删除族）', !!openAssetFn && !/delete|uninstall|POST/.test(openAssetFn[0]));
 
     cleanSelfLedger(); // s82 用后自清（s83 探针种子纪律）；清理失败不吞证——下方残留即红
-    if (fs.existsSync(SEED_DIR)) ck('S 探针种子清理', false, 'residual=' + SEED_DIR);
+    if (fs.existsSync(SEED_DIR) || fs.existsSync(SEED_DIR2)) ck('S 探针种子清理', false, 'residual=' + [SEED_DIR, SEED_DIR2].filter(d => fs.existsSync(d)).join(','));
     console.log('assets-probe: PASS=' + pass + ' FAIL=' + fail);
     process.exit(fail ? 1 : 0);
 })().catch(e => { cleanSelfLedger(); console.error('FATAL', e); process.exit(2); });
