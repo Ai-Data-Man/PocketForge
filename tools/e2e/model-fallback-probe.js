@@ -183,6 +183,25 @@ const waitHealthz = (port) => new Promise((res, rej) => { const t = setTimeout((
     kill(C2);
     try { bridge2.kill(); } catch {}
 
+    // M9（qa s94 复审 P4-5）：退化档（空 host/key 回落 secrets）保存去重——sig2 若用裸档案值就与
+    // spawnAcp 落地 env（三级回落后的值）恒分叉，该档每次保存都白热重启一次（provider_switched 广播）；
+    // 修后 sig2 与 lastSpawnEnv 同源，两连保存零重启
+    fs.writeFileSync(path.join(ROOT, 'data', 'providers.json'), JSON.stringify([{ name: 'degraded', host: '', key: '', models: ['fake-model'], active: true }]));
+    const P3 = await freePort();
+    const bridge3 = spawnBridge(P3);
+    bridge3.stderr.on('data', d => process.stderr.write('[bridge3] ' + d));
+    await waitHealthz(P3);
+    const C3 = await mkClient(P3);
+    let restarts = 0;
+    for (let i = 0; i < 2; i++) {
+        C3.send({ type: 'providers', save: 1, update: { name: 'degraded', host: '', models: ['fake-model'] } });
+        const f = await C3.waitUntil(m => m.sys === 'provider_switched', 12000, 'M9 settle').catch(() => null);
+        if (f) restarts++;
+    }
+    ck('M9 退化档（空 host/key 回落 secrets）两连保存零热重启（env 指纹同源去重）', restarts === 0, 'provider_switched=' + restarts);
+    kill(C3);
+    try { bridge3.kill(); } catch {}
+
     // ===== 模板锚（静态）=====
     const bridgeSrc = fs.readFileSync(path.join(FORGE, 'conf', 'templates', 'chat-bridge.tpl.js'), 'utf8');
     ck('B1 F-4a spawnAcp 注入 NO_PROXY（env 优先于注册表代理的机理：hyper-util from_system 先读 env NO_PROXY）', /let noProxy = \(process\.env\.NO_PROXY \|\| process\.env\.no_proxy \|\| ''\)\.trim\(\);/.test(bridgeSrc) && /env\.no_proxy = noProxy;/.test(bridgeSrc));

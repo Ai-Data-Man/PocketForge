@@ -368,9 +368,10 @@ rm -f /tmp/apps-probe.log
 # 档案回落（无 host/key 与 key 空串两形态）/401 诚实报码（修前 401 错误体映射成空 models 假成功）/
 # 200 非数组不发空帧/j.models 备用形状/secrets 快照档末段不回归/test_model 同款 + 坏 key 诚实 ok:false/
 # 模板锚：F-4a spawnAcp NO_PROXY 注入（机理=hyper-util from_system 先读 env NO_PROXY，ia1 实锤 goose 吃 IE 代理）
+# s94-b3 P4-5：退化档（空 host/key 回落 secrets）两连保存零热重启（sig2 与 lastSpawnEnv 同源去重）
 rc=0; node "$ROOT/tools/e2e/model-fallback-probe.js" > /tmp/model-fallback.log 2>&1 || rc=$?
 grep -q "FAIL=0" /tmp/model-fallback.log || rc=$?
-ck "model-fallback probe 12 ck (profile fallback + honest HTTP errors + secrets tier + NO_PROXY anchor)" $rc
+ck "model-fallback probe 13 ck (profile fallback + honest HTTP errors + secrets tier + degraded-save dedup + NO_PROXY anchor)" $rc
 grep -E "^model-fallback-probe" /tmp/model-fallback.log || true
 rm -f /tmp/model-fallback.log
 
