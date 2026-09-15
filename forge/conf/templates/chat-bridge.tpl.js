@@ -1607,8 +1607,10 @@ function parseAssetTs(v) {
     // s94 F-7: 纯日期串（agent 按 hints 常写 '2026-09-16'）按本地零点解析——ES 规范 date-only 串走 UTC 零点，
     // 东八区显示恒 08:00（ia1 实锤）；带时间的 ISO 串维持 Date.parse 原语义
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-        const d = new Date(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
-        return Number.isFinite(d.getTime()) ? d.getTime() : null;
+        const y = +s.slice(0, 4), mo = +s.slice(5, 7), da = +s.slice(8, 10);
+        const d = new Date(y, mo - 1, da);
+        // qa s94 P3-1: Date 构造器对越界月/日进位（'2026-13-45'→2027-02-14）=编造；回读等值才收
+        return d.getFullYear() === y && d.getMonth() === mo - 1 && d.getDate() === da ? d.getTime() : null;
     }
     const t = Date.parse(s);
     return Number.isFinite(t) ? t : null;
@@ -1634,6 +1636,8 @@ async function dbOverview() {
             entry.tables.push({ name: nm, rows: null, desc: null, ts: null }); n++;
         }
     }
+    // qa s94 P3-2: port 在而 key 永缺（供给失败/.apikey 损坏）时富化整段跳过——置 tblMiss 让前端亮既有「表这次没数进来」诚实降级行，不留静默面
+    if (port && !key) schemaMiss = true;
     if (port && key) {
         const jobs = [];
         for (const en of services) {
