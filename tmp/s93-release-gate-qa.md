@@ -114,3 +114,26 @@
 - **F1：关闭**（崩溃/ENOENT 栈/零备份产出三项证据级消除，4 棵全新树 + 2 次二启 + 2 个降级边界全绿，包内产物与仓内模板同哈希）。
 - **能否发 release：暂缓 1 项小修**——F3 是本轮修复新引入的用户可见首启报错（12 行 FATAL）+ 桥库首启备份必落空，且随包发布说明「日志零异常」与实测冲突。建议：二选一最小修（tries 12→16 或 `does not exist` 不重试）→ 重打包 → 我跑一次定点复验（4 棵首启 ×FATAL/两库 dump）即放行；若业务必须按现包发，则至少把 `docs/v0.9.13-release-notes.md:7` 的「日志零异常」改为「备份链产出正常（首启桥库待次启补备，pg 侧 12 行 `forge_bridge` 未建库 FATAL 为已知噪声）」，并把顶行 s92「13 轮全绿」口径按 F1 复盘修订（该矩阵未覆盖 backup.log/pg.log 与进程 exit_code）。
 - 收尾：`C:\PF-QA` 整树删除、挂起 wrapper cmd 清零、PF 进程 0、端口 8099/8091/8790/5432/4222/8222/8188 全闭。
+
+## 6. F3 定点复验（s93c，2026-09-15 21:10 定稿）
+
+复验对象：commit d1f102c 重打包的 `dist/PocketForge-20260915-v0.9.13.zip`。
+
+- 指纹独立复核：sha256 = `956f821b9c4ce1754eb247910cf6ac8d687d6815751bb07c1753cd2866c3ee7b`（25300 文件，与声称一致）✅
+- 产物一致性：包内 `bin/forge-backup.js` 与 `conf/templates/forge-backup.tpl.js` 与仓内 `forge/conf/templates/forge-backup.tpl.js` 三者同哈希 `66ad92eddcda3b00…`（8086B）逐字节一致 ✅
+- 方法（沿用上轮口径）：全新解压 → 降权 `runas /trustlevel:0x20000` 冷启 → bridge healthz 200 → `daily-backup` 终态 → **产品停止脚本停机 → 终态日志扫描**（pg.log 仅停机落盘，上轮勘误口径）。夹具 `tmp/s93c-qa/harness/{g1_run,stop_run,rescan,f3_verdict}.py`，证据 `tmp/s93c-qa/<tag>/`。
+
+| 树 | bridge 就绪 | `daily-backup` exit | pg-dumps（两库） | backups zip | 终态日志命中 | 控制台命中 |
+|---|---|---|---|---|---|---|
+| a | 200 / 14.2s | **0** | `pg-*.sql:672` + `pg-bridge-*.sql:4019` | 12012B，含 `pg-dumps/` 两条 | none | none |
+| b | 200 / 10.7s | **0** | 672B + 4019B | 12017B，含两条 | none | none |
+| c2 | 200 / 14.2s | **0** | 672B + 4020B | 12015B，含两条 | none | none |
+| d2 | 200 / 14.2s | **0** | 672B + 4020B | 12015B，含两条 | none | none |
+
+- **FATAL 根除**：4/4 树控制台（`*-launch.log`）与停机后全 `data/logs/`，`FATAL / ENOENT / database ... does not exist / panic / Traceback / EADDRINUSE / denied / 不是内部或外部命令` 命中数 **全 0**（上轮同口径 4/4 树各 12 行 FATAL）。词典与判定脚本 `f3_verdict.py`（同 PATS）。
+- **「首启桥库必落空」根除（新增实证）**：`data/pg/base/16384`（首个用户库目录）ctime vs `pg-bridge-*.sql` mtime：a 20:40:47→20:40:49、b 20:45:29→20:45:30、c2 21:02:18→21:02:19、d2 21:05:59→21:06:02（差 1-3s）。4/4 dump 内含 `CREATE TABLE`（`forge_archive_index` / `forge_workspace_map` / `schema_migrations` / `usage_daily`）= 非空壳；备份链注释「等待的价值=把 forge_bridge 备上」现已成立。窗口证据 `tmp/s93c-qa/f3/F3-window-after.txt`。
+- **发布说明复核**：`docs/v0.9.13-release-notes.md:7/8` 的「两库 dump 均产出、停机后全日志零异常」与实测一致 → 上轮「与实测冲突」失真项关闭。
+- 纪律：每树停机 rc=0、1.8-2.3s「all stopped.」、零残留进程、pc/faucet/pg 端口全闭（`<tag>-stop.json`）。
+- **我自己夹具 bug 披露**：树 c/d 两跑因 bash 双引号内 `\\$t` 被吃成字面量，落到同一根 `C:\PF-S93C$t` 串行两跑（非产品缺陷；两跑各自含首启 bootstrap 标记、零残留停机、终态零命中，作旁证）。为严谨补跑 c2/d2 两棵独立树，凑足 4 棵全新树。
+- **裁决：F3 关闭。release 放行**（4/4 全新树四项条件全绿：exit 0、两库 dump、停机后零异常、zip 含 pg-dumps）。
+- 收尾：`C:\PF-S93C`、`C:\PF-S93C$t` 整树删除；历史遗留沙盒 `C:\PF-F1/F2/F3`、`C:\PF-V` 同删；挂起 wrapper cmd 清零；`Path -like 'C:\PF-*'` 进程 0；端口 8099/8091/8790/5432/4222/8222/8188 全闭。

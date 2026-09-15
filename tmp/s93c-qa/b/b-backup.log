@@ -1,0 +1,3 @@
+{"level":"info","process":"daily-backup","replica":0,"message":"pg_dump ok: pg-2026-09-15T12-45-03.sql (1KB) kept=1"}
+{"level":"info","process":"daily-backup","replica":0,"message":"pg_dump ok: pg-bridge-2026-09-15T12-45-03.sql (4KB) kept=1"}
+{"level":"info","process":"daily-backup","replica":0,"message":"backup ok: forge-backup-2026-09-15T12-45-30.zip (12KB) kept=1 pruned=0"}

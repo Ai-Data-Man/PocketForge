@@ -1,0 +1,18 @@
+{
+ "tag": "c2",
+ "log_sizes": {
+  "backup.log": 380,
+  "pc.log": 7470,
+  "pg-init.log": 872,
+  "pg.log": 638
+ },
+ "hits": {},
+ "backups": [
+  "forge-backup-2026-09-15T13-02-19.zip"
+ ],
+ "dumps": [
+  "pg-2026-09-15T13-01-52.sql",
+  "pg-bridge-2026-09-15T13-01-52.sql"
+ ],
+ "backup_log": "{\"level\":\"info\",\"process\":\"daily-backup\",\"replica\":0,\"message\":\"pg_dump ok: pg-2026-09-15T13-01-52.sql (1KB) kept=1\"}\n{\"level\":\"info\",\"process\":\"daily-backup\",\"replica\":0,\"message\":\"pg_dump ok: pg-bridge-2026-09-15T13-01-52.sql (4KB) kept=1\"}\n{\"level\":\"info\",\"process\":\"daily-backup\",\"replica\":0,\"message\":\"backup ok: forge-backup-2026-09-15T13-02-19.zip (12KB) kept=1 pruned=0\"}\n"
+}

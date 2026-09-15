@@ -1,0 +1,28 @@
+wrapper written C:\PF-S93C\d2\w.cmd
+{
+ "tag": "d2",
+ "root": "C:\\PF-S93C\\d2",
+ "extract_s": 38.4,
+ "runas_rc": 0,
+ "poll": "READY bridge healthz 200 on 8790 after 14.2s\n",
+ "ready": true,
+ "daily_backup_state": {},
+ "pc_get_raw": "[\n\t{\n\t\t\"name\": \"daily-backup\",\n\t\t\"namespace\": \"default\",\n\t\t\"status\": \"Completed\",\n\t\t\"system_time\": \"30s\",\n\t\t\"age\": 30629847100,\n\t\t\"is_ready\": \"-\",\n\t\t\"has_ready_probe\": false,\n\t\t\"restarts\": 0,\n\t\t\"exit_code\": 0,\n\t\t\"pid\": 16896,\n\t\t\"is_elevated\": false,\n\t\t\"password_provided\": false,\n\t\t\"mem\": 4489216,\n\t\t\"cpu\": 0,\n\t\t\"is_running\": false,\n\t\t\"last_activity_time\": \"2026-09-15T21:06:06.3097885+08:00\",\n\t\t\"process_start_time\": \"2026-09-15T21:05:32.972718+08:00\",\n\t\t\"process_ready_time\": \"2026-09-15T21:05:32.972718+08:00\",\n\t\t\"process_end_time\": \"2026-09-15T21:06:06.3184938+08:00\"\n\t}\n]",
+ "backups": [
+  "forge-backup-2026-09-15T13-06-02.zip:12015"
+ ],
+ "dumps": [
+  "pg-2026-09-15T13-05-33.sql:672",
+  "pg-bridge-2026-09-15T13-05-33.sql:4020"
+ ],
+ "dumps_zip": true,
+ "backup_log": "{\"level\":\"info\",\"process\":\"daily-backup\",\"replica\":0,\"message\":\"pg_dump ok: pg-2026-09-15T13-05-33.sql (1KB) kept=1\"}\n{\"level\":\"info\",\"process\":\"daily-backup\",\"replica\":0,\"message\":\"pg_dump ok: pg-bridge-2026-09-15T13-05-33.sql (4KB) kept=1\"}\n{\"level\":\"info\",\"process\":\"daily-backup\",\"replica\":0,\"message\":\"backup ok: forge-backup-2026-09-15T13-06-02.zip (12KB) kept=1 pruned=0\"}\n",
+ "hits": {},
+ "pg_log_size": 0,
+ "bridge_healthz": "HTTP/1.1 200 OK",
+ "ports_open": {
+  "pc.port": true,
+  "faucet.port": true,
+  "pg.port": true
+ }
+}

@@ -1,0 +1,7 @@
+s93c F3 复验（修后包 956f821b）: 首启 pg-bridge dump 时刻 vs 桥建库时刻（data/pg/base/16384 ctime）
+a: base/16384 ctime=20:40:47 | pg-bridge dump mtime=20:40:49 size=4019 | launch.log FATAL=0 ENOENT=0
+b: base/16384 ctime=20:45:29 | pg-bridge dump mtime=20:45:30 size=4019 | launch.log FATAL=0 ENOENT=0
+c2: base/16384 ctime=21:02:18 | pg-bridge dump mtime=21:02:19 size=4020 | launch.log FATAL=0 ENOENT=0
+d2: base/16384 ctime=21:05:59 | pg-bridge dump mtime=21:06:02 size=4020 | launch.log FATAL=0 ENOENT=0
+c(路径误置跑): hits={} dumps=['pg-2026-09-15T12-52-23.sql', 'pg-bridge-2026-09-15T12-52-23.sql'] backups=['forge-backup-2026-09-15T12-52-51.zip']
+d(路径误置跑): hits={} dumps=['pg-2026-09-15T12-55-54.sql', 'pg-bridge-2026-09-15T12-55-54.sql'] backups=['forge-backup-2026-09-15T12-56-21.zip']

@@ -1,0 +1,18 @@
+== a PASS
+   ready=True(READY bridge healthz 200 on 8790 after 14.2s) exit0=True dumps[pg=True bridge=True]=['pg-2026-09-15T12-40-20.sql', 'pg-bridge-2026-09-15T12-40-20.sql'] zip=['forge-backup-2026-09-15T12-40-49.zip:12012'] zip-has-pg-dumps=True
+   终态日志: {'backup.log': 380, 'pc.log': 7468, 'pg-init.log': 892, 'pg.log': 636}
+   终态命中: none | 控制台命中: none
+== b PASS
+   ready=True(READY bridge healthz 200 on 8790 after 10.7s) exit0=True dumps[pg=True bridge=True]=['pg-2026-09-15T12-45-03.sql', 'pg-bridge-2026-09-15T12-45-03.sql'] zip=['forge-backup-2026-09-15T12-45-30.zip:12017'] zip-has-pg-dumps=True
+   终态日志: {'backup.log': 380, 'pc.log': 7469, 'pg-init.log': 892, 'pg.log': 639}
+   终态命中: none | 控制台命中: none
+== c2 PASS
+   ready=True(READY bridge healthz 200 on 8790 after 14.2s) exit0=True dumps[pg=True bridge=True]=['pg-2026-09-15T13-01-52.sql', 'pg-bridge-2026-09-15T13-01-52.sql'] zip=['forge-backup-2026-09-15T13-02-19.zip:12015'] zip-has-pg-dumps=True
+   终态日志: {'backup.log': 380, 'pc.log': 7470, 'pg-init.log': 895, 'pg.log': 638}
+   终态命中: none | 控制台命中: none
+== d2 PASS
+   ready=True(READY bridge healthz 200 on 8790 after 14.2s) exit0=True dumps[pg=True bridge=True]=['pg-2026-09-15T13-05-33.sql', 'pg-bridge-2026-09-15T13-05-33.sql'] zip=['forge-backup-2026-09-15T13-06-02.zip:12015'] zip-has-pg-dumps=True
+   终态日志: {'backup.log': 380, 'pc.log': 7472, 'pg-init.log': 895, 'pg.log': 635}
+   终态命中: none | 控制台命中: none
+
+RESULT: ALL PASS (4/4)

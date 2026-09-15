@@ -1,0 +1,18 @@
+{
+ "tag": "a",
+ "log_sizes": {
+  "backup.log": 380,
+  "pc.log": 7468,
+  "pg-init.log": 869,
+  "pg.log": 636
+ },
+ "hits": {},
+ "backups": [
+  "forge-backup-2026-09-15T12-40-49.zip"
+ ],
+ "dumps": [
+  "pg-2026-09-15T12-40-20.sql",
+  "pg-bridge-2026-09-15T12-40-20.sql"
+ ],
+ "backup_log": "{\"level\":\"info\",\"process\":\"daily-backup\",\"replica\":0,\"message\":\"pg_dump ok: pg-2026-09-15T12-40-20.sql (1KB) kept=1\"}\n{\"level\":\"info\",\"process\":\"daily-backup\",\"replica\":0,\"message\":\"pg_dump ok: pg-bridge-2026-09-15T12-40-20.sql (4KB) kept=1\"}\n{\"level\":\"info\",\"process\":\"daily-backup\",\"replica\":0,\"message\":\"backup ok: forge-backup-2026-09-15T12-40-49.zip (12KB) kept=1 pruned=0\"}\n"
+}
