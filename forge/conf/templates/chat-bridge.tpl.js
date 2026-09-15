@@ -1647,8 +1647,9 @@ async function dbTableSchema(svc, tbl) {
 }
 
 // ---- s83: 做过的东西——三源只读聚合（GET /api/assets；裁决 2026-09-13-app-management-ledger §3-S2）----
-// 无参数、无持久化（dbOverview 同哲学克隆）；三源=faucet 表（含 forge_meta/forge_table_info 人话与时间账）
-// + 工作区顶层成品文件（扩展名白名单）+ 已装技能；排序=ts 倒序、null 沉底；物理路径不进主字段（零术语）。
+// 无参数、无持久化（dbOverview 同哲学克隆）；三源=表+成品文件+自沉淀技能（origin self；内置/市场是它的家事不是它的产出，
+// 裁决 2026-09-15-made-ledger-ia-rework §2.2 勘误 2026-09-13 技能源条款）+ faucet 表（含 forge_meta/forge_table_info 人话与时间账）
+// + 工作区顶层成品文件（扩展名白名单）；排序=ts 倒序、null 沉底；物理路径不进主字段（零术语）。
 // 已装技能扫描（/api/skills 与 /api/assets 技能源同读法；s83 自 /api/skills 处理器逐字节平移提升为具名函数）
 function scanInstalledSkills() {
     // scan .agents/skills/*/SKILL.md (project) + conf/goose/config/skills (global-ish)
@@ -1719,8 +1720,10 @@ async function assetsOverview() {
             }
         }
     } catch {}
-    // 源3 技能：/api/skills 同读法；非会话产出无回链锚（前端不渲染来源行），时间=SKILL.md mtime
+    // 源3 技能：仅自沉淀入账（origin.source==='self'）——「做过的」=对话产出（裁决 2026-09-15-made-ledger-ia-rework §1.3）；
+    // 内置（origin=null）/市场（market/local）不是对话产出，永不入账（/api/skills 仍全量，家不收窄）；时间=SKILL.md mtime
     for (const sk of scanInstalledSkills()) {
+        if (!sk.origin || sk.origin.source !== 'self') continue;
         let mt = null;
         try { mt = FSS.statSync(sk.path).mtimeMs; } catch {}
         items.push({ kind: 'skill', name: sk.name, human: (sk.description || '') || null, ts: mt, srcSid: null, srcTitle: null, ref: { name: sk.name } });

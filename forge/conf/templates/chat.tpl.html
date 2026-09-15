@@ -490,13 +490,13 @@ details.tz[open]>summary::before{content:'▾ '}
       <div class="fnote" style="display:flex;align-items:center;gap:7px"><span class="dot off" id="pg-dot"></span><span id="pg-text">…</span></div>
     </div>
     <h3 style="margin:0 0 8px">库里的数据</h3>
-    <div class="fnote" style="margin-bottom:10px">数据库里现在存着这些表。点表名能看里面装了什么。想让小 forge 用哪张，聊天里打 @ 选「库里的数据」就行。</div>
+    <div class="fnote" style="margin-bottom:10px">数据库里现在存着这些表。点表名能看里面装了什么。想让小 forge 用哪张，聊天里打 @ 选「库里的数据」就行。这里是表的家。想按时间看它哪次做的、回到当时对话，去「✨ 做过的东西」。</div>
     <input id="db-q" placeholder="🔍 在数据里找…（表名/说明）" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
     <div id="db-list" style="max-height:340px;overflow-y:auto"></div>
   </div>
   <div class="mpane" id="mpane-made" style="display:none">
     <h3 style="margin:0 0 8px">做过的东西</h3>
-    <div class="fnote" style="margin-bottom:10px">小 forge 给您做过的东西都在这儿，按时间从新到旧排。哪个想接着用，可以「打开」看看，也可以「去当时对话看看」，回到做它的那段对话接着说。</div>
+    <div class="fnote" style="margin-bottom:10px">这是小 forge 干活的流水账，按时间从新到旧。点「打开」带您去东西住的地方，点「去当时对话看看」回到做它的那段对话。<b>这里只记账、带路；要看内容、要删改，去各自的家——数据在「🗄️ 数据」，本领在「🧩 技能」，文件在右边文件栏。</b></div>
     <div id="made-chips" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px"></div>
     <input id="made-q" placeholder="🔍 找做过的东西…（名字/文件名/说明）" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
     <div id="made-list" style="max-height:340px;overflow-y:auto"></div>
@@ -1832,7 +1832,9 @@ async function loadDbUI(){
 $('db-q').oninput=()=>{ clearTimeout(dbQT); dbQT=setTimeout(dbPaint,200); }; // IA-3: 搜索防抖（store-q 同款 200ms），过滤组空整组隐藏
 
 // ===== ✨ 做过的东西（裁决 2026-09-13-app-management-ledger §3-S3）：三源只读聚合清单 =====
-// R2 规模声明：护航期三源合计 <100 条 → 搜索+分页（12/页卡片档，pageSlice 复用）；类型 chips=筛选非分组（A.4）。
+// R2 规模声明（ia-rework 2026-09-15 §5.1）：台账规模=表（护航期 <20）+成品文件（<50）+自沉淀技能（0-5）→ 合计 <100，
+// 维持 31-100 档（搜索+分页 12/页，pageSlice）；关键斜率变化：台账规模与市场安装量、内置技能数彻底脱钩（旧三源全量声明作废）。
+// 类型 chips=筛选非分组（A.4）。
 // R4：主名=人话（表=forge_table_info 说明或「服务.表」结构性兜底；文件=文件名；技能=说明），无=不编造（时间「—」）。
 let madeAll=null, madeQT=null, madeTblMiss=false; // s83 返工💭6: 表源缺席标记（faucet 不可达→表静默缺席→一行可见说明）
 const madeFilter={chip:'all',q:''};
@@ -1855,7 +1857,9 @@ function madePaint(){
   const ps=pageSlice(list,'made');
   box.innerHTML='';
   if(!list.length){
-    box.innerHTML='<div class="fnote">'+(madeAll.length?'没找到跟“'+esc(madeFilter.q)+'”有关的东西。换个词试试，或直接在聊天里问小 forge。':'还没做过的东西。让小 forge 做个报表、存个数据，就会出现在这里。')+'</div>';
+    // ia-rework S2-4：技能 chip 专属空态（搜索未中仍走「没找到」——它可能已学会只是没搜到，不误导）
+    const emptyMsg=(madeFilter.chip==='skill'&&!q)?'它还没自己学会过本领。跟它说「记住这个做法」，它学会了就会记在这里。':(madeAll.length?'没找到跟“'+esc(madeFilter.q)+'”有关的东西。换个词试试，或直接在聊天里问小 forge。':'还没做过的东西。让小 forge 做个报表、存个数据，就会出现在这里。');
+    box.innerHTML='<div class="fnote">'+emptyMsg+'</div>';
     // qa s83d F-1：空态分支同置 tblMiss 注行——表源读失败恰逢空清单/筛到表 chip 时，纯「还没做过」=误导性空态（PM「误导性安慰」家族）；必须 innerHTML 之后再 append（赋值清子节点）
     if(madeTblMiss){ const mn2=document.createElement('div'); mn2.className='fnote'; mn2.style.margin='4px 0'; mn2.textContent='另外：表这次没数进来（数据库暂时连不上），可能漏了东西；文件和技能不受影响。'; box.appendChild(mn2); }
     pagerPaint('made-pager',1,1,0,null); return;
@@ -1866,7 +1870,7 @@ function madePaint(){
     row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line)';
     const secondary=(it.human&&it.kind!=='file')?'<div class="fnote" style="margin-top:2px;word-break:break-all">'+esc(it.name)+'</div>':''; // 表/技能的人话名旁带真名，聊天里能直接 @
     const time=it.ts?new Date(it.ts).toLocaleString('zh',{year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
-    const src=it.kind==='skill'?'<span>它学会的本领</span>':(it.srcSid?'<span>来自对话：'+esc(it.srcTitle||'未命名')+'</span>':'<span>来源不详</span>'); // 无账存量=诚实降级，不考古
+    const src=it.kind==='skill'?'<span>它在对话里自己学会的本领</span>':(it.srcSid?'<span>来自对话：'+esc(it.srcTitle||'未命名')+'</span>':'<span>来源不详</span>'); // 无账存量=诚实降级，不考古
     row.innerHTML='<div style="flex:1;min-width:0"><div style="font-size:.85rem;font-weight:600;word-break:break-all"><span class="bdg">'+MADE_KIND_ZH[it.kind]+'</span> '+esc(it.human||it.name)+'</div>'+secondary+
       '<div class="fnote" style="margin-top:2px;display:flex;gap:10px;flex-wrap:wrap">'+src+'<span>'+time+'</span></div></div>';
     const open=document.createElement('button'); open.className='mini'; open.textContent='打开';
