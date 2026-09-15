@@ -661,7 +661,12 @@ connect(); // WebSocket 先建立：后面的初始化代码崩了也不影响�
 let wsRetryT=null, wsRetryDelay=300; // #5: 断线指数退避——300ms 起，逐次×2，封顶 5s；连上即复位
 function connect(){
   ws=new WebSocket('ws://'+location.host);
-  ws.onopen=()=>{clearTimeout(wsRetryT); wsRetryDelay=300; status.classList.add('ok'); status.setAttribute('aria-label','已连接'); loadArch().then(loadSessions); loadProvidersUI(); loadWorkspaces(); if(!sessionId) subscribe(null); else ensureWs();};
+  // s94-b2 F-11 二轮（ia3 实录根因）：断线重连必须重绑订阅。桥侧 drop() 已把死连接摘出订阅集，
+  // 重连若只 ensureWs 不订阅，本连接收不到任何带 sid 的回合帧（chunk/tool/stop 全被桥按「无订阅者」
+  // 丢弃，服务端回合照常跑完）——渲染流冻结在断线瞬间；info/权限卡等广播帧仍全员可达，页面「看起来
+  // 连着」。重绑走 subscribe(sessionId) 协议（subscribed 应答不清聊天墙，UI 无感；busy 若仍在飞，
+  // 后续 stop 帧随重绑恢复到达自然收口）。旧 sid 已死由 prompt 既有错误链/首轮救援兜底。
+  ws.onopen=()=>{clearTimeout(wsRetryT); wsRetryDelay=300; status.classList.add('ok'); status.setAttribute('aria-label','已连接'); loadArch().then(loadSessions); loadProvidersUI(); loadWorkspaces(); if(!sessionId) subscribe(null); else { wssend({type:'subscribe',sessionId}); ensureWs(); }};
   ws.onclose=()=>{status.classList.remove('ok'); status.setAttribute('aria-label','连接已断开，正在重连'); clearTimeout(wsRetryT); wsRetryT=setTimeout(connect,wsRetryDelay); wsRetryDelay=Math.min(wsRetryDelay*2,5000);
     // s94-b2 F-11: 断线即收口忙碌态——turn 的 stop 帧只会发给发起时的那个（已死）ws 对象，重连的新连接永远
     // 等不到它；不收口则「小 forge 正在干活」跨回合/跨会话永久挂着（ia2 实录第二形态）。数据无损（服务端
