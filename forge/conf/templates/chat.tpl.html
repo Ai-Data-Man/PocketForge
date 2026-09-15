@@ -1983,6 +1983,8 @@ $('prov-add').onclick=()=>{
   const k=$('cfg-key').value.trim(); if(k) add.key=k;
   wssend({type:'providers',save:true,add});
   $('prov-name').value='';
+  if(k) cfgKeyTouched=true; // s94 F-1: 添加带 key → 重渲染不清 Key 栏（保存曾消费 dirty，档案回填守卫会误清）
+  keepFetchPoolNextRender=true; // s94 F-1: 添加后的刷新不得丢已拉取的模型勾选面（renderProviders 消费）
   note('已新建「'+name+'」。填好地址和 Key 后点保存，再⟳拉取模型勾选。');
   setTimeout(loadProvidersUI,300);
 };
@@ -2013,7 +2015,11 @@ let lastHealthFrame=null;
 function healthSync(m){
   lastHealthFrame=m||null;
   const st=m&&m.state;
-  if(!st||st==='ok'||!(providerList||[]).some(p=>p.hasKey)){ const b=$('health-bar'); if(b) b.remove(); return; }
+  const hasKey=(providerList||[]).some(p=>p.hasKey);
+  const bad=!!st&&st!=='ok'&&hasKey;
+  // s94 F-4c: 探测 ok 但系统代理开着且服务商在远端也保留条（桥探测走 node 直连、goose 走代理——路径不对称，
+  // ok 不代表运行时通；桥侧 proxy 旗已按「远端主机」收窄，本机服务商不会带 proxy 旗来）
+  if(!bad&&!(m&&m.proxy&&hasKey)){ const b=$('health-bar'); if(b) b.remove(); return; }
   let el=$('health-bar');
   if(!el){
     el=document.createElement('div'); el.id='health-bar'; el.className='msg agent info';
@@ -2024,15 +2030,18 @@ function healthSync(m){
     chat.insertBefore(el, chat.firstChild);
   }
   const t=el.firstChild, b=el.querySelector('button');
-  if(st==='down'&&m.kind==='key'){ t.textContent='这家服务商的 Key 没配上或不对。到 ⚙️ 设置 → 服务商档案，填好 Key 再发一次。'; }
-  else if(st==='down'){ t.textContent='现在联系不上大模型服务商，发消息可能没回音（不是你的操作问题）。点这里检查线路 →'; }
-  else{ t.textContent='你正在用的模型已被服务商下线，发消息会失败。点这里更新模型 →'; }
-  b.textContent=(st==='down'&&m.kind==='key')?'去设置':(st==='down'?'检查线路':'更新模型');
-  b.onclick=()=>{ $('modal').classList.add('on'); loadProvidersUI(); if(st==='down'&&m.kind==='key') setTimeout(()=>$('cfg-key').focus(),100); };
+  if(bad){
+    if(st==='down'&&m.kind==='key'){ t.textContent='这家服务商的 Key 没配上或不对。到 ⚙️ 设置 → 服务商档案，填好 Key 再发一次。'; }
+    else if(st==='down'){ t.textContent='现在联系不上大模型服务商，发消息可能没回音（不是你的操作问题）。点这里检查线路 →'; }
+    else{ t.textContent='你正在用的模型已被服务商下线，发消息会失败。点这里更新模型 →'; }
+    b.textContent=(st==='down'&&m.kind==='key')?'去设置':(st==='down'?'检查线路':'更新模型');
+    b.style.display='';
+    b.onclick=()=>{ $('modal').classList.add('on'); loadProvidersUI(); if(st==='down'&&m.kind==='key') setTimeout(()=>$('cfg-key').focus(),100); };
+  }else{ t.textContent=''; b.style.display='none'; } // s94 F-4c: 代理-only 形态——正文只有下面那句代理提示
   let px=el.querySelector('.px');
   if(m.proxy){ // 事故一形态诚实提示：只说明风险存在，不装作探测结论、不阻断
     if(!px){ px=document.createElement('span'); px.className='px'; px.style.cssText='flex-basis:100%;color:#8a6a00;font-size:.85rem'; el.appendChild(px); }
-    px.textContent='本机开着网络代理，大模型流量会经过它；如果上面的提示反复出现，先关掉代理软件再试';
+    px.textContent='电脑上开着网络代理，可能拦住它连服务商；万一员工不回话或提示反复出现，先关掉代理软件再试';
   } else if(px) px.remove();
 }
 function renderProviders(list){
@@ -2054,8 +2063,16 @@ function renderProviders(list){
     el.onclick=()=>{ selected=pr; fillProvForm(pr); renderModelPool(pr); };
     box.appendChild(el);
   }
-  if(selected){ renderModelPool(selected); fillProvForm(selected); }
+  if(selected){
+    // s94 F-1: 添加建档触发的刷新优先保留拉取勾选面（fetchedModels 是模块级缓存本就没清，丢的是
+    // renderModelPool 对 #model-pool 的整盒覆写；renderFetchPool 以现列表重画，勾选态=池交集不丢）
+    let keepFetch=keepFetchPoolNextRender; keepFetchPoolNextRender=false; // 添加后的首次刷新必消费（空拉取列表不滞留到后续渲染）
+    if(keepFetch&&fetchedModels&&fetchedModels.length){ renderFetchPool(); }
+    else renderModelPool(selected);
+    fillProvForm(selected);
+  }
 }
+let keepFetchPoolNextRender=false;
 
 let cfgKeyTouched=false; // s69 P3-14: 用户在 Key 框输入过即 dirty——切服务商档案不静默清空，防打字到一半丢 Key
 $('cfg-key').addEventListener('input',()=>{cfgKeyTouched=true;});
@@ -2138,6 +2155,7 @@ $('save-cfg').onclick=()=>{
   const newName=$('prov-name').value.trim();
   if(newName&&newName!==curProvName){ name=newName; }
   if(!name) return note('先在上方选一家（或填新名称）');
+  if(!providerList.some(x=>x.name===name)) return note('先点上方「添加」把「'+name+'」建档，再保存。'); // s94 F-1: 桥侧 update-only 不建新档——未建档就保存=静默 no-op 还清掉名称栏
   const key=$('cfg-key').value.trim();
   const ex=providerList.find(x=>x.name===curProvName);
   const models=(ex&&ex.models)||[];
@@ -2179,6 +2197,7 @@ function renderAtMenu(q){
       if(ov){
         const tbls=[];
         for(const s of ov.services) for(const t of s.tables){
+          if(t.name==='forge_meta'||t.name==='forge_table_info') continue; // s94 F-9: 建账系统表不进引用菜单（台账/数据面板同门边界；只排两张已知建账表，防误伤用户自建 forge_ 开头表）
           if(!q || s.service.toLowerCase().includes(q) || t.name.toLowerCase().includes(q)) tbls.push({s:s.service,n:t.name,r:t.rows});
         }
         if(tbls.length){
