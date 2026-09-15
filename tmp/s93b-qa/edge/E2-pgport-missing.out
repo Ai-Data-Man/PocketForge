@@ -1,0 +1,2 @@
+pg_dump skipped: PG not present (no bin/pg or data/pg.port)
+backup ok: forge-backup-2026-09-15T12-07-29.zip (15KB) kept=4 pruned=0

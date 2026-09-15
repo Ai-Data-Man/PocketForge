@@ -1,0 +1,27 @@
+wrapper written C:\PF-QA\g4\w.cmd
+{
+ "tag": "g4",
+ "root": "C:\\PF-QA\\g4",
+ "extract_s": 28.9,
+ "runas_rc": 0,
+ "poll": "READY bridge healthz 200 on 8790 after 12.2s\n",
+ "ready": true,
+ "daily_backup_state": {},
+ "pc_get_raw": "[\n\t{\n\t\t\"name\": \"daily-backup\",\n\t\t\"namespace\": \"default\",\n\t\t\"status\": \"Completed\",\n\t\t\"system_time\": \"26s\",\n\t\t\"age\": 26164658800,\n\t\t\"is_ready\": \"-\",\n\t\t\"has_ready_probe\": false,\n\t\t\"restarts\": 0,\n\t\t\"exit_code\": 0,\n\t\t\"pid\": 10336,\n\t\t\"is_elevated\": false,\n\t\t\"password_provided\": false,\n\t\t\"mem\": 4685824,\n\t\t\"cpu\": 0,\n\t\t\"is_running\": false,\n\t\t\"last_activity_time\": \"2026-09-15T20:11:55.2868728+08:00\",\n\t\t\"process_start_time\": \"2026-09-15T20:11:26.4611893+08:00\",\n\t\t\"process_ready_time\": \"2026-09-15T20:11:26.4611893+08:00\",\n\t\t\"process_end_time\": \"2026-09-15T20:11:55.2959437+08:00\"\n\t}\n]",
+ "backups": [
+  "forge-backup-2026-09-15T12-11-51.zip:10743"
+ ],
+ "dumps": [
+  "pg-2026-09-15T12-11-26.sql:672"
+ ],
+ "dumps_zip": true,
+ "backup_log": "{\"level\":\"info\",\"process\":\"daily-backup\",\"replica\":0,\"message\":\"pg_dump ok: pg-2026-09-15T12-11-26.sql (1KB) kept=1\"}\n{\"level\":\"info\",\"process\":\"daily-backup\",\"replica\":0,\"message\":\"pg_dump skipped: forge_bridge 未就绪（首启时序，正常），下次备份会带上\"}\n{\"level\":\"info\",\"process\":\"daily-backup\",\"replica\":0,\"message\":\"backup ok: forge-backup-2026-09-15T12-11-51.zip (10KB) kept=1 pruned=0\"}\n",
+ "hits": {},
+ "pg_log_size": 0,
+ "bridge_healthz": "HTTP/1.1 200 OK",
+ "ports_open": {
+  "pc.port": true,
+  "faucet.port": true,
+  "pg.port": true
+ }
+}

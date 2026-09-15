@@ -1,0 +1,16 @@
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 20:11:28.633 CST [6180] LOG:  starting PostgreSQL 17.11 on x86_64-windows, compiled by msvc-19.44.35228, 64-bit\r"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 20:11:28.634 CST [6180] LOG:  listening on IPv4 address \"127.0.0.1\", port 5432\r"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 20:11:28.684 CST [7004] LOG:  database system was shut down at 2026-09-15 20:11:25 CST"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 20:11:28.719 CST [6180] LOG:  database system is ready to accept connections\r"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 20:11:33.093 CST [17580] FATAL:  database \"forge_bridge\" does not exist"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 20:11:34.645 CST [13436] FATAL:  database \"forge_bridge\" does not exist"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 20:11:36.192 CST [12036] FATAL:  database \"forge_bridge\" does not exist"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 20:11:37.846 CST [21004] FATAL:  database \"forge_bridge\" does not exist"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 20:11:39.396 CST [14088] FATAL:  database \"forge_bridge\" does not exist"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 20:11:40.943 CST [1112] FATAL:  database \"forge_bridge\" does not exist"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 20:11:42.493 CST [20036] FATAL:  database \"forge_bridge\" does not exist"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 20:11:44.045 CST [15956] FATAL:  database \"forge_bridge\" does not exist"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 20:11:45.694 CST [22164] FATAL:  database \"forge_bridge\" does not exist"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 20:11:47.341 CST [11652] FATAL:  database \"forge_bridge\" does not exist"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 20:11:48.892 CST [16792] FATAL:  database \"forge_bridge\" does not exist"}
+{"level":"error","process":"pg","replica":0,"message":"2026-09-15 20:11:50.438 CST [15988] FATAL:  database \"forge_bridge\" does not exist"}

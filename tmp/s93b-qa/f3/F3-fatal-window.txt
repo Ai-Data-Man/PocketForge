@@ -1,0 +1,9 @@
+s93b F3 证据：首启 forge_bridge FATAL 窗口 vs 建库时刻
+g1-launch.log: FATAL=12 first=19:43:53 last=19:44:10
+g1b-launch.log: FATAL=0 first=- last=-
+g2-launch.log: FATAL=12 first=19:56:45 last=19:57:02
+g3-launch.log: FATAL=12 first=20:00:17 last=20:00:34
+g3b-launch.log: FATAL=0 first=- last=-
+g4-launch.log: FATAL=12 first=20:11:33 last=20:11:50
+g3 final pg.log: FATAL=0 first=- last=- | pg/base dir ctimes={'1': '20:00:06', '16384': '20:00:36', '4': '20:00:08', '5': '20:00:09'}
+g4 final pg.log: FATAL=12 first=20:11:33 last=20:11:50 | pg/base dir ctimes={'1': '20:11:22', '16384': '20:11:53', '4': '20:11:24', '5': '20:11:24'}

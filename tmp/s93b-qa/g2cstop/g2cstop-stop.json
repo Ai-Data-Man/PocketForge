@@ -1,0 +1,13 @@
+{
+ "tag": "g2cstop",
+ "elapsed_s": 2.0,
+ "rc": 0,
+ "stdout": "",
+ "stoplog": "[PocketForge] all stopped.\n�밴���������. . . \n",
+ "residual_procs": {},
+ "ports": {
+  "pc": false,
+  "faucet": false,
+  "pg": false
+ }
+}

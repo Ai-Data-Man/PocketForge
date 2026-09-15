@@ -60,3 +60,57 @@
 - 降权冷启（e2e.sh:88-110 先例）：`python mk_wrap.py <根> <日志> <wrapper>`（GBK+CRLF，wrapper 内 `chcp 936` + 纯净 PATH）→ `cmd //c runas //trustlevel:0x20000 "<wrapper>"` → `python poll_ready.py <根> <日志> 90 <起始 epoch>`（node 直连 bridge healthz）。
 - 断言：`assert_stack.py`（端口/healthz/db overview/pc 进程矩阵）、`logscan.py`（FATAL/panic/Access denied/ECMDNOTFOUND/ECONNREFUSED/EADDRINUSE/FTL/ENOENT/Error 词典扫描）、`exe_reconcile.py`（SHA256-EXE 对账）。
 - 高完整性自证：`cmd //c "C:\Windows\System32\whoami.exe /groups"` → `S-1-16-12288`。
+
+---
+
+# F1 复验（s93b，2026-09-15 第二轮，pf-qa）
+
+- 被测物：`dist/PocketForge-20260915-v0.9.13.zip`，sha256 复算 = `018789a7568f8e8d6474dd438ebefb61cf17da4b21bb5743b747e310b0724dbb`（323,574,754B / 25,300 条目）与随包 `.sha256` 一致 ✅；包内 `bin/forge-backup.js`、`bin/chat-bridge.js`、`conf/templates/*.tpl.js`、`conf/_app-template.yaml` 与仓内源文件**逐字节同哈希**（550cf3c6…/8121a35e…/b2b49ab6…）——模板与产物同步面 ✅。
+- 裁决：**F1 主体关闭**（崩溃 + 零备份产出：证据级消除）。**但同时发现新红项 F3（🟡 P2，用户可见）→ 我判「有条件通过」：不阻断，但要求修 F3 或把发布说明里与 F3 冲突的措辞改准，再对外发。**
+- 纪律：4 棵全新树 `C:\PF-QA\{g1,g2,g3,g4}` 全解压自新包、降权冷启（wrapper 内 `chcp 936` + 纯净 PATH、`runas //trustlevel:0x20000`）、探活裸 socket（零代理）；红项证据先落 `tmp/s93b-qa/` 再删树；`whoami /groups` = `S-1-16-12288`（高完整性，G2 前提成立）。
+
+## 1. F1 断言结果（逐条）
+
+| # | 断言 | 结果 | 证据 |
+|---|---|---|---|
+| 1 | G1 全新树冷启 ×4：`daily-backup` exit 0 不崩 | 🟢 4/4 | `pc process get daily-backup` → `status=Completed exit_code=0`（g1/g2/g3/g4，`tmp/s93b-qa/*/result.json`） |
+| 2 | `data/pg-dumps/` 有 `pg-*.sql` | 🟢 4/4 | 各 672B（g1 19:43:46、g2 19:56:39、g3 20:00:10、g4 20:11:26） |
+| 3 | `data/backups/` 有 zip | 🟢 4/4 | 10739/10740/10740/10743B；g3b 二启 12514B |
+| 4 | `data/logs/` 全目录零异常 | 🔴 未达 | 见 F3：首启 pg.log 12 行 `FATAL: database "forge_bridge" does not exist`（控制台同现）。backup.log 本身零 `Error:`（对照组：修前 3/3 树 ENOENT 崩溃栈） |
+| 5 | 二次启动（同树第二次冷启）两库 dump ok | 🟢 2/2 | g1b/g3b：`pg_dump ok: pg-*.sql` + `pg_dump ok: pg-bridge-*.sql (4KB)`，exit 0，0 FATAL |
+| 6 | 根因机理复核（受限令牌路径 pg.log 恒 0 字节） | 🟢 复现 | 4 棵首启全程 `data/logs/pg.log` = **0 字节**（pg 输出进 pc 控制台/pc.log，实测控制台有 `[pg] … database system is ready to accept connections`）→ 旧门永不开，改 TCP 探活方向正确 |
+| 7 | 边界：`data/pg.port` 缺失 | 🟢 | `pg_dump skipped: PG not present` + zip 照产 + exit 0（`tmp/s93b-qa/edge/E2-*`） |
+| 8 | 边界：PG 全程不在场（门耗尽路径） | 🟢 | 65s 后 `未就绪（首启时序，正常）` ×2 + zip 照产 + exit 0，**零异常抛出**（`tmp/s93b-qa/edge/E1-*`） |
+
+## 2. 🔴/🟡 F3（新发现，两件一体）首启 12 行用户可见 FATAL + 桥库备份必差 3 秒
+
+- 现象（4/4 棵全新树首启必现，二启 0 次）：控制台/launch.log 打印
+  `[pg<TAB>] 2026-09-15 20:11:33.093 CST [17580] FATAL:  database "forge_bridge" does not exist` **×12**（1.5s 间隔），pg.log 终态同留 12 行。修前包首启 pg.log 0 行 FATAL（旧包备份在 postgres 段就崩了，够不到 forge_bridge），故这是本次修复**新引入**的用户可见报错族。
+- 机理（双证据）：备份 `pgDumpWithWait` 把 `does not exist` 归入 transient → 对不存在的桥库连试 12 次；而桥建库实测发生在首启 +30s：
+  - g4：FATAL 窗口 20:11:33→20:11:50，`data/pg/base/16384`（首个用户库目录）ctime = **20:11:53** → 差 **3s**
+  - g3：FATAL 窗口 20:00:17→20:00:34，建库 ctime = **20:00:36** → 差 **2s**
+- 后果：①每次首启（=每个新用户第一印象）黑窗口出现 12 行含 `FATAL` 字样报错——正是 s90-s92 全力消除的类别；②备份链注释自称「等待的价值=把 forge_bridge 备上」，但首启窗口永远差 2-3 秒，桥库首启必落空；③**随包发布说明 `docs/v0.9.13-release-notes.md:7` 写「复验：…日志零异常」与实测冲突**（失真）。
+- 建议修法（供工程，二选一，都很小）：a) `forge_bridge` 的 `tries` 12→16（+6s，覆盖实测建库时刻，首启即备上桥库且不再有 skip 行）；b) `does not exist` 移出 transient 分类、只试 1 次（代价=首启放弃桥库 dump，但把 12 行噪音降为 1 行）。二者都必须重打包重跑本复验（包指纹会变）。
+- 证据：`tmp/s93b-qa/f3/F3-fatal-window.txt`、`tmp/s93b-qa/f3/g4-final-pg.log`、`tmp/s93b-qa/g{1,2,3,4}/g*-launch.log`、`tmp/s93b-qa/g4-final/g4-final-rescan.json`。
+
+## 3. 抽检（就绪门改动未伤启动路径）
+
+| 抽检 | 结果 | 证据 |
+|---|---|---|
+| G2 降权链路（High shell 直跑启动器） | 🟢 | 两行人话「检测到当前是管理员身份启动…正在改用普通权限重新启动」+ 8.6s 就绪（`tmp/s93b-qa/g2c/g2c-g2check.json`），`process-compose` 实例数 = **1**（单实例护栏有效）；`/api/db/overview` = `{"ok":true,"services":[]}`、healthz 200、桥侧第三启 `pg_dump ok` 两库（`tmp/s93b-qa/g2c/g2c-backup.log`） |
+| G4 停止矩阵 | 🟢 3/3 类 | ①运行中停止 ×6：1.8-2.3s「all stopped.」rc=0、零残留进程、pc/faucet/pg 端口全闭 ②栈未运行空跑 ×1：1.5s rc=0 友好返回 ③停后立刻再启 ×2：ready 7.2s / 8.2s，二次启动两库 dump ok |
+| 桥侧就绪门（同款改动） | 🟢 | 二启 `pg store ready: forge_bridge on 127.0.0.1:5432`；4 棵首启零「没连上数据库」降级文案 |
+| F2 发布说明节文字复核 | 🟢 文字与实测一致 | `docs/v0.9.13-release-notes.md:73`：手动备份 `apps\` + ①后拷回 ②卡「停止中」先双击停止脚本、再 `node.exe bin\update-runner.js --root . --staged <包>` 手动收尾（我实测 315s / done=True，与我上轮报告逐条一致）；「R3 新版已修」经包内产物验证成立——`bin/chat-bridge.js` 含 Start-Process 中介 spawn（6 处 / `-WindowStyle Hidden` 2 处，s89 33f0209 同款） |
+| `_app-template.yaml` max_restarts | 🟢 | 包内 = 仓内同哈希，含 `max_restarts: 3` + `backoff_seconds: 5`（第 16-17 行） |
+
+## 4. 方法学勘误（解释自测为何没抓到 F3，也修正上轮扫描口径）
+
+- **pg.log 只在进程退出/停机时才落盘**：首启全程 0 字节，停机后同一文件 1.8-2.3KB。→ 任何「运行中扫描 data/logs」都会漏掉 pg 侧全部内容；本轮我改为**停机后终态复扫**（`tmp/s93b-qa/*/*-rescan.json` + `*-logs-final.zip`），F3 正是这样捞出来的。建议 s92/s93 的自测矩阵把扫描点移到停机后。
+- 另注：运行中读取 `data/logs/pc.log` 只能读到当时已落盘部分（首启 40s 时仅 4KB，终态 7-23KB）——「零异常」断言必须在停机后做才作数。
+- 本轮一次污染样本已作废重跑（并列第二栈时 nats 固定监控口 8222 冲突）：g2 首次采样红，证明是**夹具串行化错误**而非产品缺陷，已删树重跑干净；串行纪律=上一栈 product stop 确认零残留后才起下一栈。
+
+## 5. 结论
+
+- **F1：关闭**（崩溃/ENOENT 栈/零备份产出三项证据级消除，4 棵全新树 + 2 次二启 + 2 个降级边界全绿，包内产物与仓内模板同哈希）。
+- **能否发 release：暂缓 1 项小修**——F3 是本轮修复新引入的用户可见首启报错（12 行 FATAL）+ 桥库首启备份必落空，且随包发布说明「日志零异常」与实测冲突。建议：二选一最小修（tries 12→16 或 `does not exist` 不重试）→ 重打包 → 我跑一次定点复验（4 棵首启 ×FATAL/两库 dump）即放行；若业务必须按现包发，则至少把 `docs/v0.9.13-release-notes.md:7` 的「日志零异常」改为「备份链产出正常（首启桥库待次启补备，pg 侧 12 行 `forge_bridge` 未建库 FATAL 为已知噪声）」，并把顶行 s92「13 轮全绿」口径按 F1 复盘修订（该矩阵未覆盖 backup.log/pg.log 与进程 exit_code）。
+- 收尾：`C:\PF-QA` 整树删除、挂起 wrapper cmd 清零、PF 进程 0、端口 8099/8091/8790/5432/4222/8222/8188 全闭。

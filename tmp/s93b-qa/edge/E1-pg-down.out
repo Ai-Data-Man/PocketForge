@@ -1,0 +1,3 @@
+pg_dump skipped: postgres 未就绪（首启时序，正常），下次备份会带上
+pg_dump skipped: forge_bridge 未就绪（首启时序，正常），下次备份会带上
+backup ok: forge-backup-2026-09-15T12-08-39.zip (15KB) kept=5 pruned=0

@@ -1,0 +1,85 @@
+[bootstrap] permission.yaml seeded from template (first run)
+[PocketForge] starting... pc=8099 faucet=8091
+[PocketForge] starting... pc=8099 faucet=8091
+{"level":"debug","error":"could not locate `process-compose` in any of the following paths: [C:\\Users\\Administrator\\AppData\\Local C:\\ProgramData C:\\Users\\Administrator\\AppData\\Roaming]","time":"2026-09-15T19:43:41+08:00","message":"Path not found for process compose config home"}
+{"level":"debug","error":"could not locate `process-compose` in any of the following paths: [C:\\Users\\Administrator\\AppData\\Local C:\\ProgramData C:\\Users\\Administrator\\AppData\\Roaming]","time":"2026-09-15T19:43:41+08:00","message":"Path not found for process compose config home"}
+]0;process-compose: lavm-138s0y6v2o/C:\PF-QA\g1[faucet	] 
+[faucet	]  _____ _   _   _  ___ ___ _____
+[faucet	] |  ___/ \ | | | |/ __| __|_   _|
+[faucet	] | |_ / _ \| |_| | (__|  _| | |
+[faucet	] |_| /_/ \_\___,_|\___|___| |_|
+[faucet	] 
+[nats	] [12672] 2026/09/15 19:43:41.603743 [INF] Starting nats-server
+[nats	] [12672] 2026/09/15 19:43:41.627448 [INF]   Version:  2.14.5
+[nats	] [12672] 2026/09/15 19:43:41.627448 [INF]   Git:      [d3bc045]
+[nats	] [12672] 2026/09/15 19:43:41.627448 [INF]   Name:     NDNBAYP26OLHZGG66CH4K6PBOOQVE52BGVUNBIT56BZASR4WD6LKV4LA
+[nats	] [12672] 2026/09/15 19:43:41.627448 [INF]   Node:     ErYX1gcf
+[nats	] [12672] 2026/09/15 19:43:41.627448 [INF]   ID:       NDNBAYP26OLHZGG66CH4K6PBOOQVE52BGVUNBIT56BZASR4WD6LKV4LA
+[nats	] [12672] 2026/09/15 19:43:41.628458 [INF] Starting http monitor on 127.0.0.1:8222
+[nats	] [12672] 2026/09/15 19:43:41.629458 [INF] Starting JetStream
+[nats	] [12672] 2026/09/15 19:43:41.761450 [INF]     _ ___ _____ ___ _____ ___ ___   _   __  __
+[nats	] [12672] 2026/09/15 19:43:41.761450 [INF]  _ | | __|_   _/ __|_   _| _ \ __| /_\ |  \/  |
+[nats	] [12672] 2026/09/15 19:43:41.761450 [INF] | || | _|  | | \__ \ | | |   / _| / _ \| |\/| |
+[nats	] [12672] 2026/09/15 19:43:41.761450 [INF]  \__/|___| |_| |___/ |_| |_|_\___/_/ \_\_|  |_|
+[nats	] [12672] 2026/09/15 19:43:41.761450 [INF] 
+[nats	] [12672] 2026/09/15 19:43:41.761450 [INF]          https://docs.nats.io/jetstream
+[nats	] [12672] 2026/09/15 19:43:41.761450 [INF] 
+[nats	] [12672] 2026/09/15 19:43:41.761450 [INF] ---------------- JETSTREAM ----------------
+[nats	] [12672] 2026/09/15 19:43:41.761450 [INF]   Strict:          true
+[nats	] [12672] 2026/09/15 19:43:41.761450 [INF]   Max Memory:      12.00 GB
+[nats	] [12672] 2026/09/15 19:43:41.761450 [INF]   Max Storage:     1.00 TB
+[nats	] [12672] 2026/09/15 19:43:41.761450 [INF]   Store Directory: "C:\PF-QA\g1\data\js\jetstream"
+[nats	] [12672] 2026/09/15 19:43:41.761450 [INF]   API Level:       4
+[nats	] [12672] 2026/09/15 19:43:41.761450 [INF] -------------------------------------------
+[nats	] [12672] 2026/09/15 19:43:41.795463 [INF] Took 166.0051ms to start JetStream
+[nats	] [12672] 2026/09/15 19:43:41.795463 [INF] Listening for client connections on 127.0.0.1:4222
+[nats	] [12672] 2026/09/15 19:43:41.795463 [INF] Server is ready
+[faucet	] time=2026-09-15T19:43:41.907+08:00 level=INFO msg="config store initialized" path=C:/PF-QA/g1/data/faucet
+[faucet	] time=2026-09-15T19:43:41.907+08:00 level=INFO msg="connector registry initialized" drivers="[postgres mysql mssql oracle snowflake sqlite]"
+[faucet	] time=2026-09-15T19:43:41.908+08:00 level=WARN msg="no admin account found — visit /setup or run: faucet admin create --email admin@example.com --password changeme123"
+[faucet	] Anonymous usage stats are enabled to help improve Faucet.
+[faucet	] Disable with: faucet config set telemetry.enabled false  (or set FAUCET_TELEMETRY=0)
+[faucet	] See: https://github.com/faucetdb/faucet/blob/main/TELEMETRY.md
+[faucet	] 
+[faucet	] time=2026-09-15T19:43:41.916+08:00 level=INFO msg="telemetry enabled" docs=https://github.com/faucetdb/faucet/blob/main/TELEMETRY.md
+[faucet	] → Faucet v0.1.12 | Database → API in seconds
+[faucet	] → Listening on http://127.0.0.1:8091
+[faucet	] → Admin UI:   http://127.0.0.1:8091/admin
+[faucet	] → OpenAPI:    http://127.0.0.1:8091/openapi.json
+[faucet	] → MCP:        http://127.0.0.1:8091/mcp
+[faucet	] → Connected databases: 0
+[faucet	] 
+[faucet	] → First run detected! Set up your admin account:
+[faucet	] →   Web UI:  http://127.0.0.1:8091/setup
+[faucet	] →   CLI:     faucet admin create --email admin@example.com --password changeme123
+[faucet	] →   Env:     FAUCET_ADMIN_EMAIL=... FAUCET_ADMIN_PASSWORD=... faucet serve
+[faucet	] 
+[faucet	] time=2026-09-15T19:43:41.925+08:00 level=INFO msg="server starting" addr=127.0.0.1:8091
+[chat-bridge	] chat bridge v2 on http://127.0.0.1:8790
+[chat-bridge	] ACP initialized: goose | provider: secrets.env | model: mimo-v2.5
+[faucet-rawsql	] raw_sql enabled on 0 services
+[faucet-rawsql	] (node:18708) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+[faucet-rawsql	] (Use `node --trace-warnings ...` to show where the warning was created)
+[pg	] 2026-09-15 19:43:48.610 CST [892] LOG:  starting PostgreSQL 17.11 on x86_64-windows, compiled by msvc-19.44.35228, 64-bit
+[pg	] 2026-09-15 19:43:48.611 CST [892] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+[pg	] 2026-09-15 19:43:48.658 CST [12076] LOG:  database system was shut down at 2026-09-15 19:43:45 CST
+[pg	] 2026-09-15 19:43:48.688 CST [892] LOG:  database system is ready to accept connections
+[daily-backup	] pg_dump ok: pg-2026-09-15T11-43-46.sql (1KB) kept=1
+[pg	] 2026-09-15 19:43:53.373 CST [15572] FATAL:  database "forge_bridge" does not exist
+[pg	] 2026-09-15 19:43:54.924 CST [13796] FATAL:  database "forge_bridge" does not exist
+[pg	] 2026-09-15 19:43:56.476 CST [18104] FATAL:  database "forge_bridge" does not exist
+[pg	] 2026-09-15 19:43:58.025 CST [11244] FATAL:  database "forge_bridge" does not exist
+[pg	] 2026-09-15 19:43:59.573 CST [16448] FATAL:  database "forge_bridge" does not exist
+[pg	] 2026-09-15 19:44:01.119 CST [12700] FATAL:  database "forge_bridge" does not exist
+[pg	] 2026-09-15 19:44:02.666 CST [7464] FATAL:  database "forge_bridge" does not exist
+[pg	] 2026-09-15 19:44:04.216 CST [15268] FATAL:  database "forge_bridge" does not exist
+[pg	] 2026-09-15 19:44:05.763 CST [6332] FATAL:  database "forge_bridge" does not exist
+[pg	] 2026-09-15 19:44:07.313 CST [6720] FATAL:  database "forge_bridge" does not exist
+[pg	] 2026-09-15 19:44:08.863 CST [18644] FATAL:  database "forge_bridge" does not exist
+[pg	] 2026-09-15 19:44:10.412 CST [12356] FATAL:  database "forge_bridge" does not exist
+[daily-backup	] pg_dump skipped: forge_bridge 未就绪（首启时序，正常），下次备份会带上
+[chat-bridge	] pg store ready: forge_bridge on 127.0.0.1:5432
+[chat-bridge	] pg arch reconcile: file=0 pg=0 adopted=0
+[chat-bridge	] pg wsmap reconcile: file=0 pg=0 adopted=0
+[chat-bridge	] pg usage backfill ok (1 files)
+[daily-backup	] backup ok: forge-backup-2026-09-15T11-44-11.zip (10KB) kept=1 pruned=0

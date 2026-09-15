@@ -1,0 +1,9 @@
+{
+ "tag": "g2c",
+ "pc_procs": "1",
+ "ready": true,
+ "poll": "READY bridge healthz 200 on 8790 after 8.6s\n",
+ "detect_admin": true,
+ "relaunch_line": true,
+ "log_tail": "[PocketForge] 检测到当前是管理员身份启动——数据库出于安全不允许以管理员运行。\n正在自动改用普通权限重新启动，请稍候…\n"
+}

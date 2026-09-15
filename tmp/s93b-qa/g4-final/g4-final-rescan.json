@@ -1,0 +1,19 @@
+{
+ "tag": "g4-final",
+ "log_sizes": {
+  "backup.log": 372,
+  "pc.log": 7468,
+  "pg-init.log": 866,
+  "pg.log": 2338
+ },
+ "hits": {
+  "pg.log::FATAL": 12
+ },
+ "backups": [
+  "forge-backup-2026-09-15T12-11-51.zip"
+ ],
+ "dumps": [
+  "pg-2026-09-15T12-11-26.sql"
+ ],
+ "backup_log": "{\"level\":\"info\",\"process\":\"daily-backup\",\"replica\":0,\"message\":\"pg_dump ok: pg-2026-09-15T12-11-26.sql (1KB) kept=1\"}\n{\"level\":\"info\",\"process\":\"daily-backup\",\"replica\":0,\"message\":\"pg_dump skipped: forge_bridge 未就绪（首启时序，正常），下次备份会带上\"}\n{\"level\":\"info\",\"process\":\"daily-backup\",\"replica\":0,\"message\":\"backup ok: forge-backup-2026-09-15T12-11-51.zip (10KB) kept=1 pruned=0\"}\n"
+}

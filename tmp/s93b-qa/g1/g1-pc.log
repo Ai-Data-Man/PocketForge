@@ -1,0 +1,33 @@
+{"level":"info","process":"faucet","replica":0}
+{"level":"info","process":"faucet","replica":0,"message":" _____ _   _   _  ___ ___ _____"}
+{"level":"info","process":"faucet","replica":0,"message":"|  ___/ \\ | | | |/ __| __|_   _|"}
+{"level":"info","process":"faucet","replica":0,"message":"| |_ / _ \\| |_| | (__|  _| | |"}
+{"level":"info","process":"faucet","replica":0,"message":"|_| /_/ \\_\\___,_|\\___|___| |_|"}
+{"level":"info","process":"faucet","replica":0}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.603743 [INF] Starting nats-server"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.627448 [INF]   Version:  2.14.5"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.627448 [INF]   Git:      [d3bc045]"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.627448 [INF]   Name:     NDNBAYP26OLHZGG66CH4K6PBOOQVE52BGVUNBIT56BZASR4WD6LKV4LA"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.627448 [INF]   Node:     ErYX1gcf"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.627448 [INF]   ID:       NDNBAYP26OLHZGG66CH4K6PBOOQVE52BGVUNBIT56BZASR4WD6LKV4LA"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.628458 [INF] Starting http monitor on 127.0.0.1:8222"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.629458 [INF] Starting JetStream"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.761450 [INF]     _ ___ _____ ___ _____ ___ ___   _   __  __"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.761450 [INF]  _ | | __|_   _/ __|_   _| _ \\ __| /_\\ |  \\/  |"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.761450 [INF] | || | _|  | | \\__ \\ | | |   / _| / _ \\| |\\/| |"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.761450 [INF]  \\__/|___| |_| |___/ |_| |_|_\\___/_/ \\_\\_|  |_|"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.761450 [INF] "}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.761450 [INF]          https://docs.nats.io/jetstream"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.761450 [INF] "}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.761450 [INF] ---------------- JETSTREAM ----------------"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.761450 [INF]   Strict:          true"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.761450 [INF]   Max Memory:      12.00 GB"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.761450 [INF]   Max Storage:     1.00 TB"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.761450 [INF]   Store Directory: \"C:\\PF-QA\\g1\\data\\js\\jetstream\""}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.761450 [INF]   API Level:       4"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.761450 [INF] -------------------------------------------"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.795463 [INF] Took 166.0051ms to start JetStream"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.795463 [INF] Listening for client connections on 127.0.0.1:4222"}
+{"level":"error","process":"nats","replica":0,"message":"[12672] 2026/09/15 19:43:41.795463 [INF] Server is ready"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T19:43:41.907+08:00 level=INFO msg=\"config store initialized\" path=C:/PF-QA/g1/data/faucet"}
+{"level":"error","process":"faucet","replica":0,"message":"time=2026-09-15T19:43:41.907
