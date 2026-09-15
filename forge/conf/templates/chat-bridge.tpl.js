@@ -774,7 +774,7 @@ function spawnAcp() {
         const hn = new URL(env.OPENAI_HOST || '').hostname;
         if (hn && hostIsRemote(hn)) { // 本机服务商（127./localhost/::1）无需绕行条目
             const parts = noProxy.split(',').map(s => s.trim()).filter(Boolean);
-            if (!parts.includes(hn)) parts.push(hn);
+            if (!parts.some(p => p.toLowerCase() === hn.toLowerCase())) parts.push(hn); // qa s94 P4-7: 去重大小写不敏感（主机名大小写等价，防重复条目）
             noProxy = parts.join(',');
         }
     } catch {}
@@ -3731,6 +3731,7 @@ function handleClient(ws, msg) {
                 // s80g: close 走出生门控——幼龄会话（树装配完未满 CLOSE_SETTLE_MS）延迟到窗末再发，防冷/载窗
                 // teardown 竞态永久泄漏（research/17 s80g 补录）；满龄/未登记照旧即发。回执与 DB 删除时序不变。
                 acpCloseSession(msg.sessionId);
+                sidModelApplied.delete(msg.sessionId); // qa s94 P4-4: 会话已删，模型记账随之清（防 Map 无界增长/陈旧条目）
                 // I1(审查s15): 会话删了就解除其工作区绑定，否则区卡在 active 态永远无法清理
                 const wsm = readWsMap();
                 let unbound = false;
