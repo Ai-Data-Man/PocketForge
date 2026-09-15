@@ -12,7 +12,7 @@ const FSS = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 
-const ROOT = process.argv[2] ? path.resolve(process.argv[2]) : path.resolve(__dirname, '..', '..');
+const ROOT = process.argv[2] ? path.resolve(process.argv[2]) : path.resolve(__dirname, '..');
 const DATA_DIR = path.join(ROOT, 'data', 'faucet');
 const KEY_FILE = path.join(DATA_DIR, '.apikey');
 const PORT_FILE = path.join(ROOT, 'data', 'faucet.port');
