@@ -1991,7 +1991,9 @@ $('prov-add').onclick=()=>{
   if(k) cfgKeyTouched=true; // s94 F-1: 添加带 key → 重渲染不清 Key 栏（保存曾消费 dirty，档案回填守卫会误清）
   keepFetchPoolNextRender=true; // s94 F-1: 添加后的刷新不得丢已拉取的模型勾选面（renderProviders 消费）
   note('已新建「'+name+'」。填好地址和 Key 后点保存，再⟳拉取模型勾选。');
-  setTimeout(loadProvidersUI,300);
+  // s94-b2 F-1 残留: 不再 300ms 后补拉列表——add 请求本身就有 providers 应答（桥 handlers 恒回），补拉造成
+  // 第二次 renderProviders：keepFetch 单次 flag 已被首帧消费，第二帧走 renderModelPool 把 120 个勾选面整盒覆写成
+  // 「还没勾任何模型」空态（ia2 实录 checkbox 归零）。单帧刷新后勾选面由 flag 保住。
 };
 // s51d: P31-② 配 Key 引导——所有档案都没 Key（含零档案）时聊天区顶部引导条；
 // 条件是客观状态（没 key），配好即消，零持久化。401 人话卡（下方错误转译）仍是第二道网。
