@@ -663,6 +663,11 @@ function effectiveModel(act) { // qa s78c P3-1 单一真相源：生效模型读
     const pool = (act && act.models) || [];
     return (lastModelOverride && pool.includes(lastModelOverride) ? lastModelOverride : pool[0]) || secrets.GOOSE_MODEL_NAME || '';
 }
+function hostIsRemote(hn) { // s94 F-4a/F-4c: 主机名是否远端——本机（localhost/::1/127.*/0.*）不经代理，代理相关注入与告警只对远端有意义；空/坏值按本机（不注入不告警）
+    const n = String(hn || '').replace(/^\[|\]$/g, '');
+    if (!n) return false;
+    return !(n === 'localhost' || n === '::1' || /^127\./.test(n) || /^0\./.test(n));
+}
 async function healthTargets() { // 同源铁律：与 spawnAcp env 链（active 档→secrets→process.env 三级回落）逐位同读法，防「探 A 用 B」
     const act = (await readProvidersAsync()).find(p => p.active) || null;
     return {
@@ -710,7 +715,8 @@ async function probeProviderHealth(reply) { // qa s78b P1-1: reply=触发方 ws�
         const [r, pr] = await Promise.all([probe, reportSysProxy()]); // ProxyEnable 注册表只读并行（s64 A1 复用；事故一形态诚实提示，不装作能探代理路径）
         const prev = healthFrame();
         healthCache.state = r.state; healthCache.kind = r.kind;
-        healthCache.proxy = !!(pr && pr.enabled);
+        let probeHn = ''; try { probeHn = new URL(t.host).hostname; } catch {}
+        healthCache.proxy = !!(pr && pr.enabled) && hostIsRemote(probeHn); // s94 F-4c: 代理旗只对远端服务商亮（本机服务商不经代理）
         healthCache.at = Date.now();
         const now = healthFrame();
         if (JSON.stringify(prev) !== JSON.stringify(now)) for (const ws of allClients) ws.send(now); // 态变化才广播（s77 delete 广播同款）；now 恒非空——state=null 唯一路径在上方未配置分支已提前 return
@@ -758,6 +764,20 @@ function spawnAcp() {
         OPENAI_HOST: (act && act.host) || secrets.FORGE_AGENT_HOST || process.env.OPENAI_HOST,
         OPENAI_BASE_PATH: 'chat/completions',
     };
+    // s94 F-4a: goose(reqwest 0.13→hyper-util matcher) 默认吃 Windows 系统代理，但绕行表只认 NO_PROXY 环境变量——
+    // 注册表 ProxyOverride 仅在 env NO_PROXY 为空时才被读（hyper-util 0.1.20 matcher.rs Builder::from_system：
+    // from_env 先行、win::with_system 后补且 ProxyOverride 只在 builder.no 为空时套用；intercept() 首查 no.contains）。
+    // 注入活跃服务商主机到 NO_PROXY，防系统代理吞掉 LLM 流量致回合永久挂起（ia1 实锤 15s 超时×3 ESTABLISHED）。
+    let noProxy = (process.env.NO_PROXY || process.env.no_proxy || '').trim();
+    try {
+        const hn = new URL(env.OPENAI_HOST || '').hostname;
+        if (hn && hostIsRemote(hn)) { // 本机服务商（127./localhost/::1）无需绕行条目
+            const parts = noProxy.split(',').map(s => s.trim()).filter(Boolean);
+            if (!parts.includes(hn)) parts.push(hn);
+            noProxy = parts.join(',');
+        }
+    } catch {}
+    if (noProxy) { env.NO_PROXY = noProxy; env.no_proxy = noProxy; }
     // s71(G1): env 会压 config（base.rs get_param 先读 env）——显式剥离父环境可能携带的 GOOSE_MODE
     // （pc yaml/启动器残留），确保回落 config.yaml 的 smart_approve，permission.yaml 真实生效
     delete env.GOOSE_MODE;
@@ -1558,7 +1578,14 @@ const META_TBL = 'forge_meta'; // s83（裁决 2026-09-13-app-management-ledger 
 // s83: 建账时间字段（forge_meta / forge_table_info 的 created_at，agent 写的字符串）→ epoch ms；缺失/非法 → null（时间无=「—」，不得编造）
 function parseAssetTs(v) {
     if (typeof v !== 'string' || !v.trim()) return null;
-    const t = Date.parse(v.trim());
+    const s = v.trim();
+    // s94 F-7: 纯日期串（agent 按 hints 常写 '2026-09-16'）按本地零点解析——ES 规范 date-only 串走 UTC 零点，
+    // 东八区显示恒 08:00（ia1 实锤）；带时间的 ISO 串维持 Date.parse 原语义
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        const d = new Date(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
+        return Number.isFinite(d.getTime()) ? d.getTime() : null;
+    }
+    const t = Date.parse(s);
     return Number.isFinite(t) ? t : null;
 }
 async function dbOverview() {
@@ -1676,11 +1703,15 @@ function scanInstalledSkills() {
                             } else if (fmMulti && /^\s+\S/.test(line)) {
                                 meta[fmMulti] = (meta[fmMulti] ? meta[fmMulti] + ' ' : '') + line.trim();
                             } else { fmMulti = null; }
-                        } else if (fmDone) bodyLines.push(line);
+                        } else if (fmDone || !inFm) bodyLines.push(line); // s94 F-8: 无 frontmatter 的 SKILL.md（skill-sediment 协议未硬性要求）整文即正文——修前 body 恒空（frontmatter 文件首行必是 ---，此改动对其零影响）
                     }
                     const body = bodyLines.join(nl).trim();
+                    // s94 F-8: 无 frontmatter 的自沉淀技能（skill-sediment 协议未硬性要求 YAML）description 落空时
+                    // 回落=正文第一个一级标题（结构性事实不编造，截 120；无标题保持空 → 诚实降级「无说明」）
+                    const desc0 = (meta.description || '').replace(/^['\"]|['\"]$/g, '');
+                    const h1 = desc0 ? '' : (body.match(/^#[ \t]+\S.*$/m) || [''])[0].replace(/^#[ \t]+/, '').trim();
                     const o = originOf(path.join(d, ent.name)); // s70: 来源标记（无/坏 → null=本机随包）
-                    out.push({ name: ent.name, description: (meta.description || '').replace(/^['\"]|['\"]$/g, ''), body: body.slice(0, 4000), path: f, origin: o ? { source: o.source, repo: o.repo || '' } : null });
+                    out.push({ name: ent.name, description: h1 ? h1.slice(0, 120) : desc0, body: body.slice(0, 4000), path: f, origin: o ? { source: o.source, repo: o.repo || '' } : null });
                 } catch {}
             }
         } catch {}
@@ -3794,9 +3825,14 @@ function handleClient(ws, msg) {
         }
 
         if (msg.type === 'list_models') {
-            // fetch {host}/models with key; host from secrets or msg.override
-            const host = (msg.host || secrets.FORGE_AGENT_HOST || '').replace(/\/$/, '');
-            const key = msg.key || secrets.FORGE_AGENT_API_KEY || '';
+            // fetch {host}/models with key; host from msg override / active provider / secrets
+            // s94 F-2: 回落链插活跃服务商档案现读——secrets 是启动快照，新装机「保存→拉取」时表单 key 已被
+            // 清空（安全设计不回显）、快照又没跟上（保存只写盘），恒空 key 打 relay 401；且 401 错误体无 data
+            // 字段被映射成空 models 假成功。档案现读（active 或池首）保证保存后立即可拉。
+            const provs = readProviders();
+            const act = provs.find(p => p.active) || provs[0] || null;
+            const host = (msg.host || (act && act.host) || secrets.FORGE_AGENT_HOST || '').replace(/\/$/, '');
+            const key = msg.key || (act && act.key) || secrets.FORGE_AGENT_API_KEY || '';
             if (!host) return ws.send({ sys: 'error', text: '未配置接口地址' });
             const u = new URL(host + '/models'); // s78: 照 test_model 写法按协议切 http/https，https 端点不再硬编码失败
             const reqMod = require(u.protocol === 'https:' ? 'https' : 'http');
@@ -3804,17 +3840,25 @@ function handleClient(ws, msg) {
                 let b = '';
                 res.on('data', c => b += c);
                 res.on('end', () => {
-                    try { const j = JSON.parse(b); ws.send({ sys: 'models', models: (j.data || j.models || []).map(m => m.id || m.name || String(m)) }); }
-                    catch { ws.send({ sys: 'error', text: 'models 响应解析失败 (HTTP ' + res.statusCode + ')' }); }
+                    if (res.statusCode !== 200) return ws.send({ sys: 'error', text: '拉取失败：服务商回了 HTTP ' + res.statusCode }); // s94 F-2: 非 200 原样报码，401 不再伪装成 0 个模型
+                    try {
+                        const j = JSON.parse(b);
+                        const arr = j.data || j.models;
+                        if (!Array.isArray(arr)) throw 0; // 仅 200 且能解析出 data/models 数组才发 models 帧
+                        ws.send({ sys: 'models', models: arr.map(m => m.id || m.name || String(m)) });
+                    } catch { ws.send({ sys: 'error', text: 'models 响应解析失败 (HTTP ' + res.statusCode + ')' }); }
                 });
             }).on('error', e => ws.send({ sys: 'error', text: '连接失败: ' + e.message }));
             return;
         }
 
         if (msg.type === 'test_model') {
-            const host = (msg.host || secrets.FORGE_AGENT_HOST || '').replace(/\/$/, '');
-            const key = msg.key || secrets.FORGE_AGENT_API_KEY || '';
-            const model = msg.model || secrets.GOOSE_MODEL_NAME || '';
+            // s94 F-2: 回落链同 list_models（活跃档案现读→secrets 快照）；model 链对齐 :3713 optimize 读法
+            const provs = readProviders();
+            const act = provs.find(p => p.active) || provs[0] || null;
+            const host = (msg.host || (act && act.host) || secrets.FORGE_AGENT_HOST || '').replace(/\/$/, '');
+            const key = msg.key || (act && act.key) || secrets.FORGE_AGENT_API_KEY || '';
+            const model = msg.model || (act && act.models && act.models[0]) || secrets.GOOSE_MODEL_NAME || '';
             const body = JSON.stringify({ model, messages: [{ role: 'user', content: 'reply with exactly: ok' }], max_tokens: 512 });
             const u = new URL(host + '/chat/completions');
             const reqMod = require(u.protocol === 'https:' ? 'https' : 'http');
