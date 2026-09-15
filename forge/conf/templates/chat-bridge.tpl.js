@@ -3951,7 +3951,9 @@ function handleClient(ws, msg) {
                 // s94-b2 F-3: env 指纹与上次落地一致的热重启是纯噪音——ia2 首配连打保存触发三连重启：
                 // 三条「✅ 已切到…」重复播报 + 三代 acp 进程更替（回合竞态燃料），env 实质没变。跳过。
                 const act2 = activeProvider();
-                const sig2 = ((act2 && act2.name) || 'secrets.env') + '\0' + effectiveModel(act2) + '\0' + (act2 && act2.host) + '\0' + (act2 && act2.key);
+                // s94-b3 P4-5: sig2 与 lastSpawnEnv 同源——host/key 走 spawnAcp 同款三级回落链（活跃档→secrets 快照→process.env）。
+                // 修前裸 act2.host/key：空 host/key 退化档的 sig2 恒缺回落值 → 该档每次保存都白热重启一次
+                const sig2 = ((act2 && act2.name) || 'secrets.env') + '\0' + effectiveModel(act2) + '\0' + ((act2 && act2.host) || secrets.FORGE_AGENT_HOST || process.env.OPENAI_HOST) + '\0' + ((act2 && act2.key) || secrets.FORGE_AGENT_API_KEY || process.env.OPENAI_API_KEY);
                 if (sig2 !== lastSpawnEnv) hotRestartProvider().catch(e => console.error('hot restart failed', e));
             }
             return;
