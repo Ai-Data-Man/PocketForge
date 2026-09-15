@@ -363,6 +363,27 @@ ck "apps probe 44 ck (registry x pc join + URL layers + honest degrade + sort st
 grep -E "^apps-probe" /tmp/apps-probe.log || true
 rm -f /tmp/apps-probe.log
 
+# ---------- 24) list_models/test_model 回落链 + 非200诚实报错（s94 F-2/F-4a；详见 tools/e2e/model-fallback-probe.js） ----------
+# 沙盒自建（假 provider 播控 + 桥独立端口 spawn，ws-subscribe-race 同款骨架，不碰 dev 树 8790）：
+# 档案回落（无 host/key 与 key 空串两形态）/401 诚实报码（修前 401 错误体映射成空 models 假成功）/
+# 200 非数组不发空帧/j.models 备用形状/secrets 快照档末段不回归/test_model 同款 + 坏 key 诚实 ok:false/
+# 模板锚：F-4a spawnAcp NO_PROXY 注入（机理=hyper-util from_system 先读 env NO_PROXY，ia1 实锤 goose 吃 IE 代理）
+rc=0; node "$ROOT/tools/e2e/model-fallback-probe.js" > /tmp/model-fallback.log 2>&1 || rc=$?
+grep -q "FAIL=0" /tmp/model-fallback.log || rc=$?
+ck "model-fallback probe 12 ck (profile fallback + honest HTTP errors + secrets tier + NO_PROXY anchor)" $rc
+grep -E "^model-fallback-probe" /tmp/model-fallback.log || true
+rm -f /tmp/model-fallback.log
+
+# ---------- 25) 无 frontmatter 技能描述回落 + s94 前端模板锚（F-1/F-8/F-9/F-4c；详见 tools/e2e/skill-desc-fallback-probe.js） ----------
+# 活体：/api/skills 与 /api/assets（种子自建自清，s82 纪律）——无 frontmatter 的 self 技能 description 回落正文
+# 首个一级标题（截 120，结构性事实；无标题诚实空）；台账 skill 条目 human 同源受益。
+# 模板锚：F-9 @ 菜单排两张建账表 / F-4c 代理人话+proxy-only 形态 / F-1 save-cfg 建档守卫+添加保输入
+rc=0; node "$ROOT/tools/e2e/skill-desc-fallback-probe.js" > /tmp/skill-desc-fb.log 2>&1 || rc=$?
+grep -q "FAIL=0" /tmp/skill-desc-fb.log || rc=$?
+ck "skill-desc-fallback probe 12 ck (h1 fallback live both sinks + FE anchors s94)" $rc
+grep -E "^skill-desc-fallback-probe" /tmp/skill-desc-fb.log || true
+rm -f /tmp/skill-desc-fb.log
+
 rm -f /tmp/e2e-v1.md
 echo "=============================="
 echo "chat-link E2E: PASS=$PASS FAIL=$FAIL"

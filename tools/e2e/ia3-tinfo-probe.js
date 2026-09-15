@@ -35,6 +35,10 @@ const GOOD_DESC = '零件主数据：代码、名称、数量——给库存查�
         if (byName.parts.desc !== GOOD_DESC) throw new Error('parts desc not carried: ' + JSON.stringify(byName.parts.desc));
         if (!byName.parts_e2e.desc || byName.parts_e2e.desc.length !== 200) throw new Error('overlong desc not truncated to 200: len=' + (byName.parts_e2e.desc || '').length);
         if (byName.forge_table_info.desc !== null) throw new Error('null-desc row not skipped: ' + JSON.stringify(byName.forge_table_info.desc));
+        // s94 F-7: 纯日期串 created_at='2026-09-07' 按本地零点解析——修前 ES 规范 date-only 走 UTC 零点，
+        // 东八区显示恒 08:00（ia1 实锤）；new Date(y,m-1,d) 即本地零点 epoch
+        const localMidnight = new Date(2026, 9 - 1, 7).getTime();
+        if (byName.parts.ts !== localMidnight) throw new Error('pure-date ts not local-midnight: got ' + byName.parts.ts + ' want ' + localMidnight + ' (delta=' + (byName.parts.ts - localMidnight) + 'ms)');
         teardown();
         d = await overview(); // 降级：库里没有 forge_table_info → desc=null 不炸
         if (d.ok !== true) throw new Error('overview not ok after drop');
