@@ -31,6 +31,13 @@ set "FORGE_IL="
 
 if not exist "%FORGE_ROOT%\data\logs" mkdir "%FORGE_ROOT%\data\logs"
 
+rem ---- s92 pre-flight (conf\start-preflight.ps1): single-instance guard + orphan cleanup.
+rem exit 2 = stack already running (another pc alive) -> friendly message, exit (a second pc would
+rem share the same pc.log and produce the rotation rename errors users saw 2026-09-15);
+rem exit 0 = clean (leftover processes from a killed pc are removed so ports are free).
+powershell -NoProfile -ExecutionPolicy Bypass -File "%FORGE_ROOT%\conf\start-preflight.ps1"
+if errorlevel 2 ( pause & exit /b 0 )
+
 rem ---- bootstrap: goose config / secrets / ports (see conf\bootstrap.ps1) ----
 powershell -NoProfile -ExecutionPolicy Bypass -File "%FORGE_ROOT%\conf\bootstrap.ps1"
 for /f "usebackq delims=" %%p in ("%FORGE_ROOT%\data\pc.port") do set "PC_PORT=%%p"

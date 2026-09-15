@@ -21,27 +21,53 @@ fs.mkdirSync(OUT_DIR, { recursive: true });
 const pgPort = (() => { try { return fs.readFileSync(path.join(ROOT, 'data', 'pg.port'), 'utf8').trim(); } catch { return ''; } })();
 const pgDumpExe = path.join(ROOT, 'bin', 'pg', 'bin', 'pg_dump.exe');
 const dumpsDir = path.join(ROOT, 'data', 'pg-dumps');
+// s92: 首启时序——备份与 PG/桥同时启动：①PG 尚未「开始接受连接」②桥尚未建 forge_bridge。
+// 两者都是正常时序，等一会儿再来即可（备份链的价值恰在于把 forge_bridge 备上，故等待优于跳过）。
+// 等待上限 ~40s（首启实测 PG ready <15s、桥建库 <25s）；仍不可用则按信息级跳过，绝不污染启动日志。
+// 就绪门（零副作用）：先等 postgres 自己写下「ready to accept connections」再发第一个连接——
+// 裸连接撞「尚未接受连接」会让 postgres 每次拒绝都记一条 FATAL（用户可见的假故障，E6 实测）。
+function pgLogReady() {
+    try {
+        const t = fs.readFileSync(path.join(ROOT, 'data', 'logs', 'pg.log'), 'utf8');
+        return /ready to accept connections/.test(t);
+    } catch { return false; }
+}
+function pgDumpWithWait(db, dump, tries) {
+    let lastMsg = '';
+    for (let i = 0; i < tries; i++) {
+        if (!pgLogReady()) {
+            try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1500); } catch {}
+            continue;
+        }
+        try {
+            execFileSync(pgDumpExe, ['-h', '127.0.0.1', '-p', pgPort, '-U', 'postgres', '-d', db, '-Fp', '-f', dump], { stdio: 'pipe', timeout: 10000 });
+            return '';
+        } catch (e) {
+            try { fs.unlinkSync(dump); } catch {} // best-effort: 中途断连/超时的残缺 sql 不随 zip 分发
+            lastMsg = ((e.stderr && e.stderr.toString().trim().split('\n').pop()) || String(e.message).split('\n')[0]).trim();
+            const transient = /not yet accepting connections|does not exist|the database system is starting up|server closed the connection|connection refused|starting up|terminating connection/i.test(lastMsg);
+            if (!transient) return lastMsg;
+            // 同步睡眠（本脚本是 oneshot 同步流程；Atomics.wait 零子进程、零依赖）
+            try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2500); } catch {}
+        }
+    }
+    return lastMsg;
+}
 if (pgPort && fs.existsSync(pgDumpExe)) {
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     fs.mkdirSync(dumpsDir, { recursive: true });
     for (const [db, name, rot] of [['postgres', `pg-${ts}.sql`, /^pg-\d.*\.sql$/], ['forge_bridge', `pg-bridge-${ts}.sql`, /^pg-bridge-.*\.sql$/]]) {
         const dump = path.join(dumpsDir, name);
-        try {
-            // timeout 10s: PG 半开连接挂死保护（pg_dump 卡住不能拖死 daily-backup oneshot）
-            execFileSync(pgDumpExe, ['-h', '127.0.0.1', '-p', pgPort, '-U', 'postgres', '-d', db, '-Fp', '-f', dump], { stdio: 'pipe', timeout: 10000 });
+        const err = pgDumpWithWait(db, dump, 12);
+        if (!err) {
             const dumps = fs.readdirSync(dumpsDir).filter(f => rot.test(f)).sort();
             while (dumps.length > 3) fs.unlinkSync(path.join(dumpsDir, dumps.shift()));
             console.log(`pg_dump ok: ${name} (${(fs.statSync(dump).size / 1024).toFixed(0)}KB) kept=${dumps.length}`);
-        } catch (e) {
-            try { fs.unlinkSync(dump); } catch {} // best-effort: 中途断连/超时的残缺 sql 不随 zip 分发
-            const msg = (e.stderr && e.stderr.toString().trim().split('\n')[0]) || String(e.message).split('\n')[0];
-            // s92: 首启时序——备份与桥同时启动，桥尚未建 forge_bridge 时 pg_dump 必报「database does not exist」。
-            // 这是正常时序不是故障（下次启动/下次备份会带上），故按信息级记录，保持启动日志零 ERROR。
-            if (/does not exist/.test(msg) && db !== 'postgres') {
-                console.log(`pg_dump skipped: ${db} 尚未建库（首启时序，正常），下次备份会带上`);
-            } else {
-                console.warn(`pg_dump skipped: ${msg.trim()}`);
-            }
+        } else if (/does not exist|not yet accepting connections|starting up/i.test(err)) {
+            // 等待窗口内 PG/桥仍未就绪（如 PG 被禁用、桥首次建库更慢）：信息级，下次备份会带上。
+            console.log(`pg_dump skipped: ${db} 未就绪（首启时序，正常），下次备份会带上`);
+        } else {
+            console.warn(`pg_dump skipped: ${err}`);
         }
     }
 } else {

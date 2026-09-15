@@ -425,6 +425,17 @@ function pgStateReconcile(kind) { // pg 态确立后台一次（入队，先于�
 function pgTryConnect() {
     const port = pgPort();
     if (!port) return pgDowngrade(PG_WARN + '没找到数据库端口，已用本地文件保存');
+    // s92: 首启就绪门——PG 还在 recover/启动中时裸连接会被 postgres 逐个拒绝并记 FATAL（用户可见假故障），
+    // 且我们这边会误报「没连上数据库」的惊悚降级告警。等 postgres 自己写下 ready 行再连（零连接成本）；
+    // 探不到（日志被清/轮换）则按老路直接连，行为不退化。
+    try {
+        const pgLog = FSS.readFileSync(path.join(ROOT, 'data', 'logs', 'pg.log'), 'utf8');
+        if (pgLog && !/ready to accept connections/.test(pgLog)) {
+            pgStore.mode = 'connecting';
+            setTimeout(() => { pgStore.mode = 'off'; if (pgExpected()) pgTryConnect(); }, 2000).unref();
+            return;
+        }
+    } catch {}
     pgStore.mode = 'connecting';
     (async () => {
         let boot = null;
