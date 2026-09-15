@@ -662,7 +662,12 @@ let wsRetryT=null, wsRetryDelay=300; // #5: 断线指数退避——300ms 起，
 function connect(){
   ws=new WebSocket('ws://'+location.host);
   ws.onopen=()=>{clearTimeout(wsRetryT); wsRetryDelay=300; status.classList.add('ok'); status.setAttribute('aria-label','已连接'); loadArch().then(loadSessions); loadProvidersUI(); loadWorkspaces(); if(!sessionId) subscribe(null); else ensureWs();};
-  ws.onclose=()=>{status.classList.remove('ok'); status.setAttribute('aria-label','连接已断开，正在重连'); clearTimeout(wsRetryT); wsRetryT=setTimeout(connect,wsRetryDelay); wsRetryDelay=Math.min(wsRetryDelay*2,5000);};
+  ws.onclose=()=>{status.classList.remove('ok'); status.setAttribute('aria-label','连接已断开，正在重连'); clearTimeout(wsRetryT); wsRetryT=setTimeout(connect,wsRetryDelay); wsRetryDelay=Math.min(wsRetryDelay*2,5000);
+    // s94-b2 F-11: 断线即收口忙碌态——turn 的 stop 帧只会发给发起时的那个（已死）ws 对象，重连的新连接永远
+    // 等不到它；不收口则「小 forge 正在干活」跨回合/跨会话永久挂着（ia2 实录第二形态）。数据无损（服务端
+    // 落库），收口=诚实态：可重发可切会话，做完的回合重开即回放。
+    if(busy){ setBusy(false); endStream(); }
+  };
   ws.onmessage=e=>{
     const m=JSON.parse(e.data);
     if(m.sys==='subscribed'){

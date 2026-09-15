@@ -1003,7 +1003,12 @@ async function hotRestartProvider() {
     for (const [, w] of waiting) { if (w.reject) { try { w.reject(new Error('provider switching')); } catch {} } }
     waiting.clear();
     busySids.clear(); // 主线5：acp 已换新进程，在飞 turn 全部作废
+    // s94-b2 F-11: 不再清空 ws 绑定——sessionClients 按 wsSession 现挂重建。修前 clear() 后前端在
+    // provider_switched 里不重订阅，绑定成了「prompt 能走（wsSession 没清）·事件全丢（订阅集空）」的半瘫：
+    // 下一次 prompt 经 goose evicted-restore 正常跑完（ia2 服务端全程健康），但 chunk/tool 帧无订阅者被
+    // 丢弃，前端渲染流冻结在用户消息上，重载才回放。goose 对未 close 的持久会话可按需恢复，绑定保留即活。
     sessionClients.clear();
+    for (const w of allClients) { const s = wsSession.get(w); if (s) { if (!sessionClients.has(s)) sessionClients.set(s, new Set()); sessionClients.get(s).add(w); } }
     rescuedSids.clear(); // qa s76 P3-A: 热重启同样杀 acp（全部旧 sid 作废），去重集合必须随行清，否则热重启前的死 sid 被拦在救援外
     acp = spawnAcp();
     await init();
