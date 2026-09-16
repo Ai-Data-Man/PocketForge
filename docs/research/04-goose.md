@@ -52,3 +52,7 @@ GOOSE_PATH_ROOT 在 CLI+Desktop 双形态的收敛性；Desktop 免管理员运�
 - **三条红线 v1.46→v1.49 源码级全部未动**：① scheduler persist 语义（scheduler_trait.rs 零 diff，scheduler.rs 仅 cache_ttl 钳制与删 racy 断言）② 桥依赖的 `_goose/unstable/schedules/pause|unpause`（#11650 删的是 dictation/extensions-available/preferences，未触 schedules；#11696 删的 providers/list 字段桥零调用）③ GOOSE_PATH_ROOT（paths.rs:41）/ GOOSE_DISABLE_KEYRING（base.rs 双通道）在位。
 - 最想要的增量不在 v1.49：#11383 permission.yaml 跨进程写锁（multi-goose-process 形态正需要）**将随 v1.50**。
 - **升级裁决（researcher 建议 2026-09-05）：不追 v1.49.0。护航窗口距 v1.50 预计发版（~09-09±3，6-9 天节奏）≥3 天则等 v1.50 一次到位，否则取 v1.48.0（已野外浸泡 8 天+，安全批 #11466/#11474/#11477/#11537 齐全）。回归五面：s55-58 调度闭环全跑；session/load 回放（#11159 触碰 s15 endStream hack 面）+ 401 文案流（#11202）；smart_approve 审批卡（#10285 规范化工具名后 browser__ 前缀命中可能变化）+ 拒绝路径；MCP 商店安装→挂载→卸载；GOOSE_PATH_ROOT/KEYRING + 真实任务（#11537 后 agent 须产出单行 cmd）。新版二进制行为 UNVERIFIED，须走沙盒 s47 流程。**
+
+## s95 上游情报+CLI 面（2026-09-16，VERIFIED-RUN：本机 --help 实跑；GitHub releases 页核对）
+- latest = **v1.50.1**（2026-09-14）；在用 v1.50.0。内容=补丁两枚（revert model updates + rollback MCP default version selection update）——对产品无影响（模型名显式管理+MCP 走自管目录），**不追**；下次升级窗口一并评估。
+- **`goose schedule run-now --schedule-id <ID>` 在 v1.50.0 本机实跑确认存在**（schedule 子命令全集：add/list/remove/sessions/run-now/services-status[弃]/services-stop[弃]/cron-help）——裁决 2026-09-16-capability-ia-bloat-startstop §5-D4「定时立即跑」的机制前提由 UNVERIFIED 转为 VERIFIED-CLI（run-now 全形态活体未跑；桥化需考虑与 goose-scheduler 守护的注册一致性）。backlog 触发器维持（用户实录 ≥2 次才开案）。
