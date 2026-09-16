@@ -61,6 +61,7 @@ const sandbox = new Function('$', 'document', 'fetch', `
     function openSession(){} function archiveSession(){} function askDeleteSession(){}
     return {
         set sideView(v){sideView=v}, set archSetV(v){archSet=v}, set lastSessionsV(v){lastSessions=v}, set installedAllV(v){installedAll=v},
+        set skillsChip(v){skillsFilter.chip=v}, // s96/P3-1：chip 过滤行为断言驱动口
         renderSessions, paintInstalled,
         loadSkills2: (...a)=>loadSkills2(...a),
         get state(){return {sideView,archCount}},
@@ -111,6 +112,29 @@ sandbox.installedAllV = [];
     sandbox.installedAllV = [{ name: 'alpha', description: 'x' }];
     sandbox.paintInstalled();
     ck('B2 对照: paintInstalled 同查询显示「没有找到」', /没有找到/.test(els['skills-list'].innerHTML));
+    // ============ C 组：来源 chip 过滤行为断言（s96/P3-1 补恒绿缺口——S3c-sync 只同步了符号提取，零行为断言） ============
+    // 判据与前端 paintInstalled 同源（提取执行非字面锚）：null=自带 / market+local=装的 / self=自己攒的。
+    // 桩沙箱种四类来源各 1：self 1 + null 内置 1 + market 1 + local 1。
+    sandbox.installedAllV = [
+        { name: 'k-self', description: '自己攒的', origin: { source: 'self' } },
+        { name: 'k-null', description: '自带的', origin: null },
+        { name: 'k-market', description: '市场装的', origin: { source: 'market', repo: 'acme/skill-repo' } },
+        { name: 'k-local', description: '本机库装的', origin: { source: 'local' } },
+    ];
+    els['skills-q'].value = '';
+    const cardsHtml = () => els['skills-list']._children.map(c => c.innerHTML).join(''); // 桩 appendChild 不写容器 innerHTML，读卡片聚合
+    sandbox.skillsChip = 'self';
+    sandbox.paintInstalled();
+    ck('C1 chip=self 命中 origin=self 不命中 null 内置（1 卡=k-self）', els['skills-list']._children.length === 1 && /k-self/.test(cardsHtml()) && !/k-null|k-market|k-local/.test(cardsHtml()));
+    sandbox.skillsChip = 'builtin';
+    sandbox.paintInstalled();
+    ck('C2 chip=builtin 判据=origin null（1 卡=k-null）', els['skills-list']._children.length === 1 && /k-null/.test(cardsHtml()) && !/k-self|k-market|k-local/.test(cardsHtml()));
+    sandbox.skillsChip = 'ext';
+    sandbox.paintInstalled();
+    ck('C3 chip=ext 判据=market+local（2 卡，self/builtin 不中）', els['skills-list']._children.length === 2 && /k-market/.test(cardsHtml()) && /k-local/.test(cardsHtml()) && !/k-self|k-null/.test(cardsHtml()));
+    sandbox.skillsChip = 'all';
+    sandbox.paintInstalled();
+    ck('C4 chip=all 对照全渲染（4 卡）', els['skills-list']._children.length === 4);
     console.log('==============================');
     console.log('ia-logic-probe: PASS=' + pass + ' FAIL=' + fail);
     process.exit(fail ? 1 : 0);
