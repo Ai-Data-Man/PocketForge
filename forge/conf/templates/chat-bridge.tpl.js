@@ -1866,6 +1866,25 @@ function pcExec(args, cb) { // execFile 走 chat-bridge:2151 先例通道（sche
     require('child_process').execFile(path.join(ROOT, 'bin', 'pc', 'process-compose.exe'),
         ['-p', pcPort].concat(args), { timeout: 10000, windowsHide: true }, cb);
 }
+// s95/S3a（裁决 2026-09-16 §4）：基础设施进程 deny-list——/api/apps 写通道从注册表推导出的 proc 名命中即拒
+// `参数不合法`（防御纵深：ADR-0003 禁 agent 定义基础设施键，聚合器是文本拼接不可信）。
+// 键名自 conf/process-compose.yaml 全量核对（F12④ VERIFIED-RUN 2026-09-16；memory-mcp 是 goose stdio 扩展不在 pc 表）。
+const APP_INFRA_PROCS = ['chat-bridge', 'nats', 'faucet', 'goose-scheduler', 'faucet-rawsql', 'faucet-provision', 'daily-backup', 'pg-init', 'pg'];
+function pcProcMap() { // pc 全量进程表一次取（Map name→entry）；appsOverview join / S3a 写通道前置探活 / D1 日志表共用
+    return new Promise((resolve, reject) => {
+        pcExec(['process', 'list', '-o', 'json'], (e, out) => {
+            if (e) return reject(e);
+            try {
+                const s = String(out || '');
+                let arr; try { arr = JSON.parse(s); } catch { arr = JSON.parse(s.slice(s.indexOf('['))); } // 容忍 stdout 前置噪音
+                if (!Array.isArray(arr)) throw new Error('pc list 非数组');
+                const m = new Map();
+                for (const it of arr) if (it && typeof it.name === 'string') m.set(it.name, it);
+                resolve(m);
+            } catch (err) { reject(err); }
+        });
+    });
+}
 function procState(e) { // 状态映射用布尔/数值字段，不依赖 status 字符串词汇（裁决 §0：pc Failed 形态无样本）
     if (e && e.is_running === true) return 'run';
     if (e && e.is_running === false) return e.exit_code === 0 ? 'stop' : 'fail';
@@ -1877,19 +1896,7 @@ async function appsOverview() {
     // pc 全量进程表一次取（join 基线）；失败=诚实降级：进程态全 absent + note，端点仍 200 不炸
     let pcMap = null, note = null;
     try {
-        pcMap = await new Promise((resolve, reject) => {
-            pcExec(['process', 'list', '-o', 'json'], (e, out) => {
-                if (e) return reject(e);
-                try {
-                    const s = String(out || '');
-                    let arr; try { arr = JSON.parse(s); } catch { arr = JSON.parse(s.slice(s.indexOf('['))); } // 容忍 stdout 前置噪音
-                    if (!Array.isArray(arr)) throw new Error('pc list 非数组');
-                    const m = new Map();
-                    for (const it of arr) if (it && typeof it.name === 'string') m.set(it.name, it);
-                    resolve(m);
-                } catch (err) { reject(err); }
-            });
-        });
+        pcMap = await pcProcMap();
     } catch (e) { note = '状态未知：进程管家暂时联系不上，稍后再试。'; }
     const apps = [];
     let budget = 8; // listenPorts 子进程调用护栏（裁决待验证项④）：总调用 ≤8 次/请求，超出截断并标记
@@ -1944,6 +1951,24 @@ async function appsOverview() {
     if (note) out.note = note;
     if (portsTruncated) out.portsTruncated = true;
     return out;
+}
+// s95/D1（裁决 2026-09-16 §5）：应用最近日志——尾部 ≤100 行，多进程按注册表顺序取首个非空，超长截断标记；
+// 失败=人话不炸端点。F12⑤ 实证：logs 对 pc 表里不存在的进程名会挂起（靠 pcExec 10s 超时）——先过 pc 进程表，
+// absent 进程跳过不裸调；日志文本桥不转义（前端 pre.textContent 消费=显示层转义）。
+async function appsAppLogs(reg) {
+    let present = [];
+    try { const m = await pcProcMap(); present = reg.procs.filter(n => m.has(n)); }
+    catch (e) { return { ok: false, err: '日志暂时拿不到，稍后再试。' }; }
+    for (const n of present) {
+        const out = await new Promise(resolve => {
+            pcExec(['process', 'logs', n, '--tail', '101'], (e, o) => resolve(e ? null : String(o || '')));
+        });
+        let lines = String(out || '').replace(/\r/g, '').split('\n').filter(l => l !== '');
+        let truncated = false;
+        if (lines.length > 100) { lines = lines.slice(-100); truncated = true; } // --tail 101 多取一行做截断判定
+        if (lines.length) return { ok: true, proc: n, lines, truncated };
+    }
+    return { ok: false, err: '日志暂时拿不到，稍后再试。' }; // 全空/全 absent（F12⑤ goose-scheduler 空日志形态同款）
 }
 
 // ---- GET /api/report：本地诊断报告（小白发给帮忙的人看）----
@@ -3125,10 +3150,53 @@ const ext = path.extname(f).toLowerCase();
         assetsOverview().then(out => res.end(JSON.stringify(out))).catch(() => res.end(JSON.stringify({ ok: false })));
     }
     else if (url === '/api/apps') {
-        // s87: 小应用运行面板（只读；无参数无持久化无写通道，Origin 校验走 handleHttp 顶部全局规则）；仅 GET
+        // s87: 小应用运行面板 GET（只读 appsOverview，无参数无持久化；Origin 校验走 handleHttp 顶部全局规则）。
+        // s95/S3a（裁决 2026-09-16 §4，supersede s87「启停全裁」）：POST {id,op} 启停写通道，op∈{start,stop,restart}。
+        // 三道闸：①id 白名单=appReadRegistry 命中的 app id（进程名只从注册表推导，绝不从请求体取）
+        // ②推导出的 proc 名过 APP_INFRA_PROCS deny-list（命中即拒）③Origin 校验=顶部全局门（同现有 POST 端点）。
+        // 无持久化（schedule.json/apps/ 零触碰，s87 维持）；s58 同门：id/op 只收 string（String([v]) 静默字符串化拒绝）。
+        if (req.method === 'GET') {
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            appsOverview().then(out => res.end(JSON.stringify(out))).catch(() => res.end(JSON.stringify({ ok: false })));
+        } else if (req.method === 'POST') {
+            readJsonBody(req, res, raw => {
+                let b = null;
+                try { b = JSON.parse(raw.toString('utf8')); } catch {}
+                const isObj = !!(b && typeof b === 'object' && !Array.isArray(b));
+                const reg = isObj && typeof b.id === 'string' ? appReadRegistry().find(r => r.id === b.id) : null;
+                const op = isObj ? b.op : null;
+                if (!reg || (op !== 'start' && op !== 'stop' && op !== 'restart') || reg.procs.some(n => APP_INFRA_PROCS.includes(n))) {
+                    json200(res, { ok: false, err: '参数不合法' }); // 未知 id / 非法 op / 基础设施键名（防御纵深）
+                    return;
+                }
+                const OP_ZH = { stop: '停', start: '启动', restart: '重启' };
+                const appName = (reg.meta && typeof reg.meta.description === 'string' && reg.meta.description.trim()) ? reg.meta.description.trim() : reg.id;
+                (async () => {
+                    try {
+                        try { await pcProcMap(); } // 前置探活：区分「进程管家联系不上」与「操作没成」两种失败（appsNote 同族口径）
+                        catch (e) { json200(res, { ok: false, err: '进程管家暂时联系不上，稍后再试。' }); return; }
+                        if (op === 'stop') {
+                            await new Promise((resolve, reject) => pcExec(['process', 'stop'].concat(reg.procs), e => e ? reject(e) : resolve())); // F7 多参一次停
+                        } else {
+                            for (const n of reg.procs) await new Promise((resolve, reject) => pcExec(['process', op, n], e => e ? reject(e) : resolve())); // 逐名顺序串联
+                        }
+                        json200(res, { ok: true });
+                    } catch (e) {
+                        json200(res, { ok: false, err: appName + '没' + OP_ZH[op] + '成——跟小 forge 说一声，让它看看怎么回事。' }); // pc 原始 stderr 不透传
+                    }
+                })();
+            });
+        } else { res.writeHead(405); res.end(); }
+    }
+    else if (url === '/api/apps/logs') {
+        // s95/D1（裁决 2026-09-16 §5）：应用最近日志只读端点（尾部 ≤100 行多进程取首个非空；按需拉取零轮询）。
+        // 安全面与 S3a 同门：id 注册表白名单 + proc 名 deny-list；日志文本前端 pre.textContent 转义消费。
         if (req.method !== 'GET') { res.writeHead(405); res.end(); return; }
+        const qp = new URL('http://x' + req.url).searchParams;
+        const reg = appReadRegistry().find(r => r.id === (qp.get('id') || ''));
+        if (!reg || reg.procs.some(n => APP_INFRA_PROCS.includes(n))) { json200(res, { ok: false, err: '参数不合法' }); return; }
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        appsOverview().then(out => res.end(JSON.stringify(out))).catch(() => res.end(JSON.stringify({ ok: false })));
+        appsAppLogs(reg).then(out => res.end(JSON.stringify(out))).catch(() => res.end(JSON.stringify({ ok: false, err: '日志暂时拿不到，稍后再试。' })));
     }
     else if (url === '/api/sessions/archive') {
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
