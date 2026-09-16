@@ -2939,13 +2939,8 @@ const ext = path.extname(f).toLowerCase();
                 visible: k !== 'chatrecall',
                 builtin: !(k in st),
             }));
-            // s57: 已装 MCP 动态并入（能力开关面板盲区修复）——mcpEnabled 返回 true 时算「开着」
-            // qa返工(P2-1): 目录读配置（readMcpCatalog），增删条目零重启生效
-            for (const m of readMcpCatalog()) {
-                if (!mcpInstalled(m.id)) continue;
-                rows.push({ id: mcpExtensionId(m.id), name: m.name, desc: m.desc, enabled: mcpEnabled(m.id), visible: true, builtin: false });
-            }
-            json200(res, rows); // qa s78b P3-1: 成对「写头后紧跟 end」现场补转（C1 收敛遗漏）
+            // s57 并入已撤（裁决 2026-09-16 §2）：MCP 开关归位插件 tab，POST 写通道保留为其所用
+            json200(res, rows);
         } else if (req.method === 'POST') {
             readJsonBody(req, res, body => { // 参数名避开下方 try 块内的 let raw（TDZ 撞名）
                 try {

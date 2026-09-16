@@ -97,30 +97,32 @@ curl -s -X POST "$B/api/mcpstore" -H 'content-type: application/json' -d '{"id":
 curl -s -X POST "$B/api/mcpstore" -H 'content-type: application/json' -d '{"id":["fetch"],"op":"uninstall"}' | grep -q '目录里没有这个 MCP'; ck "mcpstore uninstall array id rejected" $?
 curl -s -X POST "$B/api/mcpstore" -H 'content-type: application/json' -d '{"id":"ghost-mcp","op":"uninstall"}' | grep -q '没有安装这个 MCP'; ck "mcpstore uninstall unknown id friendly" $?
 curl -s -X POST "$B/api/skillstore" -H 'content-type: application/json' -d '{"name":"ghost-skill-zzz","op":"uninstall"}' | grep -q '没有安装这个技能'; ck "skillstore uninstall unknown name friendly" $?
-# s57: extensions 动态并入——GET 含已装 mcp-*（visible:true, builtin:false；fetch 已装回）
+# s57 并入已撤（裁决 2026-09-16 §2）：GET=纯内置四行（chatrecall visible:false 在内），零 mcp-*；写通道 POST 保留给插件 tab 开关钮
 curl -s "$B/api/extensions" | python -c "
 import sys,json
 d=json.load(sys.stdin)
-mcp=[x for x in d if x['id'].startswith('mcp-')]
-assert mcp and all(x['builtin'] is False and x['visible'] is True for x in mcp), mcp
-assert any(x['id']=='mcp-fetch' for x in mcp), mcp
-"; ck "extensions dynamic mcp merged (s57)" $?
+assert isinstance(d,list) and len(d)==4, d
+assert all(x['id'] in ('faucet-db','browser','memory','chatrecall') for x in d), d
+assert not [x for x in d if x['id'].startswith('mcp-')], d
+cr=[x for x in d if x['id']=='chatrecall']
+assert cr and cr[0]['visible'] is False, d
+"; ck "extensions GET pure builtin 4 rows, no mcp-* (s57 revoked)" $?
 curl -s -X POST "$B/api/extensions" -H 'content-type: application/json' -d '{"id":"mcp-ghost-zzz","enabled":false}' | grep -q '参数不合法'; ck "extensions dynamic id whitelist enforced" $?
-# qa返工(P3-3): 回归钉——disable 已装 MCP → GET 显 false → 按原值还原（动态白名单+GET 合并读路径；端态还原零残留）
-EN0=$(curl -s "$B/api/extensions" | python -c "
+# qa返工(P3-3): 回归钉——disable 已装 MCP → mcpstore enabled 显 false → 按原值还原（GET 已收窄，写通道保留给插件 tab 开关钮；端态还原零残留）
+EN0=$(curl -s "$B/api/mcpstore" | python -c "
 import sys,json
 d=json.load(sys.stdin)
-r=[x for x in d if x['id']=='mcp-fetch']
+r=[x for x in d if x['id']=='fetch' and x['installed']]
 assert r, d
 print('true' if r[0]['enabled'] else 'false')
 ")
 curl -s -X POST "$B/api/extensions" -H 'content-type: application/json' -d '{"id":"mcp-fetch","enabled":false}' | grep -q '"ok":true'; ck "extensions disable installed mcp ok (P3-3 nail)" $?
-curl -s "$B/api/extensions" | python -c "
+curl -s "$B/api/mcpstore" | python -c "
 import sys,json
 d=json.load(sys.stdin)
-r=[x for x in d if x['id']=='mcp-fetch']
+r=[x for x in d if x['id']=='fetch']
 assert r and r[0]['enabled'] is False, d
-"; ck "extensions GET shows false after disable (P3-3 nail)" $?
+"; ck "mcpstore shows false after disable (P3-3 nail)" $?
 curl -s -X POST "$B/api/extensions" -H 'content-type: application/json' -d "{\"id\":\"mcp-fetch\",\"enabled\":$EN0}" | grep -q '"ok":true'; ck "extensions mcp enabled-state restored (P3-3 nail)" $?
 # s70 切片A: 技能来源标记与同名冲突保护——临时技能目录即建即删（trap 兜底；全部断言走冲突拒绝分支，零安装副作用）
 FR="${FORGE_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)/forge}"
