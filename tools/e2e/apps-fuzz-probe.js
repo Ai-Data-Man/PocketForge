@@ -112,17 +112,37 @@ const cleanup = () => { for (const f of Object.keys(FIX)) { try { fs.unlinkSync(
     const okBodies = rs.filter(r => r && r.code === 200 && r.j && r.j.ok === true);
     const bodies = new Set(okBodies.map(r => JSON.stringify(r.j.apps)));
     ck('F17 10 路并发全 200 且 apps 数组逐字节一致（execFile 并发无竞态错乱）', okBodies.length === N && bodies.size === 1, 'ok=' + okBodies.length + ' distinct=' + bodies.size);
-    const post = await req('POST', '/api/apps').catch(() => null);
+    // s95/S3a：POST 已是写通道（裁决 2026-09-16 §4）——负向量组代替旧 405 断言（s58 同门：数组/原始值 String([v]) 静默字符串化拒绝）
+    const postJ = body => new Promise((resolve, reject) => {
+        const rq = http.request({ host: '127.0.0.1', port: BPORT, path: '/api/apps', method: 'POST', headers: body !== undefined ? { 'content-type': 'application/json' } : {} }, r => { let b = ''; r.on('data', c => b += c); r.on('end', () => { try { resolve({ code: r.statusCode, j: JSON.parse(b) }); } catch (e) { reject(e); } }); });
+        rq.on('error', reject); rq.end(body !== undefined ? JSON.stringify(body) : undefined);
+    });
     const del = await req('DELETE', '/api/apps').catch(() => null);
-    ck('F18 写通道负断言：POST/DELETE 全拒 405', post && post.code === 405 && del && del.code === 405, 'POST=' + (post && post.code) + ' DELETE=' + (del && del.code));
-    ck('F19 零持久化：conf/apps.env.yaml 哈希不变 + conf/ 顶层清单不变 + 目录内非 fuzz 文件零扰动', sha(path.join(FORGE, 'conf', 'apps.env.yaml')) === appsEnvHash0 && fs.readdirSync(path.join(FORGE, 'conf')).sort().join(',') === confTop0, '');
+    const neg = [];
+    neg.push(['无body', await postJ().catch(() => null)]);
+    neg.push(['数组id', await postJ({ id: ['fuzz-huge'], op: 'stop' }).catch(() => null)]);
+    neg.push(['对象id', await postJ({ id: { x: 1 }, op: 'stop' }).catch(() => null)]);
+    neg.push(['数组op', await postJ({ id: 'fuzz-huge', op: ['stop'] }).catch(() => null)]);
+    neg.push(['数字op', await postJ({ id: 'fuzz-huge', op: 7 }).catch(() => null)]);
+    neg.push(['未知id', await postJ({ id: 'no-such-app-zzz', op: 'stop' }).catch(() => null)]);
+    ck('F18 写通道负断言（s95/S3a）：无body/数组id/对象id/数组op/数字op/未知id 全拒 ok:false 参数不合法；DELETE 仍 405',
+        neg.every(([, n]) => n && n.j && n.j.ok === false && n.j.err === '参数不合法') && del && del.code === 405,
+        neg.map(([k, n]) => k + '=' + (n && n.j && n.j.ok === false ? '拒' : (n && n.body || 'ERR').slice(0, 30))).join(' ') + ' DEL=' + (del && del.code));
+    // s95/D1：日志端点负向量（同门 deny-list/白名单；POST 405 只读）
+    const lg1 = await get('/api/apps/logs?id=no-such-app-zzz', 15000).catch(() => null);
+    const lg2 = await get('/api/apps/logs?id=fuzz-xss', 15000).catch(() => null); // 注册表命中（fuzz fixture）——非 infra 键放行到执行层（不炸即可）
+    const lg3 = await req('POST', '/api/apps/logs').catch(() => null);
+    ck('F19 日志端点负向量：未知 id 拒 ok:false + 命中 id 不炸端点（日志可能空=ok:false 人话）+ POST 405',
+        lg1 && lg1.j && lg1.j.ok === false && lg2 && lg2.code === 200 && lg3 && lg3.code === 405,
+        'lg1=' + (lg1 && JSON.stringify(lg1.j).slice(0, 60)) + ' lg3=' + (lg3 && lg3.code));
+    ck('F20 零持久化：conf/apps.env.yaml 哈希不变 + conf/ 顶层清单不变 + 目录内非 fuzz 文件零扰动', sha(path.join(FORGE, 'conf', 'apps.env.yaml')) === appsEnvHash0 && fs.readdirSync(path.join(FORGE, 'conf')).sort().join(',') === confTop0, '');
 
     // ===== 自清与终态（s82 纪律）=====
     cleanup();
     let j2 = null; try { j2 = (await get('/api/apps')).j; } catch {}
     const baseYaml = baseApps === '<NO-DIR>' ? 0 : baseApps.split(',').filter(x => x && /\.yaml$/i.test(x)).length;
-    ck('F20 用后自清：fixtures 删除 + /api/apps 回基线条数', j2 && j2.ok === true && j2.apps.length === baseYaml, 'n=' + (j2 && j2.apps ? j2.apps.length : '?') + ' base=' + baseYaml);
-    ck('F21 终态目录快照还原（fuzz-* 零残留）', snapDir() === baseApps, snapDir());
+    ck('F21 用后自清：fixtures 删除 + /api/apps 回基线条数', j2 && j2.ok === true && j2.apps.length === baseYaml, 'n=' + (j2 && j2.apps ? j2.apps.length : '?') + ' base=' + baseYaml);
+    ck('F22 终态目录快照还原（fuzz-* 零残留）', snapDir() === baseApps, snapDir());
     console.log('apps-fuzz: PASS=' + pass + ' FAIL=' + fail);
     process.exit(fail ? 1 : 0);
 })().catch(e => { cleanup(); console.error('FATAL', e); process.exit(2); });

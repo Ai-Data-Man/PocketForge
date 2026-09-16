@@ -352,14 +352,15 @@ ck "assets probe 30 ck (three-source shape + degrade + backlink + whitelist + bu
 grep -E "^assets-probe" /tmp/assets-probe.log || true
 rm -f /tmp/assets-probe.log
 
-# ---------- 23) 小应用运行面板探针（s87，裁决 2026-09-14-app-runtime-panel §3-S5） ----------
+# ---------- 23) 小应用运行面板探针（s87 + s95/S3c 扩，裁决 2026-09-14-app-runtime-panel §3-S5 + 2026-09-16 §4） ----------
 # 活体：自建临时 apps/*.yaml fixtures（用后自清，s82 纪律）→ 枚举/精确键 join（键不以文件名开头反例）/
 # URL 三层（meta.url>http_get 合成>null；command 正则=红线）/坏 JSON meta 降级/absent+run+stop 活体映射
 # （fixture 键=pc 既有进程名 chat-bridge/daily-backup，零注册零写）/listenPorts 实听/srcSid 反解/405；
-# 桩测：appParseYaml/procState/排序比较器提取执行；模板锚：七标签+徽章人话+动作面仅「打开看看」红线
+# 桩测：appParseYaml/procState/排序比较器提取执行；模板锚：七标签+徽章人话+启停钮/停止注/日志子区（s95）
+# s95 扩：POST 写通道负向量组（deny-list infra 键）+ 启停活体（fixture 热注册 project update 全套 -f+env → stop/start/restart → /api/apps/logs → 反注册还原字节回基线）
 rc=0; node "$ROOT/tools/e2e/apps-probe.js" > /tmp/apps-probe.log 2>&1 || rc=$?
 grep -q "FAIL=0" /tmp/apps-probe.log || rc=$?
-ck "apps probe 44 ck (registry x pc join + URL layers + honest degrade + sort stub + FE anchors + self-clean)" $rc
+ck "apps probe 69 ck (registry x pc join + URL layers + honest degrade + sort stub + write-channel negatives + live start/stop/restart + logs endpoint + FE anchors + self-clean)" $rc
 grep -E "^apps-probe" /tmp/apps-probe.log || true
 rm -f /tmp/apps-probe.log
 

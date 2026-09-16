@@ -1,19 +1,27 @@
-// s87 探针（裁决 2026-09-14-app-runtime-panel §3-S5/§S5-6）：GET /api/apps 注册清单 × pc 状态合并端点
+// s87 探针（裁决 2026-09-14-app-runtime-panel §3-S5/§S5-6）+ s95/S3c 扩（裁决 2026-09-16 §4）：/api/apps 端点
 // 活体（dev 桥 :8790）：自建临时 apps/*.yaml fixtures → 枚举/精确键 join/URL 三层/坏 meta 降级/absent+run+stop 活体映射/
-// listenPorts/回链/排序 sanity/405 → 用后自清（s82 纪律：apps/ 现为空目录，终态恢复空数组）；
+// listenPorts/回链/排序 sanity → POST 写通道负向量（无 body/未知 id/非法 op/数组 id/数字 op/deny-list 基础设施键）+
+// 启停活体（fixture 热注册 pc project update 全套 -f+env #29 教训 → stop/start/restart → /api/apps/logs）→ 用后自清还原。
 // 桩测（模板提取）：appParseYaml/procState/排序比较器单飞执行（assets-probe B5 同款手法）+ 前端锚点 + 红线负断言。
-// fixtures 不热注册 pc——run/stop 活体映射借道 fixture 进程键=pc 既有进程名（chat-bridge/daily-backup），
-// 零进程写入零 pc 写操作；探针存活窗内栈不重启，聚合器（启动器）不会消费这些 fixture。
+// s87 fixtures 不热注册 pc——run/stop 活体映射借道 fixture 进程键=pc 既有进程名（chat-bridge/daily-backup）；
+// s95 活体 fixture 热注册但聚合面只含基线+自身（s87e-live 键=基础设施名，只留注册表扫描面绝不进 pc——覆盖攻击面自证）。
 'use strict';
-const http = require('http'), fs = require('fs'), path = require('path');
+const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto');
 const ROOT = path.resolve(__dirname, '..', '..');
 const FORGE = path.join(ROOT, 'forge');
 let pass = 0, fail = 0;
 const ck = (n, ok, extra) => { console.log((ok ? 'PASS' : 'FAIL') + ': ' + n + (extra !== undefined && extra !== '' ? '  | ' + String(extra).slice(0, 200) : '')); ok ? pass++ : fail++; };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 function get(p) {
     return new Promise((res, rej) => {
-        const r = http.get({ host: '127.0.0.1', port: 8790, path: p, timeout: 20000 }, x => { let b = ''; x.on('data', c => b += c); x.on('end', () => res({ status: x.statusCode, body: b })); });
+        const r = http.get({ host: '127.0.0.1', port: 8790, path: p, timeout: 20000 }, x => { let b = ''; x.on('data', c => c && (b += c)); x.on('end', () => res({ status: x.statusCode, body: b })); });
         r.on('error', rej); r.on('timeout', () => { r.destroy(); rej(new Error('timeout')); });
+    });
+}
+function post(body) { // body=undefined → 无 body POST；对象 → JSON 序列化
+    return new Promise((res, rej) => {
+        const r = http.request({ host: '127.0.0.1', port: 8790, path: '/api/apps', method: 'POST', headers: body !== undefined ? { 'content-type': 'application/json' } : {} }, x => { let b = ''; x.on('data', c => b += c); x.on('end', () => { let j = null; try { j = JSON.parse(b); } catch {} res({ code: x.statusCode, j, body: b }); }); });
+        r.on('error', rej); r.end(body !== undefined ? JSON.stringify(body) : undefined);
     });
 }
 
@@ -34,6 +42,13 @@ const FIX = {
     's87d-bg.yaml': 'processes:\n  s87d-daemon:\n    command: "cmd /c exit 0"\n    readiness_probe:\n      exec: { command: "cmd /c exit 0" }\n',
     // 进程键不以文件名开头（hello-oneshot 反例族）+ 活体 run/stop 映射：键=pc 既有进程名，零注册
     's87e-live.yaml': 'processes:\n  chat-bridge:\n    command: "探针占位"\n  daily-backup:\n    command: "探针占位"\n',
+    // s95/S3c 启停活体 fixture（热注册 pc；命令=脚本文件零引号面——嵌套引号会被 pc 分词器绞坏成幽灵态，tmp/f12 实证）
+    's95-live.yaml': '# forge-meta: {"description":"s95 启停活体 fixture","created_at":"2026-09-16","source":"e2e"}\n' +
+        'processes:\n  s95-live-svc:\n' +
+        "    command: '" + path.join(FORGE, 'bin', 'node-v22', 'node-v22.21.1-win-x64', 'node.exe').replace(/\\/g, '/') + ' ' + path.join(__dirname, 's95-live-svc.js').replace(/\\/g, '/') + "'\n" +
+        '    is_daemon: true\n    availability:\n      restart: on_failure\n      max_restarts: 3\n      backoff_seconds: 5\n',
+    // s95/S3a deny-list 负例：进程键=基础设施名 pg——只留注册表扫描面，绝不进 pc 聚合（同键覆盖 infra 是真实攻击面，tmp/f12 自证）
+    's95-infra.yaml': '# forge-meta: {"description":"s95 deny-list 负例","created_at":"2026-09-16","source":"e2e"}\nprocesses:\n  pg:\n    command: "探针占位"\n',
 };
 const before = (() => { try { return fs.readdirSync(APPS_DIR).filter(f => !f.startsWith('s87')); } catch { return null; } })();
 const beforeYaml = before ? before.filter(f => /\.yaml$/i.test(f)).length : 0;
@@ -84,13 +99,30 @@ function cleanup() {
             if (x != null && y != null && x < y) return false;
         } return true; })();
     ck('A16 活体排序 sanity（同 state 内时间倒序 null 沉底）', sortedOk);
-    let post = 0;
-    try { post = (await new Promise((res, rej) => { const r = http.request({ host: '127.0.0.1', port: 8790, path: '/api/apps', method: 'POST' }, x => res(x.statusCode)); r.on('error', rej); r.end(); })); } catch {}
-    ck('A17 非 GET 拒 405（无写通道）', post === 405, 'status=' + post);
+    // ===== s95/S3c：POST 写通道负向量（裁决 §4.2-S3a 降级路径 + §S3c 断言组） =====
+    let p0 = null; try { p0 = await post(); } catch (e) { ck('A17 无 body POST 不炸连接', false, e.message); }
+    if (p0) ck('A17 无 body POST → 参数不合法（既有坏包路径，不 405）', p0.j && p0.j.ok === false && p0.j.err === '参数不合法', p0.code + ' ' + p0.body);
+    const p1 = await post({ id: 'no-such-app-zzz', op: 'stop' });
+    ck('A18 未知 id → ok:false 参数不合法（白名单）', p1.j && p1.j.ok === false && p1.j.err === '参数不合法', p1.body);
+    const p2 = await post({ id: 's87a-full', op: 'fly' });
+    ck('A19 合法 id+非法 op → ok:false 参数不合法（校验先于执行）', p2.j && p2.j.ok === false && p2.j.err === '参数不合法', p2.body);
+    const p3 = await post({ id: ['s87a-full'], op: 'stop' });
+    ck('A20 数组 id → ok:false（String([v]) 家族拒）', p3.j && p3.j.ok === false, p3.body);
+    const p4 = await post({ id: 's87a-full', op: 1 });
+    ck('A21 数字 op → ok:false', p4.j && p4.j.ok === false, p4.body);
+    const p5 = await post({ id: 's95-infra', op: 'stop' });
+    ck('A22 基础设施键 fixture（proc=pg）→ ok:false 参数不合法（deny-list 纵深，注册表有 pc 无）', p5.j && p5.j.ok === false && p5.j.err === '参数不合法', p5.body);
+    const lg0 = await get('/api/apps/logs?id=s95-infra');
+    ck('A23 日志端点同门：deny-list id → ok:false 参数不合法', lg0.status === 200 && JSON.parse(lg0.body).ok === false && JSON.parse(lg0.body).err === '参数不合法', lg0.body);
+    const lg1 = await get('/api/apps/logs?id=no-such-app-zzz');
+    ck('A24 日志端点未知 id → ok:false 参数不合法', JSON.parse(lg1.body).ok === false, lg1.body);
+    let lg2 = 0; try { lg2 = (await new Promise((res, rej) => { const r = http.request({ host: '127.0.0.1', port: 8790, path: '/api/apps/logs', method: 'POST' }, x => res(x.statusCode)); r.on('error', rej); r.end(); })); } catch {}
+    ck('A25 POST /api/apps/logs → 405（只读端点）', lg2 === 405, 'status=' + lg2);
 
     // ===== 桥模板提取桩测 =====
     const bridge = fs.readFileSync(path.join(FORGE, 'conf', 'templates', 'chat-bridge.tpl.js'), 'utf8');
-    ck('B1 桥模板路由 /api/apps+appsOverview+405', /url === '\/api\/apps'/.test(bridge) && /appsOverview\(\)/.test(bridge) && /url === '\/api\/apps'[\s\S]{0,300}req\.method !== 'GET'/.test(bridge));
+    const appsRoute = (() => { const i = bridge.indexOf("url === '/api/apps'"); const j = bridge.indexOf('    else if', i); return i >= 0 ? bridge.slice(i, j > 0 ? j : i + 4000) : ''; })();
+    ck('B1 桥模板路由 /api/apps（GET=appsOverview 只读 + POST 写通道 readJsonBody + 其余 405）', /url === '\/api\/apps'/.test(bridge) && /appsOverview\(\)/.test(bridge) && /req\.method === 'GET'/.test(appsRoute) && /readJsonBody/.test(appsRoute) && /else \{ res\.writeHead\(405\); res\.end\(\); \}/.test(appsRoute), 'route seg=' + appsRoute.length + 'B');
     ck('B2 listenPorts 护栏（budget=8 + portsTruncated 标记）', /let budget = 8;/.test(bridge) && /portsTruncated = true;/.test(bridge));
     ck('B3 pc 调用走先例通道（-p pc.port + process list -o json）', /\['-p', pcPort\]\.concat\(args\)/.test(bridge) && /\['process', 'list', '-o', 'json'\]/.test(bridge) && /data', 'pc\.port'/.test(bridge));
     const fnSrc = bridge.match(/function appParseYaml\(text\) \{[\s\S]*?\n\}/);
@@ -124,7 +156,11 @@ function cleanup() {
     }
     const appsFn = bridge.match(/async function appsOverview[\s\S]*?\n\}/);
     ck('B13 pc 失败降级（端点 200+note，进程态全 absent，不炸）', !!appsFn && /note = '状态未知/.test(appsFn[0]) && /catch \(e\) \{ note =/.test(appsFn[0]));
-    ck('B14 红线：桥零写通道（appsOverview 无 write/unlink/rename/project 调用）', !!appsFn && !/writeFileSync|unlinkSync|renameSync|project (update|start|stop|restart)/.test(appsFn[0]));
+    ck('B14 红线：appsOverview 保持零写面（写通道在 POST 分支，读函数无 write/unlink/rename/project 调用）', !!appsFn && !/writeFileSync|unlinkSync|renameSync|project (update|start|stop|restart)/.test(appsFn[0]));
+    // ===== s95/S3a+S3b+D1 桥端/前端锚（裁决 2026-09-16 §4/§5） =====
+    ck('B15 写通道三道闸：注册表推导进程名（绝不信请求体）+APP_INFRA_PROCS deny-list 9 键（F12④ 全量核对）+白名单门', /appReadRegistry\(\)\.find\(r => r\.id === b\.id\)/.test(bridge) && /APP_INFRA_PROCS\.includes\(n\)/.test(bridge) && /const APP_INFRA_PROCS = \['chat-bridge', 'nats', 'faucet', 'goose-scheduler', 'faucet-rawsql', 'faucet-provision', 'daily-backup', 'pg-init', 'pg'\];/.test(bridge));
+    ck('B16 执行形态：stop 多参一次（F7）+start/restart 逐名串联+pcProcMap 前置探活（管家联系不上独立口径）+失败人话不透传 stderr', /\['process', 'stop'\]\.concat\(reg\.procs\)/.test(bridge) && /for \(const n of reg\.procs\) await new Promise\(\(resolve, reject\) => pcExec\(\['process', op, n\]/.test(bridge) && /进程管家暂时联系不上，稍后再试。' \}\); return;/.test(bridge) && /没' \+ OP_ZH\[op\] \+ '成——跟小 forge 说一声/.test(bridge));
+    ck('B17 日志端点：--tail 101 截断判定 + pcProcMap 先行（F12⑤ absent 名挂起防御）+多进程首个非空', /'process', 'logs', n, '--tail', '101'/.test(bridge) && /appsAppLogs[\s\S]{0,400}pcProcMap\(\)/.test(bridge) && /lines\.length\) return \{ ok: true, proc: n, lines, truncated \};/.test(bridge));
 
     // ===== 前端模板提取 =====
     const html = fs.readFileSync(path.join(FORGE, 'conf', 'templates', 'chat.tpl.html'), 'utf8');
@@ -141,20 +177,89 @@ function cleanup() {
         ck('C9 无轮询无推送（块内零 setInterval/setTimeout 轮询）+ 手动「刷新看看」', !/setInterval|setTimeout/.test(appsBlock));
         ck('C10 主名降级=〈id〉·小 forge 搭的应用（结构性兜底不编造）+时间无=「—」', /小 forge 搭的应用/.test(appsBlock) && /'—'/.test(appsBlock));
         const btns = appsBlock.match(/<button[^>]*>[^<]*<\/button>/g) || [];
-        ck('C11 红线：动作面仅「打开看看」一枚（无启停/删除/编辑双入口）', btns.length === 1 && />打开看看</.test(btns[0]), btns.join(' ; '));
+        ck('C11 动作面（s95/S3b 修订）：打开看看（url 有才给）+启停钮状态驱动（⏹停止/▶启动/⟳重启）——删除/编辑/改名仍无（s87 维持）', !/>(卸载|删除|编辑|改名)</.test(btns.join(' ; ')) && btns.some(b => />打开看看</.test(b)) && /data-op="stop"[^>]*>⏹ 停止</.test(appsBlock) && /data-op="start"[^>]*>▶ 启动</.test(appsBlock) && /data-op="restart"[^>]*>⟳ 重启</.test(appsBlock), btns.join(' ; '));
         ck('C12 yaml 路径收折叠技术区（details/summary，不进卡片主面）', /<details class="tz"[^>]*><summary>详情<\/summary>/.test(appsBlock) && /应用文件：/.test(appsBlock));
+        ck('C15 absent 无 ▶ 钮（F12③ 收窄：全 absent 卡无操作面）+状态未知（appsNote）无操作面', /const anyPresent=a\.procs\.some\(p=>p\.state!=='absent'\);/.test(appsBlock) && /if\(!appsNote&&anyPresent\)\{/.test(appsBlock));
+        ck('C16 停止注裁决原文（UI 发起会话内标记 appsUserStopped；再启即清）', /已停。下次启动数字员工时它会自己回来；想让它彻底别再回来，跟小 forge 说一声拆掉。/.test(appsBlock) && /const appsUserStopped=\{\};/.test(html) && /else delete appsUserStopped\[id\];/.test(html));
+        ck('C17 按钮人话 aria/title（先停一停…/启动这个应用）+无确认框', /title="先停一停（下次启动数字员工时会自己回来）"/.test(appsBlock) && /title="启动这个应用"/.test(appsBlock) && !/confirm\(/.test(appsBlock));
+        ck('C18 日志子区：📋 最近日志 按需拉取（ontoggle+一次标记）+pre.textContent 转义+零轮询', /📋 最近日志/.test(appsBlock) && /\/api\/apps\/logs\?id='\+encodeURIComponent\(a\.id\)/.test(appsBlock) && /ld\.dataset\.loaded/.test(appsBlock) && /pre\.textContent=\(d\.lines\|\|\[\]\)\.join\('\\n'\)/.test(appsBlock));
     }
     const paneApps = (html.match(/<div class="mpane" id="mpane-apps"[\s\S]*?<div class="mpane" id="mpane-mem"/) || [''])[0];
-    ck('C13 pane 内唯一按钮=刷新看看（R2 0-8 档直列：无搜索框无分页器）', !!paneApps && (paneApps.match(/<button[^>]*>/g) || []).length === 1 && /apps-refresh/.test(paneApps) && !/<input/.test(paneApps));
+    ck('C13 pane（s95/S2c 修订）：搜索框 apps-q 在场；pane HTML 恒一按钮=刷新看看（启停钮 JS 动态建，无静态操作钮）', !!paneApps && (paneApps.match(/<button[^>]*>/g) || []).length === 1 && /apps-refresh/.test(paneApps) && /id="apps-q"/.test(paneApps));
     ck('C14 tab 副题=哪个在跑/怎么打开 + 与做过的东西的心智区分句', /哪个在跑、怎么打开/.test(paneApps) && /过去的事/.test(paneApps));
+
+    // ===== s95/S3c 启停活体（fixture 热注册 pc → stop/start/restart → 日志端点 → 反注册还原） =====
+    const APPS_ENV = path.join(FORGE, 'conf', 'apps.env.yaml');
+    const PC_EXE = path.join(FORGE, 'bin', 'pc', 'process-compose.exe');
+    const appsEnvHash0 = crypto.createHash('sha256').update(fs.readFileSync(APPS_ENV)).digest('hex');
+    const baselineYamls = (before || []).filter(f => /\.yaml$/i.test(f));
+    function aggregate(includeOnly) { // dev-stack-up 同款聚合（剥 processes: 行 + CRLF 连接）；includeOnly=只进 pc 的文件集
+        const yamls = fs.readdirSync(APPS_DIR).filter(f => /\.yaml$/i.test(f) && includeOnly.includes(f)).sort();
+        const c = yamls.map(f => fs.readFileSync(path.join(APPS_DIR, f), 'utf8').replace(/^processes:\s*$/m, ''));
+        fs.writeFileSync(APPS_ENV, 'processes:' + '\r\n' + c.join('\r\n'), 'utf8');
+    }
+    function pcEnv() { // #29 教训：project update 客户端 env 展开 ${VAR}——不带全套 env 会把运行栈命令行展开成空
+        const env = { ...process.env, NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost' };
+        env.FORGE_ROOT = FORGE; env.PC_PORT = pcPort;
+        try { env.FAUCET_PORT = fs.readFileSync(path.join(FORGE, 'data', 'faucet.port'), 'utf8').trim(); } catch {}
+        try { env.PG_PORT = fs.readFileSync(path.join(FORGE, 'data', 'pg.port'), 'utf8').trim(); } catch {}
+        env.GOOSE_PATH_ROOT = path.join(FORGE, 'conf', 'goose'); env.GOOSE_DISABLE_KEYRING = '1'; env.GOOSE_TELEMETRY_ENABLED = 'false';
+        try { for (const l of fs.readFileSync(path.join(FORGE, 'data', 'secrets.env'), 'utf8').split(/\r?\n/)) { const m = l.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/); if (m && (/^FORGE_/.test(m[1]) || m[1] === 'GOOSE_MODEL_NAME') && m[2]) env[m[1]] = m[2]; } } catch {}
+        return env;
+    }
+    function projectUpdate() {
+        return new Promise(resolve => {
+            require('child_process').execFile(PC_EXE, ['-p', pcPort, 'project', 'update',
+                '-f', path.join(FORGE, 'conf', 'process-compose.yaml'), '-f', path.join(FORGE, 'conf', 'ports.env.yaml'), '-f', APPS_ENV],
+                { timeout: 25000, windowsHide: true, env: pcEnv() }, e => resolve(!e));
+        });
+    }
+    async function procState95() {
+        try {
+            const out = require('child_process').execFileSync(PC_EXE, ['-p', pcPort, 'process', 'list', '-o', 'json'], { timeout: 15000, windowsHide: true, env: pcEnv() }).toString();
+            const arr = JSON.parse(out.slice(out.indexOf('[')));
+            const e = arr.find(x => x.name === 's95-live-svc');
+            return e ? { run: e.is_running, restarts: e.restarts } : null;
+        } catch { return null; }
+    }
+    try {
+        aggregate(baselineYamls.concat(['s95-live.yaml'])); // 只进基线+活体：s87e-live（键=chat-bridge/daily-backup）与 s95-infra（键=pg）只留注册表扫描面——infra 键经聚合覆盖是真实攻击面（tmp/f12 自证）
+        ck('E1 热注册 pc project update（全套 -f+env，#29 教训）', await projectUpdate());
+        let st = null;
+        for (let i = 0; i < 12 && !(st && st.run); i++) { await sleep(1000); st = await procState95(); }
+        ck('E2 fixture 进程起跑（is_running=true）', !!(st && st.run), JSON.stringify(st));
+        if (st && st.run) {
+            const s1 = await post({ id: 's95-live', op: 'stop' });
+            ck('E3 stop → ok:true', s1.j && s1.j.ok === true, s1.body);
+            await sleep(1200);
+            const st2 = await procState95();
+            ck('E4 stop 后 is_running=false（F12①：不被 on_failure 拉起）', st2 && st2.run === false, JSON.stringify(st2));
+            const s2 = await post({ id: 's95-live', op: 'start' });
+            ck('E5 start → ok:true', s2.j && s2.j.ok === true, s2.body);
+            await sleep(1200);
+            const st3 = await procState95();
+            ck('E6 start 后 is_running=true（start-on-stopped 活体）', st3 && st3.run === true, JSON.stringify(st3));
+            const s3 = await post({ id: 's95-live', op: 'restart' });
+            ck('E7 restart → ok:true', s3.j && s3.j.ok === true, s3.body);
+            await sleep(1200);
+            const st4 = await procState95();
+            ck('E8 restart 后 is_running=true', st4 && st4.run === true, JSON.stringify(st4));
+            const lg = await get('/api/apps/logs?id=s95-live');
+            let lgj = null; try { lgj = JSON.parse(lg.body); } catch {}
+            ck('E9 日志端点活体：ok:true+proc 名+尾部行含 fixture 输出', lgj && lgj.ok === true && lgj.proc === 's95-live-svc' && Array.isArray(lgj.lines) && lgj.lines.some(l => l.includes('s95-live-svc log line 1')), (lg.body || '').slice(0, 160));
+        }
+    } finally {
+        try { aggregate(baselineYamls); await projectUpdate(); } catch {} // 反注册还原（摘除 s95-live-svc）
+    }
 
     // ===== 自清与终态（s82 纪律）=====
     cleanup();
     let j2 = null;
     try { j2 = JSON.parse((await get('/api/apps')).body); } catch {}
     ck('D1 用后自清：fixtures 删除 + /api/apps 回到基线（apps 数=目录基线 yaml 数）', j2 && j2.ok === true && Array.isArray(j2.apps) && j2.apps.length === beforeYaml, 'n=' + (j2 && j2.apps ? j2.apps.length : '?') + ' baseline=' + beforeYaml);
-    const after = (() => { try { return fs.readdirSync(APPS_DIR).filter(f => !f.startsWith('s87')); } catch { return null; } })();
+    const after = (() => { try { return fs.readdirSync(APPS_DIR).filter(f => !/^s(87|95)/.test(f)); } catch { return null; } })();
     ck('D2 目录基线零扰动（非探针文件原样保留）', JSON.stringify(after) === JSON.stringify(before), JSON.stringify(after));
+    ck('D3 还原：apps.env.yaml 字节回基线 + pc 表无 s95-live-svc', crypto.createHash('sha256').update(fs.readFileSync(APPS_ENV)).digest('hex') === appsEnvHash0 && (await procState95()) === null);
 
     console.log('apps-probe: PASS=' + pass + ' FAIL=' + fail);
     process.exit(fail ? 1 : 0);
