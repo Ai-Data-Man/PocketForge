@@ -16,6 +16,7 @@ const tsLocalSrc = grab(/function tsLocal\(s\)\{[\s\S]+?\n\}/, 'tsLocal');
 const fmtMDHMSrc = grab(/function fmtMDHM\(d\)\{[^\n]+\}/, 'fmtMDHM');
 const escSrc = grab(/function esc\(s\)\{[^\n]+\}/, 'esc');
 const skillOriginBadgeSrc = grab(/function skillOriginBadge\(sk\)\{[\s\S]+?\n\}/, 'skillOriginBadge');
+const skillsOriginClassSrc = grab(/function skillsOriginClass\(sk\)\{[\s\S]+?\n\}/, 'skillsOriginClass'); // s95/S2a：来源 chip 判据（paintInstalled 新依赖）
 const paintInstalledSrc = grab(/function paintInstalled\(\)\{[\s\S]+?\n\}/, 'paintInstalled');
 const loadSkills2Src = grab(/async function loadSkills2\(\)\{[\s\S]+?\n\}/, 'loadSkills2');
 
@@ -44,6 +45,8 @@ const sandbox = new Function('$', 'document', 'fetch', `
     let lastSessions=[], archSet={}, sideView='chat', archCount=0, installedAll=[], currentSid=null;
     let listPage={ins:1,store:1,mcp:1,arch:1};
     const SKILL_N=12, PAGE_N=30;
+    const skillsFilter={chip:'all'}; // s95/S2a
+    ${skillsOriginClassSrc}
     ${escSrc}
     ${tsLocalSrc}
     ${fmtMDHMSrc}
