@@ -2014,16 +2014,47 @@ function appsPaint(){
       ?(a.procs.length?'<span>⚙️ '+esc(a.procs[0].name)+'：'+esc(appsProcZh(a.procs[0]))+'</span>':'') // 单进程合并进卡片头
       :'<div style="margin-top:2px">'+a.procs.map(p=>'<div>⚙️ '+esc(p.name)+'：'+esc(appsProcZh(p))+'</div>').join('')+'</div>';
     const failTip=(!appsNote&&a.state==='fail')?'<div class="fnote" style="margin-top:2px;color:var(--warn-tx)">出错了——跟小 forge 说一声，让它看看怎么回事。</div>':''; // 补救=对话通道，无按钮
+    const stopNote=(a.state==='stop'&&appsUserStopped[a.id])?'<div class="fnote" style="margin-top:2px">已停。下次启动数字员工时它会自己回来；想让它彻底别再回来，跟小 forge 说一声拆掉。</div>':''; // s95/S3b：首句=结构性事实，次句=对话通道兜底；只对 UI 发起停止的卡显示（会话内有效）
     const urlWord=a.url?'<button class="mini apps-open" data-url="'+esc(a.url)+'">打开看看</button>'
       :'<span class="fnote">这个应用没有网页，它在后台做事</span>'; // 不猜、不放死链
+    // s95/S3b（裁决 2026-09-16 §4，supersede s87）：状态驱动启停钮——absent 无钮（F12③ 实证 start 对 absent 快速失败，收窄为仅 stop/fail 可启；
+    // absent=pc 表无此名，全 absent 的卡不给操作面）；状态未知（appsNote）不给操作面；fail 另给 ⟳ 重启次钮。无确认框（可逆+状态常驻同卡，定时暂停 ⏸ 同判先例）。
+    const anyPresent=a.procs.some(p=>p.state!=='absent');
+    let opsWord='';
+    if(!appsNote&&anyPresent){
+      if(a.state==='run') opsWord+='<button class="mini apps-op" data-id="'+esc(a.id)+'" data-op="stop" title="先停一停（下次启动数字员工时会自己回来）" aria-label="先停一停（下次启动数字员工时会自己回来）">⏹ 停止</button>';
+      else if(a.state==='stop'||a.state==='fail') opsWord+='<button class="mini apps-op" data-id="'+esc(a.id)+'" data-op="start" title="启动这个应用" aria-label="启动这个应用">▶ 启动</button>';
+      if(a.state==='fail') opsWord+='<button class="mini apps-op" data-id="'+esc(a.id)+'" data-op="restart" title="重启这个应用" aria-label="重启这个应用">⟳ 重启</button>';
+    }
     const src=a.srcSid?'<span>来自对话：'+esc(a.srcTitle||'未命名')+'</span>':'<span>来源不详</span>'; // 无账存量=诚实降级，不考古
     card.innerHTML='<div style="display:flex;align-items:center;gap:10px"><div style="flex:1;min-width:0">'
       +'<div style="font-size:.85rem;font-weight:600;word-break:break-all"><span class="bdg">'+badge+'</span> '+esc(a.human||(a.id+' · 小 forge 搭的应用'))+'</div>'
-      +'<div class="fnote" style="margin-top:2px;display:flex;gap:10px;flex-wrap:wrap"><span>注册于 '+time+'</span>'+procHtml+'</div>'+failTip
+      +'<div class="fnote" style="margin-top:2px;display:flex;gap:10px;flex-wrap:wrap"><span>注册于 '+time+'</span>'+procHtml+'</div>'+failTip+stopNote
       +'<details class="tz" style="margin-top:4px"><summary>详情</summary><div class="fnote" style="margin:6px 0">'
       +'<div>监听端口：'+(a.listenPorts&&a.listenPorts.length?a.listenPorts.join('、'):'—')+'</div>'
       +'<div class="apps-src" data-sid="'+(a.srcSid?esc(a.srcSid):'')+'" style="'+(a.srcSid?'cursor:pointer;text-decoration:underline;':'')+'">'+src+'</div>'
-      +'<div>应用文件：'+esc(a.yaml)+'</div></div></details></div><div>'+urlWord+'</div></div>';
+      +'<div>应用文件：'+esc(a.yaml)+'</div></div></details></div><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">'+opsWord+urlWord+'</div></div>';
+    card.querySelectorAll('.apps-op').forEach(b=>b.onclick=()=>appsOp(b.dataset.id,b.dataset.op)); // s95/S3b：操作中按钮禁用，完成 loadAppsUI 重拉重绘
+    const det=card.querySelector('details');
+    if(det){
+      // s95/D1（裁决 2026-09-16 §5）：折叠技术区「📋 最近日志」子区——默认收起、按需拉取、零轮询；pre.textContent 渲染=显示层转义
+      const ld=document.createElement('details'); ld.className='tz'; ld.style.marginTop='4px';
+      const lsu=document.createElement('summary'); lsu.textContent='📋 最近日志'; ld.appendChild(lsu);
+      ld.ontoggle=async()=>{
+        if(!ld.open||ld.dataset.loaded) return;
+        ld.dataset.loaded='1';
+        const ph=document.createElement('div'); ph.className='fnote'; ph.textContent='正在取日志…'; ld.appendChild(ph);
+        let d=null;
+        try{ d=await apiJSON('/api/apps/logs?id='+encodeURIComponent(a.id)); }catch(e){ d=null; }
+        ph.remove();
+        if(!d||!d.ok){ const er=document.createElement('div'); er.className='fnote'; er.textContent=(d&&d.err)||'日志暂时拿不到，稍后再试。'; ld.appendChild(er); return; }
+        const pre=document.createElement('pre');
+        pre.style.cssText='max-height:220px;overflow:auto;font-size:.72rem;white-space:pre-wrap;word-break:break-all;margin:4px 0';
+        pre.textContent=(d.lines||[]).join('\n')+(d.truncated?'\n（日志很长，这里只取了最后一段。）':'');
+        ld.appendChild(pre);
+      };
+      det.appendChild(ld);
+    }
     const openBtn=card.querySelector('.apps-open');
     if(openBtn) openBtn.onclick=()=>window.open(openBtn.dataset.url,'_blank'); // 唯一动作：有 url 才有按钮
     const srcEl=card.querySelector('.apps-src');
@@ -2042,6 +2073,17 @@ async function loadAppsUI(){
     appsAll=d.apps||[]; appsNote=d.note||null; appsPortsTrunc=!!d.portsTruncated;
   }catch(e){ appsAll=null; box.innerHTML='<div class="fnote">读取失败：'+esc(e.message)+'</div>'; return; }
   appsPaint();
+}
+const appsUserStopped={}; // s95/S3b: UI 发起停止标记（会话内有效——停止注只对自己停的卡显示；再启即清）
+async function appsOp(id,op){ // s95/S3b：启停/重启写通道（POST /api/apps）；失败 alert 人话按钮随重拉恢复
+  document.querySelectorAll('#apps-list .apps-op').forEach(b=>{ if(b.dataset.id===id) b.disabled=true; });
+  let r=null;
+  try{ r=await apiJSON('/api/apps',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,op})}); }
+  catch(e){ r={ok:false,err:e.message}; }
+  if(!r||!r.ok){ alert(({stop:'没停成：',start:'没启动成：',restart:'没重启成：'})[op]+' '+((r&&r.err)||'稍后再试')); }
+  else if(op==='stop') appsUserStopped[id]=true;
+  else delete appsUserStopped[id];
+  loadAppsUI();
 }
 $('apps-refresh').onclick=()=>loadAppsUI(); // 手动刷新；无轮询无推送（裁决 §3-S3）
 $('apps-q').oninput=()=>{ clearTimeout(appsQT); appsQT=setTimeout(appsPaint,200); }; // s95/S2c: 纯前端过滤（appsAll 内存），db-q 同款防抖
