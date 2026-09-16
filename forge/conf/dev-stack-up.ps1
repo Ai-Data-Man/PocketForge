@@ -19,18 +19,9 @@ $env:GOOSE_TELEMETRY_ENABLED = 'false'
 $env:NO_PROXY = '127.0.0.1,localhost'
 $env:no_proxy = '127.0.0.1,localhost'
 
-# aggregate apps
-# s89/R1: joined 内容另起一行——协议形态（forge-meta 首行）app 剥 processes: 行后首行是注释，
-# 直接粘 processes: 后 = "processes:# forge-meta…" 注释失效 → pc up FTL（启动数字员工.cmd 同款修复）
-$d = Join-Path $ForgeRoot 'apps'
-$out = Join-Path $ForgeRoot 'conf\apps.env.yaml'
-$yamls = @(Get-ChildItem $d -Filter *.yaml -ErrorAction SilentlyContinue | Sort-Object Name)
-if ($yamls.Count -gt 0) {
-    $c = $yamls | ForEach-Object { (Get-Content $_.FullName -Raw) -replace '(?m)^processes:\s*$', '' }
-    [IO.File]::WriteAllText($out, ('processes:' + [Environment]::NewLine + ($c -join [Environment]::NewLine)))
-} else {
-    [IO.File]::WriteAllText($out, 'processes: {}')
-}
+# aggregate apps → conf\apps.env.yaml（s96 起 = conf\apps-aggregate.ps1 单一真相源，启动数字员工.cmd 同款；
+# s89/R1 joined 另起一行纪律 + 基础设施键守卫〔apps yaml 顶层进程键命中主 yaml 基础设施键 → 跳过+告警〕见该脚本头注）
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ForgeRoot 'conf\apps-aggregate.ps1')
 
 Write-Host "[dev-up] starting pc=$PC_PORT faucet=$FAUCET_PORT"
 Set-Location $ForgeRoot
