@@ -495,6 +495,7 @@ details.tz[open]>summary::before{content:'▾ '}
     <div class="fnote" style="margin-bottom:10px">数据库里现在存着这些表。点表名能看里面装了什么。想让小 forge 用哪张，聊天里打 @ 选「库里的数据」就行。这里是表的家。想按时间看它哪次做的、回到当时对话，去「✨ 做过的东西」。</div>
     <input id="db-q" placeholder="🔍 在数据里找…（表名/说明）" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
     <div id="db-list" style="max-height:340px;overflow-y:auto"></div>
+    <div id="db-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 0 6px"></div>
   </div>
   <div class="mpane" id="mpane-made" style="display:none">
     <h3 style="margin:0 0 8px">做过的东西</h3>
@@ -1432,7 +1433,7 @@ function showMtab(name){
   if(t&&!t[1]){ t[1]=true; window[t[0]](); }
 }
 document.querySelectorAll('#manage-modal .mtab').forEach(b=>b.onclick=()=>showMtab(b.dataset.pane));
-$('open-manage').onclick=()=>{ $('manage-modal').classList.add('on'); for(const k in mtabs) mtabs[k][1]=false; listPage.mcp=1; listPage.made=1; showMtab('ext'); }; // s51: 重开即重拉，防陈旧清单; s71: 插件页回第 1 页; s83: 做过的东西页同款
+$('open-manage').onclick=()=>{ $('manage-modal').classList.add('on'); for(const k in mtabs) mtabs[k][1]=false; listPage.mcp=1; listPage.made=1; listPage.db=1; showMtab('ext'); }; // s51: 重开即重拉，防陈旧清单; s71: 插件页回第 1 页; s83: 做过的东西页同款; s95/S2b: 数据页同款
 // s46: MCP 市场 UI（安装是后台异步，轮询状态直到 done/error）
 let mcpPollTimer=null;
 async function loadMcpUI(){
@@ -1822,28 +1823,45 @@ function dbPaint(){
   const box=$('db-list'); if(!box) return;
   const q=(($('db-q')||{}).value||'').trim().toLowerCase();
   box.innerHTML='';
-  let shown=0;
+  // s95/S2b（裁决 2026-09-16 §3）：匹配后的表按服务分组顺序展平为行序列 → 行级分页 30/页（分组保留：组头随页插回，openAsset 依赖组容器+组头结构零改动）
+  const seq=[], totals={};
   for(const s of lastDbOv.services){
     const hit=t=>!q||t.name.toLowerCase().includes(q)||(t.desc||'').toLowerCase().includes(q)||s.service.toLowerCase().includes(q);
     const biz=[], sys=[];
     for(const t of s.tables) (t.name.indexOf('forge_')===0?sys:biz).push(t); // forge_* 系统表（如 forge_table_info）不混业务表
     const bL=biz.filter(hit), sL=sys.filter(hit);
     if(!bL.length&&!sL.length) continue; // 过滤后组空 → 整组隐藏
-    const g=document.createElement('div');
-    const gh=document.createElement('div');
-    gh.style.cssText='display:flex;align-items:center;gap:6px;padding:6px 4px;font-weight:600;font-size:.8rem;border-bottom:1px solid var(--line)';
-    gh.innerHTML='📦 '+esc(s.service)+' <span class="fnote">· '+(bL.length+sL.length)+' 张表</span>';
-    g.appendChild(gh);
-    for(const t of bL) g.appendChild(dbRowEl(s.service,t));
-    if(sL.length){ // 系统表折叠组（details.tz 同款折叠，默认收起）
-      const dz=document.createElement('details'); dz.className='tz'; dz.style.margin='2px 0 6px 4px';
-      const su=document.createElement('summary'); su.textContent='系统表 · '+sL.length+' 张'; dz.appendChild(su);
-      for(const t of sL) dz.appendChild(dbRowEl(s.service,t));
-      g.appendChild(dz);
-    }
-    box.appendChild(g); shown+=bL.length+sL.length;
+    totals[s.service]=bL.length+sL.length;
+    for(const t of bL) seq.push([s.service,t,false]);
+    for(const t of sL) seq.push([s.service,t,true]);
   }
-  if(!shown) box.innerHTML='<div class="fnote">'+(q?'没找到跟“'+esc(q)+'”有关的表。换个词试试，或直接在聊天里问小 forge。':'还没存数据。让小 forge 抓数时说一声存进数据库就行。')+'</div>';
+  if(!seq.length){
+    box.innerHTML='<div class="fnote">'+(q?'没找到跟“'+esc(q)+'”有关的表。换个词试试，或直接在聊天里问小 forge。':'还没存数据。让小 forge 抓数时说一声存进数据库就行。')+'</div>';
+    pagerPaint('db-pager',1,1,0,null); return;
+  }
+  const ps=pageSlice(seq,'db',PAGE_N); // 行型 30/页（PAGE_N 在下方定义=30，函数声明提升可用）
+  let prevSvc=null, g=null, dz=null;
+  for(const [svc,t,isSys] of ps.rows){
+    if(svc!==prevSvc){ // 服务变更处插组头（含跨页续段的页首——组头跨页正确）；N=该服务匹配总数
+      prevSvc=svc; g=document.createElement('div'); dz=null;
+      const gh=document.createElement('div');
+      gh.style.cssText='display:flex;align-items:center;gap:6px;padding:6px 4px;font-weight:600;font-size:.8rem;border-bottom:1px solid var(--line)';
+      gh.innerHTML='📦 '+esc(svc)+' <span class="fnote">· '+totals[svc]+' 张表</span>';
+      g.appendChild(gh); box.appendChild(g);
+    }
+    if(isSys){ // 系统表折叠组维持组内（details.tz 同款折叠，默认收起；计数=本页该组系统表数）
+      if(!dz){
+        dz=document.createElement('details'); dz.className='tz'; dz.style.margin='2px 0 6px 4px';
+        dz.appendChild(document.createElement('summary')); g.appendChild(dz);
+      }
+      dz.appendChild(dbRowEl(svc,t));
+      dz.querySelector('summary').textContent='系统表 · '+(dz.children.length-1)+' 张';
+      continue;
+    }
+    dz=null;
+    g.appendChild(dbRowEl(svc,t));
+  }
+  pagerPaint('db-pager',listPage.db,ps.pages,ps.total,p=>{ listPage.db=p; dbPaint(); });
   if(lastDbOv.truncated){ // R2：截断必须留出路——先搜，搜不到聊天问小 forge
     const tr=document.createElement('div');
     tr.className='fnote'; tr.style.marginTop='6px';
@@ -1859,7 +1877,7 @@ async function loadDbUI(){
   if(!lastDbOv){ box.innerHTML='<div class="fnote">数据库没在跑，看不到明细。</div>'; return; }
   dbPaint();
 }
-$('db-q').oninput=()=>{ clearTimeout(dbQT); dbQT=setTimeout(dbPaint,200); }; // IA-3: 搜索防抖（store-q 同款 200ms），过滤组空整组隐藏
+$('db-q').oninput=()=>{ clearTimeout(dbQT); dbQT=setTimeout(()=>{ listPage.db=1; dbPaint(); },200); }; // IA-3: 搜索防抖（store-q 同款 200ms），过滤组空整组隐藏；s95/S2b: 过滤变化回第 1 页（made-q 同款）
 
 // ===== ✨ 做过的东西（裁决 2026-09-13-app-management-ledger §3-S3）：三源只读聚合清单 =====
 // R2 规模声明（ia-rework 2026-09-15 §5.1）：台账规模=表（护航期 <20）+成品文件（<50）+自沉淀技能（0-5）→ 合计 <100，
@@ -2323,7 +2341,7 @@ function paintInstalled(){ // s71: 自 open-skills 内联渲染提升为具名�
 let storeAll=[]; // 当前可装列表（avail），供搜索过滤
 // s71 技能/插件市场分页：技能卡约 120px 高，每页 12 条≈两屏；切片模式对齐 renderAllPane 的 PAGE_N 先例
 const SKILL_N=12;
-const listPage={ins:1,store:1,mcp:1,arch:1,chat:1,pr:1,made:1}; // 各列表当前页；仅重开弹窗时重置（loadSkills2/loadMcpUI 会被操作回调与安装轮询复调，不得在函数内重置）；arch/chat=侧栏归档/活跃视图（IA-2 + pm裁决2026-09-07-batch1 项1）；pr=提示词面板（主线1）；made=✨做过的东西（s83）
+const listPage={ins:1,store:1,mcp:1,arch:1,chat:1,pr:1,made:1,db:1}; // 各列表当前页；仅重开弹窗时重置（loadSkills2/loadMcpUI 会被操作回调与安装轮询复调，不得在函数内重置）；arch/chat=侧栏归档/活跃视图（IA-2 + pm裁决2026-09-07-batch1 项1）；pr=提示词面板（主线1）；made=✨做过的东西（s83）；db=库里的数据行级分页（s95/S2b）
 function pageSlice(arr,key,n){ // IA-2: 可选页大小（缺省 SKILL_N；行型清单传 PAGE_N=30，对齐 renderAllPane 先例）
   const per=n||SKILL_N;
   const pages=Math.max(1,Math.ceil(arr.length/per));

@@ -1632,7 +1632,7 @@ async function dbOverview() {
         let names = [];
         try { names = ((JSON.parse(await faucetCli(['db', 'schema', svc]) || 'x') || {}).tables || []).map(t => (t && t.name) || '').filter(x => DB_NAME_RE.test(x)); } catch { schemaMiss = true; } // FINDING-1: schema 通道与 list 同病（SQLITE_BUSY 重试后仍败）——置 tblMiss 不再静默
         for (const nm of names) {
-            if (n >= 50) { truncated++; continue; }
+            if (n >= 200) { truncated++; continue; } // s95/S2b（裁决 2026-09-16 §3）：截断护栏 50→200（重度抓数装机可至 200+ 表；truncated 注与双出路文案维持）
             entry.tables.push({ name: nm, rows: null, desc: null, ts: null }); n++;
         }
     }
