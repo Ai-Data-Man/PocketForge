@@ -511,6 +511,7 @@ details.tz[open]>summary::before{content:'▾ '}
       <button id="apps-refresh" class="mini">刷新看看</button>
     </div>
     <div class="fnote" style="margin-bottom:10px">小 forge 给你搭的应用——哪个在跑、怎么打开。✨做过的东西是过去的事，这里的现在开着、能用。哪个停了或出错了，跟它说一声就行。</div>
+    <input id="apps-q" placeholder="🔍 在小应用里找…（名字/说明）" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
     <div id="apps-list" style="max-height:340px;overflow-y:auto"></div>
   </div>
   <div class="mpane" id="mpane-mem" style="display:none">
@@ -1967,22 +1968,25 @@ function openAsset(it){
 }
 
 // ===== 🚀 小应用（裁决 2026-09-14-app-runtime-panel §3-S3）：apps/*.yaml × pc 状态只读观察面 =====
-// R2 规模声明：终态 <10 个/安装（长驻服务天然低频新建）→ 0-8 档直接列，无搜索无分页；触发器=超 8 条加搜索。
+// R2 规模声明（s95/S2c 修订，裁决 2026-09-16 §3）：终态 <30（s87「<10」作废，用户 2026-09-16 点名膨胀可能）；9-30 档=搜索（apps-q 本批补齐）；>30 触发分页 12/页。
 // R4：主名=meta.description（建时落的人话账）；缺=「〈id〉·小 forge 搭的应用」结构性兜底；时间无=「—」；不编造。
 // 无轮询无推送（打开拉一次+手动刷新；0-8 条规模下实时性无消费者）；唯一动作「打开看看」（url 有才给，不猜不放死链）。
 let appsAll=null, appsNote=null, appsPortsTrunc=false;
 const APP_STATE_ZH={run:'✅ 运行中',stop:'⏹ 已停',fail:'⚠️ 出错了'};
 const APP_PROC_ZH={run:'在跑',stop:'已停',fail:'出错',absent:'下次启动时自动带起'};
 function appsProcZh(p){ return (appsNote&&p.state==='absent')?'状态未知':APP_PROC_ZH[p.state]; } // pc 联系不上→诚实降级，不误称「待启动」
+let appsQT=null; // s95/S2c: 搜索防抖句柄（db-q 同款 200ms）
 function appsPaint(){
   const box=$('apps-list'); if(!box||!appsAll) return;
   box.innerHTML='';
-  if(!appsAll.length){
-    box.innerHTML='<div class="fnote">小 forge 还没给你搭过应用——跟它说「帮我做个 ××」试试。</div>';
+  const q=(($('apps-q')||{}).value||'').trim().toLowerCase(); // s95/S2c: human/id/srcTitle 小写包含（裁决 §3-S2c）
+  const list=appsAll.filter(a=>!q||(a.human||'').toLowerCase().includes(q)||a.id.toLowerCase().includes(q)||(a.srcTitle||'').toLowerCase().includes(q));
+  if(!list.length){
+    box.innerHTML='<div class="fnote">'+(q?'没找到跟“'+esc(q)+'”有关的应用。':'小 forge 还没给你搭过应用——跟它说「帮我做个 ××」试试。')+'</div>';
     if(appsNote){ const n=document.createElement('div'); n.className='fnote'; n.style.margin='4px 0'; n.textContent=appsNote; box.appendChild(n); }
     return;
   }
-  for(const a of appsAll){
+  for(const a of list){
     const card=document.createElement('div');
     card.style.cssText='padding:8px 2px;border-bottom:1px solid var(--line)';
     const badge=appsNote?'❓ 状态未知':(APP_STATE_ZH[a.state]||'⏹ 已停');
@@ -2021,6 +2025,7 @@ async function loadAppsUI(){
   appsPaint();
 }
 $('apps-refresh').onclick=()=>loadAppsUI(); // 手动刷新；无轮询无推送（裁决 §3-S3）
+$('apps-q').oninput=()=>{ clearTimeout(appsQT); appsQT=setTimeout(appsPaint,200); }; // s95/S2c: 纯前端过滤（appsAll 内存），db-q 同款防抖
 
 
 $('prov-add').onclick=()=>{
