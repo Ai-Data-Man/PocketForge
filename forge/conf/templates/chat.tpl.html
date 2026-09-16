@@ -439,6 +439,8 @@ details.tz[open]>summary::before{content:'▾ '}
     <button class="rtab stab" data-pane="store" role="tab" aria-selected="false">＋ 添加新技能</button>
   </div>
   <div class="spane" id="spane-ins">
+    <!-- R2 规模声明（裁决 2026-09-16 §3）：我的技能终态=内置 5 + 市场装 ≤30 + 自己攒 0-5 → 合计 <40（31-100 档）；搜索+分页已有，来源 chips 本批补齐 -->
+    <div id="skills-chips" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px"></div>
     <input id="skills-q" placeholder="🔍 在我的技能里找…" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
     <div id="skills-list"></div>
     <div id="skills-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 0 6px"></div>
@@ -2257,6 +2259,7 @@ $('open-skills').onclick=async()=>{
   $('skills-modal').classList.add('on');
   listPage.ins=1; listPage.store=1; // s71: 重开弹窗回第 1 页
   showStab('ins'); // IA-1: 每次打开默认落「我的技能」
+  skillsChips(); // s95/S2a: 来源 chips 随弹窗渲染（chip 状态跨开合保持，made-chips 同款）
   if(!mktLoaded) loadMarketUI(); // IA-1 返工: 源列表随弹窗首开渲染（此前只有先访问过🔌插件页才有内容，违反裁决 IA-1 验收2 闭环）
   try{
     const r=await fetch('/api/skills'); installedAll=await r.json(); paintInstalled();
@@ -2264,11 +2267,29 @@ $('open-skills').onclick=async()=>{
   loadSkillStore();
 };
 let installedAll=[]; // s71: 已装清单缓存——open 弹窗与装/卸刷新共用数据源，各自按原样渲染
+const skillsFilter={chip:'all'};
+function skillsOriginClass(sk){ // s95/S2a: origin→chip 分类（null=自带 / market+local=装的 / self=自己攒的；与 skillOriginBadge 同源判据）
+  const s=sk.origin&&sk.origin.source;
+  if(s==='market'||s==='local') return 'ext';
+  if(s==='self') return 'self';
+  return 'builtin';
+}
+function skillsChips(){ // s95/S2a: 来源 chips（made-chips 同款克隆；裁决 2026-09-16 §3-S2a）
+  const defs=[['all','全部'],['builtin','📦 自带'],['ext','🌉 装的'],['self','✍ 自己攒的']];
+  const box=$('skills-chips'); if(!box) return; box.innerHTML='';
+  for(const [k,label] of defs){
+    const b=document.createElement('button'); b.className='chip'+(skillsFilter.chip===k?' on':''); b.textContent=label;
+    b.onclick=()=>{ skillsFilter.chip=k; listPage.ins=1; skillsChips(); paintInstalled(); };
+    box.appendChild(b);
+  }
+}
 function paintInstalled(){ // s71: 自 open-skills 内联渲染提升为具名函数以支持翻页重渲染；渲染内容与原内联逐行一致
   const box=$('skills-list'); if(!box) return;
   box.innerHTML='';
   const q=($('skills-q').value||'').trim().toLowerCase(); // IA-1: 已装区搜索（R2 9-30 档，仿 store-q）
-  const shown=installedAll.filter(sk=>!q||String(sk.name||'').toLowerCase().includes(q)||String(sk.description||'').toLowerCase().includes(q));
+  const shown=installedAll
+    .filter(sk=>skillsFilter.chip==='all'||skillsOriginClass(sk)===skillsFilter.chip) // s95/S2a: 来源 chip 过滤在搜索过滤前
+    .filter(sk=>!q||String(sk.name||'').toLowerCase().includes(q)||String(sk.description||'').toLowerCase().includes(q));
   if(!shown.length){ box.innerHTML='<div class="fnote">'+(q?('没有找到「'+esc(q)+'」'):'还没有技能。让它干活时说「记住这个做法」，它就会自己学。')+'</div>'; pagerPaint('skills-pager',1,1,0,null); return; }
   const ps=pageSlice(shown,'ins'); // >SKILL_N 才出现翻页器，阈值内零机制
   for(const sk of ps.rows){
@@ -2320,10 +2341,11 @@ function pagerPaint(id,page,pages,total,go){ // pages<=1 时整块不渲染（�
   pager.appendChild(mk('›','下一页',page>=pages,()=>go(page+1)));
 }
 function skillDesc(sk){ return sk.desc_zh || sk.description || '（无说明）'; }
-function skillOriginBadge(sk){ // s70 切片A: 来源徽标——市场=🌐+源短名 / 自己攒的=✍ / 本机随包=无标
+function skillOriginBadge(sk){ // s70 切片A: 来源徽标——市场=🌐+源短名 / 本机库=🌐 / 自己攒的=✍ / 内置=无标（local 徽标 s95/S2a 补齐）
   const o=sk.origin;
   if(!o) return '';
   if(o.source==='market'){ const r=(o.repo||'').split('/').pop()||'市场'; return '<span class="obadge" title="从技能市场装的（'+esc(o.repo||'市场')+'）">🌐 '+esc(r)+'</span>'; }
+  if(o.source==='local') return '<span class="obadge" title="从本机技能库装的">🌐 本机库</span>';
   if(o.source==='self') return '<span class="obadge" title="在这个小 forge 里自己攒的">✍ 自己攒的</span>';
   return '';
 }
