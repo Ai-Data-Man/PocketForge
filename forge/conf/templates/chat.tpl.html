@@ -524,6 +524,7 @@ details.tz[open]>summary::before{content:'▾ '}
   <div class="mpane" id="mpane-sched" style="display:none">
     <h3 style="margin:0 0 8px">定时任务</h3>
     <div class="fnote" style="margin-bottom:10px">想让它定时干活，直接在聊天里说，比如「每周五下午5点，把库存数据整理成表格发我」。这里能看到已定好的任务，不要的可以删。</div>
+    <input id="sched-q" placeholder="🔍 在定时任务里找…" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
     <div id="sched-list" style="max-height:340px;overflow-y:auto"></div>
   </div>
   <div class="mpane" id="mpane-mcp" style="display:none">
@@ -1591,7 +1592,8 @@ $('mkt-cat-add').onclick=async()=>{
 };
 $('manage-modal').onclick=e=>{ if(e.target.id==='manage-modal'){ e.target.classList.remove('on'); clearTimeout(mcpPollTimer); } }; // s51c: 关弹窗停安装轮询
 
-// ---- s32: 定时任务列表（只读+删除；设置由聊天对话完成） ----
+// ---- s32: 定时任务列表（只读+删除；设置由聊天对话完成）----
+// R2 声明（s95/S2d，裁决 2026-09-16 §3）：终态 <30（对话式定任务）；9-30 档=搜索（sched-q 本批补齐：标题+cron 人话包含）；>30 触发分页（行型 30/页）。
 function cronHuman(cron){
   // 常见 5 段 cron 转人话；看不懂就原样展示
   const M=['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
@@ -1606,13 +1608,23 @@ function cronHuman(cron){
   }
   return f||cron;
 }
+let schedAll=null, schedQT=null; // s95/S2d: 已拉清单缓存+搜索防抖句柄（db-q 同款 200ms，纯前端过滤）
 async function loadSchedUI(){
   const box=$('sched-list'); if(!box) return;
   let list;
   try { list = await apiJSON('/api/schedules'); } catch(e){ box.innerHTML='<div class="fnote">读取失败：'+esc(e.message)+'</div>'; return; }
+  schedAll=list;
+  schedPaint();
+}
+function schedPaint(){
+  const box=$('sched-list'); if(!box||!schedAll) return;
+  const list=schedAll;
   if(!list.length){ box.innerHTML='<div class="fnote">还没有定时任务。想让它定时干活，在聊天里说就行。</div>'; return; }
+  const q=(($('sched-q')||{}).value||'').trim().toLowerCase(); // s95/S2d: 标题+cron 人话（cronHuman 输出）包含
+  const fl=list.filter(j=>!q||String(j.title||'').toLowerCase().includes(q)||String(cronHuman(j.cron)||'').toLowerCase().includes(q));
   box.innerHTML='';
-  for(const j of list){
+  if(!fl.length){ box.innerHTML='<div class="fnote">没找到跟“'+esc(q)+'”有关的定时任务。</div>'; return; }
+  for(const j of fl){
     const row=document.createElement('div');
     row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line)';
     row.innerHTML='<div style="flex:1"><div style="font-size:.85rem;font-weight:600">'+esc(j.title)+'</div>'+
@@ -1649,6 +1661,7 @@ async function loadSchedUI(){
     box.appendChild(row);
   }
 }
+$('sched-q').oninput=()=>{ clearTimeout(schedQT); schedQT=setTimeout(schedPaint,200); }; // s95/S2d
 
 // ---- s21: 聊天记录搜索（左栏；>=2 字触发，防抖 300ms；点结果跳会话） ----
 let searchTimer=null, searchSeq=0;
