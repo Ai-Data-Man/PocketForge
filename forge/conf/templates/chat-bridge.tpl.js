@@ -1868,8 +1868,20 @@ function pcExec(args, cb) { // execFile 走 chat-bridge:2151 先例通道（sche
 }
 // s95/S3a（裁决 2026-09-16 §4）：基础设施进程 deny-list——/api/apps 写通道从注册表推导出的 proc 名命中即拒
 // `参数不合法`（防御纵深：ADR-0003 禁 agent 定义基础设施键，聚合器是文本拼接不可信）。
-// 键名自 conf/process-compose.yaml 全量核对（F12④ VERIFIED-RUN 2026-09-16；memory-mcp 是 goose stdio 扩展不在 pc 表）。
-const APP_INFRA_PROCS = ['chat-bridge', 'nats', 'faucet', 'goose-scheduler', 'faucet-rawsql', 'faucet-provision', 'daily-backup', 'pg-init', 'pg'];
+// s96/P3-2+P3-3 同源化：键集启动时现读 conf/process-compose.yaml 顶层进程键（appParseYaml 同款行级判据，
+// 与聚合守卫 conf/apps-aggregate.ps1 同一真相源，消除双手工清单漂移面）；读不到/解析空 → 回落硬编码基线
+// （fail-safe 不 fail-open；基线=F12④ 2026-09-16 全量核对 9 键，memory-mcp 是 goose stdio 扩展不在 pc 表）。
+const APP_INFRA_PROCS = (() => {
+    const FALLBACK = ['chat-bridge', 'nats', 'faucet', 'goose-scheduler', 'faucet-rawsql', 'faucet-provision', 'daily-backup', 'pg-init', 'pg'];
+    let keys = null;
+    try { keys = appParseYaml(FSS.readFileSync(path.join(ROOT, 'conf', 'process-compose.yaml'), 'utf8')).procs; } catch {}
+    if (keys && keys.length) {
+        console.log('[apps-infra-keys] deny-list ' + keys.length + ' 键 ← conf/process-compose.yaml 启动现读: ' + keys.join(','));
+        return keys;
+    }
+    console.log('[apps-infra-keys] deny-list ' + FALLBACK.length + ' 键 ← 回落硬编码常量（主 yaml 读不到或解析空）: ' + FALLBACK.join(','));
+    return FALLBACK;
+})();
 function pcProcMap() { // pc 全量进程表一次取（Map name→entry）；appsOverview join / S3a 写通道前置探活 / D1 日志表共用
     return new Promise((resolve, reject) => {
         pcExec(['process', 'list', '-o', 'json'], (e, out) => {
