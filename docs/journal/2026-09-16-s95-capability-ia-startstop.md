@@ -20,11 +20,21 @@ S1a GET 收窄纯内置四行（撤 s57 并入）/S1b 插件 tab 启停钮/S1c �
 
 验收线：e2e 61/61+fuzz 190/190+物化 cmp 逐位一致+零残留（apps/ 基线、pc 表 10 进程、git 干净）。
 
-## 并行批（进行中）
+## QA 复审（pf-qa，通过；报告 tmp/qa-s95-review.md）
 
-- pf-qa 复审工程批+GUI 浏览器级冒烟（工程批桩测的补面）+独立回归。
-- pf-engineer 聚合器 infra 键守卫（启动器 .cmd+dev-stack-up.ps1 同款，键集从主 yaml 现读，段级+静态验证，禁动 dev 栈）。
-- 主控：使用说明.md 三处同步（commit 已落）；STATE s95 开工行+路线条目+s87/s57 勘误注记（0f55fdf）；research/04-goose s95 节（v1.50.1 补丁不追+schedule run-now CLI 确认=D4 机制前提 VERIFIED-CLI，114b65e）。
+- **P2-1 当场修（da38d81）**：🔌插件开关钮 no-op——`next=!(m.enabled===false)` 取当前态非翻转态，点击恒 POST 原状态=开关永不生效（GUI 冒烟 S2e 实证 POST enabled:true on 已开行）。漏网原因=工程批验收只做语法块过+healthz 无行为测——GUI 浏览器级冒烟的独占价值实证。一行修，修后 GUI 68/68+e2e 61/61+fuzz 190/190。
+- **写通道安全 70/70**：三道闸单变量全拒（未知/超长/Unicode/遍历 id、16 态类型混淆、Origin 伪造、deny-list 9 键×stop+logs 逐键、日志端点 9 负向量+405）+幽灵 proc 正对照过闸。
+- **GUI 冒烟 68/68**：本事 3 行+fnote 逐字/启停钮翻转+失败回滚/chips 四态/db 分页组头跨页（20 表计数=匹配总数）/三搜索域/启停三态+absent 无钮/停止注生死/日志按需+零重复/全页零 JS 错误。
+- **P3×3 留档**：①ia-logic-probe S3c-sync 是提取同步非断言同步（变异判据仍绿=裸奔，QA GUI 冒烟会话级钉住）②APP_INFRA_PROCS 手工拷贝无 ⊇yaml 交叉核对 ③桥闸×聚合守卫缝隙面（守卫落地后建议同源）。P4×4 备注（空日志文案/alert 拼接/chip 空态复用/空 procs stop 形态——均无害留档）。
+- 探针判别力 M1/M2/M3 变异必红；物化 tpl==bin 字节一致；fixture 零残留。F12② 冷启链路未验（禁重启纪律）→归 §8 从零测试批。
+
+## 聚合器守卫批（pf-engineer，5fbebfa+554db36）
+
+工程批意外自证（apps/*.yaml 声明 infra 键经 -f 合并覆盖真定义→pg crash-loop）→ 主控拍板：栈健康优先。交付=conf/apps-aggregate.ps1 单一真相源（两聚合器 12 行内联段各收敛为 1 行 -File 调用；启动器去 >nul 让告警可见）；守卫=顶层进程键命中主 yaml 现读键集→跳过该文件+人话告警（console+conf/apps.guard.log 每启覆写零告警即删）；主 yaml 缺失 fail-open。验证：段级 24/24（含勘误键名钉：postgres/nats-server 放行不误伤、pg-init 拦截）+真树静态断言（apps.env.yaml SHA 前后恒等）+apps-probe 69/69+主控复跑 24/24。bootstrap 零触及（查证不复制聚合器）；package.sh 仅补清理条目。工程留档：PS5.1 `return ,@()` 陷阱（`@(fn|Where-Object)` 的 $_=整个数组）。
+
+## 收尾小批（进行中）
+
+QA P3 收尾：桥 deny-list 同源化（现读 yaml+常量回落 fail-safe）+ia-logic-probe 补 chip 行为断言。完成后打 v0.9.15-iat 测试包进主线5。
 
 ## 待办（下一步）
 
