@@ -1465,7 +1465,7 @@ async function loadMcpUI(){
         tog.style.color=m.enabled===false?'var(--mut)':'var(--acc)'; };
       paintTog();
       tog.onclick=async()=>{
-        const next=!(m.enabled===false);
+        const next=(m.enabled===false); // qa s95 修（P2）：next=翻转态（当前停→开/当前开→停）；原 !(…) 取的是当前态=开关永不生效；enabled 缺失（=按开着渲染）点按→停，降级语义不变
         tog.disabled=true;
         try{
           const r=await apiJSON('/api/extensions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:'mcp-'+m.id,enabled:next})});
