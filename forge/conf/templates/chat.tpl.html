@@ -530,6 +530,7 @@ details.tz[open]>summary::before{content:'▾ '}
   <div class="mpane" id="mpane-mcp" style="display:none">
     <h3 style="margin:0 0 8px">官方 MCP（扩展插件）</h3>
     <div class="fnote" style="margin-bottom:10px">这些是官方出品的增强插件，装好后重启数字员工生效。装好后，开和关也在这里（重启数字员工后生效）。</div>
+    <input id="mcp-q" placeholder="🔍 在插件目录里找…" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
     <div id="mcp-list" style="max-height:340px;overflow-y:auto"></div>
     <div id="mcp-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:4px 0"></div>
     <!-- IA-1: 左栏（mkt-src）已随使用域搬入技能弹窗；残区单栏化，名实相符 -->
@@ -1437,12 +1438,16 @@ function showMtab(name){
 document.querySelectorAll('#manage-modal .mtab').forEach(b=>b.onclick=()=>showMtab(b.dataset.pane));
 $('open-manage').onclick=()=>{ $('manage-modal').classList.add('on'); for(const k in mtabs) mtabs[k][1]=false; listPage.mcp=1; listPage.made=1; listPage.db=1; showMtab('ext'); }; // s51: 重开即重拉，防陈旧清单; s71: 插件页回第 1 页; s83: 做过的东西页同款; s95/S2b: 数据页同款
 // s46: MCP 市场 UI（安装是后台异步，轮询状态直到 done/error）
-let mcpPollTimer=null;
+// R2 声明（s95/S2e，裁决 2026-09-16 §3）：目录终态 <30（curated+自配）；分页已有（s71），搜索本批补齐（mcp-q：name+desc 包含，pageSlice 前过滤）
+let mcpPollTimer=null, mcpQT=null;
 async function loadMcpUI(){
   const box=$('mcp-list'); if(!box) return;
   let list;
   try { list = await apiJSON('/api/mcpstore'); } catch(e){ box.innerHTML='<div class="fnote">读取失败：'+esc(e.message)+'</div>'; return; }
   box.innerHTML='';
+  const q=(($('mcp-q')||{}).value||'').trim().toLowerCase(); // s95/S2e: pageSlice 前过滤（安装轮询复调带当前过滤词，输入不丢）
+  list=list.filter(m=>!q||String(m.name||'').toLowerCase().includes(q)||String(m.desc||'').toLowerCase().includes(q));
+  if(!list.length){ box.innerHTML='<div class="fnote">没找到跟“'+esc(q)+'”有关的插件。</div>'; pagerPaint('mcp-pager',1,1,0,null); clearTimeout(mcpPollTimer); loadMarketUI(); return; }
   const ps=pageSlice(list,'mcp'); // s71: 目录配置化会增长，同款分页（≤SKILL_N 零机制）；安装轮询复调时保留当前页
   let needPoll=false;
   for(const m of ps.rows){
@@ -1504,6 +1509,7 @@ async function installMcp(id){
   try{ await apiJSON('/api/mcpstore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id})}); }catch(e){}
   loadMcpUI();
 }
+$('mcp-q').oninput=()=>{ clearTimeout(mcpQT); mcpQT=setTimeout(loadMcpUI,200); }; // s95/S2e: 单渲染路径复调（列表重绘不碰输入框；loadMarketUI 重复拉取无害先例）
 // s72: 数据源与目录管理（技术用户配置面）——改动即刻生效：技能源变更后台重拉市场清单后刷商店，目录变更刷插件列表
 let mktLoaded=false; // IA-1 返工: 首次成功拉取标记——技能弹窗首开拉一次；此后增/删/改操作自会复调本函数刷新，不重复拉
 async function loadMarketUI(){
