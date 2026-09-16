@@ -524,7 +524,7 @@ details.tz[open]>summary::before{content:'▾ '}
   </div>
   <div class="mpane" id="mpane-mcp" style="display:none">
     <h3 style="margin:0 0 8px">官方 MCP（扩展插件）</h3>
-    <div class="fnote" style="margin-bottom:10px">这些是官方出品的增强插件，装好后重启数字员工生效。</div>
+    <div class="fnote" style="margin-bottom:10px">这些是官方出品的增强插件，装好后重启数字员工生效。装好后，开和关也在这里（重启数字员工后生效）。</div>
     <div id="mcp-list" style="max-height:340px;overflow-y:auto"></div>
     <div id="mcp-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:4px 0"></div>
     <!-- IA-1: 左栏（mkt-src）已随使用域搬入技能弹窗；残区单栏化，名实相符 -->
@@ -1443,11 +1443,29 @@ async function loadMcpUI(){
   for(const m of ps.rows){
     const row=document.createElement('div');
     row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line)';
-    row.innerHTML='<div style="flex:1"><div style="font-size:.85rem;font-weight:600">'+esc(m.name)+(m.installed?' <span class="fnote">'+(m.enabled===false?'已停用':'已启用')+'</span>':'')+'</div>'+
+    row.innerHTML='<div style="flex:1"><div style="font-size:.85rem;font-weight:600">'+esc(m.name)+(m.installed?' <span class="fnote mcp-st">'+(m.enabled===false?'已停用':'已启用')+'</span>':'')+'</div>'+
       '<div class="fnote" style="margin-top:2px">'+esc(m.desc)+(m.license?' · '+esc(m.license):'')+'</div>'+
       (m.install&&m.install.msg?'<div class="fnote" style="color:var(--warn-tx)">'+esc(m.install.msg)+'</div>':'')+'</div>';
     if(m.installed){
-      // s57: 卸载（删 config 块 + vendor 目录）；开关在「它会什么」面板，停用不改这里
+      // s95/S1b（裁决 2026-09-16 §2）：MCP 开关归位插件 tab（装/卸/开关同行，撤 s57「去本事开关」）；写通道=POST /api/extensions（id=mcp-<id> 前端自算，s57 写通道原样），ext 按钮同款克隆
+      const tog=document.createElement('button');
+      tog.className='mini'; tog.style.minWidth='84px';
+      const paintSt=()=>{ const st=row.querySelector('.mcp-st'); if(st) st.textContent=m.enabled===false?'已停用':'已启用'; };
+      const paintTog=()=>{ tog.textContent=m.enabled===false?'⏸ 关着':'✅ 开着'; tog.style.borderColor=m.enabled===false?'var(--line-strong)':'var(--acc)';
+        tog.style.color=m.enabled===false?'var(--mut)':'var(--acc)'; };
+      paintTog();
+      tog.onclick=async()=>{
+        const next=!(m.enabled===false);
+        tog.disabled=true;
+        try{
+          const r=await apiJSON('/api/extensions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:'mcp-'+m.id,enabled:next})});
+          if(!r.ok) throw new Error(r.err||'失败');
+          m.enabled=next; paintTog(); paintSt();
+        }catch(e){ alert('没改成：'+e.message); }
+        tog.disabled=false;
+      };
+      row.appendChild(tog);
+      // s57: 卸载（删 config 块 + vendor 目录）
       const un=document.createElement('button');
       un.className='mini'; un.textContent='卸载';
       un.onclick=async()=>{
