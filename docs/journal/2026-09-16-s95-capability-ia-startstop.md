@@ -73,3 +73,7 @@ QA+守卫完工→journal 终态+push→主线5 从零安装反复测试（打�
 **包构建链勘误（本批实得教训）**：改模板后必须**重跑 bootstrap** 再打包——iat5 包内 wrapper 仍是 v1（物化滞后），hash 比对发现后重建 iat6（包内 wrapper 与模板逐字节一致 bcdb1d0a…，含斜杠归一+stderr 重定向+CRLF+纯 ASCII）。**新增守卫**：apps-probe 补 B18-B20（wrapper 产物链一致性/语义/hints 教法三锚）75→78ck，防此族回归。
 
 **遗留（诚实标注）**：轮3 的**整回合**（真模型走完「写 yaml→register→收尾回复」）未取得终态证据——该沙盒会话回合在 wrapper v1 两次失败后长尾停滞（慢模型+我方两轮实验干扰），未等到收尾即转入修复与收尾流程；wrapper 的 agent 式调用已独立验证（rc=0/栈健康/注册成功三证），**整回合 E2E 留待下一轮（iat6 起）复核**。
+
+## 主线5 轮4（iat6 整回合端到端尝试）
+
+iat6 出厂包（wrapper v2）+ 种服务商配置冷启，发真任务跑整回合。**正证**：①**agent 按新 hints 教法真实跑起了 wrapper**（`data/logs/register.log` 18:44:11 条目前于主控任何探针 → wrapper 从 agent shell 可达可执行，hints 教学链成立）；②栈**零整体重启**（chat-bridge restarts=0；对照轮1/轮2 restarts=80）→ wrapper 完整文件集形态不再毁栈；③agent 产出正常（会话库实录 app.js + apps/today-todo.yaml 含建账行）。主控同形态手工对照跑通（`cd /d "…" & "…forge-register.cmd" apps/x.yaml` → registered + 栈健康；外层引号包裹形态亦成功）。**遗留 UNRESOLVED**：该次 agent 调用被 UI 标「失败」但工具返回原文未落会话库（取不到退出码），随后主控手工注册成功；本沙盒 pg restarts=3（余 0）。**整回合终态证据仍缺**（agent 到拆沙盒未出收尾回复）——下一轮建议：iat6 起、单会话、零主控干扰跑满。详情 tmp/s95/findings.md 轮4 节。
