@@ -12,18 +12,23 @@ rem  UTF-8 Chinese comment bytes got paired as GBK and ate the next line's head,
 rem ---- s91: graceful stop. stdin MUST be redirected away from the console and TUI disabled -
 rem ---- otherwise the down client can sit waiting on the console and never return
 rem ---- (user hit it 2026-09-15: the stop script appeared to do nothing / hung).
+rem ---- s97: the down client must run DETACHED. If the pc daemon is wedged (half-started
+rem ---- or stuck in an update) the client never returns, and a synchronous call wedges this
+rem ---- script right here - the wait/kill escalation below is then unreachable. The wedged
+rem ---- client is itself cleaned up by hard_stop (same exe name under this forge root).
 set "PC_EXE=%FORGE_ROOT%\bin\pc\process-compose.exe"
 set "DOWN_LOG=%TEMP%\pf-down-%RANDOM%.txt"
 set "PC_DISABLE_TUI=1"
-"%PC_EXE%" -p %PC_PORT% down <nul >"%DOWN_LOG%" 2>&1
+start "" /b cmd /c ""%PC_EXE%" -p %PC_PORT% down <nul >"%DOWN_LOG%" 2>&1"
 
 rem ---- wait for it to actually go away (API unreachable or nothing running) ----
+rem ---- 15 tries: measured graceful stop incl postgres takes 8-10s, 8 was too tight (s97) ----
 set /a TRIES=0
 :wait_stop
 powershell -NoProfile -Command "try{if((Invoke-RestMethod ('http://127.0.0.1:'+%PC_PORT%+'/processes') -TimeoutSec 1).data|?{$_.is_running}){exit 1}}catch{exit 0};exit 0" >nul 2>&1
 if not errorlevel 1 goto stopped
 set /a TRIES+=1
-if %TRIES% geq 8 goto hard_stop
+if %TRIES% geq 15 goto hard_stop
 timeout /t 1 /nobreak >nul
 goto wait_stop
 
