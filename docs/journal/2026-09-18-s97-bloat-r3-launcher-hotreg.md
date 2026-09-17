@@ -33,8 +33,8 @@ QA 复跑发现 e2e 5 红（4×backup+1×apps A9/A11），干净 HEAD 同红=环
 ## QA 复审
 
 - 早批（launcher/分页chips/rawsql）：tmp/qa-s97-review.md **通过**（P2×2 留修已落 034e55a：fuzz svc-14 快照排除 sqlite 瞬态伴生文件+超时文案；P3×5 留档）。
-- 晚批（F-7~F-11 五 commit）：tmp/qa-s97-late-review.md（本 journal 落账时在飞，结论以报告为准）。
-- 独立复跑：e2e 61/61、fuzz 冷热两轮 190/190、ui-logic 56、ia-logic 28。
+- 晚批（F-7~F-11 五 commit）：tmp/qa-s97-late-review.md **轻返工→已闭环**（独立复跑 e2e 61/61+单元 29/29+物化链；两 P2）：**P2-1** F-11 残余=退化活跃档（host/池空）bootstrap 种缺省 vs 桥写空值→三点恒同破缺；**P2-2** F-9 残余=pc 漂移对比**大小写敏感**（QA 活体：盘符 C:→c: 即全表重启），agent 手打路径 case 不一致即触发。修（c28d898）：bootstrap 镜像桥写值形态（退化档种空值，恒同优先于好看）+`data\forge-root.txt` 规范形（端口文件同款先例，wrapper 优先读+%~fi 兜底）；单元 39/39（+U8 退化档）；iat12 沙盒红绿对照（修后小写盘符手打路径 exit 0+ACP/pid 恒定；修前同形全表重启）。QA 建议级六条留档（报告内）；「冷启后首次 update 单次重启」现象与 F-12 同域未定案。
+- 独立复跑：e2e 61/61（×2）、fuzz 冷热两轮 190/190、ui-logic 56、ia-logic 28。
 
 ## 观察项（非缺陷留档）
 
