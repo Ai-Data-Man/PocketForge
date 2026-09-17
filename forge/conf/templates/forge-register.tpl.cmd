@@ -9,7 +9,14 @@ rem pc project update re-renders every command:/working_dir:/log_location: with 
 rem an un-normalized "bin\pc\.." here drifts all ${FORGE_ROOT} sites vs the launcher-started
 rem project and pc restarts the whole table (chat-bridge included -> in-flight turn orphaned).
 rem for %%~fi resolves ".." into the fully qualified clean path.
-for %%i in ("%~dp0..\..") do set "ROOT=%%~fi"
+rem qa s97 late P2-2: pc drift compare is ALSO case-sensitive and %%~dp0/%%~fi keep the CALLER's
+rem case - a hand-typed c:\root\... path drifts every ${FORGE_ROOT} site the same way (full
+rem table restart). bootstrap persists the launcher-chain root in data\forge-root.txt (same
+rem pattern as the port files); read it first (for /f = CR-safe, same read as the launcher's
+rem pc.port read); fall back to %%~fi self-derivation only if the file is missing/empty.
+set "ROOT="
+if exist "%~dp0..\..\data\forge-root.txt" for /f "usebackq delims=" %%r in ("%~dp0..\..\data\forge-root.txt") do set "ROOT=%%r"
+if not defined ROOT for %%i in ("%~dp0..\..") do set "ROOT=%%~fi"
 
 set "APP=%~1"
 if "%APP%"=="" (

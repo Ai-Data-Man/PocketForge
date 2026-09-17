@@ -138,8 +138,11 @@ try {
         $pvAct = @((ConvertFrom-Json ([IO.File]::ReadAllText($pvFile))) | Where-Object { $_.active })[0]
         if ($pvAct) {
             $pvLive = $true
-            if ($pvAct.host) { $pvHost = [string]$pvAct.host }
-            if ($pvAct.key)  { $pvKey  = [string]$pvAct.key }
+            # qa s97 晚批 P2-1: 不做非空守卫，直接镜像桥 rewriteSecretsEnv（chat-bridge.tpl.js `act.X || ''`）写值形态。
+            # 退化活跃档（host 空/models 池空）种空值而非出厂缺省——种缺省=运行值≠文件值，下次 update 判漂移重启桥（恒同优先于好看）。
+            $pvHost = [string]$pvAct.host
+            $pvKey  = [string]$pvAct.key
+            $pvModel = ''
             if ($pvAct.models) { $pvModel = [string]@($pvAct.models)[0] }
         }
     }
@@ -191,6 +194,13 @@ if (-not (Test-Path $secrets)) {
 }
 
 # 3) 端口探测（运行中的栈不动：端口文件存在且活着则跳过重写）
+# qa s97 晚批 P2-2: 规范根落盘 data\forge-root.txt（端口文件同款先例，每次启动覆写=随树搬迁/改名自愈）。
+# pc 漂移对比大小写敏感（Go 串直比，QA 活体实证 C:→c: 即全表重启），而 %~dp0/%~fi 原样保留调用方 case
+# ——agent 手打小写盘符路径调 wrapper 时 ROOT 随之小写→update 重渲染全部 ${FORGE_ROOT} 判漂移。
+# 本文件与启动器 %~dp0 同源同 case 推导（$PSScriptRoot 父目录），wrapper 优先读它定 ROOT；
+# 文件缺失（bootstrap 未跑过的异常树）→ wrapper 回落自身 %~fi 推导。
+$rootFile = Join-Path $ForgeRoot 'data\forge-root.txt'
+"$ForgeRoot" | Set-Content $rootFile
 function Test-PortAlive([int]$p) {
     $c = New-Object Net.Sockets.TcpClient
     try { $c.Connect('127.0.0.1', $p); $c.Close(); return $true } catch { return $false }
