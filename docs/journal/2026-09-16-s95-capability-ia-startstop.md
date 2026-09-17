@@ -32,9 +32,23 @@ S1a GET 收窄纯内置四行（撤 s57 并入）/S1b 插件 tab 启停钮/S1c �
 
 工程批意外自证（apps/*.yaml 声明 infra 键经 -f 合并覆盖真定义→pg crash-loop）→ 主控拍板：栈健康优先。交付=conf/apps-aggregate.ps1 单一真相源（两聚合器 12 行内联段各收敛为 1 行 -File 调用；启动器去 >nul 让告警可见）；守卫=顶层进程键命中主 yaml 现读键集→跳过该文件+人话告警（console+conf/apps.guard.log 每启覆写零告警即删）；主 yaml 缺失 fail-open。验证：段级 24/24（含勘误键名钉：postgres/nats-server 放行不误伤、pg-init 拦截）+真树静态断言（apps.env.yaml SHA 前后恒等）+apps-probe 69/69+主控复跑 24/24。bootstrap 零触及（查证不复制聚合器）；package.sh 仅补清理条目。工程留档：PS5.1 `return ,@()` 陷阱（`@(fn|Where-Object)` 的 $_=整个数组）。
 
-## 收尾小批（进行中）
+## 收尾小批（完成）
 
-QA P3 收尾：桥 deny-list 同源化（现读 yaml+常量回落 fail-safe）+ia-logic-probe 补 chip 行为断言。完成后打 v0.9.15-iat 测试包进主线5。
+QA P3 收尾（bafbb51+b2e6af2）：桥 deny-list 同源化（启动时现读 conf/process-compose.yaml 顶层键，读失败回落 9 键常量 fail-safe；双形态 PID 驱动实证）+ia-logic-probe 补 chip 行为断言（7→11ck，变异 self→selfx 必红）；e2e 61/61。
+
+## 主线5：从零安装测试（v0.9.15-iat1，沙盒 C:\PF-TEST\s95a）
+
+包：323,600,652B/25,303 文件，sha256 d6434c68…。全量发现清单=tmp/s95/findings.md。**三缺陷**：
+
+- **F-3（P1，阻断）真会话 agent 热注册永久挂起**：agent 按 hints 第 5 条执行 `pc project update -f conf/process-compose.yaml -f apps/today-quote.yaml`（首次真正启动新进程）→ shell 卡 in_progress **14 小时**、typing 常亮、零错误卡零超时。证据链：同款命令 node spawnSync 受控测量 **945ms 正常返回**；挂起时进程树无残留 process-compose.exe；时间线排除测试污染（挂起在 00:2x，GUI stop/start 在 14:20）。假设=update 启动的新进程继承 goose shell 管道写端→永不 EOF（Windows 句柄继承家族）。影响=新装机搭应用主路径。→ pf-researcher 单变量取证中。
+- **F-2（P2，核心可用性）手动停止显示「⚠️ 出错了」**：pc 手动 stop 后 `exit_code=1`（非 0），桥 procState 必判 fail；S3b 的停止注与「已停」徽章从未出现，用户自己停的被报「出错了→去问 agent」。→ 修复批中。
+- **F-1（P3，显示）apps 面板注册时间 08:00**：s94 F-7 只修了台账路径，appsPaint 同款 UTC 解析漏修（yaml created_at 纯日期串）。→ 修复批中。
+
+**通过面（含 s94 修复保持全链）**：冷启 6s/首启供给 .apikey 72B/五端点 200/logscan 仅 1 条已知良性 WARN/控制台零 JS 错误；配置流（添加后 host+Key 保留→保存→拉 121 模型→首配切换 info 正确→引导条即消）；**真会话搭应用 agent 自发全链**（写 yaml 含 forge-meta 四键→/api/apps 完整 human/url/srcSid/srcTitle/listenPorts→真实监听 8123）；🚀 面板（徽章/人话名/启停钮/详情/日志子区/搜索框）；S1c 本事 3 行+分职句逐字；S2a chips 四态+过滤；db/sched/mcp 三搜索域；**F-11 渲染流修复保持**（工具卡实时追加无冻结）；**F12① 现场正证**（stop 后 restarts=0 不被拉起）+启停双向可用。
+
+观察项：Playwright actionability 对页内按钮超时（元素无遮挡+零 JS 错误→IAB 判定问题，非产品）；agent 首次热注册前有缺 cd 的失败卡后自愈（hints 可补半句）。
+
+环境：沙盒已停（端口零残留）；dev 栈 PFdrill2 /End+/Run 恢复（healthz 200）。
 
 ## 待办（下一步）
 
