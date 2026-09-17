@@ -93,6 +93,10 @@ function rmFileWithEscalation() { // 删不掉→杀 mcp 子进程→仍删不�
     return sleep(2500).then(() => { try { fs.rmSync(DB_FILE, { force: true }); } catch {} return fs.existsSync(DB_FILE) ? 3 : 0; });
 }
 
+function listSqliteDir() { // qa s97/P2-1：快照口径排除 sqlite 瞬态伴生文件（-journal/-wal/-shm，判据=文件名后缀；引擎生命周期文件非数据），防运行窗口内进出扰动比对
+    return fs.readdirSync(SQLITE_DIR).filter(f => !/-journal$|-wal$|-shm$/.test(f)).sort().join(',');
+}
+
 async function phaseSvc() {
     // 幂等预清（教训 #9：中断遗留是常态）——残留服务/文件走同款句柄释放链
     let reg = false;
@@ -103,7 +107,7 @@ async function phaseSvc() {
         if (fs.existsSync(DB_FILE)) { ck('svc-0 预清残留库文件（escalation=' + r1 + '）', false); return; }
     }
     // 快照在预清后（qa s83d T-1：先于预清会吞掉上轮崩溃残留→重跑假红；教训 #24）
-    const snapshot = fs.readdirSync(SQLITE_DIR).sort().join(',');
+    const snapshot = listSqliteDir();
     let db = null;
     try {
         // 建库：parts（2 行）+ bigrows（千行表——dbOverview 逐表 REST 计数通道的体量向量）
@@ -207,7 +211,7 @@ async function phaseSvc() {
         try { execFileSync(process.execPath, [path.join(FORGE, 'bin', 'faucet-rawsql.js'), path.join(DATA_DIR, 'faucet.db')], { timeout: 15000, windowsHide: true }); } catch {} // 删服务连启 rawsql（幂等）
         const esc = await rmFileWithEscalation(); // 杀 mcp 子进程→必要时重启 serve→删文件（教训 #20/#15 链）
         const gone = !fs.existsSync(DB_FILE);
-        ck('svc-14 收尾文件级全清（data/sqlite 与建前快照一致；escalation=' + esc + '）', gone && fs.readdirSync(SQLITE_DIR).sort().join(',') === snapshot, fs.readdirSync(SQLITE_DIR).join(','));
+        ck('svc-14 收尾文件级全清（data/sqlite 与建前快照一致；escalation=' + esc + '）', gone && listSqliteDir() === snapshot, fs.readdirSync(SQLITE_DIR).join(','));
         let r2 = null;
         try { r2 = await getJson('/api/assets', 20000); } catch (e) { ck('svc-15 收尾后端点存活', false, e.message); }
         if (r2) ck('svc-15 收尾后服务出清单+端点存活', svcItems(r2.j).length === 0 && r2.j.ok === true, 'residual=' + svcItems(r2.j).length);

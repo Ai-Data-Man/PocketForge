@@ -30,7 +30,7 @@ while (-not (Test-BridgeReady)) {
     if ((Get-Date) -gt $deadline) {
         Write-Host ''
         Write-Host "[PocketForge] 启动没完成：等了 $TimeoutSec 秒服务还没就绪，就不自动开窗口了。"
-        Write-Host '排查看 data\logs\pc.log，或关掉本窗口重新双击「启动数字员工.cmd」再试一次。'
+        Write-Host '排查看 data\logs\pc.log。如果黑窗口还开着、服务只是慢，稍等后直接双击「跟数字员工聊天.cmd」试试。'
         exit 1
     }
     Start-Sleep -Seconds 1
