@@ -25,7 +25,12 @@ powershell -NoProfile -Command "$m=[Text.Encoding]::UTF8.GetString([Convert]::Fr
 rem ---- s90: the "relaunched" marker must sit INSIDE the quoted runas argument (empirically: "path arg" works,
 rem ---- "path" arg is dropped silently - verified 2026-09-15).
 start "" runas /trustlevel:0x20000 "%~f0 relaunched"
-exit /b 0
+rem ---- s95/F-4: terminate THIS host too (plain exit, not exit /b) after handing off. The window that ran us
+rem ---- keeps its console alive under any interactive host (cmd /K, a console window the command was typed
+rem ---- into) and conhost holds the console cwd - with the install root as cwd the folder cannot be renamed
+rem ---- or deleted after the stack stops ("Device busy"; measured: the handle survives every in-script chdir
+rem ---- and is released the moment the window's console host dies). The reduced child owns the work from here.
+exit
 :after_relaunch
 set "FORGE_IL="
 
