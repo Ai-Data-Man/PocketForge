@@ -178,6 +178,19 @@ function cleanup() {
     ck('B15 写通道三道闸：注册表推导进程名（绝不信请求体）+APP_INFRA_PROCS deny-list 与主 yaml 同源（s96/P3-2+P3-3 启动现读 appParseYaml+空解析回落 9 键基线 F12④）+白名单门', /appReadRegistry\(\)\.find\(r => r\.id === b\.id\)/.test(bridge) && /APP_INFRA_PROCS\.includes\(n\)/.test(bridge) && (() => { const iife = bridge.match(/const APP_INFRA_PROCS = \(\(\) => \{[\s\S]*?\n\}\)\(\);/); return !!iife && /appParseYaml\(FSS\.readFileSync\(path\.join\(ROOT, 'conf', 'process-compose\.yaml'\), 'utf8'\)\)\.procs/.test(iife[0]) && /keys && keys\.length/.test(iife[0]) && /const FALLBACK = \['chat-bridge', 'nats', 'faucet', 'goose-scheduler', 'faucet-rawsql', 'faucet-provision', 'daily-backup', 'pg-init', 'pg'\]/.test(iife[0]); })());
     ck('B16 执行形态：stop 多参一次（F7）+start/restart 逐名串联+pcProcMap 前置探活（管家联系不上独立口径）+失败人话不透传 stderr', /\['process', 'stop'\]\.concat\(reg\.procs\)/.test(bridge) && /for \(const n of reg\.procs\) await new Promise\(\(resolve, reject\) => pcExec\(\['process', op, n\]/.test(bridge) && /进程管家暂时联系不上，稍后再试。' \}\); return;/.test(bridge) && /没' \+ OP_ZH\[op\] \+ '成——跟小 forge 说一声/.test(bridge));
     ck('B17 日志端点：--tail 101 截断判定 + pcProcMap 先行（F12⑤ absent 名挂起防御）+多进程首个非空', /'process', 'logs', n, '--tail', '101'/.test(bridge) && /appsAppLogs[\s\S]{0,400}pcProcMap\(\)/.test(bridge) && /lines\.length\) return \{ ok: true, proc: n, lines, truncated \};/.test(bridge));
+    // ===== s95/F-6 热注册 wrapper 锚（轮2 实证：agent 直接拼 pc project update 不可执行；-f 集不全致整栈重启） =====
+    {
+        const regTplPath = path.join(FORGE, 'conf', 'templates', 'forge-register.tpl.cmd');
+        const regBinPath = path.join(FORGE, 'bin', 'pc', 'forge-register.cmd');
+        const regTpl = fs.existsSync(regTplPath) ? fs.readFileSync(regTplPath) : null;
+        const regBin = fs.existsSync(regBinPath) ? fs.readFileSync(regBinPath) : null;
+        ck('B18 wrapper 产物链：模板入库 + bin 物化逐字节一致 + 纯 ASCII + CRLF', !!regTpl && !!regBin && regTpl.equals(regBin) && ![...regTpl.toString('utf8')].some(c => c.charCodeAt(0) > 127) && (regTpl.toString('utf8').match(/\r\n/g) || []).length > 10);
+        const rt = regTpl ? regTpl.toString('utf8') : '';
+        ck('B19 wrapper 语义：完整三件套 -f + 目标 app + 斜杠归一（apps\\ 与 apps/）+ stderr 落 register.log（pc 每跑必写 stderr 噪音，agent shell 会判失败）+ 人话退出码', /conf\\process-compose\.yaml/.test(rt) && /conf\\ports\.env\.yaml/.test(rt) && /conf\\apps\.env\.yaml/.test(rt) && /APPFULL/.test(rt) && /apps\\/.test(rt) && /apps\//.test(rt) && /register\.log/.test(rt) && /exit \/b 3/.test(rt) && /exit \/b 1/.test(rt));
+        const hintsPath = path.join(FORGE, 'conf', 'goose', 'config', '.goosehints');
+        const hints = fs.existsSync(hintsPath) ? fs.readFileSync(hintsPath, 'utf8') : '';
+        ck('B20 hints 教法：热注册只教 wrapper 单命令单参（旧「自己拼 pc project update -f ...」教法已移除）', /forge-register\.cmd" apps\/<应用名>\.yaml/.test(hints) && !/project update -f conf\/process-compose\.yaml/.test(hints));
+    }
 
     // ===== 前端模板提取 =====
     const html = fs.readFileSync(path.join(FORGE, 'conf', 'templates', 'chat.tpl.html'), 'utf8');
