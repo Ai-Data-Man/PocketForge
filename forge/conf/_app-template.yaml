@@ -4,7 +4,7 @@
 #   1. 顶层只写 processes:，进程键名必须以应用名开头（如 myapp-web）。
 #   2. 禁止定义基础设施键（nats/faucet/goose-*）。
 #   3. 数据落 data/，日志走 pc 统一 rotation。
-#   4. 注册后执行: pc project update -f conf/process-compose.yaml -f apps/<name>.yaml
+#   4. 注册后执行: bin\pc\forge-register.cmd apps/<name>.yaml（就这一个命令，别自己拼 pc project update 参数——文件集不全整个栈会被重启、对话会断）
 #   5. 值一律用单引号（s88/R2 实锤：${FORGE_ROOT} 替换出的反斜杠路径在双引号里被当转义符，pc 解析即 FTL）。
 processes:
   myapp-<proc>:
