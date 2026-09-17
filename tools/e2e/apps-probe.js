@@ -91,6 +91,11 @@ function cleanup() {
     ck('A13 srcSid=meta.source→workspace-map 反解', !wsPair || (by['s87a-full'] && by['s87a-full'].srcSid === EXP_SID), 'ws=' + (wsPair && wsPair[0]) + ' expect=' + EXP_SID + ' got=' + (by['s87a-full'] && by['s87a-full'].srcSid));
     ck('A14 srcTitle 形状（sid 有会话名则字符串，否则 null——不编造）', !wsPair || (by['s87a-full'] && (by['s87a-full'].srcTitle === null || typeof by['s87a-full'].srcTitle === 'string')));
     ck('A15 createdAt=meta.created_at 优先 / 无 meta 落 mtime ISO', by['s87a-full'] && by['s87a-full'].createdAt === '2026-01-15' && /^\d{4}-\d{2}-\d{2}T/.test(by['s87d-bg'].createdAt || ''), by['s87a-full'] && by['s87a-full'].createdAt + ' | ' + (by['s87d-bg'] && by['s87d-bg'].createdAt));
+    // s95 F-1：createdAtTs=桥侧 parseAssetTs 结果——纯日期串→本地零点（不再恒 08:00）；完整 ISO 形态走 Date.parse 不误伤；无账=null
+    ck('A15b createdAtTs 活体（纯日期串=本地零点 / mtime ISO=Date.parse 原值 / 无账 null）',
+        by['s87a-full'] && by['s87a-full'].createdAtTs === new Date(2026, 0, 15).getTime() && new Date(by['s87a-full'].createdAtTs).getHours() === 0
+        && by['s87d-bg'] && by['s87d-bg'].createdAtTs === Date.parse(by['s87d-bg'].createdAt) && by['s87b-probe'].createdAtTs !== null,
+        'a=' + (by['s87a-full'] && by['s87a-full'].createdAtTs) + ' bg=' + (by['s87d-bg'] && by['s87d-bg'].createdAtTs));
     const sortedOk = (() => { // 同 state 内 createdAt 非空者降序、null 沉底（排序全量规则走 B12 桩测）
         for (let i = 1; i < apps.length; i++) {
             if (apps[i - 1].state !== apps[i].state) continue;
@@ -146,6 +151,18 @@ function cleanup() {
             procState({ is_running: true }) === 'run' && procState({ is_running: false, exit_code: 0 }) === 'stop' &&
             procState({ is_running: false, exit_code: 7 }) === 'fail' && procState({}) === 'absent' && procState(undefined) === 'absent');
     }
+    const ptsSrc = bridge.match(/function parseAssetTs\(v\) \{[\s\S]*?\n\}/);
+    if (!ptsSrc) { ck('B18 parseAssetTs 可提取', false, 'NOT FOUND'); }
+    else {
+        const parseAssetTs = new Function('return (' + ptsSrc[0] + ')')();
+        const d = new Date(parseAssetTs('2026-09-17'));
+        // s95 F-1：纯日期串→本地零点（东八区不再恒 08:00）；完整 ISO 维持 Date.parse；非法/越界/非串=null 不编造
+        ck('B18 parseAssetTs 桩测（F-1：纯日期串=本地零点，非 UTC 零点）',
+            parseAssetTs('2026-09-17') === new Date(2026, 8, 17).getTime() && d.getHours() === 0 && d.getDate() === 17);
+        ck('B19 parseAssetTs 形态分流（mtime 完整 ISO 不被日期串规则误伤）+ 越界/非串拒',
+            parseAssetTs('2026-09-16T18:23:45.123Z') === Date.parse('2026-09-16T18:23:45.123Z') && parseAssetTs('2026-13-45') === null && parseAssetTs('') === null && parseAssetTs(null) === null && parseAssetTs(1758000000000) === null);
+    }
+    ck('B18b 桥端 createdAtTs 接入（F-1：parseAssetTs 消费 meta.created_at/mtime，前端无第二套解析）', /createdAtTs: parseAssetTs\(createdAt\)/.test(bridge) && /const createdAt = \(typeof meta\.created_at === 'string' && meta\.created_at\.trim\(\)\) \|\| r\.mtime \|\| null;/.test(bridge));
     const cmpSrc = bridge.match(/apps\.sort\((\(a, b\) => \{[\s\S]*?\n\s*\})\);/);
     if (!cmpSrc) { ck('B11 排序比较器可提取', false, 'NOT FOUND'); }
     else {
@@ -183,6 +200,14 @@ function cleanup() {
         ck('C16 停止注裁决原文（UI 发起会话内标记 appsUserStopped；再启即清）', /已停。下次启动数字员工时它会自己回来；想让它彻底别再回来，跟小 forge 说一声拆掉。/.test(appsBlock) && /const appsUserStopped=\{\};/.test(html) && /else delete appsUserStopped\[id\];/.test(html));
         ck('C17 按钮人话 aria/title（先停一停…/启动这个应用）+无确认框', /title="先停一停（下次启动数字员工时会自己回来）"/.test(appsBlock) && /title="启动这个应用"/.test(appsBlock) && !/confirm\(/.test(appsBlock));
         ck('C18 日志子区：📋 最近日志 按需拉取（ontoggle+一次标记）+pre.textContent 转义+零轮询', /📋 最近日志/.test(appsBlock) && /\/api\/apps\/logs\?id='\+encodeURIComponent\(a\.id\)/.test(appsBlock) && /ld\.dataset\.loaded/.test(appsBlock) && /pre\.textContent=\(d\.lines\|\|\[\]\)\.join\('\\n'\)/.test(appsBlock));
+        // s95 F-2：手动停命中的卡按「已停」呈现——徽章/进程行/动作面全部走 state（而非 a.state），出错提示行加 !uiStopped 门（真 fail 判别力）
+        ck('C19 F-2 停止态呈现：appsUserStopped 命中+fail → 已停徽章+停止注+▶启动（无出错行/无⟳重启）；真 fail 仍走进错面',
+            /const uiStopped=a\.state==='fail'&&!!appsUserStopped\[a\.id\];/.test(appsBlock) && /const state=uiStopped\?'stop':a\.state;/.test(appsBlock)
+            && /APP_STATE_ZH\[state\]/.test(appsBlock) && /appsProcZh\(pz\[0\]\)/.test(appsBlock)
+            && /failTip=\(!appsNote&&a\.state==='fail'&&!uiStopped\)/.test(appsBlock) && /stopNote=\(state==='stop'&&appsUserStopped\[a\.id\]\)/.test(appsBlock)
+            && /if\(state==='run'\)/.test(appsBlock) && /else if\(state==='stop'\|\|state==='fail'\)/.test(appsBlock) && /if\(state==='fail'\) opsWord\+=/.test(appsBlock)
+            && /刷新后回到/.test(appsBlock));
+        ck('C20 F-1 注册时间走桥端 createdAtTs（纯日期串→本地零点，前端不再裸 new Date(a.createdAt)）', /const time=\(a\.createdAtTs\|\|a\.createdAt\)\?new Date\(a\.createdAtTs\|\|a\.createdAt\)/.test(appsBlock));
     }
     const paneApps = (html.match(/<div class="mpane" id="mpane-apps"[\s\S]*?<div class="mpane" id="mpane-mem"/) || [''])[0];
     ck('C13 pane（s95/S2c 修订）：搜索框 apps-q 在场；pane HTML 恒一按钮=刷新看看（启停钮 JS 动态建，无静态操作钮）', !!paneApps && (paneApps.match(/<button[^>]*>/g) || []).length === 1 && /apps-refresh/.test(paneApps) && /id="apps-q"/.test(paneApps));

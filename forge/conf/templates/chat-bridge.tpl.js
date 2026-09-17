@@ -1941,11 +1941,15 @@ async function appsOverview() {
         // URL 三层（裁决 §3-S2）：meta.url（agent 建账）> http_get 探针合成（agent 亲配）> null；command 端口正则=红线裁掉
         let url = r.probeUrl;
         if (typeof meta.url === 'string' && /^https?:\/\/\S+$/i.test(meta.url)) url = meta.url;
+        // s95 F-1（findings F-1）：注册时间前端纯展示用——解析口径复用台账同源 parseAssetTs（纯日期串→本地零点，
+        // mtime 完整 ISO 走 Date.parse 原语义），前端只做 toLocaleString，杜绝第二套解析
+        const createdAt = (typeof meta.created_at === 'string' && meta.created_at.trim()) || r.mtime || null;
         apps.push({
             id: r.id,
             human: (typeof meta.description === 'string' && meta.description.trim()) ? meta.description.trim() : null,
             url,
-            createdAt: (typeof meta.created_at === 'string' && meta.created_at.trim()) || r.mtime || null,
+            createdAt,
+            createdAtTs: parseAssetTs(createdAt),
             srcSid: (meta.source && wsm[meta.source] && wsm[meta.source].sid) || null, // ws-map 反解（/api/assets srcOf 同款）
             srcTitle: null,
             procs,

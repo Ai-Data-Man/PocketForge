@@ -89,9 +89,10 @@ const cleanup = () => { for (const f of Object.keys(FIX)) { try { fs.unlinkSync(
     ck('F7 meta 非对象形态（数组/数字/字符串）全降级 human=null 不炸', by['fuzz-marray'] && by['fuzz-marray'].human === null && by['fuzz-mnum'] && by['fuzz-mnum'].human === null && by['fuzz-mstr'] && by['fuzz-mstr'].human === null);
     ck('F8 超长 forge-meta（1MB）：合法 JSON 照常解析（human 超长字符串）不炸；尾注释形态降级 null', by['fuzz-mlong'] && typeof by['fuzz-mlong'].human === 'string' && by['fuzz-mlong'].human.length > 1000000 && by['fuzz-mtail'] && by['fuzz-mtail'].human === null);
     // 形状恒定：键集与类型（所有条目）
-    const APP_KEYS = ['createdAt', 'human', 'id', 'listenPorts', 'procs', 'srcSid', 'srcTitle', 'state', 'url', 'yaml'].sort().join(',');
+    const APP_KEYS = ['createdAt', 'createdAtTs', 'human', 'id', 'listenPorts', 'procs', 'srcSid', 'srcTitle', 'state', 'url', 'yaml'].sort().join(',');
     const shapeOk = apps.every(a => Object.keys(a).sort().join(',') === APP_KEYS
         && typeof a.id === 'string' && (a.human === null || typeof a.human === 'string')
+        && (a.createdAtTs === null || typeof a.createdAtTs === 'number') // s95 F-1: epoch ms 或 null（时间无=「—」，不编造；形态分流由 apps-probe B18/B19 桩测）
         && (a.url === null || typeof a.url === 'string') && (a.srcSid === null || typeof a.srcSid === 'string')
         && (a.srcTitle === null || typeof a.srcTitle === 'string') && Array.isArray(a.procs) && Array.isArray(a.listenPorts)
         && ['run', 'stop', 'fail'].includes(a.state) && a.procs.every(p => Object.keys(p).sort().join(',') === 'exitCode,name,state' && typeof p.name === 'string' && ['run', 'stop', 'fail', 'absent'].includes(p.state)));

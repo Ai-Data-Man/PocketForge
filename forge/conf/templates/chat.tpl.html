@@ -2008,13 +2008,20 @@ function appsPaint(){
   for(const a of list){
     const card=document.createElement('div');
     card.style.cssText='padding:8px 2px;border-bottom:1px solid var(--line)';
-    const badge=appsNote?'❓ 状态未知':(APP_STATE_ZH[a.state]||'⏹ 已停');
-    const time=a.createdAt?new Date(a.createdAt).toLocaleString('zh',{year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'; // 注册时间无=「—」不编造
-    const procHtml=a.procs.length<=1
-      ?(a.procs.length?'<span>⚙️ '+esc(a.procs[0].name)+'：'+esc(appsProcZh(a.procs[0]))+'</span>':'') // 单进程合并进卡片头
-      :'<div style="margin-top:2px">'+a.procs.map(p=>'<div>⚙️ '+esc(p.name)+'：'+esc(appsProcZh(p))+'</div>').join('')+'</div>';
-    const failTip=(!appsNote&&a.state==='fail')?'<div class="fnote" style="margin-top:2px;color:var(--warn-tx)">出错了——跟小 forge 说一声，让它看看怎么回事。</div>':''; // 补救=对话通道，无按钮
-    const stopNote=(a.state==='stop'&&appsUserStopped[a.id])?'<div class="fnote" style="margin-top:2px">已停。下次启动数字员工时它会自己回来；想让它彻底别再回来，跟小 forge 说一声拆掉。</div>':''; // s95/S3b：首句=结构性事实，次句=对话通道兜底；只对 UI 发起停止的卡显示（会话内有效）
+    // s95 F-2（findings F-2 + 裁决 2026-09-16 §4）：pc 分不出「用户手动停」与「异常退出」（停后 is_running=false 且 exit_code=1
+    // → 桥 procState 必判 fail）。用户自己停的不叫出错：仅当会话内标记 appsUserStopped 命中且桥判 fail 时，按「已停」呈现。
+    // 已知降级（记录在案）：标记只在会话内有效，刷新后回到「⚠️ 出错了」，此时 ▶ 启动仍可用（裁决 §4 红线=停止不落持久化，
+    // 故不引入桥侧记忆；见 findings F-2 与 §4 停止注条款）。
+    const uiStopped=a.state==='fail'&&!!appsUserStopped[a.id];
+    const state=uiStopped?'stop':a.state;
+    const badge=appsNote?'❓ 状态未知':(APP_STATE_ZH[state]||'⏹ 已停');
+    const time=(a.createdAtTs||a.createdAt)?new Date(a.createdAtTs||a.createdAt).toLocaleString('zh',{year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'; // 注册时间无=「—」不编造；s95 F-1：createdAtTs=桥侧 parseAssetTs 结果（纯日期串→本地零点）
+    const pz=a.procs.map(p=>({name:p.name,state:uiStopped&&p.state==='fail'?'stop':p.state})); // s95 F-2：手动停命中的卡，进程行同口径显示「已停」，不与徽章打架
+    const procHtml=pz.length<=1
+      ?(pz.length?'<span>⚙️ '+esc(pz[0].name)+'：'+esc(appsProcZh(pz[0]))+'</span>':'') // 单进程合并进卡片头
+      :'<div style="margin-top:2px">'+pz.map(p=>'<div>⚙️ '+esc(p.name)+'：'+esc(appsProcZh(p))+'</div>').join('')+'</div>';
+    const failTip=(!appsNote&&a.state==='fail'&&!uiStopped)?'<div class="fnote" style="margin-top:2px;color:var(--warn-tx)">出错了——跟小 forge 说一声，让它看看怎么回事。</div>':''; // 补救=对话通道，无按钮；s95 F-2：UI 主动停的不走进错面
+    const stopNote=(state==='stop'&&appsUserStopped[a.id])?'<div class="fnote" style="margin-top:2px">已停。下次启动数字员工时它会自己回来；想让它彻底别再回来，跟小 forge 说一声拆掉。</div>':''; // s95/S3b：首句=结构性事实，次句=对话通道兜底；只对 UI 发起停止的卡显示（会话内有效）
     const urlWord=a.url?'<button class="mini apps-open" data-url="'+esc(a.url)+'">打开看看</button>'
       :'<span class="fnote">这个应用没有网页，它在后台做事</span>'; // 不猜、不放死链
     // s95/S3b（裁决 2026-09-16 §4，supersede s87）：状态驱动启停钮——absent 无钮（F12③ 实证 start 对 absent 快速失败，收窄为仅 stop/fail 可启；
@@ -2022,9 +2029,9 @@ function appsPaint(){
     const anyPresent=a.procs.some(p=>p.state!=='absent');
     let opsWord='';
     if(!appsNote&&anyPresent){
-      if(a.state==='run') opsWord+='<button class="mini apps-op" data-id="'+esc(a.id)+'" data-op="stop" title="先停一停（下次启动数字员工时会自己回来）" aria-label="先停一停（下次启动数字员工时会自己回来）">⏹ 停止</button>';
-      else if(a.state==='stop'||a.state==='fail') opsWord+='<button class="mini apps-op" data-id="'+esc(a.id)+'" data-op="start" title="启动这个应用" aria-label="启动这个应用">▶ 启动</button>';
-      if(a.state==='fail') opsWord+='<button class="mini apps-op" data-id="'+esc(a.id)+'" data-op="restart" title="重启这个应用" aria-label="重启这个应用">⟳ 重启</button>';
+      if(state==='run') opsWord+='<button class="mini apps-op" data-id="'+esc(a.id)+'" data-op="stop" title="先停一停（下次启动数字员工时会自己回来）" aria-label="先停一停（下次启动数字员工时会自己回来）">⏹ 停止</button>';
+      else if(state==='stop'||state==='fail') opsWord+='<button class="mini apps-op" data-id="'+esc(a.id)+'" data-op="start" title="启动这个应用" aria-label="启动这个应用">▶ 启动</button>';
+      if(state==='fail') opsWord+='<button class="mini apps-op" data-id="'+esc(a.id)+'" data-op="restart" title="重启这个应用" aria-label="重启这个应用">⟳ 重启</button>';
     }
     const src=a.srcSid?'<span>来自对话：'+esc(a.srcTitle||'未命名')+'</span>':'<span>来源不详</span>'; // 无账存量=诚实降级，不考古
     card.innerHTML='<div style="display:flex;align-items:center;gap:10px"><div style="flex:1;min-width:0">'

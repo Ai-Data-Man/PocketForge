@@ -360,7 +360,7 @@ rm -f /tmp/assets-probe.log
 # s95 扩：POST 写通道负向量组（deny-list infra 键）+ 启停活体（fixture 热注册 project update 全套 -f+env → stop/start/restart → /api/apps/logs → 反注册还原字节回基线）
 rc=0; node "$ROOT/tools/e2e/apps-probe.js" > /tmp/apps-probe.log 2>&1 || rc=$?
 grep -q "FAIL=0" /tmp/apps-probe.log || rc=$?
-ck "apps probe 69 ck (registry x pc join + URL layers + honest degrade + sort stub + write-channel negatives + live start/stop/restart + logs endpoint + FE anchors + self-clean)" $rc
+ck "apps probe 75 ck (registry x pc join + URL layers + honest degrade + sort stub + write-channel negatives + live start/stop/restart + logs endpoint + FE anchors + s95 F-1/F-2 createdAtTs 本地零点 + 手动停已停呈现 + self-clean)" $rc
 grep -E "^apps-probe" /tmp/apps-probe.log || true
 rm -f /tmp/apps-probe.log
 
