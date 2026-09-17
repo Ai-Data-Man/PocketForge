@@ -511,8 +511,10 @@ details.tz[open]>summary::before{content:'▾ '}
       <button id="apps-refresh" class="mini">刷新看看</button>
     </div>
     <div class="fnote" style="margin-bottom:10px">小 forge 给你搭的应用——哪个在跑、怎么打开。✨做过的东西是过去的事，这里的现在开着、能用。哪个停了或出错了，跟它说一声就行。</div>
+    <div id="apps-chips" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px"></div><!-- r3/S4b: 状态 chips（made-chips 容器同款） -->
     <input id="apps-q" placeholder="🔍 在小应用里找…（名字/说明）" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
     <div id="apps-list" style="max-height:340px;overflow-y:auto"></div>
+    <div id="apps-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 0 6px"></div><!-- r3/S4a: 翻页器（made-pager 同款） -->
   </div>
   <div class="mpane" id="mpane-mem" style="display:none">
     <h3 style="margin:0 0 8px">小 forge 记住的事</h3>
@@ -524,8 +526,10 @@ details.tz[open]>summary::before{content:'▾ '}
   <div class="mpane" id="mpane-sched" style="display:none">
     <h3 style="margin:0 0 8px">定时任务</h3>
     <div class="fnote" style="margin-bottom:10px">想让它定时干活，直接在聊天里说，比如「每周五下午5点，把库存数据整理成表格发我」。这里能看到已定好的任务，不要的可以删。</div>
+    <div id="sched-chips" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px"></div><!-- r3/S4d: 暂停 chips（made-chips 容器同款） -->
     <input id="sched-q" placeholder="🔍 在定时任务里找…" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
     <div id="sched-list" style="max-height:340px;overflow-y:auto"></div>
+    <div id="sched-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 0 6px"></div><!-- r3/S4c: 翻页器（made-pager 同款） -->
   </div>
   <div class="mpane" id="mpane-mcp" style="display:none">
     <h3 style="margin:0 0 8px">官方 MCP（扩展插件）</h3>
@@ -1443,7 +1447,7 @@ function showMtab(name){
   if(t&&!t[1]){ t[1]=true; window[t[0]](); }
 }
 document.querySelectorAll('#manage-modal .mtab').forEach(b=>b.onclick=()=>showMtab(b.dataset.pane));
-$('open-manage').onclick=()=>{ $('manage-modal').classList.add('on'); for(const k in mtabs) mtabs[k][1]=false; listPage.mcp=1; listPage.made=1; listPage.db=1; showMtab('ext'); }; // s51: 重开即重拉，防陈旧清单; s71: 插件页回第 1 页; s83: 做过的东西页同款; s95/S2b: 数据页同款
+$('open-manage').onclick=()=>{ $('manage-modal').classList.add('on'); for(const k in mtabs) mtabs[k][1]=false; listPage.mcp=1; listPage.made=1; listPage.db=1; listPage.apps=1; listPage.sched=1; showMtab('ext'); }; // s51: 重开即重拉，防陈旧清单; s71: 插件页回第 1 页; s83: 做过的东西页同款; s95/S2b: 数据页同款; r3/S4a-S4c: 小应用/定时页同款
 // s46: MCP 市场 UI（安装是后台异步，轮询状态直到 done/error）
 // R2 声明（s95/S2e，裁决 2026-09-16 §3）：目录终态 <30（curated+自配）；分页已有（s71），搜索本批补齐（mcp-q：name+desc 包含，pageSlice 前过滤）
 let mcpPollTimer=null, mcpQT=null;
@@ -1606,7 +1610,7 @@ $('mkt-cat-add').onclick=async()=>{
 $('manage-modal').onclick=e=>{ if(e.target.id==='manage-modal'){ e.target.classList.remove('on'); clearTimeout(mcpPollTimer); } }; // s51c: 关弹窗停安装轮询
 
 // ---- s32: 定时任务列表（只读+删除；设置由聊天对话完成）----
-// R2 声明（s95/S2d，裁决 2026-09-16 §3）：终态 <30（对话式定任务）；9-30 档=搜索（sched-q 本批补齐：标题+cron 人话包含）；>30 触发分页（行型 30/页）。
+// R2 声明（r3 机制内建制，裁决 2026-09-18-bloat-r3-built-in §3/S4c-S4d；s95「>30 触发分页」条款作废）：搜索+分页 30/页+暂停 chips 已内建（对话驱动清单三件套）；机制恒建（pageSlice 恒走），pagerPaint 阈值内零视觉机制。
 function cronHuman(cron){
   // 常见 5 段 cron 转人话；看不懂就原样展示
   const M=['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
@@ -1622,22 +1626,38 @@ function cronHuman(cron){
   return f||cron;
 }
 let schedAll=null, schedQT=null; // s95/S2d: 已拉清单缓存+搜索防抖句柄（db-q 同款 200ms，纯前端过滤）
+const schedFilter={chip:'all'}; // r3/S4d: 暂停 chips（all/on/paused；drift 不入维度——告警行常驻行内，无混排找回痛点，防维度通胀）
+function schedChips(){ // r3/S4d: made-chips/skills-chips 同款克隆；chip 状态跨开合保持（open-manage 只重置页码）
+  const defs=[['all','全部'],['on','▶ 排着的'],['paused','⏸ 暂停的']]; // 文案与行内既有词汇同源（⏸▶/已暂停），零新术语
+  const box=$('sched-chips'); if(!box) return; box.innerHTML='';
+  for(const [k,label] of defs){
+    const b=document.createElement('button'); b.className='chip'+(schedFilter.chip===k?' on':''); b.textContent=label;
+    b.onclick=()=>{ schedFilter.chip=k; listPage.sched=1; schedChips(); schedPaint(); }; // r3/S4d: chip 切换回第 1 页（made 先例）
+    box.appendChild(b);
+  }
+}
 async function loadSchedUI(){
   const box=$('sched-list'); if(!box) return;
   let list;
   try { list = await apiJSON('/api/schedules'); } catch(e){ box.innerHTML='<div class="fnote">读取失败：'+esc(e.message)+'</div>'; return; }
   schedAll=list;
-  schedPaint();
+  schedChips(); schedPaint(); // r3/S4d: chips 随面板加载渲染（loadMadeUI 的 madeChips+madePaint 同款）
 }
 function schedPaint(){
   const box=$('sched-list'); if(!box||!schedAll) return;
   const list=schedAll;
-  if(!list.length){ box.innerHTML='<div class="fnote">还没有定时任务。想让它定时干活，在聊天里说就行。</div>'; return; }
+  if(!list.length){ box.innerHTML='<div class="fnote">还没有定时任务。想让它定时干活，在聊天里说就行。</div>'; pagerPaint('sched-pager',1,1,0,null); return; }
   const q=(($('sched-q')||{}).value||'').trim().toLowerCase(); // s95/S2d: 标题+cron 人话（cronHuman 输出）包含
-  const fl=list.filter(j=>!q||String(j.title||'').toLowerCase().includes(q)||String(cronHuman(j.cron)||'').toLowerCase().includes(q));
+  const fl=list
+    .filter(j=>schedFilter.chip==='all'||(schedFilter.chip==='paused'?!!j.paused:!j.paused)) // r3/S4d: chip 过滤在 q 过滤前（skills 先例）
+    .filter(j=>!q||String(j.title||'').toLowerCase().includes(q)||String(cronHuman(j.cron)||'').toLowerCase().includes(q));
   box.innerHTML='';
-  if(!fl.length){ box.innerHTML='<div class="fnote">没找到跟“'+esc(q)+'”有关的定时任务。</div>'; return; }
-  for(const j of fl){
+  if(!fl.length){
+    box.innerHTML='<div class="fnote">'+(q?'没找到跟“'+esc(q)+'”有关的定时任务。':'没有'+(schedFilter.chip==='paused'?'暂停的':'排着的')+'定时任务。')+'</div>'; // r3/S4d: chip 非全空态与真空区分
+    pagerPaint('sched-pager',1,1,0,null); return;
+  }
+  const ps=pageSlice(fl,'sched',PAGE_N); // r3/S4c: 行型 30/页（db/pr 先例）；机制恒建，≤30 页 pagerPaint 自动零视觉
+  for(const j of ps.rows){
     const row=document.createElement('div');
     row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line)';
     row.innerHTML='<div style="flex:1"><div style="font-size:.85rem;font-weight:600">'+esc(j.title)+'</div>'+
@@ -1673,8 +1693,9 @@ function schedPaint(){
     row.appendChild(del);
     box.appendChild(row);
   }
+  pagerPaint('sched-pager',listPage.sched,ps.pages,ps.total,p=>{ listPage.sched=p; schedPaint(); }); // r3/S4c: 翻页重渲染
 }
-$('sched-q').oninput=()=>{ clearTimeout(schedQT); schedQT=setTimeout(schedPaint,200); }; // s95/S2d
+$('sched-q').oninput=()=>{ clearTimeout(schedQT); schedQT=setTimeout(()=>{ listPage.sched=1; schedPaint(); },200); }; // s95/S2d; r3/S4c: 过滤变化回第 1 页（made-q 同款），防抖复调保持当前输入
 
 // ---- s21: 聊天记录搜索（左栏；>=2 字触发，防抖 300ms；点结果跳会话） ----
 let searchTimer=null, searchSeq=0;
@@ -1994,7 +2015,7 @@ function openAsset(it){
 }
 
 // ===== 🚀 小应用（裁决 2026-09-14-app-runtime-panel §3-S3）：apps/*.yaml × pc 状态只读观察面 =====
-// R2 规模声明（s95/S2c 修订，裁决 2026-09-16 §3）：终态 <30（s87「<10」作废，用户 2026-09-16 点名膨胀可能）；9-30 档=搜索（apps-q 本批补齐）；>30 触发分页 12/页。
+// R2 声明（r3 机制内建制，裁决 2026-09-18-bloat-r3-built-in §3/S4a-S4b；s95「>30 触发分页 12/页」条款作废）：搜索+分页 12/页+状态 chips 已内建（agent 驱动无上限清单三件套）；机制恒建（pageSlice 恒走），pagerPaint 阈值内零视觉机制。
 // R4：主名=meta.description（建时落的人话账）；缺=「〈id〉·小 forge 搭的应用」结构性兜底；时间无=「—」；不编造。
 // 无轮询无推送（打开拉一次+手动刷新；0-8 条规模下实时性无消费者）；唯一动作「打开看看」（url 有才给，不猜不放死链）。
 let appsAll=null, appsNote=null, appsPortsTrunc=false;
@@ -2002,17 +2023,31 @@ const APP_STATE_ZH={run:'✅ 运行中',stop:'⏹ 已停',fail:'⚠️ 出错了
 const APP_PROC_ZH={run:'在跑',stop:'已停',fail:'出错',absent:'下次启动时自动带起'};
 function appsProcZh(p){ return (appsNote&&p.state==='absent')?'状态未知':APP_PROC_ZH[p.state]; } // pc 联系不上→诚实降级，不误称「待启动」
 let appsQT=null; // s95/S2c: 搜索防抖句柄（db-q 同款 200ms）
+const appsFilter={chip:'all'}; // r3/S4b: 状态 chips（all/run/stop/fail）；过滤字段=显示态（与徽章同源，含 appsUserStopped 修正；absent 桥侧已三值化收敛为 stop 不单列第四态）
+function appsChips(){ // r3/S4b: skills-chips 同款克隆（裁决 §3-S4b）；chip 状态跨开合保持（open-manage 只重置页码）
+  const defs=[['all','全部'],['run','✅ 运行中'],['stop','⏹ 已停'],['fail','⚠️ 出错了']]; // 文案=徽章既有词汇，零新术语
+  const box=$('apps-chips'); if(!box) return; box.innerHTML='';
+  for(const [k,label] of defs){
+    const b=document.createElement('button'); b.className='chip'+(appsFilter.chip===k?' on':''); b.textContent=label;
+    b.onclick=()=>{ appsFilter.chip=k; listPage.apps=1; appsChips(); appsPaint(); }; // r3/S4b: chip 切换回第 1 页（made 先例）
+    box.appendChild(b);
+  }
+}
 function appsPaint(){
   const box=$('apps-list'); if(!box||!appsAll) return;
   box.innerHTML='';
   const q=(($('apps-q')||{}).value||'').trim().toLowerCase(); // s95/S2c: human/id/srcTitle 小写包含（裁决 §3-S2c）
-  const list=appsAll.filter(a=>!q||(a.human||'').toLowerCase().includes(q)||a.id.toLowerCase().includes(q)||(a.srcTitle||'').toLowerCase().includes(q));
+  const list=appsAll
+    .filter(a=>{ if(appsFilter.chip==='all') return true; const us=a.state==='fail'&&!!appsUserStopped[a.id]; const st=us?'stop':a.state; return st===appsFilter.chip; }) // r3/S4b: chip 过滤=显示态（与下方徽章同源判据）在 q 过滤前（skills 先例）
+    .filter(a=>!q||(a.human||'').toLowerCase().includes(q)||a.id.toLowerCase().includes(q)||(a.srcTitle||'').toLowerCase().includes(q));
   if(!list.length){
-    box.innerHTML='<div class="fnote">'+(q?'没找到跟“'+esc(q)+'”有关的应用。':'小 forge 还没给你搭过应用——跟它说「帮我做个 ××」试试。')+'</div>';
+    box.innerHTML='<div class="fnote">'+(q?'没找到跟“'+esc(q)+'”有关的应用。':(appsFilter.chip==='all'?'小 forge 还没给你搭过应用——跟它说「帮我做个 ××」试试。':'没有'+({run:'运行中',stop:'已停',fail:'出错'})[appsFilter.chip]+'的小应用。'))+'</div>'; // r3/S4b: chip 非全空态与真空/q 空态三分
     if(appsNote){ const n=document.createElement('div'); n.className='fnote'; n.style.margin='4px 0'; n.textContent=appsNote; box.appendChild(n); }
+    pagerPaint('apps-pager',1,1,0,null);
     return;
   }
-  for(const a of list){
+  const ps=pageSlice(list,'apps'); // r3/S4a: 卡片型缺省 12/页（ins/store 同款）；机制恒建，≤12 页 pagerPaint 自动零视觉
+  for(const a of ps.rows){
     const card=document.createElement('div');
     card.style.cssText='padding:8px 2px;border-bottom:1px solid var(--line)';
     // s95 F-2（findings F-2 + 裁决 2026-09-16 §4）：pc 分不出「用户手动停」与「异常退出」（停后 is_running=false 且 exit_code=1
@@ -2075,6 +2110,7 @@ function appsPaint(){
     if(srcEl&&srcEl.dataset.sid) srcEl.onclick=()=>{ $('manage-modal').classList.remove('on'); openSession(srcEl.dataset.sid); }; // 复用侧栏既有切会话入口
     box.appendChild(card);
   }
+  pagerPaint('apps-pager',listPage.apps,ps.pages,ps.total,p=>{ listPage.apps=p; appsPaint(); }); // r3/S4a: 翻页重渲染；下方两行注保持渲染流程尾部追加（pager 之外）
   if(appsNote){ const n=document.createElement('div'); n.className='fnote'; n.style.margin='4px 0'; n.textContent=appsNote; box.appendChild(n); }
   if(appsPortsTrunc){ const n=document.createElement('div'); n.className='fnote'; n.style.margin='4px 0'; n.textContent='应用有点多，监听端口只查了前几个——想看全的，跟小 forge 说一声。'; box.appendChild(n); }
 }
@@ -2086,7 +2122,7 @@ async function loadAppsUI(){
     if(!d||!d.ok){ box.innerHTML='<div class="fnote">现在看不到，稍后再试。</div>'; return; }
     appsAll=d.apps||[]; appsNote=d.note||null; appsPortsTrunc=!!d.portsTruncated;
   }catch(e){ appsAll=null; box.innerHTML='<div class="fnote">读取失败：'+esc(e.message)+'</div>'; return; }
-  appsPaint();
+  appsChips(); appsPaint(); // r3/S4b: chips 随面板加载渲染（loadMadeUI 的 madeChips+madePaint 同款）
 }
 const appsUserStopped={}; // s95/S3b: UI 发起停止标记（会话内有效——停止注只对自己停的卡显示；再启即清）
 async function appsOp(id,op){ // s95/S3b：启停/重启写通道（POST /api/apps）；失败 alert 人话按钮随重拉恢复
@@ -2100,7 +2136,7 @@ async function appsOp(id,op){ // s95/S3b：启停/重启写通道（POST /api/ap
   loadAppsUI();
 }
 $('apps-refresh').onclick=()=>loadAppsUI(); // 手动刷新；无轮询无推送（裁决 §3-S3）
-$('apps-q').oninput=()=>{ clearTimeout(appsQT); appsQT=setTimeout(appsPaint,200); }; // s95/S2c: 纯前端过滤（appsAll 内存），db-q 同款防抖
+$('apps-q').oninput=()=>{ clearTimeout(appsQT); appsQT=setTimeout(()=>{ listPage.apps=1; appsPaint(); },200); }; // s95/S2c: 纯前端过滤（appsAll 内存），db-q 同款防抖; r3/S4a: 过滤变化回第 1 页（made-q 同款），复调保持当前输入
 
 
 $('prov-add').onclick=()=>{
@@ -2389,7 +2425,7 @@ function paintInstalled(){ // s71: 自 open-skills 内联渲染提升为具名�
     .filter(sk=>skillsFilter.chip==='all'||skillsOriginClass(sk)===skillsFilter.chip) // s95/S2a: 来源 chip 过滤在搜索过滤前
     .filter(sk=>!q||String(sk.name||'').toLowerCase().includes(q)||String(sk.description||'').toLowerCase().includes(q));
   if(!shown.length){ box.innerHTML='<div class="fnote">'+(q?('没有找到「'+esc(q)+'」'):'还没有技能。让它干活时说「记住这个做法」，它就会自己学。')+'</div>'; pagerPaint('skills-pager',1,1,0,null); return; }
-  const ps=pageSlice(shown,'ins'); // >SKILL_N 才出现翻页器，阈值内零机制
+  const ps=pageSlice(shown,'ins'); // r3/S4e 措辞修正: 机制恒建（pageSlice 恒走）；pagerPaint 在 pages≤1 不渲染=阈值内零视觉机制——非「>N 再加分页」触发式
   for(const sk of ps.rows){
     const el=document.createElement('div'); el.className='skill';
     el.innerHTML='<div class="nm">'+esc(sk.name)+skillOriginBadge(sk)+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
@@ -2421,7 +2457,7 @@ function paintInstalled(){ // s71: 自 open-skills 内联渲染提升为具名�
 let storeAll=[]; // 当前可装列表（avail），供搜索过滤
 // s71 技能/插件市场分页：技能卡约 120px 高，每页 12 条≈两屏；切片模式对齐 renderAllPane 的 PAGE_N 先例
 const SKILL_N=12;
-const listPage={ins:1,store:1,mcp:1,arch:1,chat:1,pr:1,made:1,db:1}; // 各列表当前页；仅重开弹窗时重置（loadSkills2/loadMcpUI 会被操作回调与安装轮询复调，不得在函数内重置）；arch/chat=侧栏归档/活跃视图（IA-2 + pm裁决2026-09-07-batch1 项1）；pr=提示词面板（主线1）；made=✨做过的东西（s83）；db=库里的数据行级分页（s95/S2b）
+const listPage={ins:1,store:1,mcp:1,arch:1,chat:1,pr:1,made:1,db:1,apps:1,sched:1}; // 各列表当前页；仅重开弹窗时重置（loadSkills2/loadMcpUI 会被操作回调与安装轮询复调，不得在函数内重置）；arch/chat=侧栏归档/活跃视图（IA-2 + pm裁决2026-09-07-batch1 项1）；pr=提示词面板（主线1）；made=✨做过的东西（s83）；db=库里的数据行级分页（s95/S2b）；apps/sched=小应用 12/页·定时任务 30/页（r3/S4a-S4c 机制内建）
 function pageSlice(arr,key,n){ // IA-2: 可选页大小（缺省 SKILL_N；行型清单传 PAGE_N=30，对齐 renderAllPane 先例）
   const per=n||SKILL_N;
   const pages=Math.max(1,Math.ceil(arr.length/per));
