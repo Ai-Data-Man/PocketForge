@@ -30,6 +30,11 @@ function extractMaskKeys(src) { // s78 主线测试 P4: 显示层密钥掩码函
     if (!m) die('NOT FOUND: maskKeys（模板结构漂移，先改探针）');
     return m[0];
 }
+function extractZombieToolcards(src) { // s95/F-3: 回合中断终态收口（桥 acp 退出帧 / ws.onclose 两路共用）
+    const m = src.match(/function zombieToolcards\(\)\{[\s\S]*?\n\}/);
+    if (!m) die('NOT FOUND: zombieToolcards（模板结构漂移，先改探针）');
+    return m[0];
+}
 
 // ---- 最小 DOM 桩 ----
 function el(tag) {
@@ -79,8 +84,10 @@ function runFrames(frames) {
     const make = new Function('document', 'nearBottom', 'toolCards', 'chat', 'endStream', 'wssend', 'lastKnownModel', 'showExpPop', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
         extractMaskKeys(html) + '\n' + extractToolCard(html) + '\nreturn toolCard;');
     const toolCard = make(ctx.document, ctx.nearBottom, ctx.toolCards, ctx.chat, ctx.endStream, ctx.wssend, ctx.lastKnownModel, ctx.showExpPop, ctx.setTimeout, ctx.clearTimeout, ctx.setInterval, ctx.clearInterval);
+    const makeZ = new Function('toolCards', extractZombieToolcards(html) + '\nreturn zombieToolcards;');
+    const zombieToolcards = makeZ(ctx.toolCards);
     for (const u of frames) toolCard(u);
-    return { cards: ctx.toolCards, sent, chat };
+    return { cards: ctx.toolCards, sent, chat, zombieToolcards, toolCard };
 }
 
 // ---- 内嵌帧（形态逐字取自 tmp/r19-frames.jsonl 真帧 #1/#3/#4/#8，树输出截短） ----
@@ -220,6 +227,26 @@ if (require.main === module) {
         ck('R1d 前端健康 ok → 原链不动（ok 态不劫持错误文本）', e2.n === 1 && e2.text.includes('等一两分钟') && !e2.text.includes('一般几分钟内恢复'));
         const g = runES('Ran into this error: 401 Unauthorized: api key invalid', null);
         ck('R1e 前端 401 文本无健康帧 → 既有 Key 分支保持', g.n === 1 && g.text.includes('这家服务商的 Key 没配上或不对'));
+    }
+
+    // 10) s95/F-3: 回合中断终态收口——桥发中断错误帧 / ws.onclose 之后，未收尾的工具卡必须落到失败态（修前永久 in_progress）
+    {
+        const r10 = runFrames([gitCall, gitLive, gitDone, failDone]); // call_00=completed / call_01=failed（对照：已收尾卡不许动）
+        const gz = r10.cards.get('call_00_git'), fz = r10.cards.get('call_01_fail');
+        const gSt = gz.querySelector('.st'), fSt = fz.querySelector('.st');
+        const gBefore = { cls: gSt.className, txt: gSt.textContent };
+        const fBefore = { cls: fSt.className, txt: fSt.textContent };
+        const stuck = { sessionUpdate: 'tool_call_update', toolCallId: 'call_20_stuck', status: 'in_progress', title: 'shell · 热注册' };
+        r10.toolCard(stuck); // 同一沙盒里补一张在飞卡（挂在 live_output 后不收尾=真实现场形态）
+        const sz = r10.cards.get('call_20_stuck'), sSt = sz.querySelector('.st');
+        ck('F3a 在飞工具卡 = 非终态（前置对照，否则本组无判别力）', sSt.textContent === 'in_progress' && !sSt.className.includes('err'));
+        r10.zombieToolcards();
+        ck('F3b 未收尾工具卡置失败态（人话「失败」+ .st err，修前永久 in_progress）', sSt.textContent === '失败' && sSt.className === 'st err' && sz._status === 'failed');
+        ck('F3c 已完成的卡零触碰（对照）', gSt.className === gBefore.cls && gSt.textContent === gBefore.txt && gz._status === 'completed');
+        ck('F3d 已失败的卡零触碰（幂等/对照）', fSt.className === fBefore.cls && fSt.textContent === fBefore.txt && fz._status === 'failed');
+        r10.zombieToolcards();
+        ck('F3e 二次调用幂等（不重复改写/不崩）', sSt.textContent === '失败' && sSt.className === 'st err');
+        ck('F3f 模板两处接线在场：错误帧分支 + 断线重连分支（静态钉，撤线即红）', /if\(m\.sys==='error'\)\{[\s\S]{0,600}?zombieToolcards\(\);/.test(html) && /if\(busy\)\{ setBusy\(false\); endStream\(\); zombieToolcards\(\); \}/.test(html));
     }
 
     console.log('toolcard-frames-probe PASS=' + pass + ' FAIL=' + fail);

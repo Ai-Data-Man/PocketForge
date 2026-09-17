@@ -32,7 +32,8 @@ function makeEnv(s26re, classify, health) { // s76c: 可注入 S26 正则/归类
         console: { log() {}, error() {} },
     };
     const factory = new Function('waiting', '__nid', 'turnText', 'S26_ERR_RE', 'classifyUpstream', 'statsBump', 'acp', 'console', 'ROOT', 'wsSession', 'sessionClients', 'busySids', 'healthFailDebounce', 'bindWs', 'healthCache',
-        block.replace(/nextId\+\+/g, '__nid()') + '\nreturn { sendTurn, rescueSession };');
+        // s95/F-3: 提取块新增 abortInflightTurns（它读的 busySids/turnText/sessionClients 已是本工厂的入参，零额外声明）
+        block.replace(/nextId\+\+/g, '__nid()') + '\nreturn { sendTurn, rescueSession, abortInflightTurns, bindWs };');
     // s78: 桥端 bindWs 提升为共享助手（提取块外）——桩内以 wsSession/sessionClients 复刻同语义
     const bindWs = (ws, sid) => { env.wsSession.set(ws, sid); if (!env.sessionClients.has(sid)) env.sessionClients.set(sid, new Set()); env.sessionClients.get(sid).add(ws); };
     const api = factory(env.waiting, () => env.nextId++, env.turnText, env.S26_ERR_RE, env.classifyUpstream, k => env.statsBump(k), env.acp, env.console, 'C:/PF-ROOT', env.wsSession, env.sessionClients, env.busySids, () => env.healthCalls++, bindWs, env.healthCache);
@@ -213,6 +214,27 @@ const NF = { message: 'resource_not_found', data: 'Session not found: SID' };
         ck('R4b 型1+型2 逐型锁（型2 Network error=最常见上游断流形态——若措辞漂移只伤型2 不再漏检）+五型样本齐全（其余三型不含 S26 令牌走原链；升版更新样本须保五型）', hits[0] === true && hits[1] === true && V150_ERR_SAMPLES.length === 5 && V150_ERR_SAMPLES.every(s => typeof s === 'string' && s.length > 0));
         ck('R4c 通用包装型（Ran into this error 前缀）仍命中——防措辞漂移主哨兵', re.test(V150_ERR_SAMPLES[0]));
     }
+}
+// S17（s95/F-3）：acp 子进程退出 → 在飞回合对其会话订阅者补发终态错误帧（前端既有错误卡通道消费：清 busy+typing）。
+// 修前该路径零帧：前端工具卡恒 in_progress、typing 常亮（用户视角=永久挂、零出路）
+{
+    const { env, api } = makeEnv(); const wsA = mkWs(), wsB = mkWs(), wsC = mkWs();
+    api.sendTurn(wsA, 'D1', 'hi', true);
+    api.sendTurn(wsB, 'D2', 'hi', true);
+    api.bindWs(wsA, 'D1'); api.bindWs(wsB, 'D2'); api.bindWs(wsC, 'D3'); // wsC=有订阅无在飞回合（对照）
+    ck('S17a 两个回合在飞登记（busySids=2）', env.busySids.size === 2);
+    const n17 = api.abortInflightTurns('BROKEN');
+    ck('S17b 每个在飞回合恰发一条终态帧给其订阅者', n17 === 2 && errsOf(wsA).length === 1 && errsOf(wsB).length === 1 && errsOf(wsA)[0] === 'BROKEN' && errsOf(wsB)[0] === 'BROKEN');
+    ck('S17c 无在飞回合的订阅者零帧（判别力：不误报中断）', wsC.sends.length === 0);
+    ck('S17d 帧后 busySids 清空（对齐前端 setBusy(false) 收口）', env.busySids.size === 0);
+    ck('S17e 无在飞回合时再调零帧且返回 0（幂等/判别力）', api.abortInflightTurns('BROKEN') === 0 && errsOf(wsA).length === 1);
+    const { env: env2, api: api2 } = makeEnv(); const wsD = mkWs();
+    api2.sendTurn(wsD, 'D4', 'hi', true); // 该 sid 无订阅者（会话已删/未订阅）——不得崩，回合照常作废
+    let crashed17 = null, n17b = 0;
+    try { n17b = api2.abortInflightTurns('BROKEN'); } catch (e) { crashed17 = e; }
+    ck('S17f 无订阅者的在飞回合不崩、仍计入作废数', crashed17 === null && n17b === 1 && env2.busySids.size === 0);
+    ck('S17g 桥模板 acp exit 分支已接线补发终态帧（静态钉：接线被撤即红）', /child\.on\('exit', c => \{[\s\S]{0,700}?abortInflightTurns\(TURN_BROKEN_TEXT\)/.test(src));
+    ck('S17h 终态帧形状=既有错误卡通道 {sys,text}（零新协议）', JSON.stringify(Object.keys(wsA.sends[0]).sort()) === '["sys","text"]' && typeof wsA.sends[0].text === 'string' && wsA.sends[0].sys === 'error');
 }
 console.log('rescue-guard-probe: PASS=' + pass + ' FAIL=' + fail);
 process.exit(fail ? 1 : 0);

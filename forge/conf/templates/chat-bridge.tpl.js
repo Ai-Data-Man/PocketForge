@@ -788,7 +788,13 @@ function spawnAcp() {
     child.stderr.on('data', d => process.stderr.write('[acp] ' + d));
     child.on('exit', c => {
         console.log('acp exited', c);
-        if (child === acp) process.exit(1);
+        if (child === acp) {
+            // s95/F-3: acp 一死，在飞回合无人收尾——先给该会话订阅者补终态错误帧再退（攒 200ms 让帧落进
+            // 内核缓冲，随即仍按原语义 process.exit(1) 让 pc 把我拉起来）。桥自身退出这一路前端还有
+            // ws.onclose 收口（s94-b2 F-11）兜底，两条不互相依赖
+            try { const n = abortInflightTurns(TURN_BROKEN_TEXT); if (n) console.log('aborted in-flight turns:', n); } catch (e) { console.error('abort turns failed', e); }
+            setTimeout(() => process.exit(1), 200);
+        }
     });
     return child;
 }
@@ -917,6 +923,9 @@ const TURN_DOWN_TEXT = '看起来是大模型服务商那边暂时不通（不�
 // research/26 R1: stale-model 错误卡口径（对齐告警条文案）——下架形态等也不会好，卡给出路=换模型
 const TURN_STALE_TEXT = '你正在用的模型已被服务商下架，等也不会好。点 ⚙️ 换一个模型：⟳ 拉取→勾选→保存。';
 const TURN_RETRY_TEXT = '这一轮没完成，请再发一次试试。';
+// s95/F-3: 会话中断（acp 子进程退出）时的终态文案——在此之前在飞回合桥侧不留任何痕：前端工具卡恒「in_progress」、
+// typing 常亮（用户视角=永久挂无出路）。文案零术语 + 给出路（内容都在库里，重开对话即回放）
+const TURN_BROKEN_TEXT = '它干活中途断了，没能做完。刚才说过的话都还在——等几秒再发一次它就接着干；实在不行点左边「＋ 新对话」重新开始。';
 function sendTurn(ws, sid, text, allowRescue) {
     const id = nextId++;
     busySids.add(sid); // 主线5：turn 在飞登记（resolve/reject/write 失败三路都收）
@@ -953,6 +962,20 @@ function sendTurn(ws, sid, text, allowRescue) {
     try {
         acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/prompt', params: { sessionId: sid, prompt: [{ type: 'text', text }] } }) + '\n');
     } catch (e) { waiting.delete(id); busySids.delete(sid); ws.send({ sys: 'error', text: '服务忙不过来（对话引擎没响应），稍等几秒再发一次。' }); }
+}
+// s95/F-3: 会话中断终态兜底——acp 一死，它在飞回合不会被任何人收尾（goose 侧那次工具调用连 toolResponse
+// 都没落库），必须由桥补发终态。帧形状沿用既有错误卡通道（{sys:'error',text}，前端既有分支直接消费：
+// 清 busy+typing 并把人话卡上墙），零新协议、零新端点。判据=busySids（桥侧权威的在飞登记）
+function abortInflightTurns(text) {
+    let n = 0;
+    for (const sid of busySids) {
+        n++;
+        const set = sessionClients.get(sid);
+        if (set) for (const ws of set) { try { ws.send({ sys: 'error', text }); } catch {} }
+        turnText.delete(sid); // 当轮文本累计随回合作废（残留会让下一个回合的报错检测误判）
+    }
+    busySids.clear();
+    return n;
 }
 function rescueSession(ws, text) {
     const rid = nextId++;
