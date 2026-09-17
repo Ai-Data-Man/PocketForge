@@ -72,7 +72,7 @@ cd /d "%FORGE_ROOT%"
 rem ---- aggregate registered apps (apps\*.yaml) into conf\apps.env.yaml ----
 rem s96: 聚合移入 conf\apps-aggregate.ps1（与 conf\dev-stack-up.ps1 同一真相源；s89/R1 joined
 rem 另起一行纪律 + 基础设施键守卫〔apps yaml 顶层进程键与系统组件重名 → 跳过该文件+人话告警〕
-rem 见该脚本头注）。守卫告警走 console（本窗口）与 conf\apps.guard.log，故不再 >nul。
+rem 见该脚本头注）。守卫告警走 console（本窗口）与 conf\apps.guard.log，故不再屏蔽输出。
 set "APP_ARGS="
 powershell -NoProfile -ExecutionPolicy Bypass -File "%FORGE_ROOT%\conf\apps-aggregate.ps1"
 
