@@ -231,6 +231,12 @@ $schedTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\goose-s
 $provTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\faucet-provision.tpl.js'))
 [IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\faucet-provision.js'), $provTpl)
 
+# 5i) s95 F-6: 应用热注册 wrapper 生成（agent 自己拼 pc project update 的形态在 cmd 嵌套引号下不可执行，
+#     且 -f 集不全时 pc 整体替换项目会重启整栈、打断进行中的对话；wrapper 自带 root+完整文件集+人话退出码）
+$regTpl = Join-Path $ForgeRoot 'conf\templates\forge-register.tpl.cmd'
+$regOut = Join-Path $ForgeRoot 'bin\pc\forge-register.cmd'
+if (Test-Path $regTpl) { Copy-Item $regTpl $regOut -Force }
+
 # 5c) 首启欢迎页（仅首次：data/welcome.done 不存在时生成 html 并由启动器打开）
 $done = Join-Path $ForgeRoot 'data\welcome.done'
 if (-not (Test-Path $done)) {

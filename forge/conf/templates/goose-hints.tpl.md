@@ -24,8 +24,9 @@
 
 ## 应用注册协议（你自己写的程序要这样上线，详见 conf/_app-template.yaml）
 1. 复制 conf/_app-template.yaml 到 apps/<应用名>.yaml，改好命令与端口。
-2. 热注册：先 `cd /d "__FORGE_ROOT__"` 回到安装根，再照抄下面这一整条——`-f` 后面的文件要列全：conf 里那三个 + 你自己写的每个 apps/*.yaml。文件集=整套项目，少列一个它就当那个服务不要了，会把别的服务一起重启（连正在进行的对话都会断），所以一个都不能省：
-   `"__FORGE_ROOT__\bin\pc\process-compose.exe" -p 8099 project update -f conf/process-compose.yaml -f conf/ports.env.yaml -f conf/apps.env.yaml -f apps/<应用名>.yaml`
+2. 热注册：写好 yaml 后跑这一条（就一个命令、一个参数，别自己拼 pc 参数、别加 cd/&&，照抄即可）：
+   `"__FORGE_ROOT__\bin\pc\forge-register.cmd" apps/<应用名>.yaml`
+   它会用完整文件集把整套项目交给管家做热更新（=只把你这个应用挂上去，别的服务不会被重启、对话不会断）；看到 `registered:` 就是成了，报 `app file not found` 就是路径写错了。
 3. 数据永远写 data/ 下；给用户看的页面默认监听 127.0.0.1。
 4. 重启电脑后一切自动回来——不要把状态写到别处。
 5. 建账留痕：apps/<应用名>.yaml 首行（processes: 之前）写一行注释 `# forge-meta: {"description":"一句中文人话说清这个应用给谁做什么","url":"有网页入口就填 http://127.0.0.1:端口，没有就删掉这项","created_at":"YYYY-MM-DD","source":"系统备注里工作区目录名 data/artifacts/<这串>"}`——管理面板靠它显示人话名和『打开看看』按钮。
