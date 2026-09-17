@@ -4,8 +4,12 @@ rem PocketForge: register an app with the running stack (hot reload).
 rem Usage: forge-register.cmd apps/<app-name>.yaml   (".yaml" and "apps/" are optional; / or \ both fine)
 rem ASCII only. No "cd &&", no nested quotes, no env dependency:
 rem this file derives the install root from its own location, so it works from any shell.
-set "ROOT=%~dp0..\.."
-if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
+rem s97/F-9: ROOT must equal the launcher's FORGE_ROOT string exactly (clean install root).
+rem pc project update re-renders every command:/working_dir:/log_location: with caller env;
+rem an un-normalized "bin\pc\.." here drifts all ${FORGE_ROOT} sites vs the launcher-started
+rem project and pc restarts the whole table (chat-bridge included -> in-flight turn orphaned).
+rem for %%~fi resolves ".." into the fully qualified clean path.
+for %%i in ("%~dp0..\..") do set "ROOT=%%~fi"
 
 set "APP=%~1"
 if "%APP%"=="" (
