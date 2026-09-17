@@ -29,6 +29,31 @@ set "PCPORT="
 if exist "%ROOT%\data\pc.port" set /p PCPORT=<"%ROOT%\data\pc.port"
 if "%PCPORT%"=="" set "PCPORT=8099"
 
+rem s97/F-7: pc project update re-renders EVERY process with the CALLER's env, then replaces the
+rem project and restarts any process whose rendered config changed. The agent shell is scrubbed
+rem (no FAUCET_PORT/PG_PORT/secrets), so a bare update renders empty interpolations, sees drift
+rem against the launcher-started stack and restarts live processes - a chat-bridge restart
+rem mid-turn orphans the in-flight reply (user sees the turn die with no closing message).
+rem s95 round 3/4 lesson: "restarts=0" after update was an illusion - the counter resets when
+rem update replaces the whole project; the honest anchor is the "ACP initialized" count in
+rem data\logs\pc.log. Self-provision the exact launcher env (port files + secrets.env + fixed
+rem vars) so update matches the running config and only adds the new app.
+set "FAUCETPORT="
+if exist "%ROOT%\data\faucet.port" set /p FAUCETPORT=<"%ROOT%\data\faucet.port"
+if "%FAUCETPORT%"=="" set "FAUCETPORT=8091"
+set "FAUCET_PORT=%FAUCETPORT%"
+set "PGPORT="
+if exist "%ROOT%\data\pg.port" set /p PGPORT=<"%ROOT%\data\pg.port"
+if "%PGPORT%"=="" set "PGPORT=5432"
+set "PG_PORT=%PGPORT%"
+for /f "usebackq eol=# tokens=1,2 delims==" %%a in ("%ROOT%\data\secrets.env") do set "%%a=%%b"
+set "GOOSE_PATH_ROOT=%ROOT%\conf\goose"
+set "GOOSE_DISABLE_KEYRING=1"
+set "GOOSE_TELEMETRY_ENABLED=false"
+set "NODE_DIR=%ROOT%\bin\node-v22\node-v22.21.1-win-x64"
+set "NO_PROXY=127.0.0.1,localhost"
+set "no_proxy=127.0.0.1,localhost"
+
 set "FORGE_ROOT=%ROOT%"
 rem pc writes 2 debug lines to stderr on every run ("Path not found for process compose config home");
 rem the agent shell treats non-empty stderr as a failed command, so keep stderr out of the tool output
