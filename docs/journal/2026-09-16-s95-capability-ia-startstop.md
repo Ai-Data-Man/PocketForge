@@ -50,6 +50,13 @@ QA P3 收尾（bafbb51+b2e6af2）：桥 deny-list 同源化（启动时现读 co
 
 环境：沙盒已停（端口零残留）；dev 栈 PFdrill2 /End+/Run 恢复（healthz 200）。
 
+## 主线5 缺陷修复
+
+- **F-1/F-2（8f82bb7）**：F-1 桥侧复用台账同源 parseAssetTs 增 `createdAtTs`(epoch ms)，前端只格式化（形态分流：纯日期串→本地零点、完整 ISO→原值；活体 `2026-09-15`→`Tue Sep 15 2026 00:00:00 GMT+0800`）；F-2 前端 `appsUserStopped` 命中且桥判 fail 时按「已停」呈现（徽章/进程行/停止注/动作面全走 state；判别力=无标记真 fail 仍「⚠️ 出错了」+⟳重启）；刷新降级（标记会话内）已注释留档。回归 e2e 61/61（apps-probe 69→75ck）+fuzz 190/190。
+- **F-3 根因（f8f2d31，docs/research/31）**：原「管道写端继承」假设**被三证否定**（真实 pc update 起新进程时调用方 cmd 747ms rc=0 退出、stdout 729ms EOF；goose v1.50 源码排空硬上限 500ms；新进程父=pc 守护非调用方）。**真根因**=hints 教的 `pc project update -f` 文件集不含启动器三件套（缺 conf/ports.env.yaml + conf/apps.env.yaml）→ pc update 以给定文件集**整体替换项目**（差异即重启、缺项即删除）→ **chat-bridge 自身被重启** → 桥退出 → goose acp stdin EOF 退出 → 在飞回合孤儿化、前端零终态（卡恒 in_progress、typing 常亮 14h）。证据：sessions.db 该 shell 调用无 toolResponse 行 + pc.log 00:23:39.9–40.7 全体重启 + 隔离单变量复现替换语义。
+- **F-3 修（30732f5 + 04b981e）**：A1 hints 热注册教法改为**启动器同款完整文件集**（逐字可跑命令+补 cd /d+防自作主张删 -f 的人话因果）；B **会话中断终态兜底**（acp 退出/会话中断时桥向订阅者补发终态错误帧+前端清 busy/settled 化未完成卡）——覆盖任何中断向量（不限于 F-3）。
+- **F-4（7e49636）**：降权重启路径的外层 cmd 宿主 `/K` 常驻 → 停栈后安装目录被占用、无法整删（阻断「删文件夹=完全卸载」验收线；s94「TUI 窗口残留」标注修的是 pause 门控载体，此为 runas 外层窗口**另一形态**）。修=降权拉起后终止外层宿主（收窗）；b3 语义（启动失败留窗可读日志）保持。
+
 ## 待办（下一步）
 
 QA+守卫完工→journal 终态+push→主线5 从零安装反复测试（打包含全量新码→C:\PF-TEST 沙盒→冷启→新功能面活体（含 F12② 停→冷启→自动带起）→logscan+控制台横扫→发现分级修复循环→反复轮）。
