@@ -122,6 +122,28 @@ if (-not $memOk) {
 }
 
 # 2) 首启 secrets
+# s97/F-11: agent 三键种子改从 data/providers.json 活跃档案现读（存在且可解析时）。
+# 旧缺省 127.0.0.1:20128 是死地址：种子被启动器导出→pc up 渲染进 chat-bridge environment 块→
+# 桥的 provider 同步随后把 secrets.env 改写成档案真值→「运行值≠文件值」→pc project update 按
+# wrapper 现读 env 重渲染判 chat-bridge 漂移→重启（在飞回合孤儿化，s97b/d 实录）。源头收敛：
+# 种下的就是档案真值（桥同步写 host 原样、models 取池首，与本种子同源同形）→运行渲染==文件值==桥同步值，三点恒同。
+# providers.json 缺失/坏 JSON/无 active 档案 → 回落旧缺省（fail-safe，行为同旧版）。
+$pvHost = 'http://127.0.0.1:20128/v1/'
+$pvKey = ''
+$pvModel = 'mimo-v2.5'
+$pvLive = $false
+try {
+    $pvFile = Join-Path $ForgeRoot 'data\providers.json'
+    if (Test-Path $pvFile) {
+        $pvAct = @((ConvertFrom-Json ([IO.File]::ReadAllText($pvFile))) | Where-Object { $_.active })[0]
+        if ($pvAct) {
+            $pvLive = $true
+            if ($pvAct.host) { $pvHost = [string]$pvAct.host }
+            if ($pvAct.key)  { $pvKey  = [string]$pvAct.key }
+            if ($pvAct.models) { $pvModel = [string]@($pvAct.models)[0] }
+        }
+    }
+} catch { }
 $secrets = Join-Path $ForgeRoot 'data\secrets.env'
 $chars = { -join ((48..57)+(65..90)+(97..122) | Get-Random -Count 32 | ForEach-Object { [char]$_ }) } # s94 F-6: 提到 if 外——幂等补缺 FAUCET_ADMIN_PW 也要用
 if (-not (Test-Path $secrets)) {
@@ -132,10 +154,10 @@ if (-not (Test-Path $secrets)) {
         # s89/Y1: 括号必加——PS 数组元素里逗号优先级高于 +，裸 'K=' + expr, 会拼成 string+数组 展开成两元素
         # （首启产物 FAUCET_ADMIN_PW= 与随机串各占一行，s88 §8 字节级首启检视实锤，历版皆然）
         ('FAUCET_ADMIN_PW=' + (& $chars).Substring(0,24)),
-        'FORGE_AGENT_API_KEY=',
-        'FORGE_AGENT_HOST=http://127.0.0.1:20128/v1/',
-        # 种子=可选池首模型；2026-09-08 myopencode 线路已死（服务商侧 404），s76 遗留①收尾（幂等补键同此种子）
-        'GOOSE_MODEL_NAME=mimo-v2.5'
+        "FORGE_AGENT_API_KEY=$pvKey",
+        "FORGE_AGENT_HOST=$pvHost",
+        # 种子=可选池首模型（有活跃档案时）；2026-09-08 myopencode 线路已死（服务商侧 404），s76 遗留①收尾（幂等补键同此种子）
+        "GOOSE_MODEL_NAME=$pvModel"
     )
     [IO.File]::WriteAllLines($secrets, $lines)
 } else {
@@ -143,10 +165,25 @@ if (-not (Test-Path $secrets)) {
     $existing = @(Get-Content $secrets) | Where-Object { $_ -and -not $_.StartsWith('#') }
     $have = @{}
     foreach ($l in $existing) { $k = $l.Split('=')[0]; $have[$k] = $true }
+    # s97/F-11 升级自愈：旧部署 secrets 三键还是出厂缺省而 providers.json 已有真值 → 对齐
+    #（只识别出厂缺省字面值：用户自设值一律不动；对齐一次后重跑恒 no-op）
+    if ($pvLive) {
+        $all = @(Get-Content $secrets)
+        $healed = $false
+        for ($i = 0; $i -lt $all.Count; $i++) {
+            if ($all[$i] -eq 'FORGE_AGENT_HOST=http://127.0.0.1:20128/v1/' -and $pvHost -ne 'http://127.0.0.1:20128/v1/') { $all[$i] = "FORGE_AGENT_HOST=$pvHost"; $healed = $true }
+            elseif ($all[$i] -eq 'FORGE_AGENT_API_KEY=' -and $pvKey -ne '') { $all[$i] = "FORGE_AGENT_API_KEY=$pvKey"; $healed = $true }
+            elseif ($all[$i] -eq 'GOOSE_MODEL_NAME=mimo-v2.5' -and $pvModel -ne 'mimo-v2.5') { $all[$i] = "GOOSE_MODEL_NAME=$pvModel"; $healed = $true }
+        }
+        if ($healed) {
+            [IO.File]::WriteAllLines($secrets, $all)
+            Write-Host '[bootstrap] secrets.env: stale agent seed aligned to active provider (s97/F-11)'
+        }
+    }
     $add = @()
-    if (-not $have['GOOSE_MODEL_NAME']) { $add += 'GOOSE_MODEL_NAME=mimo-v2.5' }
-    if (-not $have['FORGE_AGENT_API_KEY']) { $add += 'FORGE_AGENT_API_KEY=' }
-    if (-not $have['FORGE_AGENT_HOST']) { $add += 'FORGE_AGENT_HOST=http://127.0.0.1:20128/v1/' }
+    if (-not $have['GOOSE_MODEL_NAME']) { $add += "GOOSE_MODEL_NAME=$pvModel" }
+    if (-not $have['FORGE_AGENT_API_KEY']) { $add += "FORGE_AGENT_API_KEY=$pvKey" }
+    if (-not $have['FORGE_AGENT_HOST']) { $add += "FORGE_AGENT_HOST=$pvHost" }
     # s94 F-6: faucet 首启供给（bootstrap 5h + pc oneshot faucet-provision）需要确定性 admin 凭据
     if (-not $have['FAUCET_ADMIN_EMAIL']) { $add += 'FAUCET_ADMIN_EMAIL=admin@pocketforge.local' }
     if (-not $have['FAUCET_ADMIN_PW']) { $add += ('FAUCET_ADMIN_PW=' + (& $chars).Substring(0,24)) }
