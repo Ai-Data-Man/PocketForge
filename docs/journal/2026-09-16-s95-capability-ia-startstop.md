@@ -60,3 +60,16 @@ QA P3 收尾（bafbb51+b2e6af2）：桥 deny-list 同源化（启动时现读 co
 ## 待办（下一步）
 
 QA+守卫完工→journal 终态+push→主线5 从零安装反复测试（打包含全量新码→C:\PF-TEST 沙盒→冷启→新功能面活体（含 F12② 停→冷启→自动带起）→logscan+控制台横扫→发现分级修复循环→反复轮）。
+
+## 主线5 轮2/轮3（出厂复验+热注册修复二次闭环）
+
+**轮2（iat3，沙盒 s95b）**：F-5 nul。✅（启动器多次运行零残留）；F-1 ✅「注册于 2026/9/17 00:00」；F-2 ✅「⏹ 已停」+停止注逐字+无「出错了」行；F-4 ✅ 停栈后目录直接可改名；**F12② ✅ 实证**（GUI 停用应用→停栈→冷启→应用自动回到 run、端口恢复）——停止注首句为真。
+
+**F-6（轮2 新发现，P1 级）**：A1 教法（完整文件集）在 agent shell **仍不可执行**——`cd /d "..." && "…pc.exe" -p …` 形态经 cmd 嵌套引号包装报语法错；且裸 `pc project update`（`-f` 集不全时）会把整栈定义整体替换致 crash-loop（chat-bridge restarts=80、pg 挂），与轮1 现场签名一致；对照实验（`-f` 完整）证明**主因是文件集完整性，env 非主因**（中途我方 env 假设被自证否定）。
+**修**：新增 `forge-register.tpl.cmd`→bootstrap 物化到 `bin/pc/forge-register.cmd`（bin/ 不入库纪律，走模板物化链；自带 root 推导、读 pc.port、拼完整三件套+目标 app、人话退出码）+ hints 教法改「一条命令一个参数」。
+
+**轮3（iat4，沙盒 s95c）**：agent 已按新教法调用 wrapper（教学生效 ✅），但暴露 wrapper 两个真缺口→当日修复（均为出厂路径实测所得）：①**斜杠**：agent 传 `apps/weather-page.yaml`（正斜杠），v1 只认反斜杠 → 拼成 `apps/apps/…` → not found；②**pc CLI 每次向 stderr 写 2 行 debug 噪音**（config home 查找）→ agent shell 把非空 stderr 判为失败 → **成功也报失败**。v2 修=斜杠归一化+pc stderr 重定向到 `data/logs/register.log`（诊断保留、工具输出干净）。验证：两形态 rc=0、stderr 空、注册成功且**栈保持健康无整体重启**。
+
+**包构建链勘误（本批实得教训）**：改模板后必须**重跑 bootstrap** 再打包——iat5 包内 wrapper 仍是 v1（物化滞后），hash 比对发现后重建 iat6（包内 wrapper 与模板逐字节一致 bcdb1d0a…，含斜杠归一+stderr 重定向+CRLF+纯 ASCII）。**新增守卫**：apps-probe 补 B18-B20（wrapper 产物链一致性/语义/hints 教法三锚）75→78ck，防此族回归。
+
+**遗留（诚实标注）**：轮3 的**整回合**（真模型走完「写 yaml→register→收尾回复」）未取得终态证据——该沙盒会话回合在 wrapper v1 两次失败后长尾停滞（慢模型+我方两轮实验干扰），未等到收尾即转入修复与收尾流程；wrapper 的 agent 式调用已独立验证（rc=0/栈健康/注册成功三证），**整回合 E2E 留待下一轮（iat6 起）复核**。
