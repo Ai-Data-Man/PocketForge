@@ -58,14 +58,6 @@ set "NODE_DIR=%FORGE_ROOT%\bin\node-v22\node-v22.21.1-win-x64"
 set "NO_PROXY=127.0.0.1,localhost"
 set "no_proxy=127.0.0.1,localhost"
 
-rem ---- first-run welcome page (data\welcome.html exists only on first run) ----
-rem s50: start 是异步的，立刻 ren 会让浏览器读到 404（沙盒冒烟实证）；等 3 秒让浏览器打开文件后再改名
-if exist "%FORGE_ROOT%\data\welcome.html" (
-  start "" "%FORGE_ROOT%\data\welcome.html"
-  timeout /t 3 /nobreak >nul
-  ren "%FORGE_ROOT%\data\welcome.html" welcome.shown 2>nul
-)
-
 echo [PocketForge] starting... pc=%PC_PORT% faucet=%FAUCET_PORT%
 cd /d "%FORGE_ROOT%"
 
@@ -75,6 +67,11 @@ rem 另起一行纪律 + 基础设施键守卫〔apps yaml 顶层进程键与系
 rem 见该脚本头注）。守卫告警走 console（本窗口）与 conf\apps.guard.log，故不再屏蔽输出。
 set "APP_ARGS="
 powershell -NoProfile -ExecutionPolicy Bypass -File "%FORGE_ROOT%\conf\apps-aggregate.ps1"
+
+rem ---- s97/main-2: welcome + chat window open only after the bridge is REALLY up (old block opened
+rem ---- welcome BEFORE pc up, 3s in - too early; and never opened/printed the chat URL). Background
+rem ---- watcher shares this console; all user-facing wording lives in the ps1 (cmd lines stay ASCII).
+start "" /b powershell -NoProfile -ExecutionPolicy Bypass -File "%FORGE_ROOT%\conf\open-when-ready.ps1"
 
 "%FORGE_ROOT%\bin\pc\process-compose.exe" up -f "%FORGE_ROOT%\conf\process-compose.yaml" -f "%FORGE_ROOT%\conf\ports.env.yaml" -f "%FORGE_ROOT%\conf\apps.env.yaml" -p %PC_PORT% -t=false
 echo [PocketForge] all stopped.
