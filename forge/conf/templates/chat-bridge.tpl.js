@@ -1453,6 +1453,8 @@ function mcpWriteExtension(id, entry) {
         '    timeout: 300\n';
     atomicWrite(CFG, raw.replace(/\n*$/, '\n') + block);
 }
+// r4/S4a（裁决 2026-09-19 §3.3）: 「官方」降为条目级出处徽标——id 属内置模板目录即 official（计算字段，无 schema 变更；installed 同款先例）
+function mcpOfficial(id) { return MCP_CATALOG.some(t => t.id === id); }
 // s57: 读 mcp-* 块的 enabled（无块视为 true；商店列表显示已启用/已停用）
 // s67: 收敛到 readExtState 的 extensions: 门禁单一扫描（qa-s57 P2 块界语义保留）。B2/C 批移交缺陷：
 // S-B 在 extensions: 前加 GOOSE_*/CONTEXT_FILE_NAMES 顶格键后，原文件头扫描遇首个顶格键即 break → 恒 true
@@ -1505,7 +1507,7 @@ function marketView() {
     return {
         ok: true,
         skillSources: readSkillSources(),
-        mcpCatalog: readMcpCatalog().map(x => ({ ...x, installed: mcpInstalled(x.id), enabled: mcpEnabled(x.id) })), // installed/enabled 为计算字段（同 mcpstore GET），文件内容原样保留
+        mcpCatalog: readMcpCatalog().map(x => ({ ...x, official: mcpOfficial(x.id) })), // r4/S4a: installed/enabled 计算字段撤（技术区不再消费状态，装/开唯一渲染处=插件主清单）；official=计算字段（同 mcpstore GET），文件内容原样保留
     };
 }
 function marketMutate(b) {
@@ -2922,6 +2924,7 @@ const ext = path.extname(f).toLowerCase();
         if (req.method === 'GET') {
             json200(res, readMcpCatalog().map(m => ({
                 id: m.id, name: m.name, desc: m.desc, license: m.license,
+                official: mcpOfficial(m.id), // r4/S4a: 出处徽标（主清单「官方」牌；id 属内置模板目录即 true）
                 installed: mcpInstalled(m.id),
                 enabled: mcpEnabled(m.id),
                 install: mcpInstallState[m.id] || null,

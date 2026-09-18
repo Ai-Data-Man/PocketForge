@@ -231,13 +231,14 @@ assert all(isinstance(s.get('source'),dict) and s['source'].get('subdir') for s 
 "; ck "skillstore remote source carries subdir (s70-B2)" $?
 # s70 切片C: MCP 目录配置化——沙盒探针（首启生成/坏配置回落矩阵/回环/白名单随配置，明细随本日志留痕）
 node "$(dirname "$0")/mcp-catalog-probe.js"; ck "s70 slice-C mcp-catalog config probe (11 asserts, +4 merge s78f-P3-2)" $?
-# s70 切片C: dev 桥零回归——GET 3 条默认形状（installed/enabled/install 键在）
+# s70 切片C: dev 桥零回归——GET 3 条默认形状（installed/enabled/install 键在）；r4/S4a: 三官方条目 official:true（模板 id 集合成员判定）
 curl -s "$B/api/mcpstore" | python -c "
 import sys,json
 d=json.load(sys.stdin)
 assert [x['id'] for x in d]==['sequential-thinking','memory-graph','fetch'], d
 assert all('installed' in x and 'enabled' in x and 'install' in x for x in d), d[0]
-"; ck "mcpstore GET default catalog shape (s70-C)" $?
+assert all(x.get('official') is True for x in d), d[0]
+"; ck "mcpstore GET default catalog shape (s70-C + r4/S4a official)" $?
 # s70 切片C: dev 配置回环——增假条目→列表出现→删掉（零代码零重启；假条目不安装不出网）；坏 JSON 容错→还原
 MC="$FR/data/config/mcp-catalog.json"
 MCPBK="$(mktemp)"
@@ -250,6 +251,12 @@ d['catalog'].append({'id':'fuzz-mcp-zzz','name':'假条目','desc':'fuzz','pkg':
 json.dump(d,open(sys.argv[1],'w',encoding='utf-8'),indent=2,ensure_ascii=False)
 " "$MC"
 curl -s "$B/api/mcpstore" | grep -q 'fuzz-mcp-zzz'; ck "mcpstore config roundtrip add (s70-C)" $?
+curl -s "$B/api/mcpstore" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+z=[x for x in d if x['id']=='fuzz-mcp-zzz']
+assert z and z[0].get('official') is False, d
+"; ck "mcpstore custom entry official false (r4/S4a)" $?
 cp "$MCPBK" "$MC"
 curl -s "$B/api/mcpstore" | python -c "
 import sys,json
@@ -277,14 +284,15 @@ curl -s -X POST "$B/api/config/market" -H 'content-type: application/json' -d '{
 curl -s -X POST "$B/api/config/market" -H 'content-type: application/json' -d '{"op":"mcp-add","id":"x","name":"n","desc":"d","pkg":"p;q","entry":"e","license":"MIT"}' | grep -q '条目不合法'; ck "market mcp-add bad pkg rejected (s72)" $?
 curl -s -X POST "$B/api/config/market" -H 'content-type: application/json' -d '{"op":"fly"}' | grep -q '未知操作'; ck "market unknown op rejected (s72)" $?
 curl -s -X POST "$B/api/config/market" -H 'content-type: application/json' -d 'null' | grep -q '未知操作'; ck "market null body rejected (s72)" $?
-# GET 形状：ok + 双数组 + 源条目字段齐 + 目录条目带 installed/enabled 计算字段（同 mcpstore GET 门）
+# GET 形状：ok + 双数组 + 源条目字段齐 + 目录条目零 installed/enabled（r4/S4a 撤）、带 official 计算字段
 curl -s "$B/api/config/market" | python -c "
 import sys,json
 d=json.load(sys.stdin)
 assert d.get('ok') is True and isinstance(d.get('skillSources'),list) and isinstance(d.get('mcpCatalog'),list), d.keys()
 assert all(all(k in s for k in ('repo','branch','subdir','enabled')) for s in d['skillSources']), d['skillSources']
-assert all(all(k in m for k in ('id','name','pkg','entry','license','installed','enabled')) for m in d['mcpCatalog']), d['mcpCatalog'][:1]
-"; ck "market GET shape (s72)" $?
+assert all(all(k in m for k in ('id','name','pkg','entry','license','official')) for m in d['mcpCatalog']), d['mcpCatalog'][:1]
+assert all('installed' not in m and 'enabled' not in m for m in d['mcpCatalog']), d['mcpCatalog'][:1]
+"; ck "market GET shape (s72 + r4/S4a statusless)" $?
 # 孤儿规则：已装项（fetch）拒删目录；未知条目人话拒
 curl -s -X POST "$B/api/config/market" -H 'content-type: application/json' -d '{"op":"mcp-remove","id":"fetch"}' | grep -q '已安装，先在上方卸载'; ck "market mcp-remove installed refused (s72)" $?
 curl -s -X POST "$B/api/config/market" -H 'content-type: application/json' -d '{"op":"mcp-remove","id":"ghost-mcp-zzz"}' | grep -q '目录里没有这个条目'; ck "market mcp-remove unknown friendly (s72)" $?

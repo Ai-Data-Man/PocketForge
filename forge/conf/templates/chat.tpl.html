@@ -532,14 +532,14 @@ details.tz[open]>summary::before{content:'▾ '}
     <div id="sched-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 0 6px"></div><!-- r3/S4c: 翻页器（made-pager 同款） -->
   </div>
   <div class="mpane" id="mpane-mcp" style="display:none">
-    <h3 style="margin:0 0 8px">官方 MCP（扩展插件）</h3>
-    <div class="fnote" style="margin-bottom:10px">这些是官方出品的增强插件，装好后重启数字员工生效。装好后，开和关也在这里（重启数字员工后生效）。</div>
+    <h3 style="margin:0 0 8px">插件（给它装的新本事）</h3>
+    <div class="fnote" style="margin-bottom:10px">这里给小 forge 装新的本事。带「官方」牌的是官方出品，其余是自己加的。装好后，开和关也在这里（重启数字员工后生效）。</div>
     <input id="mcp-q" placeholder="🔍 在插件目录里找…" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
     <div id="mcp-list" style="max-height:340px;overflow-y:auto"></div>
     <div id="mcp-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:4px 0"></div>
     <!-- IA-1: 左栏（mkt-src）已随使用域搬入技能弹窗；残区单栏化，名实相符 -->
     <div style="border-top:1px solid var(--line);margin-top:12px;padding-top:10px">
-      <h3 style="margin:0 0 6px">插件目录（技术）</h3>
+      <h3 style="margin:0 0 6px">自己加的插件（技术）</h3>
       <div class="fnote" style="margin-bottom:8px">这里是插件目录「有哪些货」的配置面（给懂技术的你，平时不用动）。<b>插件目录新条目四道闸门</b>：① 许可证在白名单内 ② 装好后真实调用过一次 ③ npm 上有包、有维护方 ④ 注意 MCP 协议大版本不兼容风险。自己加的货自己负责。</div>
       <div id="mkt-cat-list" style="max-height:130px;overflow-y:auto"></div>
       <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">
@@ -1480,7 +1480,7 @@ async function loadMcpUI(){
   for(const m of ps.rows){
     const row=document.createElement('div');
     row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line)';
-    row.innerHTML='<div style="flex:1"><div style="font-size:.85rem;font-weight:600">'+esc(m.name)+(m.installed?' <span class="fnote mcp-st">'+(m.enabled===false?'已停用':'已启用')+'</span>':'')+'</div>'+
+    row.innerHTML='<div style="flex:1"><div style="font-size:.85rem;font-weight:600">'+esc(m.name)+(m.official?' <span class="bdg">官方</span>':'')+(m.installed?' <span class="fnote mcp-st">'+(m.enabled===false?'已停用':'已启用')+'</span>':'')+'</div>'+
       '<div class="fnote" style="margin-top:2px">'+esc(m.desc)+(m.license?' · '+esc(m.license):'')+'</div>'+
       (m.install&&m.install.msg?'<div class="fnote" style="color:var(--warn-tx)">'+esc(m.install.msg)+'</div>':'')+'</div>';
     if(m.installed){
@@ -1576,11 +1576,12 @@ async function loadMarketUI(){
   }
   if(!d.skillSources.length) sl.innerHTML='<div class="fnote">没有技能源。</div>';
   cl.innerHTML='';
-  for(const m of d.mcpCatalog){
+  // r4/S4a（裁决 2026-09-19 §3.4）：技术区收窄为「自己加的插件」目录字段管理——只列 official:false；行内容=id/包名/入口/许可证，零状态字段（装/开唯一渲染处=主清单）；官方条目不出现=删除陷阱消失
+  for(const m of d.mcpCatalog.filter(x=>!x.official)){
     const row=document.createElement('div');
     row.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 2px;border-bottom:1px solid var(--line)';
-    row.innerHTML='<div style="flex:1;min-width:0"><div style="font-size:.8rem;font-weight:600">'+esc(m.name)+(m.installed?' <span class="fnote">'+(m.enabled===false?'已停用':'已启用')+'</span>':' <span class="fnote">未安装</span>')+'</div>'+
-      '<div class="fnote" style="word-break:break-all">'+esc(m.pkg)+' · '+esc(m.license)+'</div></div>';
+    row.innerHTML='<div style="flex:1;min-width:0"><div style="font-size:.8rem;font-weight:600">'+esc(m.name)+' <span class="fnote">'+esc(m.id)+'</span></div>'+
+      '<div class="fnote" style="word-break:break-all">'+esc(m.pkg)+' · '+esc(m.entry)+' · '+esc(m.license)+'</div></div>';
     const del=document.createElement('button'); del.className='mini'; del.textContent='🗑'; del.title='从目录删除这个条目';
     del.onclick=async()=>{
       if(!confirm('从目录删除「'+m.name+'」？（已安装的要去上方先卸载）')) return;
@@ -1593,6 +1594,7 @@ async function loadMarketUI(){
     };
     row.appendChild(del); cl.appendChild(row);
   }
+  if(!d.mcpCatalog.some(x=>!x.official)) cl.innerHTML='<div class="fnote">还没有自己加的插件。</div>'; // r4/S4a: 空态（官方条目不进此清单，仅自加条目在场时空）
 }
 $('mkt-src-add').onclick=async()=>{
   const repo=$('mkt-src-repo').value.trim(), branch=$('mkt-src-branch').value.trim(), subdir=$('mkt-src-subdir').value.trim();
@@ -2427,7 +2429,7 @@ function skillsOriginClass(sk){ // s95/S2a: origin→chip 分类（null=自带 /
   return 'builtin';
 }
 function skillsChips(){ // s95/S2a: 来源 chips（made-chips 同款克隆；裁决 2026-09-16 §3-S2a）
-  const defs=[['all','全部'],['builtin','📦 自带'],['ext','🌉 装的'],['self','✍ 自己攒的']];
+  const defs=[['all','全部'],['builtin','📦 出厂的'],['ext','🌉 装的'],['self','✍ 自己攒的']]; // r4/S4b: 「自带」归器官（本事 tab 标题维持），手册出处用「出厂的」消词撞车（裁决 2026-09-19 §3.4-4）
   const box=$('skills-chips'); if(!box) return; box.innerHTML='';
   for(const [k,label] of defs){
     const b=document.createElement('button'); b.className='chip'+(skillsFilter.chip===k?' on':''); b.textContent=label;
@@ -2831,6 +2833,7 @@ function fileIcon(n){
 // ---- 工作区（ADR-0007/0008）：本对话文件树始终跟随会话；「浏览全部」检索其他工作区 ----
 let lastSessions=[]; let archSet={}; let delWarned=false; let delRefreshT=null; // #4: 删除回执的 1.5s 兜底刷新定时器（收到 session_deleted 回执即撤销）
 let allFilter={q:'',sort:'mtime',chip:'active'}; // r4/S1: page 态迁入 listPage.all（手写分页迁 pageSlice 统一机制）
+let allQT=null; // r4/S3c: 搜索防抖句柄（apps-q 同款 200ms）
 
 async function loadArch(){ try{ const r=await fetch('/api/sessions/archive'); archSet=((await r.json()).arch)||{}; }catch{ archSet={}; } }
 async function archiveSession(sid,arch){
@@ -3093,6 +3096,9 @@ function showTab(which){
   if(which==='cur') renderCurPane(); else { renderChips(); renderAllPane(); }
 }
 $('tabbtn-cur').onclick=()=>showTab('cur');
+// r4/S3c: 搜索/排序接线（apps-q 同款 200ms 防抖；过滤变化回第 1 页）——修死控件：all-q/all-sort 自引入起无事件接线，allFilter.q/sort 恒为初始值
+$('all-q').oninput=()=>{ clearTimeout(allQT); allQT=setTimeout(()=>{ allFilter.q=$('all-q').value; listPage.all=1; renderAllPane(); },200); };
+$('all-sort').onchange=()=>{ allFilter.sort=$('all-sort').value; listPage.all=1; renderAllPane(); };
 $('tabbtn-all').onclick=()=>{ showTab('all'); loadWorkspaces(); };
 $('ws-refresh').onclick=()=>{ loadWorkspaces(); renderCurPane(); loadArch().then(loadSessions); };
 $('att-only').onchange=()=>renderCurPane();
