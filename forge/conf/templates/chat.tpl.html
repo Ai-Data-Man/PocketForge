@@ -315,11 +315,13 @@ details.tz[open]>summary::before{content:'▾ '}
     <button class="chip on" id="svw-chat" role="tab" aria-selected="true" style="flex:1">💬 对话</button>
     <button class="chip" id="svw-arch" role="tab" aria-selected="false" style="flex:1">📦 归档</button>
   </div>
-  <div style="position:relative;margin:2px 8px 4px" id="arch-q-row">
-    <input id="arch-q" placeholder="🔍 在对话列表里找…" autocomplete="off">
+  <div style="display:flex;gap:5px;align-items:center;margin:2px 8px 4px" id="arch-q-row">
+    <input id="arch-q" placeholder="🔍 在对话列表里找…" autocomplete="off" style="flex:1;min-width:0">
+    <button class="mini" id="sess-org" title="批量删除归档的对话" style="display:none;flex:none">整理</button><!-- r4/S2b: 归档视图整理模式入口 -->
   </div>
   <div id="search-results" style="display:none"></div>
   <div id="sessions"></div>
+  <div id="sess-orgbar" style="display:none;gap:6px;align-items:center;padding:2px 8px;flex-wrap:wrap"></div><!-- r4/S2b: 整理模式动作条（已选 N｜全选｜删除｜退出整理） -->
   <div id="arch-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 8px"></div>
   <footer>
     <button class="icobtn" id="refresh-sessions" title="刷新会话列表">⟳</button>
@@ -739,6 +741,15 @@ function connect(){
     if(m.sys==='provider_switching'){ addInfo('正在切换到「'+m.to+'」…大约 5 秒，稍等提示。'); return; }
     if(m.sys==='provider_switched'){ addInfo('✅ 已切到 '+m.provider+'（默认模型 '+m.model+'）。'); loadSessions(); if(pendingRetry){ subscribe(null); return; } return; } // s51c: 重发挂到 subscribed（新会话 ready 后才发，见上方消费点）
     if(m.sys==='session_deleted'){ clearTimeout(delRefreshT); delRefreshT=null; loadSessions(); return; } // #4: 删除回执（桥已发 session_deleted）驱动列表刷新，替代盲等 800ms
+  if(m.sys==='sessions_deleted'){ // r4/S2b: 批量删除汇总回执（桥回执后断连一次，重连由既有自动重连兜）
+    ssOrg.on=false; ssOrg.sel.clear();
+    loadSessions(); loadArch().then(loadWorkspaces); // ws 解绑改变工作区状态→浏览全部同步刷
+    const bits=['已删除 '+m.deleted+' 段对话'];
+    if(m.skipped) bits.push('有 '+m.skipped+' 段今天刚聊的没放进这一批——今天的一条一条删更稳妥。'); // 桥侧当日号段守卫的人话注（裁决 §2.2-S2b 逐字）
+    if(m.failed&&m.failed.length) bits.push(m.failed.length+' 段没删成：'+m.failed.slice(0,3).map(f=>f.sid+'：'+f.err).join('；'));
+    note(bits.join('。'));
+    return;
+  }
     if(m.sys==='rollback_done'){ // 主线5：手术回执（先于广播刷新到达）——预填原文进输入框+聚焦，不自动发送
       if(!m.ok){ rollbackPrefill=null; addErr(m.text||'撤回没做成，请再试一次。'); if(!busy&&m.sessionId&&m.sessionId===currentSid) openSession(m.sessionId); return; } // 失败恢复（补篇 §2）：失败手术已 session/close——重跑 openSession 由 load 复活（G6），视图即原史；busy 拒绝未 close，不重载
       if(rollbackPrefill!=null){ txt.value=rollbackPrefill; rollbackPrefill=null; txt.focus(); const L=txt.value.length; txt.setSelectionRange(L,L); }
@@ -803,11 +814,19 @@ function tsLocal(s){ // goose 两种时间串：ACP 带 +00:00 后缀、sessions
   return isNaN(d)?null:d;
 }
 function fmtMDHM(d){ if(!d) return ''; const p=n=>String(n).padStart(2,'0'); return (d.getMonth()+1)+'月'+d.getDate()+'日 '+p(d.getHours())+':'+p(d.getMinutes()); }
+let ssOrg={on:false,sel:new Set()}; // r4/S2b: 归档视图整理模式（勾选=会话 id；裁决 §2.2-S2b 单向门——仅归档视图发起）
+let ssBatchWarned=false; // 双重防线首用完整后果说明标志（delWarned 先例）
 function sessItem(s,archived){
   const el=document.createElement('div'); el.className='sitem'+(s.sessionId===currentSid?' active':'');
   el.dataset.sid=s.sessionId;
   const mark=archived?'🗂 ':'';
   el.innerHTML=mark+esc((s.title||'未命名').slice(0,26))+'<br><span class="t">'+esc(fmtMDHM(tsLocal(s.updatedAt))||(s.updatedAt||'').slice(5,16).replace('T',' '))+'</span>';
+  if(ssOrg.on&&archived){ // r4/S2b: 整理模式——行首勾选+点整行即勾选，逐条按钮收起（当天号段守卫在桥侧，前端不预判）
+    const cb=orgCheckBox(ssOrg.sel,s.sessionId,true,()=>renderSessions(lastSessions));
+    el.insertBefore(cb,el.firstChild);
+    el.onclick=()=>{ if(ssOrg.sel.has(s.sessionId)) ssOrg.sel.delete(s.sessionId); else ssOrg.sel.add(s.sessionId); renderSessions(lastSessions); };
+    return el;
+  }
   el.onclick=()=>openSession(s.sessionId);
   if(!archived){
     const b=document.createElement('button'); b.className='sdel'; b.style.right='26px'; b.textContent='📥'; b.title='归档（移出日常列表，随时可回来）';
@@ -838,6 +857,14 @@ function renderSessions(list){
     const ps=pageSlice(shown,'arch','row');
     for(const s of ps.rows) box.appendChild(sessItem(s,true)); // 既有语义原样迁移：仅归档内可删、↩ 还原到活跃
     pagerPaint('arch-pager',listPage.arch,ps.pages,ps.total,p=>{ listPage.arch=p; renderSessions(lastSessions); },'row',ps.trunc);
+    if(ssOrg.on){ // r4/S2b: 整理模式底部动作条（全选=shown 过滤结果的全部，跨页——搜索先过滤再全选）
+      orgBarPaint('sess-orgbar',ssOrg.sel,{
+        all:()=>shown.map(s=>s.sessionId),
+        repaint:()=>renderSessions(lastSessions),
+        del:sessOrgDelete,
+        exit:()=>{ ssOrg.on=false; ssOrg.sel.clear(); renderSessions(lastSessions); },
+      });
+    } else { const bar=$('sess-orgbar'); if(bar){ bar.style.display='none'; bar.innerHTML=''; } }
     return;
   }
   // 活跃视图=同款清单+搜索+行型分页（pm裁决 2026-09-07-user-six-lines-batch1 项1；取代 act.slice(0,40)+死提示出口）。
@@ -858,14 +885,17 @@ function paintSideChips(){ // IA-2: chip 态与计数（mtab 同款 aria-selecte
 }
 function showSideView(v){
   sideView=v;
-  $('arch-q-row').style.display='block'; // 项1(pm裁决2026-09-07-batch1): 搜索行两视图恒驻——同一输入框按当前视图过滤对应列表（R2 出路必须真实存在）
+  $('arch-q-row').style.display='flex'; // 项1(pm裁决2026-09-07-batch1): 搜索行两视图恒驻——同一输入框按当前视图过滤对应列表（R2 出路必须真实存在）
   $('arch-pager').style.display='flex'; // 两视图各自分页，共用同一翻页器容器
   $('arch-q').placeholder=v==='arch'?'🔍 在归档里找…':'🔍 在对话列表里找…';
+  $('sess-org').style.display=v==='arch'?'':'none'; // r4/S2b: 整理入口仅归档视图在场（单向门前端侧）
+  if(v!=='arch'&&ssOrg.on){ ssOrg.on=false; ssOrg.sel.clear(); } // 离开归档视图即散（即开即用即散，裁决 §4-3）
   paintSideChips();
   renderSessions(lastSessions);
 }
 $('svw-chat').onclick=()=>showSideView('chat');
 $('svw-arch').onclick=()=>showSideView('arch');
+$('sess-org').onclick=()=>{ ssOrg.on=!ssOrg.on; ssOrg.sel.clear(); renderSessions(lastSessions); }; // r4/S2b: 整理模式进/出
 let archQT=null; // IA-2: 归档搜索（store-q 同款防抖 200ms；过滤变化回第 1 页）
 $('arch-q').oninput=()=>{ clearTimeout(archQT); archQT=setTimeout(()=>{ listPage.arch=1; listPage.chat=1; renderSessions(lastSessions); },200); }; // 项1: 两视图共用搜索词，各自回第 1 页
 function subscribe(sid){ pendingForNew=!sid; lastOrig=null; wssend({type:'subscribe',sessionId:sid,model:lastKnownModel||undefined,think:(!sid&&localStorage.getItem('pfThinkEffort'))||undefined}); chat.innerHTML=''; toolCards.clear(); if(!sid){ addMsg('你好！我是小 forge。想做什么直接打字告诉我。','agent'); addQuickPrompts(); } }
@@ -2891,6 +2921,18 @@ function askDeleteSession(s){
   wssend({type:'delete_session',sessionId:s.sessionId});
   if(currentSid===s.sessionId){ currentSid=null; sessionId=null; chat.innerHTML=''; }
   clearTimeout(delRefreshT); delRefreshT=setTimeout(loadSessions,1500); // #4: 正常由 session_deleted 回执驱动刷新；1.5s 未收到回执则兜底刷一次
+}
+function sessOrgDelete(){ // r4/S2b: 归档批量删除执行——单消息批量（delete_session 回执即毁连接，逐条循环协议上不可行，裁决 F12）
+  if(!ssOrg.sel.size) return;
+  if(!ssBatchWarned){
+    if(!confirm('第一次批量删除，先说清楚：\n\n· 勾选的对话聊天记录会被永久删除，找不回来。\n· 工作区文件不会被删，会变成「未关联」，以后可在右侧「浏览全部」里清理。\n· 今天刚聊的对话不会放进这一批，要删请一条一条删。\n\n之后每次删除都会再确认两次。')) return;
+    ssBatchWarned=true;
+  }
+  const ids=[...ssOrg.sel];
+  if(!confirm('将永久删除选中的 '+ids.length+' 段对话的聊天记录（找不回来）。它们的工作区文件不删，会变成未关联，以后可在右侧浏览全部里清理。')) return;
+  if(!confirm('真的删除？这一步无法撤销。')) return;
+  if(!wssend({type:'delete_sessions',sessionIds:ids})) return;
+  if(ids.includes(currentSid)){ currentSid=null; sessionId=null; chat.innerHTML=''; } // 批里含当前对话：同单删清场语义
 }
 
 async function loadWorkspaces(){ try{ const r=await fetch('/api/workspaces'); wsList=(await r.json())||[]; renderAllPane(); }catch{} }

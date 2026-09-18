@@ -3786,6 +3786,32 @@ function llmStreamOnce({ host, key, model, maxTokens, sysP, um, onDelta }) {
     });
 }
 
+// r4/S2b: 单会话硬删核心（DB 行删 + close 回收 + 模型/思考档记账清账 + ws 解绑 + 归档清行）——
+// delete_session 与 delete_sessions 批量循环共用；自单删路径原样抽出，操作顺序/副作用零变化（e2e §11/§18 依赖）。
+// 返回 {m: 删 messages 行数, r: 删 sessions 行数, unbound: 是否解绑工作区}。
+function hardDeleteSession(sessionId) {
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync(path.join(ROOT, 'conf', 'goose', 'data', 'sessions', 'sessions.db'));
+    const m = db.prepare('DELETE FROM messages WHERE session_id = ?').run(sessionId);
+    const r = db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
+    db.close();
+    // s80g: close 走出生门控——幼龄会话（树装配完未满 CLOSE_SETTLE_MS）延迟到窗末再发，防冷/载窗
+    // teardown 竞态永久泄漏（research/17 s80g 补录）；满龄/未登记照旧即发。回执与 DB 删除时序不变。
+    acpCloseSession(sessionId);
+    sidModelApplied.delete(sessionId); // qa s94 P4-4: 会话已删，模型记账随之清（防 Map 无界增长/陈旧条目）
+    sidThinkValues.delete(sessionId); sidThinkApplied.delete(sessionId); // s98/think: 同款清账
+    // I1(审查s15): 会话删了就解除其工作区绑定，否则区卡在 active 态永远无法清理
+    const wsm = readWsMap();
+    let unbound = false;
+    for (const k of Object.keys(wsm)) if (wsm[k].sid === sessionId) { delete wsm[k]; unbound = true; }
+    if (unbound) writeWsMap(wsm);
+    // s73 切片2: 硬删会话同步清归档索引行（裁决 §7-切片2「为切片4隐私红线预演同款机制」；
+    // 此前归档后被硬删的会话在索引里留死键——前端列表不可见但文件/PG 长存）
+    const arch = readArch();
+    if (arch[sessionId] !== undefined) { delete arch[sessionId]; writeArch(arch); }
+    return { m: m.changes, r: r.changes, unbound };
+}
+
 function handleClient(ws, msg) {
     try {
         if (msg.sys === 'ping') return ws.send({ sys: 'pong' });
@@ -3890,28 +3916,10 @@ function handleClient(ws, msg) {
             // 让 goose 卸载 Agent——否则每会话 ~7 个 extension 进程滞留到 acp 退出。栈外已验证 close 回收成立，
             // 且对已不存在的 sid 重发 close 也返回空 result（无 error）
             try {
-                const { DatabaseSync } = require('node:sqlite');
-                const db = new DatabaseSync(path.join(ROOT, 'conf', 'goose', 'data', 'sessions', 'sessions.db'));
-                const m = db.prepare('DELETE FROM messages WHERE session_id = ?').run(msg.sessionId);
-                const r = db.prepare('DELETE FROM sessions WHERE id = ?').run(msg.sessionId);
-                db.close();
-                // s80g: close 走出生门控——幼龄会话（树装配完未满 CLOSE_SETTLE_MS）延迟到窗末再发，防冷/载窗
-                // teardown 竞态永久泄漏（research/17 s80g 补录）；满龄/未登记照旧即发。回执与 DB 删除时序不变。
-                acpCloseSession(msg.sessionId);
-                sidModelApplied.delete(msg.sessionId); // qa s94 P4-4: 会话已删，模型记账随之清（防 Map 无界增长/陈旧条目）
-                sidThinkValues.delete(msg.sessionId); sidThinkApplied.delete(msg.sessionId); // s98/think: 同款清账
-                // I1(审查s15): 会话删了就解除其工作区绑定，否则区卡在 active 态永远无法清理
-                const wsm = readWsMap();
-                let unbound = false;
-                for (const k of Object.keys(wsm)) if (wsm[k].sid === msg.sessionId) { delete wsm[k]; unbound = true; }
-                if (unbound) writeWsMap(wsm);
-                // s73 切片2: 硬删会话同步清归档索引行（裁决 §7-切片2「为切片4隐私红线预演同款机制」；
-                // 此前归档后被硬删的会话在索引里留死键——前端列表不可见但文件/PG 长存）
-                const arch = readArch();
-                if (arch[msg.sessionId] !== undefined) { delete arch[msg.sessionId]; writeArch(arch); }
+                const st = hardDeleteSession(msg.sessionId); // r4/S2b: 逐项核心抽出共用（顺序/语义零变化，e2e §11/§18 依赖）
                 // C2: 回执先发再断订阅者——请求者自己也在 subs 里，先 destroy 后 send 回执必被吞
                 // s62: 请求者 socket 改为回执 flush 回调里 destroy——同 tick destroy 会丢弃尚未冲刷到内核的写队列，小概率丢回执
-                writeFrame(ws.socket, { sys: 'session_deleted', sessionId: msg.sessionId, ok: r.changes > 0 }, () => { try { ws.socket.destroy(); } catch {} });
+                writeFrame(ws.socket, { sys: 'session_deleted', sessionId: msg.sessionId, ok: st.r > 0 }, () => { try { ws.socket.destroy(); } catch {} });
                 // s62/P3: 挂死对端不读时 flush 回调永不触发——5s 兜底 destroy，socket 不滞留 allClients 到进程级；
                 // 正常路径回调已 destroy 后此 timer 再触发是幂等的（二次 destroy 不抛，'close' 只发一次→drop 只清一次）
                 setTimeout(() => { try { ws.socket.destroy(); } catch {} }, 5000).unref();
@@ -3921,8 +3929,50 @@ function handleClient(ws, msg) {
                     sessionClients.delete(msg.sessionId);
                     for (const c of subs) { if (c !== ws) { try { c.socket.destroy(); } catch {} } }
                 }
-                console.log('session deleted', msg.sessionId, 'messages:', m.changes, 'row:', r.changes, 'unbound:', unbound);
+                console.log('session deleted', msg.sessionId, 'messages:', st.m, 'row:', st.r, 'unbound:', st.unbound);
             } catch (e) { ws.send({ sys: 'error', text: '删除失败: ' + e.message }); }
+            return;
+        }
+
+        if (msg.type === 'delete_sessions') {
+            // r4/S2b（裁决 §2.2-S2b，写死四条）：归档会话批量删除。
+            // ①单消息批量——delete_session 回执 flush 后即毁连接（s50c/s62），客户端逐条循环协议上不可行；
+            // ②当日号段拒批——sid 日期前缀===今天者剔除入 skipped，封死 closed-sid 叠删烧号家族（单删当日尾部仍由 s76 单次救援兜底）；
+            // ③归档门双验——桥侧校验 sid 在归档清单（readArch 在场）才删，防绕过前端单向门；
+            // ④桥内顺序循环复用单删路径（hardDeleteSession），单条失败继续，末尾单封 sessions_deleted 汇总回执，回执后照旧断连一次。
+            try {
+                if (!Array.isArray(msg.sessionIds) || !msg.sessionIds.length) throw new Error('参数不完整');
+                const arch = readArch();
+                // 当日号段判基=UTC 日期：goose sid 前缀按 UTC 生成（探针活体实证：本地已 09-19、sid 仍 20260918_*，
+                // 用本地日期比对会漏判→当日会话被批量删→closed 集污染→新会话 Session-not-found，即 s76 家族复现）
+                const d = new Date(), p2 = n => String(n).padStart(2, '0');
+                const today = '' + d.getUTCFullYear() + p2(d.getUTCMonth() + 1) + p2(d.getUTCDate());
+                const deleted = [], skipped = [], failed = [];
+                for (const rawSid of msg.sessionIds) {
+                    const sid = String(rawSid);
+                    if (/^\d{8}_\d+$/.test(sid) && sid.slice(0, 8) === today) { skipped.push(sid); continue; }
+                    if (!sidValid(sid)) { failed.push({ sid, err: '会话标识不对' }); continue; }
+                    if (!arch[sid]) { failed.push({ sid, err: '不是归档状态的对话，先归档再删' }); continue; }
+                    try {
+                        const st = hardDeleteSession(sid);
+                        if (st.r > 0) deleted.push(sid);
+                        else failed.push({ sid, err: '没找到这段对话的记录' });
+                    } catch (e) { failed.push({ sid, err: e.message }); }
+                }
+                // 订阅者清场先于回执同款语义：被删会话的其余订阅连接断开（请求者最后随回执断）
+                for (const sid of deleted) {
+                    const subs = sessionClients.get(sid);
+                    if (subs) {
+                        sessionClients.delete(sid);
+                        for (const c of subs) { if (c !== ws) { try { c.socket.destroy(); } catch {} } }
+                    }
+                }
+                // 单封汇总回执（deleted/skipped 为计数；sid 明细进日志）；回执 flush 后断连一次+5s 兜底（单删同款）
+                writeFrame(ws.socket, { sys: 'sessions_deleted', deleted: deleted.length, skipped: skipped.length, failed }, () => { try { ws.socket.destroy(); } catch {} });
+                setTimeout(() => { try { ws.socket.destroy(); } catch {} }, 5000).unref();
+                console.log('sessions batch deleted:', deleted.length, 'skipped:', skipped.length, 'failed:', failed.length,
+                    '| deleted:', deleted.slice(0, 10).join(','), '| skipped:', skipped.slice(0, 10).join(','));
+            } catch (e) { ws.send({ sys: 'error', text: '批量删除失败: ' + e.message }); }
             return;
         }
 

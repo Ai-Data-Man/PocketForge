@@ -45,6 +45,7 @@ function mkEl(id) {
 const els = {
     'sessions': mkEl('sessions'), 'arch-pager': mkEl('arch-pager'),
     'svw-chat': mkEl('svw-chat'), 'svw-arch': mkEl('svw-arch'), 'arch-q': mkEl('arch-q'),
+    'sess-orgbar': mkEl('sess-orgbar'), // r4/S2b: renderSessions 整理关闭分支引用的动作条桩
     'skills-list': mkEl('skills-list'), 'skills-pager': mkEl('skills-pager'), 'skills-q': mkEl('skills-q'),
 };
 const document = { createElement: t => mkEl(t), querySelectorAll: () => [] };
@@ -53,6 +54,7 @@ const $ = id => { if (!els[id]) throw new Error('no stub #' + id); return els[id
 const sandbox = new Function('$', 'document', 'fetch', `
     let lastSessions=[], archSet={}, sideView='chat', archCount=0, installedAll=[], currentSid=null;
     let listPage={ins:1,store:1,mcp:1,arch:1};
+    let ssOrg={on:false,sel:new Set()}; // r4/S2b: 归档整理模式态桩（sessItem/renderSessions 新自由变量；本探针恒关闭态）
     const skillsFilter={chip:'all'}; // s95/S2a
     ${skillsOriginClassSrc}
     ${psBlockSrc}
