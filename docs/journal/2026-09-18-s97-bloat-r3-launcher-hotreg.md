@@ -42,9 +42,10 @@ QA 复跑发现 e2e 5 红（4×backup+1×apps A9/A11），干净 HEAD 同红=环
 - 栈 wedge 态时 pc down 客户端永久挂起、阻塞停止脚本 hard_stop 升级段（s91 已知风险自认，本次再触发）——跟进项。
 - 会话残留 ACP 惰性初始化：页面重连触发桥 goose 再初始化（非重启），计数解读时注意区分（pc.log 相邻行时间可辨）。
 
-## 环境
+## 收官终验（iat13/s97h 零干扰整回合——s95 遗留「整回合终态证据」正式闭环）
 
-- 沙盒 s97a/b/c/d/g 全部整删（C:\PF-TEST 不存在）、Edge 残窗清零、端口零残留。
-- dev 栈 PFdrill2 /End+/Run 复位 healthz 200。
-- 测试包 dist：iat7~iat11（不入发布序；iat11=当前最新含全部修复）。
-- 会话累计 10 commit（6cbc0f7/b8bf3a7/37ce615/e7f69ae/034e55a/a3f445f/ed88399/2a07ecc/d8a04da/9e4420d）+ 本 journal/STATE 收尾 commit。
+完整修复栈（F-7~F-12 全含）出厂包冷启 12.8s（含收敛段）→单会话零主控干扰真任务「搭常驻家庭备忘应用」（glm-5.3-flash）→ **全链首次完整走通**：agent 写 yaml（forge-meta 四键）→ hints 教法调 wrapper（timeout 300s 已学）→ **注册卡成功**（`Project updated successfully`+`registered:` 输出完整捕获）→ agent 自验（process list）→ **终态回复全文在场**（网址 8123+用法+看管方式+「电脑重启后自己回来」说明）→ 应用真实服务（HTTP 200）。全程 ACP=2 恒定（两次都在启动窗内=初始+收敛，注册零重启）、零控制台错误、typing 正常收束。s95 轮4 起缺的「整回合终态证据」至此取得。环境：沙盒整删零残留、dev 栈 PFdrill2 复位健康（10 进程）。
+
+## 会话终态
+
+19 commit 全推 origin（6cbc0f7→4a6ce89+本收尾）；测试包 iat7~iat13 在 dist（iat13=完整修复栈，含启动收敛）；终态基线 e2e 61/61+fuzz 190/190+ui-logic 56+ia-logic 28。
