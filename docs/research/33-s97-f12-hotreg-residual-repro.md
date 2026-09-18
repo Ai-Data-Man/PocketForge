@@ -1,5 +1,7 @@
 # F-12 复现配方（s97 会话遗留，下次会话首活）
 
+> **2026-09-18 更新：§未定案问题已被 research/34 机理定案取代**——冷启后首次 JSON update 全表重启=Vars(PC_REPLICA_NUM) int→float64 漂移（源码+活体双证）；update 不等 readiness、pc 层不挂起；"挂起>10 分钟"与"ACP +2"仍 UNRESOLVED（见 34 §五）。本文件复现配方与已证伪清单继续有效。
+
 ## 现象（三次实录：s97b 03:14:32 / s97d 04:24:35 / s97g 05:33:37）
 
 agent 在冷启后 2-4 分钟窗口跑富 yaml（readiness_probe http_get + availability + forge-meta）注册：
