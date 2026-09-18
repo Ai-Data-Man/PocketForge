@@ -31,9 +31,16 @@ function makeEnv(s26re, classify, health) { // s76c: 可注入 S26 正则/归类
         healthCalls: 0, // 裁决 provider-health-probe S2-2: S26 命中安排健康复检防抖的计数桩
         console: { log() {}, error() {} },
     };
+    // s98/think: 提取块内 rescueSession 新增 noteThinkOptions/acpSetThink/sidThinkApplied/lastThinkOverride
+    // （均定义在提取区外的 s98/think 块）——同款手法：把该块原文一并提取前置，真语义零桩化
+    //（默认 lastThinkOverride='' → acpSetThink 不写帧，既有 writes 序号断言零位移）。
+    const thinkStart = src.indexOf('// ---- s98/think');
+    const thinkEnd = src.indexOf('function applyModelBeforeTurn');
+    if (thinkStart < 0 || thinkEnd < 0 || thinkEnd <= thinkStart) { console.log('FAIL: s98/think extraction anchors not found'); process.exit(1); }
+    const thinkSrc = src.slice(thinkStart, thinkEnd);
     const factory = new Function('waiting', '__nid', 'turnText', 'S26_ERR_RE', 'classifyUpstream', 'statsBump', 'acp', 'console', 'ROOT', 'wsSession', 'sessionClients', 'busySids', 'healthFailDebounce', 'bindWs', 'healthCache',
         // s95/F-3: 提取块新增 abortInflightTurns（它读的 busySids/turnText/sessionClients 已是本工厂的入参，零额外声明）
-        block.replace(/nextId\+\+/g, '__nid()') + '\nreturn { sendTurn, rescueSession, abortInflightTurns, bindWs };');
+        thinkSrc + '\n' + block.replace(/nextId\+\+/g, '__nid()') + '\nreturn { sendTurn, rescueSession, abortInflightTurns, bindWs, noteThinkOptions, acpSetThink };');
     // s78: 桥端 bindWs 提升为共享助手（提取块外）——桩内以 wsSession/sessionClients 复刻同语义
     const bindWs = (ws, sid) => { env.wsSession.set(ws, sid); if (!env.sessionClients.has(sid)) env.sessionClients.set(sid, new Set()); env.sessionClients.get(sid).add(ws); };
     const api = factory(env.waiting, () => env.nextId++, env.turnText, env.S26_ERR_RE, env.classifyUpstream, k => env.statsBump(k), env.acp, env.console, 'C:/PF-ROOT', env.wsSession, env.sessionClients, env.busySids, () => env.healthCalls++, bindWs, env.healthCache);

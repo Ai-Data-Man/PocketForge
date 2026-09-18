@@ -819,6 +819,7 @@ function onAcpData(chunk) {
                 // I8: 带回客户端关联 id
                 const out = { rpc: msg };
                 if (w.__cid !== undefined) out.rpc.__cid = w.__cid;
+                if (w.__loadSid && msg.result && msg.result.configOptions) noteThinkOptions(w.__loadSid, msg.result.configOptions); // s98/think: session/load 回包刷缓存（老会话开盒）
                 w.ws.send(out);
             }
             continue;
@@ -992,6 +993,8 @@ function rescueSession(ws, text) {
         bindWs(ws, res.sessionId);
         // 前端 subscribed 处理器会更新 sessionId/currentSid（与 hotRestart 后 rebind 同款），用户表现为「继续聊」
         ws.send({ sys: 'subscribed', sessionId: res.sessionId, newSession: true, modes: res.modes || [], configOptions: res.configOptions || [] });
+        noteThinkOptions(res.sessionId, res.configOptions); // s98/think: 救援新会话同样入缓存
+        if (lastThinkOverride && acpSetThink(res.sessionId, lastThinkOverride)) sidThinkApplied.set(res.sessionId, lastThinkOverride); // s98/think: 全局档随行（与 subscribe 同款）
         sendTurn(ws, res.sessionId, text, false); // 单次守卫：重放不救援
     }, reject: () => { clearTimeout(timer); fail(); } });
     try {
@@ -1045,6 +1048,24 @@ async function hotRestartProvider() {
 // 真相源，只读不改），不一致先 set_config_option 追改再发 turn（响应回来说明 on_set_model 已完成，
 // 天然与 prompt 串行）。同值只追改一次；失败/超时放行本轮，下轮再试（真死的会话由 prompt 自身错误链兜底）。
 const sidModelApplied = new Map(); // sid -> 已确认落到 goose 会话的模型
+// ---- s98/think（research/35 通道 A）：per-session 思考力度 ----
+// 档位真相源=goose 回包 configOptions（不自带名单，模型池扩展零维护）；glm 系被 is_reasoning_model 名单遮蔽成
+// ["off"]（set 无门控但 wire no-op）——桥按缓存列表校验 set_think、前端按 values 长度三态显隐，诚实降级不装成功。
+const sidThinkValues = new Map(); // sid -> 最近一次会话建立/load 回包的 thinking_effort values 列表（set_think 校验源）
+const sidThinkApplied = new Map(); // sid -> 已落到 goose 会话的思考档（prompt 前对账防重发，同 sidModelApplied 语义）
+let lastThinkOverride = ''; // 全局默认档（subscribe/set_think 记账；rescue/prompt 对账/switch_model 随行，同 lastModelOverride 语义）
+function noteThinkOptions(sid, configOptions) {
+    const o = (Array.isArray(configOptions) ? configOptions : []).find(c => c && c.id === 'thinking_effort'); // 非数组回包（桩/异常形态）按无键处理，不炸 resolve 链
+    if (o && Array.isArray(o.options)) sidThinkValues.set(sid, o.options.map(x => x && x.value).filter(v => typeof v === 'string'));
+    else sidThinkValues.delete(sid);
+}
+function acpSetThink(sessionId, value) { // 与 set_config_option('model') 同点位并联的思考档帧；缺省不发（向后兼容）
+    if (!value) return false;
+    try {
+        acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: nextId++, method: 'session/set_config_option', params: { sessionId, configId: 'thinking_effort', value } }) + '\n');
+        return true;
+    } catch (e) { return false; } // acp 已死：不记账，prompt 自身写失败错误链收口
+}
 function applyModelBeforeTurn(sid, model, next) {
     const id = nextId++;
     let done = false;
@@ -3741,7 +3762,7 @@ function handleClient(ws, msg) {
             const params = Object.assign({}, msg.params || {});
             delete params.__cid;
             const id = nextId++;
-            waiting.set(id, { ws, __cid: cid });
+            waiting.set(id, { ws, __cid: cid, __loadSid: msg.method === 'session/load' ? (params.sessionId || null) : null }); // s98/think: load 回包也带 configOptions——老会话开盒即刷 think 档缓存（否则 set_think 校验无真相源）
             acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: msg.method, params }) + '\n');
             return;
         }
@@ -3774,6 +3795,10 @@ function handleClient(ws, msg) {
                             acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: mid, method: 'session/set_config_option', params: { sessionId: res.sessionId, configId: 'model', value: msg.model } }) + '\n');
                             sidModelApplied.set(res.sessionId, msg.model); // s94-b2 F-3: 记账（乐观：写失败=acp 已死，prompt 同死由其错误链收口）
                         }
+                        // s98/think: 新会话带思考档（与带 model 同款语义）——goose 按会话记住并持久化；模型被遮蔽时为
+                        // no-op（前端三态②已诚实呈现）。此处不校验 values（subscribe 是「沿用习惯」不是「切档」）。
+                        noteThinkOptions(res.sessionId, res.configOptions);
+                        if (msg.think) { lastThinkOverride = msg.think; if (acpSetThink(res.sessionId, msg.think)) sidThinkApplied.set(res.sessionId, msg.think); }
                     } else {
                         // B1: session/new 失败——resolve 收到的是整条 error 帧；无此分支前端等不到 subscribed，pendingQueue 永久搁浅
                         const why = (res && res.error && (res.error.message || res.error)) || '原因未知';
@@ -3804,6 +3829,8 @@ function handleClient(ws, msg) {
             wsFirstPrompt.set(ws, false);
             // s94-b2 F-3: 发 turn 前对账会话模型——热重启/换档后既有会话仍钉着旧模型（evicted-restore 按 DB 回放），
             // 不追改就会出现「UI 宣称已切、实跑还是种子模型」（ia2 全部 llm_request=mimo-v2.5）。
+            // s98/think: 会话档 ≠ 全局档时先追发（fire-and-forget：stdin 写序保证先于 prompt 落地；模型对账在其后照常）
+            if (lastThinkOverride && sidThinkApplied.get(sid) !== lastThinkOverride && acpSetThink(sid, lastThinkOverride)) sidThinkApplied.set(sid, lastThinkOverride);
             const wantModel = effectiveModel(activeProvider());
             const goTurn = () => sendTurn(ws, sid, msg.text, firstTurn); // research/18 断点①: 错误帧→reject 人话/首轮单次救援（sendTurn）
             if (wantModel && sidModelApplied.get(sid) !== wantModel) applyModelBeforeTurn(sid, wantModel, goTurn);
@@ -3837,6 +3864,7 @@ function handleClient(ws, msg) {
                 // teardown 竞态永久泄漏（research/17 s80g 补录）；满龄/未登记照旧即发。回执与 DB 删除时序不变。
                 acpCloseSession(msg.sessionId);
                 sidModelApplied.delete(msg.sessionId); // qa s94 P4-4: 会话已删，模型记账随之清（防 Map 无界增长/陈旧条目）
+                sidThinkValues.delete(msg.sessionId); sidThinkApplied.delete(msg.sessionId); // s98/think: 同款清账
                 // I1(审查s15): 会话删了就解除其工作区绑定，否则区卡在 active 态永远无法清理
                 const wsm = readWsMap();
                 let unbound = false;
@@ -4077,7 +4105,12 @@ function handleClient(ws, msg) {
                     const id = nextId++;
                     acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/set_config_option', params: { sessionId, configId: 'model', value: msg.model } }) + '\n');
                     waiting.set(id, { ws, resolve: (res) => {
-                        if (res && res.configOptions) { sidModelApplied.set(sessionId, msg.model); ws.send({ sys: 'model_switched', model: msg.model, provider: target.name }); } // s94-b2 F-3: 成功才记账，失败留给 prompt 前对账重试
+                        if (res && res.configOptions) {
+                            sidModelApplied.set(sessionId, msg.model); // s94-b2 F-3: 成功才记账，失败留给 prompt 前对账重试
+                            noteThinkOptions(sessionId, res.configOptions); // s98/think: 切模型后档位列表可能变（goose 名单制）——回包即刷缓存
+                            if (lastThinkOverride && sidThinkApplied.get(sessionId) !== lastThinkOverride && acpSetThink(sessionId, lastThinkOverride)) sidThinkApplied.set(sessionId, lastThinkOverride); // s98/think: 同点位并联（goose INHERITED 继承链之外再对账一次）
+                            ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, configOptions: res.configOptions }); // s98/think: 前端据此刷新思考力度三态（会话内切模型不走 session/new→subscribed）
+                        }
                         else ws.send({ sys: 'error', text: '切换失败，试试重开对话' });
                     }});
                 };
@@ -4096,6 +4129,7 @@ function handleClient(ws, msg) {
                             wsFirstPrompt.set(ws, true); // research/18 断点①: 新绑定首轮允许救援
                             bindWs(ws, res.sessionId);
                             ws.send({ sys: 'subscribed', sessionId: res.sessionId, modes: res.modes || [], configOptions: res.configOptions || [] });
+                            noteThinkOptions(res.sessionId, res.configOptions); // s98/think: 会话建立即入缓存
                             doSet(res.sessionId);
                         } else ws.send({ sys: 'error', text: '开新对话失败，稍后再试' });
                     }});
@@ -4111,6 +4145,29 @@ function handleClient(ws, msg) {
                     ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, restarted: true });
                 }).catch(e => ws.send({ sys: 'error', text: '切换供应商失败: ' + e.message }));
             }
+            return;
+        }
+
+        if (msg.type === 'set_think') {
+            // s98/think: 会话内切思考档。校验=最近一次会话回包的 thinking_effort values（真相源=goose），
+            // 不在场或不合法→人话回执且零 ACP 帧（glm 遮蔽态如实拒绝，不装成功）
+            const sid = wsSession.get(ws);
+            if (!sid || (msg.sessionId != null && msg.sessionId !== sid)) return ws.send({ sys: 'think_set', ok: false, err: '这场对话已经不在了（可能刚重启过）。刷新一下页面再试。' });
+            const vals = sidThinkValues.get(sid) || [];
+            const v = typeof msg.value === 'string' ? msg.value : '';
+            if (!v || vals.indexOf(v) < 0) return ws.send({ sys: 'think_set', ok: false, err: '当前模型不支持调思考力度' });
+            const id = nextId++;
+            waiting.set(id, { ws, resolve: (res) => {
+                if (res && res.configOptions) {
+                    noteThinkOptions(sid, res.configOptions);
+                    sidThinkApplied.set(sid, v);
+                    lastThinkOverride = v; // 主控裁：会话内切换即记习惯（新会话 subscribe 随行）
+                    ws.send({ sys: 'think_set', ok: true, value: v, configOptions: res.configOptions });
+                } else ws.send({ sys: 'think_set', ok: false, err: '切换没做成，稍后再试。' });
+            }});
+            try {
+                acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/set_config_option', params: { sessionId: sid, configId: 'thinking_effort', value: v } }) + '\n');
+            } catch (e) { waiting.delete(id); ws.send({ sys: 'think_set', ok: false, err: '切换没做成，稍后再试。' }); }
             return;
         }
 

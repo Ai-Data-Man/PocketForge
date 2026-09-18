@@ -93,6 +93,8 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 #burger{background:none;border:none;font-size:1.125rem;cursor:pointer;color:var(--tx-2);padding:6px;border-radius:var(--r-s)}
 #burger:hover{background:var(--hover)}
 #mode{padding:7px 10px;border:1px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.82rem;cursor:pointer}
+#think{padding:7px 10px;border:1px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.82rem;cursor:pointer;max-width:180px}
+#think:disabled{color:var(--mut);cursor:default;border-color:var(--line)}
 #model-label{color:var(--mut);font-size:.75rem;margin-left:auto}
 #model-pick{position:relative;cursor:pointer;padding:7px 12px;border:1px solid var(--line-strong);border-radius:var(--r-m);background:var(--panel);font-size:.82rem;user-select:none;max-width:240px;transition:border-color .12s}
 #model-pick:hover{border-color:var(--acc)}
@@ -335,6 +337,7 @@ details.tz[open]>summary::before{content:'▾ '}
       <span id="model-cur">模型加载中…</span>
       <div id="model-drop"><input id="model-search" placeholder="搜索模型…"><div id="model-items"></div></div>
     </div>
+    <select id="think" title="思考力度" style="display:none"></select>
     <select id="mode" title="工作模式">
       <option value="auto">自动干活</option>
       <option value="smart_approve">重要操作问我</option>
@@ -701,6 +704,7 @@ function connect(){
     if(saved&&cur&&saved!==cur){ rpc2('session/set_mode',{sessionId:m.sessionId,modeId:saved}); cur=saved; }
     if(cur){ $('mode').value=cur; paintModeTip(); } // 恢复路径静默：只同步 select 与 title，不弹提示
       renderModelLabel();
+      renderThinkCtl(); // s98/think: 新会话/重订阅帧即刷新三态
       ensureWs();
       return;
     }
@@ -719,8 +723,15 @@ function connect(){
       // 顶栏立即反映（不信 configOptions 缓存）
       $('model-cur').textContent=m.provider+' · '+m.model;
       lastKnownModel=m.model;
+      if(m.configOptions){ configOptions=m.configOptions; renderThinkCtl(); } // s98/think: 会话内切模型不走 subscribed——回包档位即刷三态
       if(m.restarted){ addInfo('✅ 已切到 '+m.provider+' · '+m.model+'。刚才的对话要先重新打开：点左侧列表里的那个对话即可继续（内容都在）。'); loadSessions(); }
       else addInfo('✅ 已切到 '+m.provider+' · '+m.model+'，直接继续说话就行。');
+      return;
+    }
+    if(m.sys==='think_set'){ // s98/think: 切档回执——失败回滚显示（按 configOptions 真相源重绘）
+      if(m.ok&&m.configOptions){ configOptions=m.configOptions; }
+      if(m.ok){ addInfo('思考力度已切到「'+(THINK_LABELS[m.value]||m.value)+'」。'); } else { addErr(m.err||'没切换成功，稍后再试。'); }
+      renderThinkCtl();
       return;
     }
     if(m.sys==='provider_switching'){ addInfo('正在切换到「'+m.to+'」…大约 5 秒，稍等提示。'); return; }
@@ -776,6 +787,7 @@ function onRpc(d){
     if(!lastKnownModel){ const m0=r.configOptions.find(o=>o.id==='model'); if(m0&&m0.currentValue) lastKnownModel=m0.currentValue; }
     if(r.modes){ const cur=r.modes.currentModeId; if(cur){ $('mode').value=cur; paintModeTip(); } }
     renderModelLabel();
+    renderThinkCtl(); // s98/think: session/load 等回包也带 configOptions——老会话开盒即重算三态
   }
 }
 function loadSessions(){ rpc2('session/list').then(d=>{ const s=(d.result&&d.result.sessions)||[]; lastSessions=s; renderSessions(s); }).catch(()=>{}); }
@@ -854,7 +866,7 @@ $('svw-chat').onclick=()=>showSideView('chat');
 $('svw-arch').onclick=()=>showSideView('arch');
 let archQT=null; // IA-2: 归档搜索（store-q 同款防抖 200ms；过滤变化回第 1 页）
 $('arch-q').oninput=()=>{ clearTimeout(archQT); archQT=setTimeout(()=>{ listPage.arch=1; listPage.chat=1; renderSessions(lastSessions); },200); }; // 项1: 两视图共用搜索词，各自回第 1 页
-function subscribe(sid){ pendingForNew=!sid; lastOrig=null; wssend({type:'subscribe',sessionId:sid,model:lastKnownModel||undefined}); chat.innerHTML=''; toolCards.clear(); if(!sid){ addMsg('你好！我是小 forge。想做什么直接打字告诉我。','agent'); addQuickPrompts(); } }
+function subscribe(sid){ pendingForNew=!sid; lastOrig=null; wssend({type:'subscribe',sessionId:sid,model:lastKnownModel||undefined,think:(!sid&&localStorage.getItem('pfThinkEffort'))||undefined}); chat.innerHTML=''; toolCards.clear(); if(!sid){ addMsg('你好！我是小 forge。想做什么直接打字告诉我。','agent'); addQuickPrompts(); } }
 // s33: 开场快捷任务——小白不用想"该说什么"，点一下就发
 const QUICK_PROMPTS=[
   {label:'🩺 做个体检', text:'做个体检'},
@@ -972,6 +984,30 @@ function openSession(sid){
     });
 }
 let lastKnownModel=null;
+// s98/think（research/35 通道 A）：思考力度三态控件。选项=最近 configOptions 里 thinking_effort.values
+// （真相源=goose 回包，零自带名单）；标签零术语。①多档→可选，选择即发 set_think；②恰 ["off"]（glm 系被
+// goose is_reasoning_model 名单遮蔽）→在场但禁用+人话提示；③无键→隐藏。切模型后 configOptions 刷新即自动重算三态。
+const THINK_LABELS={off:'不用额外想',low:'快一点',medium:'标准',high:'深想',max:'尽全力想'};
+function renderThinkCtl(){
+  const sel=$('think'); if(!sel) return;
+  const o=configOptions.find(c=>c&&c.id==='thinking_effort');
+  if(!o||!Array.isArray(o.options)||!o.options.length){ sel.style.display='none'; return; } // 三态③：模型没有这个配置面
+  const vals=o.options.map(x=>x&&x.value).filter(v=>typeof v==='string');
+  sel.style.display='';
+  if(vals.length<=1){ // 三态②：只剩 off——这个模型想多深它自己定，调不了快慢
+    sel.disabled=true; sel.innerHTML='';
+    const op=document.createElement('option'); op.value='off'; op.textContent='想多深它自己定'; sel.appendChild(op);
+    sel.title='这个模型想多深它自己定，调不了快慢';
+    return;
+  }
+  sel.disabled=false; sel.title='思考力度：想快一点还是深一点';
+  sel.innerHTML='';
+  const saved=localStorage.getItem('pfThinkEffort');
+  const pick=(o.currentValue&&vals.indexOf(o.currentValue)>=0)?o.currentValue:((saved&&vals.indexOf(saved)>=0)?saved:(vals.indexOf('medium')>=0?'medium':vals[0]));
+  for(const v of vals){ const op=document.createElement('option'); op.value=v; op.textContent=THINK_LABELS[v]||v; sel.appendChild(op); }
+  sel.value=pick;
+}
+$('think').onchange=e=>{ const v=e.target.value; localStorage.setItem('pfThinkEffort',v); if(!wssend({type:'set_think',sessionId:currentSid,value:v})) renderThinkCtl(); }; // s98/think: 主控裁「会话内切换即记习惯」；没连上按 configOptions 真相源回滚显示
 function renderModelLabel(){
   try{
     const cur=configOptions.find(o=>o.id==='model');
