@@ -592,6 +592,16 @@ function sessionMeta() {
     } catch {}
     return meta;
 }
+// s98/R1-F1: /api/ws/new 绑定前校验 sid 真在会话库——同端口旧聊天窗重连会把历史死 sid 无条件绑成幽灵工作区
+// （iat14 从零安装实录：首启 1s 内 4 个旧 sid 建区）。归档 sid 仍在 sessions 表（硬删才清行）→ 归档会话
+// 照常绑定；库缺失/读失败 fail-open 维持旧行为（只在确证缺席时拒绝，不误伤新装首启窗口）。
+function sidKnownToDb(sid) {
+    try {
+        const { DatabaseSync } = require('node:sqlite');
+        const db = new DatabaseSync(path.join(ROOT, 'conf', 'goose', 'data', 'sessions', 'sessions.db'));
+        try { return !!db.prepare('SELECT 1 FROM sessions WHERE id = ?').get(sid); } finally { db.close(); }
+    } catch { return true; }
+}
 // r4/S2a: 单工作区删除守卫+落盘核心（/api/ws/delete 与 /api/ws/delete_batch 共用；逻辑自单删路径原样抽出，
 // 行为零变化）。成功删目录并从 map 摘键（写回由调用方收口：单删=删后即写，批量=末尾一次写）；失败返回人话 err 串。
 function wsDeleteOne(ws, curSid, map) {
@@ -1015,7 +1025,7 @@ function rescueSession(ws, text) {
         // 前端 subscribed 处理器会更新 sessionId/currentSid（与 hotRestart 后 rebind 同款），用户表现为「继续聊」
         ws.send({ sys: 'subscribed', sessionId: res.sessionId, newSession: true, modes: res.modes || [], configOptions: res.configOptions || [] });
         noteThinkOptions(res.sessionId, res.configOptions); // s98/think: 救援新会话同样入缓存
-        if (lastThinkOverride && acpSetThink(res.sessionId, lastThinkOverride)) sidThinkApplied.set(res.sessionId, lastThinkOverride); // s98/think: 全局档随行（与 subscribe 同款）
+        if (lastThinkOverride && thinkAllowed(res.sessionId, lastThinkOverride) && acpSetThink(res.sessionId, lastThinkOverride)) sidThinkApplied.set(res.sessionId, lastThinkOverride); // s98/think: 全局档随行（与 subscribe 同款；s98/R1: rescue 第四旁路同样过白名单——不合法不发帧不记账）
         sendTurn(ws, res.sessionId, text, false); // 单次守卫：重放不救援
     }, reject: () => { clearTimeout(timer); fail(); } });
     try {
@@ -2725,6 +2735,7 @@ async function handleHttp(req, res) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache, no-store, must-revalidate' });
         res.end(html);
     } else if (url === '/healthz') { res.writeHead(200); res.end('ok'); }
+    else if (url === '/favicon.ico') { res.writeHead(204); res.end(); } // s98/R1-F4: 无图标诚实空回——此前 404 是浏览器控制台唯一 error
     else if (url === '/api/skills') {
         // scan .agents/skills/*/SKILL.md (project) + conf/goose/config/skills (global-ish)
         json200(res, scanInstalledSkills()); // s83: 读法平移至具名函数（/api/assets 技能源共用）
@@ -3513,6 +3524,7 @@ const ext = path.extname(f).toLowerCase();
         const sid = qs.get('sid') || '';
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         if (!sidValid(sid)) { res.end(JSON.stringify({ ok: false, err: '缺 sid' })); return; }
+        if (!sidKnownToDb(sid)) { res.end(JSON.stringify({ ok: false, err: '这段对话已经不存在了，刷新页面重新打开' })); return; } // s98/R1-F1: 死 sid 诚实回执，不建区
         const map = readWsMap();
         const mine = Object.keys(map).find(w => map[w].sid === sid && FSS.existsSync(wsDir(w)));
         if (mine) { res.end(JSON.stringify({ ok: true, ws: mine, existed: true })); return; }

@@ -134,11 +134,18 @@ if (Test-Path $regCmd) {
     }
     try {
         $p = Start-Process -FilePath $env:ComSpec -ArgumentList ('/c ""{0}" converge"' -f $regCmd) -NoNewWindow -PassThru
+        # s98/R1-F2: PS5.1 Start-Process -PassThru 不保持进程句柄 → 退出后 ExitCode 恒空（本机 40/40 实测，
+        # 无参 WaitForExit() flush 也救不回）——预读 .Handle 强制保持句柄，「收敛失败（rc=）」假警报根治
+        # （iat14 冷启+s97 dev drill 两轮实录）；flush 为 .NET 纪律随行（WaitForExit(ms) 后无参重载再读 ExitCode）。
+        try { $null = $p.Handle } catch { } # 瞬退竞态下读句柄可抛——失败即回落旧行为，不阻断收敛等待
         if (-not $p.WaitForExit(90000)) {
             & taskkill /F /T /PID $p.Id | Out-Null
             Write-Host '[PocketForge] 收敛超时（90s），跳过——首次注册时再付一次重启代价，不致命。'
-        } elseif ($p.ExitCode -ne 0) {
-            Write-Host "[PocketForge] 收敛失败（rc=$($p.ExitCode)），跳过——首次注册时再付一次重启代价，不致命。"
+        } else {
+            $p.WaitForExit()
+            if ($p.ExitCode -ne 0) {
+                Write-Host "[PocketForge] 收敛失败（rc=$($p.ExitCode)），跳过——首次注册时再付一次重启代价，不致命。"
+            }
         }
     } catch {
         Write-Host "[PocketForge] 收敛异常：$($_.Exception.Message)"
@@ -154,19 +161,42 @@ if (Test-Path $regCmd) {
     # 第②层：收敛后补跑校验（第①层超时/漏网时兜底）。Skipped/Pending/Error 的一次性键逐个
     # pc process start（rawsql/provision/backup 均幂等脚本，安全重跑）；记下补跑键，观察窗挪到
     # 开窗之后（见脚本尾部），不阻塞打印/开窗主流程。
+    # s98/R1-F3: 首查命中的键先经 2s 瞬态复核再补跑——收敛重启窗口期 pc JSON 会短暂报 Skipped，
+    # 旧码立即补跑 → 组件自愈启动中 process start 被拒 rc=1 →「未受理」噪音×N 而链实际全绿
+    # （iat14 实录三连）。真终态（restart:'no' 不自愈）2s 后仍原地，复核不漏；2s 只在首查有命中时付。
     $procs = Get-PcProcs
     if ($null -ne $procs) {
+        $flagged = @()
         foreach ($k in $oneshotKeys) {
             $e = @($procs | Where-Object { $_.name -eq $k })
-            if ($e.Count -gt 0 -and @('Skipped', 'Pending', 'Error') -contains $e[0].status) {
-                $recheckKeys += $k
-                Write-Host ('[PocketForge] 收敛后有一次性组件没起来，补跑：' + $k)
-                try {
-                    & $pcExe -p $pcPort process start $k 2>$null | Out-Null
-                    if ($LASTEXITCODE -ne 0) { Write-Host "[PocketForge] 补跑 $k 未受理（rc=$LASTEXITCODE）。" }
-                } catch {
-                    Write-Host "[PocketForge] 补跑 $k 异常：$($_.Exception.Message)"
+            if ($e.Count -gt 0 -and @('Skipped', 'Pending', 'Error') -contains $e[0].status) { $flagged += $k }
+        }
+        if ($flagged.Count -gt 0) {
+            Start-Sleep -Seconds 2
+            $procs = Get-PcProcs
+            if ($null -eq $procs) { $procs = @() }
+        }
+        foreach ($k in $flagged) {
+            $e = @($procs | Where-Object { $_.name -eq $k })
+            if ($e.Count -gt 0 -and @('Skipped', 'Pending', 'Error') -notcontains $e[0].status) { continue } # 瞬态已离开，不补跑
+            $recheckKeys += $k
+            Write-Host ('[PocketForge] 收敛后有一次性组件没起来，补跑：' + $k)
+            try {
+                & $pcExe -p $pcPort process start $k 2>$null | Out-Null
+                $rcStart = $LASTEXITCODE # s98/R1-F3: 立即定格——随后的 Get-PcProcs 是原生调用，会把 $LASTEXITCODE 重置（冷启实录 rc 被冲成 0 自相矛盾）
+                if ($rcStart -ne 0) {
+                    # rc≠0 多为组件已在队列/自愈启动中被拒——状态复核而非裸 rc 定夺要不要报；
+                    # Pending/Launching/Running/Completed=已被守护接管（终态兜底归尾部 10s 观察窗），
+                    # 仅 Skipped/Error/查不到才真是没人管（s98/R1-F3）。
+                    $e3 = @((Get-PcProcs) | Where-Object { $_.name -eq $k })
+                    $st3 = '(查不到)'
+                    if ($e3.Count -gt 0) { $st3 = $e3[0].status }
+                    if (@('Pending', 'Launching', 'Running', 'Completed') -notcontains $st3) {
+                        Write-Host "[PocketForge] 补跑 $k 未受理（rc=$rcStart，状态 $st3）。"
+                    }
                 }
+            } catch {
+                Write-Host "[PocketForge] 补跑 $k 异常：$($_.Exception.Message)"
             }
         }
     }

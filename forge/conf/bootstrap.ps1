@@ -293,4 +293,5 @@ if (-not (Test-Path $done)) {
     Write-Host '[PocketForge] first run: welcome.html ready'
 }
 
-Write-Host "[PocketForge] starting... pc=$pcPort faucet=$faucetPort"
+# s98/R1-F6: 此处不再打 starting 行——启动数字员工.cmd / dev-stack-up.ps1 各自打带端口的总起行，
+# 双打印是 iat14 首启日志噪音（同信息逐字出现两次）。

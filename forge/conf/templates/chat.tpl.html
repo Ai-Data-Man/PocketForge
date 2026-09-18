@@ -848,7 +848,8 @@ function renderSessions(list){
   const act=real.filter(s=>!archSet[s.sessionId]).sort((a,b)=>byNew(b)-byNew(a));
   const arc=real.filter(s=>archSet[s.sessionId]).sort((a,b)=>byNew(b)-byNew(a));
   archCount=arc.length; paintSideChips(); // IA-2: 归档计数跟随列表刷新
-  if(!act.length&&!arc.length){ box.innerHTML='<div style="padding:12px;font-size:.75rem;color:var(--mut)">还没有对话。点上面「＋ 新对话」开始。</div>'; pagerPaint('arch-pager',1,1,0,null); return; } // qa P3: 全空早退同样清翻页器（归档视图下逐条删光可达）
+  $('sess-org').disabled=!arc.length; // s98/R1-F7: 空归档整理模式无可勾条目——置灰不可点（在场/隐藏仍归 showSideView 管）
+  if(!act.length&&!arc.length){ box.innerHTML='<div style="padding:12px;font-size:.75rem;color:var(--mut)">'+(sideView==='arch'?'还没有归档的对话。日常对话右边的 📥 点一下就会收进这里。':'还没有对话。点上面「＋ 新对话」开始。')+'</div>'; pagerPaint('arch-pager',1,1,0,null); return; } // qa P3: 全空早退同样清翻页器（归档视图下逐条删光可达）；s98/R1-F7: 早退先于归档分支——归档视图须用归档空态文案（修前沿用活跃态误导）
   if(sideView==='arch'){ // IA-2: 归档视图=全量清单+搜索+行型分页（30/页）——30 截断从此有出路（R2）
     if(!arc.length){ box.innerHTML='<div style="padding:12px;font-size:.75rem;color:var(--mut)">还没有归档的对话。日常对话右边的 📥 点一下就会收进这里。</div>'; pagerPaint('arch-pager',1,1,0,null); return; } // qa P3: 早退清翻页器，防旧「第 N/M 页」残留
     const q=($('arch-q').value||'').trim().toLowerCase();

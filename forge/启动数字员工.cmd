@@ -62,9 +62,13 @@ echo [PocketForge] starting... pc=%PC_PORT% faucet=%FAUCET_PORT%
 cd /d "%FORGE_ROOT%"
 
 rem ---- aggregate registered apps (apps\*.yaml) into conf\apps.env.yaml ----
-rem s96: 聚合移入 conf\apps-aggregate.ps1（与 conf\dev-stack-up.ps1 同一真相源；s89/R1 joined
-rem 另起一行纪律 + 基础设施键守卫〔apps yaml 顶层进程键与系统组件重名 → 跳过该文件+人话告警〕
-rem 见该脚本头注）。守卫告警走 console（本窗口）与 conf\apps.guard.log，故不再屏蔽输出。
+rem s96/F5(s98R1): app aggregation lives in conf\apps-aggregate.ps1 (same source of truth as
+rem conf\dev-stack-up.ps1; s89/R1 joined-newline discipline + infra-key guard: an apps yaml
+rem top-level process key colliding with a system component name skips that file with a
+rem plain-language warning). guard warnings go to this console AND conf\apps.guard.log, so
+rem output is no longer suppressed here. NOTE: keep this .cmd ASCII-only - cmd mid-file
+rem chcp 65001 re-reads at a byte offset that can split a multi-byte char and execute the
+rem tail of a Chinese rem line as a command (s98 iat14 first-boot log noise, F5).
 set "APP_ARGS="
 powershell -NoProfile -ExecutionPolicy Bypass -File "%FORGE_ROOT%\conf\apps-aggregate.ps1"
 
