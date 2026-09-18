@@ -426,10 +426,12 @@ details.tz[open]>summary::before{content:'▾ '}
       <select id="all-sort" style="border:1px solid var(--line);border-radius:8px;font-size:.75rem;background:var(--panel);color:var(--tx)">
         <option value="mtime">最近活动</option><option value="name">名称</option><option value="bytes">体积</option>
       </select>
+      <button class="mini" id="all-org" title="批量清理：勾选多个工作区一次删掉" style="flex:none">整理</button><!-- r4/S2a -->
     </div>
     <div id="all-chips" style="padding:0 10px 6px;display:flex;gap:5px"></div>
     <div id="all-list"></div>
     <div id="all-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:6px 10px;flex-wrap:wrap"></div><!-- r4/S1: 迁 pagerPaint（arch-pager 同款 flex 容器） -->
+    <div id="all-orgbar" style="display:none;gap:6px;align-items:center;padding:2px 10px 8px;flex-wrap:wrap"></div><!-- r4/S2a: 整理模式动作条（已选 N｜全选｜删除｜退出整理） -->
   </div>
 </div>
 <div id="slash-menu" style="display:none;position:absolute;bottom:64px;left:18px;right:18px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.14);z-index:40;max-height:250px;overflow-y:auto"></div>
@@ -3047,6 +3049,48 @@ function fileNode(n,depth){
   return el;
 }
 
+// ===== 整理模式共用交互（r4/S2 裁决 §2.2 总原则+§5-6：S2a 浏览全部工作区 / S2b 侧栏归档视图 同一套，不复制两份） =====
+function orgCheckBox(sel,key,eligible,repaint){ // 行首勾选框；不可勾=禁用态（可见的资格边界）
+  const cb=document.createElement('input'); cb.type='checkbox';
+  cb.style.cssText='width:15px;height:15px;flex:none;cursor:pointer;align-self:center';
+  cb.checked=sel.has(key); cb.disabled=!eligible;
+  cb.title=eligible?'勾选后一起处理':'这个不能批量处理';
+  cb.onclick=e=>{ e.stopPropagation(); if(cb.checked) sel.add(key); else sel.delete(key); repaint(); };
+  return cb;
+}
+function orgBarPaint(barId,sel,opts){ // 底部动作条：已选 N 项｜全选（=当前过滤结果的全部，跨页）｜删除｜退出整理
+  const bar=$(barId); if(!bar) return;
+  bar.style.display='flex'; bar.innerHTML='';
+  const n=document.createElement('span'); n.className='fnote'; n.textContent='已选 '+sel.size+' 项'; bar.appendChild(n);
+  const mk=(t,ttl,fn)=>{const b=document.createElement('button');b.className='mini';b.textContent=t;b.title=ttl;b.onclick=fn;return b;};
+  bar.appendChild(mk('全选','选中当前过滤结果的全部（跨页）',()=>{ for(const k of opts.all()) sel.add(k); opts.repaint(); }));
+  const del=mk('删除','删掉勾选的',opts.del); del.style.borderColor='var(--danger)'; del.style.color='var(--danger)'; bar.appendChild(del);
+  bar.appendChild(mk('退出整理','',opts.exit));
+}
+let wsOrg={on:false,sel:new Set()}; // r4/S2a: 浏览全部整理模式（勾选=工作区 id；资格=未关联+已归档，活跃/本对话不可勾——裁决 §2.2-S2a）
+let wsBatchWarned=false; // 双重防线首用完整后果说明标志（delWarned 先例：内存级，每次打开页面重新提醒）
+function wsOrgEligible(w){ return (w.state==='orphan'||w.state==='archived') && !(w.sid && w.sid===sessionId); } // 本对话不可勾；未关联（无 sid）恒可勾（探针 F1 红实锤：null!==null 误杀）
+async function wsOrgDelete(){
+  if(!wsOrg.sel.size) return;
+  if(!wsBatchWarned){
+    if(!confirm('第一次用批量清理，先说清楚：\n\n· 勾选的工作区会连文件带版本历史一起删，找不回来。\n· 正在被对话使用的工作区不能勾选，也不会被批量删除。\n\n之后每次删除都会再确认两次。')) return;
+    wsBatchWarned=true;
+  }
+  const ids=[...wsOrg.sel];
+  const bytes=wsList.filter(w=>wsOrg.sel.has(w.id)).reduce((s,w)=>s+(w.bytes||0),0);
+  if(!confirm('将永久删除选中的 '+ids.length+' 个工作区（约 '+fmtSize(bytes)+'），连文件带版本历史一起删，找不回来。')) return;
+  if(!confirm('真的删除？这一步无法撤销。')) return;
+  try{
+    const r=await fetch('/api/ws/delete_batch',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:ids,sid:sessionId||''})});
+    const d=await r.json();
+    if(!d.ok) throw new Error(d.err||'失败');
+    wsOrg.on=false; wsOrg.sel.clear();
+    loadWorkspaces();
+    if(d.failed&&d.failed.length) alert('删掉了 '+d.deleted+' 个，'+d.failed.length+' 个没删成：\n'+d.failed.slice(0,5).map(f=>f.ws+'：'+f.err).join('\n')+(d.failed.length>5?'\n…':''));
+    else note('已清理 '+d.deleted+' 个工作区');
+  }catch(e){ alert('删除失败: '+(e.message||'')); }
+}
+
 // ===== 浏览全部 pane =====
 function renderChips(){
   const defs=[['all','全部'],['active','活跃'],['orphan','未关联'],['archived','已归档']];
@@ -3083,8 +3127,12 @@ function renderAllPane(){
   if(!slice.length){ const empty=document.createElement('div'); empty.className='fnote'; empty.style.padding='10px'; empty.textContent='没有符合条件的工作区。'; box.appendChild(empty); } // s69 P3-10: append 而非 innerHTML，保住上方提示条
   for(const w of slice){
     const row=document.createElement('div'); row.className='wrow';
-    row.innerHTML='<div class="t1"><span>'+(w.state==='archived'?'🗂':'📁')+'</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(wsDisplayName(w))+'</span><span class="bdg">'+wsStateLabel(w)+'</span></div>'+
+    row.innerHTML='<div class="t1">'+(wsOrg.on?'<span class="orgcb" style="display:flex"></span>':'')+'<span>'+(w.state==='archived'?'🗂':'📁')+'</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(wsDisplayName(w))+'</span><span class="bdg">'+wsStateLabel(w)+'</span></div>'+
       '<div class="t2">'+esc(w.id)+' · '+w.files+' 个文件 · '+fmtSize(w.bytes)+' · 最近 '+(w.mtime?new Date(w.mtime).toLocaleString('zh',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—')+'</div>';
+    if(wsOrg.on){ // r4/S2a: 整理模式行首勾选（资格=未关联+已归档；活跃/本对话禁用态）
+      const slot=row.querySelector('.orgcb');
+      slot.appendChild(orgCheckBox(wsOrg.sel,w.id,wsOrgEligible(w),renderAllPane));
+    }
     const intro=document.createElement('button');
     if(!curWs||w.id===curWs){ intro.disabled=true; intro.textContent=w.id===curWs?'就是本对话':'引入'; }
     else{
@@ -3122,6 +3170,14 @@ function renderAllPane(){
     }
     box.appendChild(row);
   }
+  if(wsOrg.on){ // r4/S2a: 整理模式底部动作条（全选=filteredWs 过滤结果的全部，跨页——配合 chips「未关联→全选→删」）
+    orgBarPaint('all-orgbar',wsOrg.sel,{
+      all:()=>filteredWs().filter(wsOrgEligible).map(w=>w.id),
+      repaint:renderAllPane,
+      del:wsOrgDelete,
+      exit:()=>{ wsOrg.on=false; wsOrg.sel.clear(); renderAllPane(); },
+    });
+  } else { const bar=$('all-orgbar'); if(bar){ bar.style.display='none'; bar.innerHTML=''; } }
   pagerPaint('all-pager',listPage.all,ps.pages,ps.total,p=>{ listPage.all=p; renderAllPane(); },'row',ps.trunc);
 }
 function showTab(which){
@@ -3136,6 +3192,7 @@ $('tabbtn-cur').onclick=()=>showTab('cur');
 $('all-q').oninput=()=>{ clearTimeout(allQT); allQT=setTimeout(()=>{ allFilter.q=$('all-q').value; listPage.all=1; renderAllPane(); },200); };
 $('all-sort').onchange=()=>{ allFilter.sort=$('all-sort').value; listPage.all=1; renderAllPane(); };
 $('tabbtn-all').onclick=()=>{ showTab('all'); loadWorkspaces(); };
+$('all-org').onclick=()=>{ wsOrg.on=!wsOrg.on; wsOrg.sel.clear(); renderAllPane(); }; // r4/S2a: 整理模式进/出（即开即用即散，裁决 §4-3）
 $('ws-refresh').onclick=()=>{ loadWorkspaces(); renderCurPane(); loadArch().then(loadSessions); };
 $('att-only').onchange=()=>renderCurPane();
 $('nf-btn').onclick=async()=>{ const nm=prompt('新文件叫什么名字？（放进当前选中的文件夹：'+(selDir||'根目录')+'）'); if(!nm) return;

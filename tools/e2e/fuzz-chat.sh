@@ -26,6 +26,13 @@ P "$B/api/memory" 'null' "memory null body"
 P "$B/api/memory" '"str"' "memory string body"
 P "$B/api/memory" '{"op":"forget_one","category":123,"text":"x"}' "memory numeric category"
 P "$B/api/memory" '{"op":"forget_one","category":"ghost_zzz","text":"x"}' "memory missing category friendly"
+# r4/S2a: 批量删工作区端点异常输入矩阵（新写侧端点入 fuzz 门——没有断言的接口视为未交付）
+P "$B/api/ws/delete_batch" '' "ws delete_batch empty body"
+P "$B/api/ws/delete_batch" 'null' "ws delete_batch null body"
+P "$B/api/ws/delete_batch" '"str"' "ws delete_batch string body"
+P "$B/api/ws/delete_batch" '{"ws":"not-an-array"}' "ws delete_batch non-array ws"
+P "$B/api/ws/delete_batch" '{"ws":[]}' "ws delete_batch empty array"
+P "$B/api/ws/delete_batch" '{"ws":["ws-9%%%"],"sid":""}' "ws delete_batch invalid id to failed not crash"
 P "$B/api/extensions" '{"id":1,"enabled":true}' "extensions numeric id"
 P "$B/api/extensions" '{"id":"browser","enabled":"yes"}' "extensions string enabled"
 curl -s -X POST "$B/api/schedules" -H 'content-type: application/json' -d '{"id":"../../x"}' | J; ck "schedules traversal id" $?

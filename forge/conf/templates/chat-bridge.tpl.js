@@ -592,6 +592,27 @@ function sessionMeta() {
     } catch {}
     return meta;
 }
+// r4/S2a: 单工作区删除守卫+落盘核心（/api/ws/delete 与 /api/ws/delete_batch 共用；逻辑自单删路径原样抽出，
+// 行为零变化）。成功删目录并从 map 摘键（写回由调用方收口：单删=删后即写，批量=末尾一次写）；失败返回人话 err 串。
+function wsDeleteOne(ws, curSid, map) {
+    if (!wsValidId(ws)) return '参数不完整';
+    const bsid = (map[ws] || {}).sid || null;
+    if (bsid && curSid && bsid === curSid) return '这是当前对话正在用的工作区，不能删';
+    const tReal = FSS.realpathSync(wsDir(ws));
+    for (const ent of FSS.readdirSync(ART_DIR, { withFileTypes: true })) {
+        if (!ent.isDirectory() || !wsValidId(ent.name) || ent.name === ws) continue;
+        for (const ch of FSS.readdirSync(path.join(ART_DIR, ent.name), { withFileTypes: true })) {
+            if (!ch.isSymbolicLink()) continue;
+            try {
+                const lp = FSS.readlinkSync(path.join(ART_DIR, ent.name, ch.name));
+                if (FSS.realpathSync(lp) === tReal) return '正被活跃工作区「' + ent.name + '」引用，先在那里取消引入';
+            } catch (e2) { if (String(e2.message).includes('引用')) throw e2; }
+        }
+    }
+    FSS.rmSync(wsDir(ws), { recursive: true, force: true });
+    delete map[ws];
+    return null;
+}
 
 let _git = null;
 function ig() {
@@ -3354,25 +3375,39 @@ const ext = path.extname(f).toLowerCase();
             try {
                 const b = JSON.parse(raw.toString('utf8'));
                 if (!wsValidId(b.ws)) throw new Error('参数不完整');
-                const map = readWsMap(), arch = readArch();
+                const map = readWsMap();
                 const curSid = b.sid || null; // HTTP 端无 ws 句柄,当前会话 sid 由客户端带上
-                const bsid = (map[b.ws] || {}).sid || null;
-                if (bsid && curSid && bsid === curSid) throw new Error('这是当前对话正在用的工作区，不能删');
-                const tReal = FSS.realpathSync(wsDir(b.ws));
-                for (const ent of FSS.readdirSync(ART_DIR, { withFileTypes: true })) {
-                    if (!ent.isDirectory() || !wsValidId(ent.name) || ent.name === b.ws) continue;
-                    for (const ch of FSS.readdirSync(path.join(ART_DIR, ent.name), { withFileTypes: true })) {
-                        if (!ch.isSymbolicLink()) continue;
-                        try {
-                            const lp = FSS.readlinkSync(path.join(ART_DIR, ent.name, ch.name));
-                            if (FSS.realpathSync(lp) === tReal) throw new Error('正被活跃工作区「' + ent.name + '」引用，先在那里取消引入');
-                        } catch (e2) { if (String(e2.message).includes('引用')) throw e2; }
-                    }
-                }
-                FSS.rmSync(wsDir(b.ws), { recursive: true, force: true });
-                delete map[b.ws]; writeWsMap(map);
+                const err = wsDeleteOne(b.ws, curSid, map); // r4/S2a: 守卫+落盘核心抽出共用（行为零变化）
+                if (err) throw new Error(err);
+                writeWsMap(map);
                 console.log('ws deleted:', b.ws);
                 res.end(JSON.stringify({ ok: true }));
+            } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
+        });
+    }
+    else if (url === '/api/ws/delete_batch' && req.method === 'POST') {
+        // r4/S2a（裁决 2026-09-19-bloat-r4 §2.2）：批量清理工作区——逐项复用单删守卫（当前会话区拒删/
+        // 被活跃区符号链接引用拒删），顺序执行单条失败继续，末尾汇总；Origin 门与既有 POST 同门（handleHttp 顶部全局门）
+        readJsonBody(req, res, raw => {
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            try {
+                const b = JSON.parse(raw.toString('utf8'));
+                if (!Array.isArray(b.ws) || !b.ws.length) throw new Error('参数不完整');
+                const curSid = b.sid || null;
+                const map = readWsMap();
+                const failed = [];
+                let deleted = 0;
+                for (const w of b.ws) {
+                    const ws = String(w);
+                    try {
+                        const err = wsDeleteOne(ws, curSid, map);
+                        if (err) failed.push({ ws, err });
+                        else deleted++;
+                    } catch (e) { failed.push({ ws, err: e.message }); }
+                }
+                if (deleted) writeWsMap(map);
+                console.log('ws batch deleted:', deleted, 'failed:', failed.length);
+                res.end(JSON.stringify({ ok: true, deleted, failed }));
             } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
         });
     }
