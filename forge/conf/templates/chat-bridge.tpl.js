@@ -1087,6 +1087,15 @@ function acpSetThink(sessionId, value) { // 与 set_config_option('model') 同�
         return true;
     } catch (e) { return false; } // acp 已死：不记账，prompt 自身写失败错误链收口
 }
+// s98/qa P3-2: 三旁路（subscribe 沿用习惯/prompt 前对账/switch_model 对账）共用 set_think 同款白名单——
+// value ∉ 该会话缓存 values（或缓存缺失）→ 不发帧不记账，一行 debug 留痕（诚实降级：切到无该档模型时档位
+// 静默未生效但账面不漂移；set_think 主路径照旧人话回执，不弹错）
+function thinkAllowed(sid, value) {
+    if (!value) return false;
+    const vals = sidThinkValues.get(sid);
+    if (!Array.isArray(vals) || vals.indexOf(value) < 0) { console.log('think bypass skipped (not in cached values):', sid, value); return false; }
+    return true;
+}
 function applyModelBeforeTurn(sid, model, next) {
     const id = nextId++;
     let done = false;
@@ -3393,6 +3402,7 @@ const ext = path.extname(f).toLowerCase();
             try {
                 const b = JSON.parse(raw.toString('utf8'));
                 if (!Array.isArray(b.ws) || !b.ws.length) throw new Error('参数不完整');
+                if (b.ws.length > 200) throw new Error('一次最多处理 200 条，分几批来'); // qa s98 P4-1: 批量条数上限（顺序循环 O(N×全目录扫描) 封顶，超限整体拒绝不分批部分执行）
                 const curSid = b.sid || null;
                 const map = readWsMap();
                 const failed = [];
@@ -3857,9 +3867,10 @@ function handleClient(ws, msg) {
                             sidModelApplied.set(res.sessionId, msg.model); // s94-b2 F-3: 记账（乐观：写失败=acp 已死，prompt 同死由其错误链收口）
                         }
                         // s98/think: 新会话带思考档（与带 model 同款语义）——goose 按会话记住并持久化；模型被遮蔽时为
-                        // no-op（前端三态②已诚实呈现）。此处不校验 values（subscribe 是「沿用习惯」不是「切档」）。
+                        // no-op（前端三态②已诚实呈现）。qa s98 P3-2: 沿用习惯同样过白名单（localStorage 陈旧高档位
+                        // 随新会话直发=档位静默未生效+记账漂移）——不在名单不发帧不记账。
                         noteThinkOptions(res.sessionId, res.configOptions);
-                        if (msg.think) { lastThinkOverride = msg.think; if (acpSetThink(res.sessionId, msg.think)) sidThinkApplied.set(res.sessionId, msg.think); }
+                        if (msg.think) { lastThinkOverride = msg.think; if (thinkAllowed(res.sessionId, msg.think) && acpSetThink(res.sessionId, msg.think)) sidThinkApplied.set(res.sessionId, msg.think); }
                     } else {
                         // B1: session/new 失败——resolve 收到的是整条 error 帧；无此分支前端等不到 subscribed，pendingQueue 永久搁浅
                         const why = (res && res.error && (res.error.message || res.error)) || '原因未知';
@@ -3890,8 +3901,9 @@ function handleClient(ws, msg) {
             wsFirstPrompt.set(ws, false);
             // s94-b2 F-3: 发 turn 前对账会话模型——热重启/换档后既有会话仍钉着旧模型（evicted-restore 按 DB 回放），
             // 不追改就会出现「UI 宣称已切、实跑还是种子模型」（ia2 全部 llm_request=mimo-v2.5）。
-            // s98/think: 会话档 ≠ 全局档时先追发（fire-and-forget：stdin 写序保证先于 prompt 落地；模型对账在其后照常）
-            if (lastThinkOverride && sidThinkApplied.get(sid) !== lastThinkOverride && acpSetThink(sid, lastThinkOverride)) sidThinkApplied.set(sid, lastThinkOverride);
+            // s98/think: 会话档 ≠ 全局档时先追发（fire-and-forget：stdin 写序保证先于 prompt 落地；模型对账在其后照常；
+            // qa s98 P3-2: 过白名单才发——越档不发帧不记账只留 debug）
+            if (lastThinkOverride && sidThinkApplied.get(sid) !== lastThinkOverride && thinkAllowed(sid, lastThinkOverride) && acpSetThink(sid, lastThinkOverride)) sidThinkApplied.set(sid, lastThinkOverride);
             const wantModel = effectiveModel(activeProvider());
             const goTurn = () => sendTurn(ws, sid, msg.text, firstTurn); // research/18 断点①: 错误帧→reject 人话/首轮单次救援（sendTurn）
             if (wantModel && sidModelApplied.get(sid) !== wantModel) applyModelBeforeTurn(sid, wantModel, goTurn);
@@ -3937,20 +3949,22 @@ function handleClient(ws, msg) {
         if (msg.type === 'delete_sessions') {
             // r4/S2b（裁决 §2.2-S2b，写死四条）：归档会话批量删除。
             // ①单消息批量——delete_session 回执 flush 后即毁连接（s50c/s62），客户端逐条循环协议上不可行；
-            // ②当日号段拒批——sid 日期前缀===今天者剔除入 skipped，封死 closed-sid 叠删烧号家族（单删当日尾部仍由 s76 单次救援兜底）；
+            // ②当日号段拒批——sid 日期前缀>=本地今日零点对应 UTC 日期者剔除入 skipped（qa s98 P3-1 扩窗），封死 closed-sid 叠删烧号家族（单删当日尾部仍由 s76 单次救援兜底）；
             // ③归档门双验——桥侧校验 sid 在归档清单（readArch 在场）才删，防绕过前端单向门；
             // ④桥内顺序循环复用单删路径（hardDeleteSession），单条失败继续，末尾单封 sessions_deleted 汇总回执，回执后照旧断连一次。
             try {
                 if (!Array.isArray(msg.sessionIds) || !msg.sessionIds.length) throw new Error('参数不完整');
+                if (msg.sessionIds.length > 200) throw new Error('一次最多处理 200 条，分几批来'); // qa s98 P4-1: 同款条数上限（顺序循环 O(N×开库) 封顶）
                 const arch = readArch();
-                // 当日号段判基=UTC 日期：goose sid 前缀按 UTC 生成（探针活体实证：本地已 09-19、sid 仍 20260918_*，
-                // 用本地日期比对会漏判→当日会话被批量删→closed 集污染→新会话 Session-not-found，即 s76 家族复现）
-                const d = new Date(), p2 = n => String(n).padStart(2, '0');
-                const today = '' + d.getUTCFullYear() + p2(d.getUTCMonth() + 1) + p2(d.getUTCDate());
+                // 当日号段守卫阈值=本地今日零点对应的 UTC 日期（qa s98 P3-1 修法 b）：goose sid 前缀按 UTC 生成
+                // （探针活体实证：本地已 09-19、sid 仍 20260918_*），本地「今天刚聊」创建的会话前缀必 >= 该阈值→全保护
+                // （跨 UTC 边界安全方向）。取舍：本地昨日下午段（前缀恰=阈值）也被保守多护不删——漏删可再批，误删不可逆。
+                const d = new Date();
+                const guardDate = new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().slice(0, 10).replace(/-/g, '');
                 const deleted = [], skipped = [], failed = [];
                 for (const rawSid of msg.sessionIds) {
                     const sid = String(rawSid);
-                    if (/^\d{8}_\d+$/.test(sid) && sid.slice(0, 8) === today) { skipped.push(sid); continue; }
+                    if (/^\d{8}_\d+$/.test(sid) && sid.slice(0, 8) >= guardDate) { skipped.push(sid); continue; }
                     if (!sidValid(sid)) { failed.push({ sid, err: '会话标识不对' }); continue; }
                     if (!arch[sid]) { failed.push({ sid, err: '不是归档状态的对话，先归档再删' }); continue; }
                     try {
@@ -4193,7 +4207,7 @@ function handleClient(ws, msg) {
                         if (res && res.configOptions) {
                             sidModelApplied.set(sessionId, msg.model); // s94-b2 F-3: 成功才记账，失败留给 prompt 前对账重试
                             noteThinkOptions(sessionId, res.configOptions); // s98/think: 切模型后档位列表可能变（goose 名单制）——回包即刷缓存
-                            if (lastThinkOverride && sidThinkApplied.get(sessionId) !== lastThinkOverride && acpSetThink(sessionId, lastThinkOverride)) sidThinkApplied.set(sessionId, lastThinkOverride); // s98/think: 同点位并联（goose INHERITED 继承链之外再对账一次）
+                            if (lastThinkOverride && sidThinkApplied.get(sessionId) !== lastThinkOverride && thinkAllowed(sessionId, lastThinkOverride) && acpSetThink(sessionId, lastThinkOverride)) sidThinkApplied.set(sessionId, lastThinkOverride); // s98/think: 同点位并联（goose INHERITED 继承链之外再对账一次；qa s98 P3-2: 过白名单才发）
                             ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, configOptions: res.configOptions }); // s98/think: 前端据此刷新思考力度三态（会话内切模型不走 session/new→subscribed）
                         }
                         else ws.send({ sys: 'error', text: '切换失败，试试重开对话' });

@@ -33,6 +33,10 @@ P "$B/api/ws/delete_batch" '"str"' "ws delete_batch string body"
 P "$B/api/ws/delete_batch" '{"ws":"not-an-array"}' "ws delete_batch non-array ws"
 P "$B/api/ws/delete_batch" '{"ws":[]}' "ws delete_batch empty array"
 P "$B/api/ws/delete_batch" '{"ws":["ws-9%%%"],"sid":""}' "ws delete_batch invalid id to failed not crash"
+# qa s98 P4-1: 批量写侧条数上限——超 200 整体拒绝人话（不分批部分执行）；WS 侧 delete_sessions 同门向量（ws-batchcap-probe）
+OVERW=$(python -c "print(','.join('\"ws-fz%d\"' % i for i in range(201)))")
+curl -s -X POST "$B/api/ws/delete_batch" -H 'content-type: application/json' -d "{\"ws\":[$OVERW]}" | python -c "import sys,json;d=json.load(sys.stdin);sys.exit(0 if d.get('ok') is False and '200' in str(d.get('err','')) else 1)"; ck "ws delete_batch over-200 cap whole reject" $?
+node "$(dirname "$0")/ws-batchcap-probe.js" "$B" >/dev/null 2>&1; ck "ws delete_sessions over-200 cap whole reject (ws vector)" $?
 P "$B/api/extensions" '{"id":1,"enabled":true}' "extensions numeric id"
 P "$B/api/extensions" '{"id":"browser","enabled":"yes"}' "extensions string enabled"
 curl -s -X POST "$B/api/schedules" -H 'content-type: application/json' -d '{"id":"../../x"}' | J; ck "schedules traversal id" $?

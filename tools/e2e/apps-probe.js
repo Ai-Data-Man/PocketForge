@@ -10,7 +10,11 @@ const http = require('http'), fs = require('fs'), path = require('path'), crypto
 const ROOT = path.resolve(__dirname, '..', '..');
 const FORGE = path.join(ROOT, 'forge');
 let pass = 0, fail = 0;
-const ck = (n, ok, extra) => { console.log((ok ? 'PASS' : 'FAIL') + ': ' + n + (extra !== undefined && extra !== '' ? '  | ' + String(extra).slice(0, 200) : '')); ok ? pass++ : fail++; };
+const failNames = [];
+const ck = (n, ok, extra) => { console.log((ok ? 'PASS' : 'FAIL') + ': ' + n + (extra !== undefined && extra !== '' ? '  | ' + String(extra).slice(0, 200) : '')); if (!ok) failNames.push(n + (extra !== undefined && extra !== '' ? '  | ' + String(extra).slice(0, 400) : '')); ok ? pass++ : fail++; };
+// qa s98 P3-3: 首跑间歇红黑匣子——失败断言名+关键上下文落盘 tmp/apps-probe-last-fail.txt（覆盖式；全绿不写）。
+// 不追首跑红根因（UNVERIFIED 观察项维持），只保证下次复现时断言名可查（fuzz-last.log 同款留痕）。
+const dumpFail = why => { try { fs.writeFileSync(path.join(ROOT, 'tmp', 'apps-probe-last-fail.txt'), new Date().toISOString() + (why ? ' ' + why : '') + '\n' + (failNames.length ? failNames.join('\n') : '(无断言到达——FATAL 级)') + '\n'); } catch {} };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function get(p) {
     return new Promise((res, rej) => {
@@ -300,5 +304,6 @@ function cleanup() {
     ck('D3 还原：apps.env.yaml 字节回基线 + pc 表无 s95-live-svc', crypto.createHash('sha256').update(fs.readFileSync(APPS_ENV)).digest('hex') === appsEnvHash0 && (await procState95()) === null);
 
     console.log('apps-probe: PASS=' + pass + ' FAIL=' + fail);
+    if (fail) dumpFail('');
     process.exit(fail ? 1 : 0);
-})().catch(e => { cleanup(); console.error('FATAL', e); process.exit(2); });
+})().catch(e => { cleanup(); console.error('FATAL', e); dumpFail('FATAL ' + (e && e.message)); process.exit(2); });
