@@ -64,5 +64,6 @@
 ## 主线5：从零出厂验证（iat14）
 
 - 包：dist/PocketForge-20260919-v0.9.15-iat14.zip（323,634,769B/25,306 文件，sha256 df6a1e42…；**与 v0.9.15 正式包文件级零差异**——s98 全为既有文件内容更新，无新文件入包）。
-- R1（C:\PF-TEST\s98a，QA 在飞）：冷启+五端点+日志+控制台零错+新面八项点验+glm-5.3-flash 真任务（建服务建表）+报表卡双源真链。dev 栈已停让端口（PFdrill2 承载，R 轮后主控恢复）。
-- （R2/R3 与发现修复——见下补全）
+- R1（C:\PF-TEST\s98a，iat14）：**PASS 零阻断零应修**——冷启 35.4s（healthz 11.5s→converge 03:36:31 先于开窗 03:36:36.7 ✓）；五端点 200+oneshot 四链 Completed；日志零 FATAL；**控制台 JS 异常 0**（唯一 error=favicon 404）；新面 a-h 全过；真任务终态在场（glm-5.3-flash 8 分钟建 s98r1.purchases 5 行+服务端对账一致+权限门诚实链全走通）；**报表卡双源真链全通**（「🗄️ 库里的数据表」组含 s98r1.purchases→组装数据库表引用→2 分钟生成 xlsx+「没编任何数」）。发现 P3×3+P4×4：F1 /api/ws/new 不校验 sid（旧窗重连绑 4 个幽灵区）/F2 open-while-ready 误报「收敛失败（rc=）」/F3 补跑三连「未受理」噪音/F4 favicon 404/F5 首启 GBK 伪命令噪声/F6 starting 打印两次/F7 归档空态沿用活跃文案+整理钮可点。
+- **R1 修复批（dc7e8ce+19909eb，全部红绿对照）**：F1=sidKnownToDb 绑定前校验（fail-open，归档 sid 不误拒；e2e 基线 61→62 含新负向量）；F2=**QA 机理修正**——三臂 40 轮实验证明仅 WaitForExit() flush 不够，句柄保持（$null=$p.Handle 预读）才是决定项；F3=第二层根因=$LASTEXITCODE 被 Get-PcProcs 原生调用冲掉+2s 瞬态复核；F4=/favicon.ico→204；F5=**找到确切行**：启动数字员工.cmd:67 中文 rem 行 DBCS 切断（dev 树 drill-devrel.log:3 同错自证），65-67 三行整块 ASCII 化（单行修会漂移复发）；F6=bootstrap.ps1:296 重复行删；F7=归档空态分文案+sess-org disabled；+rescue think 第四旁路链入 thinkAllowed（wire 实录改前直发帧→修后零帧）。终态 **e2e 62/62+fuzz 199/199+ui-logic 56+ia-logic 28**。
+- iat15 出包（0d53dc27…，323,636,720B）；R2（C:\PF-TEST\s98b）：修复复验+膨胀造数（60 工作区/500 记忆/30 归档会话）+三支柱实操（页档/批量清理/批删含当日拒批活体/分类清空/@溢出）——在飞。
