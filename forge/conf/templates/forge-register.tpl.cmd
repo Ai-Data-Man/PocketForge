@@ -23,6 +23,17 @@ if "%APP%"=="" (
   echo usage: forge-register.cmd apps/^<app-name^>.yaml
   exit /b 2
 )
+rem s97/F-12 root fix: literal "converge" = internal channel for the startup watcher
+rem (conf\open-when-ready.ps1), NOT an agent surface (empty arg stays usage above).
+rem pc v1.122.0: the update client's JSON round-trip turns the templater-injected
+rem PC_REPLICA_NUM(int) into float64, so the FIRST JSON update of a daemon lifetime
+rem restarts the whole table; afterwards storage has converged and updates are no-ops
+rem (research/34). "converge" burns that first update with the launcher's exact three-file
+rem set (no fourth -f) and the same self-provisioned env, before any chat window opens.
+if /i "%APP%"=="converge" (
+  set "MODE=converge"
+  goto converge
+)
 rem normalize: drop a leading apps\ or apps/ (either slash), strip surrounding quotes
 set "APP=%APP:"=%"
 if /i "%APP:~0,5%"=="apps\" set "APP=%APP:~5%"
@@ -36,6 +47,7 @@ if not exist "%APPFULL%" (
   exit /b 3
 )
 
+:converge
 set "PCPORT="
 if exist "%ROOT%\data\pc.port" set /p PCPORT=<"%ROOT%\data\pc.port"
 if "%PCPORT%"=="" set "PCPORT=8099"
@@ -69,10 +81,23 @@ set "FORGE_ROOT=%ROOT%"
 rem pc writes 2 debug lines to stderr on every run ("Path not found for process compose config home");
 rem the agent shell treats non-empty stderr as a failed command, so keep stderr out of the tool output
 rem (diagnostics still land in data\logs\register.log).
+if "%MODE%"=="converge" goto upd_converge
 "%ROOT%\bin\pc\process-compose.exe" -p %PCPORT% project update -f "%ROOT%\conf\process-compose.yaml" -f "%ROOT%\conf\ports.env.yaml" -f "%ROOT%\conf\apps.env.yaml" -f "%APPFULL%" 2>>"%ROOT%\data\logs\register.log"
+goto upd_done
+:upd_converge
+"%ROOT%\bin\pc\process-compose.exe" -p %PCPORT% project update -f "%ROOT%\conf\process-compose.yaml" -f "%ROOT%\conf\ports.env.yaml" -f "%ROOT%\conf\apps.env.yaml" 2>>"%ROOT%\data\logs\register.log"
+:upd_done
 if errorlevel 1 (
+  if "%MODE%"=="converge" (
+    echo [PocketForge] converge update failed
+    exit /b 1
+  )
   echo [PocketForge] register failed. Tell the agent to check the app file and try again.
   exit /b 1
+)
+if "%MODE%"=="converge" (
+  echo [PocketForge] converged
+  exit /b 0
 )
 echo [PocketForge] registered: apps\%APP%
 exit /b 0
