@@ -899,14 +899,29 @@ function toggleReportCard(wrap){
   const cancelB=document.createElement('button'); cancelB.className='mini'; cancelB.type='button'; cancelB.textContent='取消';
   const cur1=()=>sel.isConnected?sel.value:q1inp.value.trim();
   function refresh(){ sendB.disabled=!reportReady(cur1(),q2inp.value.trim()); }
-  function paintSel(){
+  async function paintSel(){
     const files=sheetFiles();
-    if(!files.length){ if(sel.isConnected) sel.remove(); q1inp.style.display=''; refresh(); return; } // 空工作区/取数失败→降级手填
+    let tbls=[];
+    try{ const ov=await dbOverview();
+      if(ov) for(const s of ov.services) for(const t of s.tables){
+        if(t.name==='forge_meta'||t.name==='forge_table_info') continue; // s98: 建账表不进选择器（@ 菜单 renderAtMenu 同门边界）
+        tbls.push({s:s.service,n:t.name,r:t.rows});
+      }
+    }catch(e){} // s98: dbOverview 失败（网络/桥错）→只显示文件组，静默降级（@ 菜单同款 try{}）
+    if(!files.length&&!tbls.length){ if(sel.isConnected) sel.remove(); q1inp.style.display=''; refresh(); return; } // 两来源都空→降级手填
     const prev=sel.value;
+    if(!sel.isConnected) box.insertBefore(sel,q1inp); // s98: 曾降级手填后来源出现→放回选择器（db 取数慢于文件树刷新的竞态）
+    q1inp.style.display='none';
     sel.innerHTML='';
-    const ph=document.createElement('option'); ph.value=''; ph.textContent='选一个表格文件'; sel.appendChild(ph);
-    for(const f of files){ const o=document.createElement('option'); o.value=f.path||f.name; o.textContent=f.path||f.name; sel.appendChild(o); }
-    if(prev&&files.some(f=>(f.path||f.name)===prev)) sel.value=prev;
+    const vals=new Set();
+    const ph=document.createElement('option'); ph.value=''; ph.textContent='选一个表格'; sel.appendChild(ph);
+    if(files.length){ const g=document.createElement('optgroup'); g.label='📁 工作区里的表格文件';
+      for(const f of files){ const o=document.createElement('option'); o.value=f.path||f.name; o.textContent=f.path||f.name; vals.add(o.value); g.appendChild(o); }
+      sel.appendChild(g); }
+    if(tbls.length){ const g=document.createElement('optgroup'); g.label='🗄️ 库里的数据表';
+      for(const t of tbls){ const o=document.createElement('option'); o.value='db:'+t.s+'.'+t.n; o.textContent=t.s+'.'+t.n+'（'+(t.r==null?'－':t.r+' 条')+'）'; vals.add(o.value); g.appendChild(o); } // 行数对齐 @ 菜单（N 条 / －）
+      sel.appendChild(g); }
+    if(prev&&vals.has(prev)) sel.value=prev;
   }
   for(const t of ['总共是多少','按种类分开各算各的','只挑最近一段时间的']){
     const b=document.createElement('button'); b.className='mini'; b.type='button'; b.textContent=t;
@@ -918,7 +933,8 @@ function toggleReportCard(wrap){
   sendB.onclick=()=>{
     let f=cur1(), w=q2inp.value.trim();
     if(!reportReady(f,w)) return;
-    if(curWs&&!f.startsWith('data/')) f='data/artifacts/'+curWs+'/'+f.replace(/\\/g,'/'); // s50: 转 @ 引用同款形态（对齐 1289 行契约），反斜杠归一化防手填混分隔符
+    if(f.startsWith('db:')) f='数据库表 '+f.slice(3); // s98: 库表引用与 @ 菜单插入文本逐字同款，goose 侧按 .goosehints 识别
+    else if(curWs&&!f.startsWith('data/')) f='data/artifacts/'+curWs+'/'+f.replace(/\\/g,'/'); // s50: 转 @ 引用同款形态（对齐 1289 行契约），反斜杠归一化防手填混分隔符；手填值仍按文件路径处理
     box.remove();
     txt.value=reportPrompt(f,w);
     submit(); // 复用现有发送链路（含忙碌保护与工作区提示注入），非只填输入框
