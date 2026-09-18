@@ -1,0 +1,44 @@
+# 2026-09-19 s98：膨胀 R4 三支柱落地（页大小可调×批量×mem 转分页）+ 能力域去重 + 报表卡双源 + 思考力度选择器 + 从零出厂验证
+
+用户五主线：①膨胀第四次提出——技能/管理小 forge/浏览全部仍有膨胀可能、无批量操作、页大小不可调 ②官方 MCP 与 MCP 插件信息重叠+技能/本事/插件侧多处重叠，要求产品概念重组保证不重叠 ③不能会话时选择模型思考 effort ④报表卡不能引用文件或数据表 ⑤以上完成后从零安装反复测试观测一切可观测点逐一修复。测试模型 9router glm-5.3-flash。
+
+## 基线与裁决
+
+- 开工基线复核：e2e-chat 61/61 + fuzz 190/190（tmp/e2e-baseline-s98.log / tmp/fuzz-baseline-s98.log），栈 PFdrill2 healthz 200。
+- PM 裁决 docs/verdicts/2026-09-19-bloat-r4-batch-pagesize-dedupe.md（0d7abaa）：16 事实核验+8 切片；主线1 根因=R3 立了「找回」没立「清理+适配」→三支柱；主线2 根根=容器内部同一实体双渲染（插件 tab 主清单×技术区目录清单同源 readMcpCatalog）+「官方出品」tab 级概念失真+官方条目删除无效陷阱；实体归属表=同一实体同一信息全产品只渲染一处；supersede r3 mem 条款/s95 §7-6、收窄 s81 批量反触发（台账域禁令维持）。
+- 主控随批并入 AGENTS.md §7 R2 修订（29adc7e）：档位默认+用户可调、渐进式限有界清单、存量声明 r4 基线+6 处漏网清单声明。
+
+## 主线4：报表卡双数据源（f851b49）
+
+「用哪个表格？」双来源：optgroup 工作区表格文件（sheetFiles 原样）+「🗄️ 库里的数据表」（dbOverview，排除两张建账表，行数 N 条/－）；表选择发送组装「数据库表 服务.表」（@ 菜单逐字同款）；双空→手填降级；dbOverview 失败静默只显文件组。+22/−6；探针 15/15 红绿对照过；e2e 61+fuzz 190。
+
+## 主线1 前三件：E-A（3bdf8eb）
+
+- S1 页大小可调：PS_TIERS{card:[12,24,48,96],row:[30,60,120,240]}+「一页看全」500 上限截断提示；localStorage pfPageSize 全局按形态；pageSlice(arr,key,form) 形态参数；pagerPaint 追加「每页 N 条」select（改档回第 1 页）；12 清单接入；浏览全部手写分页迁 pageSlice（第二份分页实现消灭）。
+- S3a mem 转分页：memPaint pageSlice('mem',row)+翻页器；MEM_PAGE/memShown/「显示更多」全删（渐进式 DOM 无上限例外撤销）。
+- S3b @菜单文件侧溢出提示（>12 补「还有 N 个文件没列出来」，表侧先例同款）。
+- 探针 27/27 红绿对照；ia-logic 28/ui-logic 56/e2e 61/fuzz 190。
+
+## 主线2 去重：E-B（084a495）
+
+- S4a：桥 mcpOfficial(id) 计算字段；/api/mcpstore 条目+official；marketView mcpCatalog 撤 installed/enabled（技术区不再消费状态）；前端主清单官方条目「官方」徽标；技术区收窄「自己加的插件（技术）」只列 official:false、零状态字段、删除钮仅自加条目（官方条目删除陷阱消失）；h3「插件（给它装的新本事）」+fnote 重写（MCP 一词退出妻子面）。
+- S4b：技能 chips「📦 自带」→「📦 出厂的」（skillOriginBadge 内置本无徽标=零改动，裁决表述与代码事实的偏差按代码事实执行）。
+- S3c 热修（E-A 工程师范围外发现+主控 grep 坐实）：浏览全部 #all-q/#all-sort 自 s14 引入起零事件接线（死控件，allFilter.q/sort 恒初始值）——apps-q 同款防抖接线。R2 存量声明「全部面板=搜索」此前实际是空话，本批治好。
+- fuzz 基线 190→191（market 形状断言迁移+official 三真一假）。
+
+## 主线3 思考力度：取证（research/35，19a85fb）+ E-D（ff6ef43）
+
+- 取证：goose v1.50 原生 thinking_effort（ACP set_config_option 五档 off/low/medium/high/max）活体实证；但 is_reasoning_model 名单把 glm 系遮蔽为 ["off"]（set 无效、wire 无思考键）；9router 六参数形态全收无一有效（glm 强制思考、effort 深度不可分辨 UNVERIFIED）；唯一实证 wire 通道=declarative request_params（静态）。工程方向=goose 原生+按模型能力显隐+诚实降级；9router 别名通道=用户侧开放问题（STATE 记录）。
+- 实现：桥 sidThinkValues 缓存五刷新点（subscribe/rescue/switch_model 两分支/set_think/session/load sniff）+共用 acpSetThink；subscribe 可选 think 与 model 帧同批；set_think 校验∈values 不合法人话拒绝零 ACP 帧；model 全点位同步 think；model_switched 回执补带 configOptions（会话内切模型三态刷新闭环——简报预判只对无会话分支成立，实测补齐）。前端三态 select（五档人话标签/["off"] 禁用+「这个模型想多深它自己定，调不了快慢」/无键隐藏）+pfThinkEffort 记习惯。真栈活体三态②实证（现役 deepseek-v4.1-flash 同为遮蔽类）。think-probe 24/24 红绿对照；rescue-guard 41/ui-logic 56/ia-logic 28/e2e 61/e2e.sh 8/fuzz 191。
+- 勘误：dev 现役模型是 deepseek-v4.1-flash 非 glm-5.3-flash（用户指定的 glm-5.3-flash 是从零测试沙盒用模型；等价遮蔽类）。
+
+## 主线1 批量三件：E-C（S2a 工作区批量清理/S2b 归档会话批量删除含当日号段拒批/S2c 记忆分类清空）
+
+（进行中，收尾补全）
+
+## 环境注记
+
+- e2e-report 残留注册（dev 树 apps/e2e-report.yaml+apps.env.yaml 键，09-15 起）与 fake-PLM :8124 残余（E-D 首跑 e2e.sh 挂死元凶，已 kill）——工程窗口后统一清理。
+- forge/tmp/tf35 探针已被 package.sh SKIP tmp 覆盖，不进包。
+
+（QA 复审、主线5 从零轮次、收尾——见文末补全）
