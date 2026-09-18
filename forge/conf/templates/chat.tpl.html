@@ -1848,13 +1848,30 @@ async function loadExtUI(){
 }
 // s51: 记忆清单——搜索过滤 + 行型分页（r4/S3a 裁决 2026-09-19-bloat-r4 §2.3：渐进式 DOM 累计无上限，r3 例外撤销，转 pageSlice 统一机制）
 let memAll=null;
+function memCatHead(cat){ // r4/S2c: 分类组头——分类名+该类总条数+整类清空钮（走桥既有 forget_all，桥侧分类存在性校验兜底；单次确认，裁决 §2.2-S2c 中危级）
+  const head=document.createElement('div');
+  head.style.cssText='display:flex;align-items:center;gap:8px;padding:8px 2px 2px';
+  const nm=document.createElement('b'); nm.style.cssText='color:var(--acc);font-size:.72rem;flex:1';
+  nm.textContent=cat.category+'（'+cat.items.length+' 条）';
+  const clr=document.createElement('button'); clr.className='mini'; clr.textContent='这一类全忘掉'; clr.title='把这个分类的记忆整类清空';
+  clr.onclick=async()=>{
+    if(!confirm('让它把「'+cat.category+'」这一类（'+cat.items.length+' 条）都忘掉？')) return;
+    clr.disabled=true;
+    try{
+      const res=await apiJSON('/api/memory',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op:'forget_all',category:cat.category})});
+      if(!res.ok) throw new Error(res.err||'失败');
+      loadMemUI();
+    }catch(e){ clr.disabled=false; alert('没忘掉：'+e.message); }
+  };
+  head.appendChild(nm); head.appendChild(clr);
+  return head;
+}
 function memRow(cat,it){
   const row=document.createElement('div');
   row.style.cssText='display:flex;align-items:flex-start;gap:8px;padding:7px 4px;border-bottom:1px dashed var(--line)';
   const txt=document.createElement('div');
   txt.style.cssText='flex:1;font-size:.82rem;line-height:1.5;word-break:break-all';
-  txt.innerHTML='<b style="color:var(--acc);font-size:.72rem;margin-right:6px">'+esc(cat.category)+'</b>'+esc(it.text)+
-    (it.tags&&it.tags.length?'<span class="fnote">　#'+esc(it.tags.join(' #'))+'</span>':'');
+  txt.innerHTML=esc(it.text)+(it.tags&&it.tags.length?'<span class="fnote">　#'+esc(it.tags.join(' #'))+'</span>':''); // r4/S2c: 行内分类徽标移除——分类名由组头唯一渲染（同一信息一处）
   const del=document.createElement('button');
   del.className='mini'; del.textContent='✕'; del.title='让它忘掉这条'; del.style.padding='3px 9px';
   del.onclick=async()=>{
@@ -1878,7 +1895,11 @@ function memPaint(){
   box.innerHTML='';
   if(!flat.length){ box.innerHTML='<div class="fnote">'+(q?'没找到带「'+esc(q)+'」的记忆。':'它还没记住什么。聊得多了，这里会出现它记住的事。')+'</div>'; pagerPaint('mem-pager',1,1,0,null); return; } // r4/S3a: 空态清翻页器（arch 先例）
   const ps=pageSlice(flat,'mem','row'); // r4/S3a: 过滤后切片（搜索/分类行内过滤逻辑不变）
-  for(const [cat,it] of ps.rows) box.appendChild(memRow(cat,it));
+  let lastCat=null;
+  for(const [cat,it] of ps.rows){
+    if(cat!==lastCat){ box.appendChild(memCatHead(cat)); lastCat=cat; } // r4/S2c: 该类在当前页的首条处出组头（跨页续类在页首重复出——清空钮每页可达）
+    box.appendChild(memRow(cat,it));
+  }
   pagerPaint('mem-pager',listPage.mem,ps.pages,ps.total,p=>{ listPage.mem=p; memPaint(); },'row',ps.trunc);
 }
 async function loadMemUI(){
