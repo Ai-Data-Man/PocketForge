@@ -32,13 +32,37 @@
 - 实现：桥 sidThinkValues 缓存五刷新点（subscribe/rescue/switch_model 两分支/set_think/session/load sniff）+共用 acpSetThink；subscribe 可选 think 与 model 帧同批；set_think 校验∈values 不合法人话拒绝零 ACP 帧；model 全点位同步 think；model_switched 回执补带 configOptions（会话内切模型三态刷新闭环——简报预判只对无会话分支成立，实测补齐）。前端三态 select（五档人话标签/["off"] 禁用+「这个模型想多深它自己定，调不了快慢」/无键隐藏）+pfThinkEffort 记习惯。真栈活体三态②实证（现役 deepseek-v4.1-flash 同为遮蔽类）。think-probe 24/24 红绿对照；rescue-guard 41/ui-logic 56/ia-logic 28/e2e 61/e2e.sh 8/fuzz 191。
 - 勘误：dev 现役模型是 deepseek-v4.1-flash 非 glm-5.3-flash（用户指定的 glm-5.3-flash 是从零测试沙盒用模型；等价遮蔽类）。
 
-## 主线1 批量三件：E-C（S2a 工作区批量清理/S2b 归档会话批量删除含当日号段拒批/S2c 记忆分类清空）
+## 主线1 批量三件：E-C（411867d / 52cc184 / 71ecd40）
 
-（进行中，收尾补全）
+- S2a 工作区批量清理：桥 wsDeleteOne 抽出（单删行为零变化）+POST /api/ws/delete_batch 逐项复用守卫（当前区/被引用拒删）顺序执行+{ok,deleted,failed} 汇总；前端整理模式（orgCheckBox/orgBarPaint 共用组件）+勾选资格=未关联+已归档+全选跨页+双重防线三段（首用完整说明→计数预览含体积→二次确认）。探针 28/28。
+- S2b 归档会话批量删除：hardDeleteSession 抽出+delete_sessions 单消息批量（delete_session 回执断连的协议约束→必须桥内循环+末尾单封 sessions_deleted 汇总回执）；归档门双验（前端归档视图+桥 readArch 校验）；**当日号段拒批——工程师活体逮住真 bug：goose sid 前缀按 UTC 生成（本地 09-19 凌晨 sid 仍 20260918_*），本地日期判基漏判致当日会话被批删→closed 集污染→新会话连环 Session-not-found（s76 家族活体复现）；UTC 判基修正后批后连开 5 新会话零 Session-not-found（真栈臂非 mock）**。探针 25/25。
+- S2c 记忆分类清空：组头「这一类全忘掉」+单确认+桥既有 forget_all（零新桥代码）。探针 13/13。
+- 终态 fuzz 197（+6 批量断言）。
 
-## 环境注记
+## QA 复审（tmp/qa-s98-review.md）：通过，零 P1/P2
 
-- e2e-report 残留注册（dev 树 apps/e2e-report.yaml+apps.env.yaml 键，09-15 起）与 fake-PLM :8124 残余（E-D 首跑 e2e.sh 挂死元凶，已 kill）——工程窗口后统一清理。
-- forge/tmp/tf35 探针已被 package.sh SKIP tmp 覆盖，不进包。
+- 独立复跑：七探针 144/144+qa-s98-utc-probe 7/7+e2e 61+ fuzz 197+ui-logic 56+ia-logic 28。
+- 变异测试证红成立（delete_sessions 守卫 if(false) 短路→B4/B5a 必红，断言网非永真）。
+- P3×3：①S2b「今天」文案与 UTC 判基窗口错位（本地 00:00-07:59 创建=昨日 UTC 前缀零保护被删，QA 探针恰在窗口实锤）②think 三旁路（subscribe/prompt 对账/switch_model）无白名单校验+乐观记账，goose 拒帧静默丢 ③e2e 首跑 apps-probe 间歇红再现（归因 UNVERIFIED）。
+- P4×4（两条留档不修：failed[].err 路径反射[单删同族预存在]、fuzz 缺遍历/类型混淆批量向量；两条转快赢修复）。
 
-（QA 复审、主线5 从零轮次、收尾——见文末补全）
+## QA 返工批（a86a8f6）
+
+- P3-1 守卫扩窗：阈值=本地今日零点对应 UTC 日期（guardDate），拒一切 sid 前缀>=guardDate——本地今天创建的会话全保护（跨 UTC 边界安全方向，顺带保守多护昨日下午段，注释写明取舍）。修前红实证（明日向量被旧码实删）+全窗不变量（GUARD<=UTC 今日→真当日必拒）。
+- P3-2 think 白名单：thinkAllowed() 共用函数，三旁路链入（不发帧+不记账+debug 日志诚实降级）；think-probe 修前 4 红→修后 26/26（新增 B(off)4/5 对账哨兵）。
+- P3-3 apps-probe 黑匣子：失败断言名+上下文落盘 tmp/apps-probe-last-fail.txt（覆盖式，全绿不写）。
+- P4 快赢：批量 200 条上限（delete_batch+delete_sessions 双通道人话拒绝「一次最多处理 200 条，分几批来」+fuzz 双向量）；AGENTS.md §7 补报表卡双源声明。
+- **工程师范围外发现留档：rescue 路径（~L1017 noteThinkOptions 后随行 acpSetThink）是 think 旁路第四处，同款 1 行修——并入主线5修复批**。
+- 终态基线：**e2e 61/61（首跑即绿）+fuzz 199/199+ui-logic 56+ia-logic 28**。
+
+## 环境卫生活（主控）
+
+- dev 树 e2e-report 残留注册清除（09-15 起）：pc stop→yaml 删→聚合器重跑→forge-register converge（Project updated successfully，chat-bridge PID 不变 restarts=0=纯移除零重启）→apps.env.yaml 键清零。
+- **新观察点：pc process stop 后 cmd 包装的 python 子进程成孤儿**（8199 http.server 孤儿手清；s91 hard_stop node 孤儿家族新数据点——pc Windows 进程树回收对 cmd 中介孙进程不可达）。
+- fake-PLM :8124 测试服务器残余（E-D e2e.sh 首跑挂死元凶）已 kill。
+
+## 主线5：从零出厂验证（iat14）
+
+- 包：dist/PocketForge-20260919-v0.9.15-iat14.zip（323,634,769B/25,306 文件，sha256 df6a1e42…；**与 v0.9.15 正式包文件级零差异**——s98 全为既有文件内容更新，无新文件入包）。
+- R1（C:\PF-TEST\s98a，QA 在飞）：冷启+五端点+日志+控制台零错+新面八项点验+glm-5.3-flash 真任务（建服务建表）+报表卡双源真链。dev 栈已停让端口（PFdrill2 承载，R 轮后主控恢复）。
+- （R2/R3 与发现修复——见下补全）
