@@ -48,13 +48,20 @@ if %TRIES2% geq 8 goto not_stopped
 timeout /t 1 /nobreak >nul
 goto wait_stop2
 
+rem ---- s97/F-13: close Edge windows anchored to THIS install root (chat window profile and
+rem ---- welcome page live under data\ - while they run the install folder cannot be renamed
+rem ---- or deleted, breaking the "delete folder = full uninstall" acceptance line) ----
 :stopped
+powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'msedge.exe' -and $_.CommandLine -and $_.CommandLine -match [regex]::Escape('%FORGE_ROOT%') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+timeout /t 2 /nobreak >nul
 echo [PocketForge] all stopped.
 del "%DOWN_LOG%" >nul 2>&1
 pause
 exit /b 0
 
 :stopped_hard
+powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'msedge.exe' -and $_.CommandLine -and $_.CommandLine -match [regex]::Escape('%FORGE_ROOT%') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+timeout /t 2 /nobreak >nul
 echo [PocketForge] all stopped (forced).
 del "%DOWN_LOG%" >nul 2>&1
 pause
