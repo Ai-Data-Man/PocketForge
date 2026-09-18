@@ -102,7 +102,7 @@ function cleanSelfLedger() { for (const d of [SEED_DIR, SEED_DIR2]) { try { fs.r
     ck('C1 mtabs 注册 made（六标签懒加载同款）', /made:\['loadMadeUI',false\]/.test(html) && /made:\['loadMadeUI',false\]/.test(html.match(/const mtabs=\{[^\n]+\}/)[0]));
     ck('C2 tab 钮+mpane 在位（✨ 做过的东西）', /data-pane="made"[^>]*>✨ 做过的东西</.test(html) && /id="mpane-made"/.test(html));
     ck('C3 搜索=文件名进 hay（裁决「搜不到文件名」缺口闭合）+200ms 防抖', /it\.name\+' '\+\(it\.human\|\|''\)\+' '\+\(it\.srcTitle\|\|''\)\)\.toLowerCase\(\)\.includes\(q\)/.test(html) && /\$\('made-q'\)\.oninput/.test(html) && /madeQT=setTimeout/.test(html));
-    ck('C4 分页 pageSlice 12/页档（R2 <100 条声明）', /pageSlice\(list,'made'\)/.test(html) && /pagerPaint\('made-pager'/.test(html));
+    ck('C4 分页 pageSlice 卡片档（R2 <100 条声明；r4/S1 新签名+形态参）', /pageSlice\(list,'made','card'\)/.test(html) && /pagerPaint\('made-pager',listPage\.made,ps\.pages,ps\.total,[^\n]+'card',ps\.trunc\)/.test(html));
     ck('C5 类型 chips=筛选非分组', /id="made-chips"/.test(html) && /madeFilter\.chip===k/.test(html) || /madeFilter\.chip === k/.test(html));
     ck('C6 打开-表=🗄️数据 tab 定位展开（既有 loadDbUI/dbPaint）', /function openAsset\(it\)/.test(html) && /showMtab\('db'\)/.test(html) && /\$\('db-q'\)\.value=it\.ref\.tbl/.test(html));
     ck('C7 打开-文件=既有预览链路（/preview/ 同款）', /window\.open\('\/preview\/'\+encodeURIComponent\(it\.ref\.ws\+'\/'\+it\.ref\.path\)/.test(html));

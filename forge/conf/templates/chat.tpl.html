@@ -426,7 +426,7 @@ details.tz[open]>summary::before{content:'▾ '}
     </div>
     <div id="all-chips" style="padding:0 10px 6px;display:flex;gap:5px"></div>
     <div id="all-list"></div>
-    <div id="all-pager" style="padding:6px 10px;text-align:center"></div>
+    <div id="all-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:6px 10px;flex-wrap:wrap"></div><!-- r4/S1: 迁 pagerPaint（arch-pager 同款 flex 容器） -->
   </div>
 </div>
 <div id="slash-menu" style="display:none;position:absolute;bottom:64px;left:18px;right:18px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.14);z-index:40;max-height:250px;overflow-y:auto"></div>
@@ -521,7 +521,7 @@ details.tz[open]>summary::before{content:'▾ '}
     <div class="fnote" style="margin-bottom:10px">它聊天时会自己记住您的偏好和做法，存在这个电脑里、不上网。点 ✕ 可以让它忘掉某一条。</div>
     <input id="mem-q" placeholder="在这些记忆里找…" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:6px">
     <div id="mem-list" style="max-height:300px;overflow-y:auto"></div>
-    <div id="mem-more" style="text-align:center;padding:4px 0"></div>
+    <div id="mem-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 0 6px"></div><!-- r4/S3a: 统一翻页器（made-pager 同款容器，渐进式累计机制撤销） -->
   </div>
   <div class="mpane" id="mpane-sched" style="display:none">
     <h3 style="margin:0 0 8px">定时任务</h3>
@@ -821,9 +821,9 @@ function renderSessions(list){
     const q=($('arch-q').value||'').trim().toLowerCase();
     const shown=arc.filter(s=>!q||String(s.title||'').toLowerCase().includes(q));
     if(!shown.length){ box.innerHTML='<div class="fnote" style="padding:8px 10px">没找到带「'+esc(q)+'」的归档对话。</div>'; pagerPaint('arch-pager',1,1,0,null); return; } // qa P3: 同上
-    const ps=pageSlice(shown,'arch',PAGE_N);
+    const ps=pageSlice(shown,'arch','row');
     for(const s of ps.rows) box.appendChild(sessItem(s,true)); // 既有语义原样迁移：仅归档内可删、↩ 还原到活跃
-    pagerPaint('arch-pager',listPage.arch,ps.pages,ps.total,p=>{ listPage.arch=p; renderSessions(lastSessions); });
+    pagerPaint('arch-pager',listPage.arch,ps.pages,ps.total,p=>{ listPage.arch=p; renderSessions(lastSessions); },'row',ps.trunc);
     return;
   }
   // 活跃视图=同款清单+搜索+行型分页（pm裁决 2026-09-07-user-six-lines-batch1 项1；取代 act.slice(0,40)+死提示出口）。
@@ -832,9 +832,9 @@ function renderSessions(list){
   const q=($('arch-q').value||'').trim().toLowerCase();
   const shown=act.filter(s=>!q||String(s.title||'').toLowerCase().includes(q));
   if(!shown.length){ box.innerHTML='<div class="fnote" style="padding:8px 10px">'+(q?'没找到带「'+esc(q)+'」的对话。':'还没有对话。点上面「＋ 新对话」开始。')+'</div>'; pagerPaint('arch-pager',1,1,0,null); return; } // qa P3: 早退清翻页器，同归档分支
-  const ps=pageSlice(shown,'chat',PAGE_N);
+  const ps=pageSlice(shown,'chat','row');
   for(const s of ps.rows) box.appendChild(sessItem(s,false));
-  pagerPaint('arch-pager',listPage.chat,ps.pages,ps.total,p=>{ listPage.chat=p; renderSessions(lastSessions); });
+  pagerPaint('arch-pager',listPage.chat,ps.pages,ps.total,p=>{ listPage.chat=p; renderSessions(lastSessions); },'row',ps.trunc);
 }
 function paintSideChips(){ // IA-2: chip 态与计数（mtab 同款 aria-selected 写法）
   const c=$('svw-chat'), a=$('svw-arch'); if(!c||!a) return;
@@ -1463,7 +1463,7 @@ function showMtab(name){
   if(t&&!t[1]){ t[1]=true; window[t[0]](); }
 }
 document.querySelectorAll('#manage-modal .mtab').forEach(b=>b.onclick=()=>showMtab(b.dataset.pane));
-$('open-manage').onclick=()=>{ $('manage-modal').classList.add('on'); for(const k in mtabs) mtabs[k][1]=false; listPage.mcp=1; listPage.made=1; listPage.db=1; listPage.apps=1; listPage.sched=1; showMtab('ext'); }; // s51: 重开即重拉，防陈旧清单; s71: 插件页回第 1 页; s83: 做过的东西页同款; s95/S2b: 数据页同款; r3/S4a-S4c: 小应用/定时页同款
+$('open-manage').onclick=()=>{ $('manage-modal').classList.add('on'); for(const k in mtabs) mtabs[k][1]=false; listPage.mcp=1; listPage.made=1; listPage.db=1; listPage.apps=1; listPage.sched=1; listPage.mem=1; showMtab('ext'); }; // s51: 重开即重拉，防陈旧清单; s71: 插件页回第 1 页; s83: 做过的东西页同款; s95/S2b: 数据页同款; r3/S4a-S4c: 小应用/定时页同款; r4/S3a: 记忆页同款
 // s46: MCP 市场 UI（安装是后台异步，轮询状态直到 done/error）
 // R2 声明（s95/S2e，裁决 2026-09-16 §3）：目录终态 <30（curated+自配）；分页已有（s71），搜索本批补齐（mcp-q：name+desc 包含，pageSlice 前过滤）
 let mcpPollTimer=null, mcpQT=null;
@@ -1475,7 +1475,7 @@ async function loadMcpUI(){
   const q=(($('mcp-q')||{}).value||'').trim().toLowerCase(); // s95/S2e: pageSlice 前过滤（安装轮询复调带当前过滤词，输入不丢）
   list=list.filter(m=>!q||String(m.name||'').toLowerCase().includes(q)||String(m.desc||'').toLowerCase().includes(q));
   if(!list.length){ box.innerHTML='<div class="fnote">没找到跟“'+esc(q)+'”有关的插件。</div>'; pagerPaint('mcp-pager',1,1,0,null); clearTimeout(mcpPollTimer); loadMarketUI(); return; }
-  const ps=pageSlice(list,'mcp'); // s71: 目录配置化会增长，同款分页（≤SKILL_N 零机制）；安装轮询复调时保留当前页
+  const ps=pageSlice(list,'mcp','card'); // s71: 目录配置化会增长，同款分页（≤card 首档零机制）；安装轮询复调时保留当前页
   let needPoll=false;
   for(const m of ps.rows){
     const row=document.createElement('div');
@@ -1528,7 +1528,7 @@ async function loadMcpUI(){
     }
     box.appendChild(row);
   }
-  pagerPaint('mcp-pager',listPage.mcp,ps.pages,ps.total,p=>{ listPage.mcp=p; loadMcpUI(); });
+  pagerPaint('mcp-pager',listPage.mcp,ps.pages,ps.total,p=>{ listPage.mcp=p; loadMcpUI(); },'card',ps.trunc);
   if(needPoll){ clearTimeout(mcpPollTimer); mcpPollTimer=setTimeout(loadMcpUI, 5000); }
   loadMarketUI(); // s72: 同标签页的「数据源与目录管理」区块跟随刷新（轮询期重复拉取无害，列表重绘不碰表单输入）
 }
@@ -1672,7 +1672,7 @@ function schedPaint(){
     box.innerHTML='<div class="fnote">'+(q?'没找到跟“'+esc(q)+'”有关的定时任务。':'没有'+(schedFilter.chip==='paused'?'暂停的':'排着的')+'定时任务。')+'</div>'; // r3/S4d: chip 非全空态与真空区分
     pagerPaint('sched-pager',1,1,0,null); return;
   }
-  const ps=pageSlice(fl,'sched',PAGE_N); // r3/S4c: 行型 30/页（db/pr 先例）；机制恒建，≤30 页 pagerPaint 自动零视觉
+  const ps=pageSlice(fl,'sched','row'); // r3/S4c: 行型（db/pr 先例）；机制恒建，≤档内 pagerPaint 自动零视觉
   for(const j of ps.rows){
     const row=document.createElement('div');
     row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line)';
@@ -1709,7 +1709,7 @@ function schedPaint(){
     row.appendChild(del);
     box.appendChild(row);
   }
-  pagerPaint('sched-pager',listPage.sched,ps.pages,ps.total,p=>{ listPage.sched=p; schedPaint(); }); // r3/S4c: 翻页重渲染
+  pagerPaint('sched-pager',listPage.sched,ps.pages,ps.total,p=>{ listPage.sched=p; schedPaint(); },'row',ps.trunc); // r3/S4c: 翻页重渲染
 }
 $('sched-q').oninput=()=>{ clearTimeout(schedQT); schedQT=setTimeout(()=>{ listPage.sched=1; schedPaint(); },200); }; // s95/S2d; r3/S4c: 过滤变化回第 1 页（made-q 同款），防抖复调保持当前输入
 
@@ -1776,9 +1776,8 @@ async function loadExtUI(){
     box.appendChild(row);
   }
 }
-// s51: 记忆清单——搜索过滤 + 渲染上限 50 条 +「显示更多」（记忆是唯一无限增长清单）
-const MEM_PAGE=50;
-let memAll=null, memShown=MEM_PAGE;
+// s51: 记忆清单——搜索过滤 + 行型分页（r4/S3a 裁决 2026-09-19-bloat-r4 §2.3：渐进式 DOM 累计无上限，r3 例外撤销，转 pageSlice 统一机制）
+let memAll=null;
 function memRow(cat,it){
   const row=document.createElement('div');
   row.style.cssText='display:flex;align-items:flex-start;gap:8px;padding:7px 4px;border-bottom:1px dashed var(--line)';
@@ -1800,30 +1799,26 @@ function memRow(cat,it){
   return row;
 }
 function memPaint(){
-  const box=$('mem-list'), more=$('mem-more');
+  const box=$('mem-list');
   const q=($('mem-q').value||'').trim().toLowerCase();
   const flat=[];
   for(const cat of memAll) for(const it of cat.items)
     if(!q || cat.category.toLowerCase().includes(q) || it.text.toLowerCase().includes(q) || (it.tags||[]).some(t=>t.toLowerCase().includes(q)))
       flat.push([cat,it]);
   box.innerHTML='';
-  for(const [cat,it] of flat.slice(0,memShown)) box.appendChild(memRow(cat,it));
-  if(!flat.length){ box.innerHTML='<div class="fnote">'+(q?'没找到带「'+esc(q)+'」的记忆。':'它还没记住什么。聊得多了，这里会出现它记住的事。')+'</div>'; }
-  more.innerHTML='';
-  if(flat.length>memShown){
-    const b=document.createElement('button'); b.className='mini'; b.textContent='显示更多（还有 '+(flat.length-memShown)+' 条）';
-    b.onclick=()=>{ memShown+=MEM_PAGE; memPaint(); };
-    more.appendChild(b);
-  }
+  if(!flat.length){ box.innerHTML='<div class="fnote">'+(q?'没找到带「'+esc(q)+'」的记忆。':'它还没记住什么。聊得多了，这里会出现它记住的事。')+'</div>'; pagerPaint('mem-pager',1,1,0,null); return; } // r4/S3a: 空态清翻页器（arch 先例）
+  const ps=pageSlice(flat,'mem','row'); // r4/S3a: 过滤后切片（搜索/分类行内过滤逻辑不变）
+  for(const [cat,it] of ps.rows) box.appendChild(memRow(cat,it));
+  pagerPaint('mem-pager',listPage.mem,ps.pages,ps.total,p=>{ listPage.mem=p; memPaint(); },'row',ps.trunc);
 }
 async function loadMemUI(){
   const box=$('mem-list'); if(!box) return;
   let cats;
   try { cats = await apiJSON('/api/memory'); } catch(e){ memAll=[]; memPaint(); box.innerHTML='<div class="fnote">读取失败：'+esc(e.message)+'</div>'; return; }
-  memAll=cats; memShown=MEM_PAGE;
+  memAll=cats;
   memPaint();
 }
-$('mem-q').oninput=()=>{ memShown=MEM_PAGE; memPaint(); };
+$('mem-q').oninput=()=>{ listPage.mem=1; memPaint(); }; // r4/S3a: 过滤变化回第 1 页（arch-q 同款）
 
 $('modal').onclick=e=>{ if(e.target.id==='modal'){ $('modal').classList.remove('on'); cfgKeyTouched=false; $('cfg-key').value=''; } }; // qa返工(P2-2): 背景点击同弃半截 Key
 
@@ -1903,7 +1898,7 @@ function dbPaint(){
     box.innerHTML='<div class="fnote">'+(q?'没找到跟“'+esc(q)+'”有关的表。换个词试试，或直接在聊天里问小 forge。':'还没存数据。让小 forge 抓数时说一声存进数据库就行。')+'</div>';
     pagerPaint('db-pager',1,1,0,null); return;
   }
-  const ps=pageSlice(seq,'db',PAGE_N); // 行型 30/页（PAGE_N 在下方定义=30，函数声明提升可用）
+  const ps=pageSlice(seq,'db','row'); // r4/S1: 行型（row 档位记忆，缺省 30）
   let prevSvc=null, g=null, dz=null;
   for(const [svc,t,isSys] of ps.rows){
     if(svc!==prevSvc){ // 服务变更处插组头（含跨页续段的页首——组头跨页正确）；N=该服务匹配总数
@@ -1925,7 +1920,7 @@ function dbPaint(){
     dz=null;
     g.appendChild(dbRowEl(svc,t));
   }
-  pagerPaint('db-pager',listPage.db,ps.pages,ps.total,p=>{ listPage.db=p; dbPaint(); });
+  pagerPaint('db-pager',listPage.db,ps.pages,ps.total,p=>{ listPage.db=p; dbPaint(); },'row',ps.trunc);
   if(lastDbOv.truncated){ // R2：截断必须留出路——先搜，搜不到聊天问小 forge
     const tr=document.createElement('div');
     tr.className='fnote'; tr.style.marginTop='6px';
@@ -1966,7 +1961,7 @@ function madePaint(){
   const list=madeAll
     .filter(it=>madeFilter.chip==='all'||it.kind===madeFilter.chip)
     .filter(it=>!q||(it.name+' '+(it.human||'')+' '+(it.srcTitle||'')).toLowerCase().includes(q)); // 文件名=主名 name，天然可搜（裁决查证「搜不到文件名」缺口闭合）
-  const ps=pageSlice(list,'made');
+  const ps=pageSlice(list,'made','card');
   box.innerHTML='';
   if(!list.length){
     // ia-rework S2-4：技能 chip 专属空态（搜索未中仍走「没找到」——它可能已学会只是没搜到，不误导）
@@ -1995,7 +1990,7 @@ function madePaint(){
     }
     box.appendChild(row);
   }
-  pagerPaint('made-pager',listPage.made,ps.pages,ps.total,p=>{ listPage.made=p; madePaint(); });
+  pagerPaint('made-pager',listPage.made,ps.pages,ps.total,p=>{ listPage.made=p; madePaint(); },'card',ps.trunc);
 }
 async function loadMadeUI(){
   const box=$('made-list'); if(!box) return;
@@ -2062,7 +2057,7 @@ function appsPaint(){
     pagerPaint('apps-pager',1,1,0,null);
     return;
   }
-  const ps=pageSlice(list,'apps'); // r3/S4a: 卡片型缺省 12/页（ins/store 同款）；机制恒建，≤12 页 pagerPaint 自动零视觉
+  const ps=pageSlice(list,'apps','card'); // r3/S4a: 卡片型（ins/store 同款）；机制恒建，≤档内 pagerPaint 自动零视觉
   for(const a of ps.rows){
     const card=document.createElement('div');
     card.style.cssText='padding:8px 2px;border-bottom:1px solid var(--line)';
@@ -2126,7 +2121,7 @@ function appsPaint(){
     if(srcEl&&srcEl.dataset.sid) srcEl.onclick=()=>{ $('manage-modal').classList.remove('on'); openSession(srcEl.dataset.sid); }; // 复用侧栏既有切会话入口
     box.appendChild(card);
   }
-  pagerPaint('apps-pager',listPage.apps,ps.pages,ps.total,p=>{ listPage.apps=p; appsPaint(); }); // r3/S4a: 翻页重渲染；下方两行注保持渲染流程尾部追加（pager 之外）
+  pagerPaint('apps-pager',listPage.apps,ps.pages,ps.total,p=>{ listPage.apps=p; appsPaint(); },'card',ps.trunc); // r3/S4a: 翻页重渲染；下方两行注保持渲染流程尾部追加（pager 之外）
   if(appsNote){ const n=document.createElement('div'); n.className='fnote'; n.style.margin='4px 0'; n.textContent=appsNote; box.appendChild(n); }
   if(appsPortsTrunc){ const n=document.createElement('div'); n.className='fnote'; n.style.margin='4px 0'; n.textContent='应用有点多，监听端口只查了前几个——想看全的，跟小 forge 说一声。'; box.appendChild(n); }
 }
@@ -2363,7 +2358,8 @@ function renderAtMenu(q){
   fetch('/api/artifacts?ws='+encodeURIComponent(curWs)).then(r=>r.json()).then(async list=>{
     if(gen!==atGen) return;
     atItems=list;
-    const hits=list.filter(f=>f.name.toLowerCase().includes(q)).slice(0,12);
+    const fileHits=list.filter(f=>f.name.toLowerCase().includes(q)); // r4/S3b: 文件侧全量计数（溢出提示=表侧先例同款）
+    const hits=fileHits.slice(0,12);
     const menu=$('at-menu');
     if(menu){ menu.innerHTML='';
       for(const f of hits){
@@ -2372,6 +2368,12 @@ function renderAtMenu(q){
         el.innerHTML='<span>'+(isDir?'📁':fileIcon(f.name))+'</span><b>'+esc(f.name.replace(/\/$/,''))+'</b><span style="color:var(--mut);font-size:.68rem;margin-left:auto">'+(isDir?'文件夹':esc(f.name.split('/')[0]))+'</span>';
         el.onclick=()=>{ txt.value=txt.value.replace(/@[^@\s]*$/,'data/artifacts/'+curWs+'/'+f.name.replace(/\/$/,'')+' '); $('at-menu').style.display='none'; txt.focus(); };
         menu.appendChild(el);
+      }
+      if(fileHits.length>12){ // r4/S3b（裁决 §2.3）：12 条档+溢出提示=有出路的截断；≤12 零提示
+        const more=document.createElement('div');
+        more.style.cssText='padding:3px 14px 6px;font-size:.68rem;color:var(--mut)';
+        more.textContent='还有 '+(fileHits.length-12)+' 个文件没列出来，多打几个字缩小范围。';
+        menu.appendChild(more);
       }
       // s50b: 「库里的数据」——@ 也能引用数据库表（插入「数据库表 服务.表 」，goose 侧按 .goosehints 识别）
       const ov=await dbOverview();
@@ -2441,7 +2443,7 @@ function paintInstalled(){ // s71: 自 open-skills 内联渲染提升为具名�
     .filter(sk=>skillsFilter.chip==='all'||skillsOriginClass(sk)===skillsFilter.chip) // s95/S2a: 来源 chip 过滤在搜索过滤前
     .filter(sk=>!q||String(sk.name||'').toLowerCase().includes(q)||String(sk.description||'').toLowerCase().includes(q));
   if(!shown.length){ box.innerHTML='<div class="fnote">'+(q?('没有找到「'+esc(q)+'」'):'还没有技能。让它干活时说「记住这个做法」，它就会自己学。')+'</div>'; pagerPaint('skills-pager',1,1,0,null); return; }
-  const ps=pageSlice(shown,'ins'); // r3/S4e 措辞修正: 机制恒建（pageSlice 恒走）；pagerPaint 在 pages≤1 不渲染=阈值内零视觉机制——非「>N 再加分页」触发式
+  const ps=pageSlice(shown,'ins','card'); // r3/S4e 措辞修正: 机制恒建（pageSlice 恒走）；pagerPaint 在 pages≤1 不渲染=阈值内零视觉机制——非「>N 再加分页」触发式
   for(const sk of ps.rows){
     const el=document.createElement('div'); el.className='skill';
     el.innerHTML='<div class="nm">'+esc(sk.name)+skillOriginBadge(sk)+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
@@ -2467,28 +2469,47 @@ function paintInstalled(){ // s71: 自 open-skills 内联渲染提升为具名�
     };
     ops.appendChild(use); ops.appendChild(view); ops.appendChild(del); el.appendChild(ops); box.appendChild(el);
   }
-  pagerPaint('skills-pager',listPage.ins,ps.pages,ps.total,p=>{ listPage.ins=p; paintInstalled(); });
+  pagerPaint('skills-pager',listPage.ins,ps.pages,ps.total,p=>{ listPage.ins=p; paintInstalled(); },'card',ps.trunc);
 }
 // s42/s45/s56: 技能商店（本地 skills-repo + 远程缓存；搜索过滤；中文说明优先）
 let storeAll=[]; // 当前可装列表（avail），供搜索过滤
-// s71 技能/插件市场分页：技能卡约 120px 高，每页 12 条≈两屏；切片模式对齐 renderAllPane 的 PAGE_N 先例
-const SKILL_N=12;
-const listPage={ins:1,store:1,mcp:1,arch:1,chat:1,pr:1,made:1,db:1,apps:1,sched:1}; // 各列表当前页；仅重开弹窗时重置（loadSkills2/loadMcpUI 会被操作回调与安装轮询复调，不得在函数内重置）；arch/chat=侧栏归档/活跃视图（IA-2 + pm裁决2026-09-07-batch1 项1）；pr=提示词面板（主线1）；made=✨做过的东西（s83）；db=库里的数据行级分页（s95/S2b）；apps/sched=小应用 12/页·定时任务 30/页（r3/S4a-S4c 机制内建）
-function pageSlice(arr,key,n){ // IA-2: 可选页大小（缺省 SKILL_N；行型清单传 PAGE_N=30，对齐 renderAllPane 先例）
-  const per=n||SKILL_N;
-  const pages=Math.max(1,Math.ceil(arr.length/per));
+// r4/S1（裁决 2026-09-19-bloat-r4 §2.1）：页大小可调——翻页器内「每页 N 条」选择器，全局按形态两类记忆（localStorage pfPageSize 形 {card:12,row:30}，缺省 card=12 s71 先例/row=30 行型先例）；档位=默认×2/×4+末档「一页看全」上限 500（超限截断+注，替代出路=其余档位+翻页）；s71 技能卡 12/页先例由 card 首档继承
+const PS_TIERS={card:[12,24,48,96],row:[30,60,120,240]};
+const PS_ALL=500; // 「一页看全」档值=实现上限
+function psGet(form){ let v=null; try{ v=(JSON.parse(localStorage.getItem('pfPageSize'))||{})[form]; }catch(e){} return (v===PS_ALL||(PS_TIERS[form]||[]).indexOf(v)>=0)?v:PS_TIERS[form][0]; }
+function psSet(form,v){ let o={}; try{ o=JSON.parse(localStorage.getItem('pfPageSize'))||{}; }catch(e){} o[form]=v; try{ localStorage.setItem('pfPageSize',JSON.stringify(o)); }catch(e){} }
+const listPage={ins:1,store:1,mcp:1,arch:1,chat:1,pr:1,made:1,db:1,apps:1,sched:1,mem:1,all:1}; // 各列表当前页；仅重开弹窗时重置（loadSkills2/loadMcpUI 会被操作回调与安装轮询复调，不得在函数内重置）；arch/chat=侧栏归档/活跃视图（IA-2 + pm裁决2026-09-07-batch1 项1）；pr=提示词面板（主线1）；made=✨做过的东西（s83）；db=库里的数据行级分页（s95/S2b）；apps/sched=小应用/定时任务（r3/S4a-S4c 机制内建）；mem=记忆（r4/S3a）；all=浏览全部（r4/S1 手写分页迁入）
+function pageSlice(arr,key,form){ // r4/S1: 形态 'card'|'row'——实际页大小=psGet 档位记忆；「一页看全」单页=min(条数,500)，超 500 截断置 trunc
+  const tier=psGet(form), all=tier===PS_ALL;
+  const trunc=all&&arr.length>PS_ALL;
+  const per=all?Math.min(Math.max(arr.length,1),PS_ALL):tier;
+  const pages=all?1:Math.max(1,Math.ceil(arr.length/per));
   if(listPage[key]>pages) listPage[key]=pages;
-  return {rows:arr.slice((listPage[key]-1)*per,listPage[key]*per),pages:pages,total:arr.length};
+  return {rows:arr.slice((listPage[key]-1)*per,listPage[key]*per),pages:pages,total:arr.length,trunc:trunc};
 }
-function pagerPaint(id,page,pages,total,go){ // pages<=1 时整块不渲染（≤阈值不分页零机制）；‹›按钮热区≥32px
+function pagerPaint(id,page,pages,total,go,form,trunc){ // pages≤1 且无截断注时整块不渲染（≤阈值零视觉，r3 语义保持——机制恒走）；‹›按钮热区≥32px；r4/S1: 右侧「每页 N 条」选择器，改档即 go(1) 回第 1 页重渲染（go 回调内置 listPage[key]=p）
   const pager=$(id); if(!pager) return;
   pager.innerHTML='';
-  if(pages<=1) return;
+  if(pages<=1&&!trunc) return;
   const mk=(tx,aria,dis,fn)=>{const b=document.createElement('button');b.className='mini';b.textContent=tx;b.style.cssText='min-width:36px;min-height:32px';b.setAttribute('aria-label',aria);b.disabled=dis;b.onclick=fn;return b;};
-  pager.appendChild(mk('‹','上一页',page<=1,()=>go(page-1)));
-  const st=document.createElement('span'); st.className='fnote'; st.textContent='第 '+page+'/'+pages+' 页 · 共 '+total+' 条';
-  pager.appendChild(st);
-  pager.appendChild(mk('›','下一页',page>=pages,()=>go(page+1)));
+  if(pages>1){
+    pager.appendChild(mk('‹','上一页',page<=1,()=>go(page-1)));
+    const st=document.createElement('span'); st.className='fnote'; st.textContent='第 '+page+'/'+pages+' 页 · 共 '+total+' 条';
+    pager.appendChild(st);
+    pager.appendChild(mk('›','下一页',page>=pages,()=>go(page+1)));
+  }
+  if(trunc){ const tn=document.createElement('span'); tn.className='fnote'; tn.textContent='太多了，一页最多 500 条'; pager.appendChild(tn); }
+  if(form){
+    const sel=document.createElement('select');
+    sel.style.cssText='border:1px solid var(--line);border-radius:8px;font-size:.72rem;background:var(--panel);color:var(--tx);padding:3px 6px';
+    sel.setAttribute('aria-label','每页条数');
+    const cur=psGet(form);
+    for(const t of PS_TIERS[form].concat([PS_ALL])){
+      const o=document.createElement('option'); o.value=t; o.textContent=t===PS_ALL?'一页看全':'每页 '+t+' 条'; if(t===cur) o.selected=true; sel.appendChild(o);
+    }
+    sel.onchange=()=>{ psSet(form,Number(sel.value)); go(1); };
+    pager.appendChild(sel);
+  }
 }
 function skillDesc(sk){ return sk.desc_zh || sk.description || '（无说明）'; }
 function skillOriginBadge(sk){ // s70 切片A: 来源徽标——市场=🌐+源短名 / 本机库=🌐 / 自己攒的=✍ / 内置=无标（local 徽标 s95/S2a 补齐）
@@ -2505,7 +2526,7 @@ function storePaint(){
   const avail=storeAll.filter(s=>!q || (s.name||'').toLowerCase().includes(q) || (s.description||'').toLowerCase().includes(q) || (s.desc_zh||'').toLowerCase().includes(q));
   box.innerHTML='';
   if(!avail.length){ box.innerHTML='<div class="fnote">'+(q?'没有找到「'+esc(q)+'」':'没有可添加的新技能了。')+'</div>'; pagerPaint('store-pager',1,1,0,null); return; }
-  const ps=pageSlice(avail,'store'); // s71: 商店恒分页（双源会持续增长）
+  const ps=pageSlice(avail,'store','card'); // s71: 商店恒分页（双源会持续增长）
   for(const sk of ps.rows){
     const el=document.createElement('div'); el.className='skill';
     el.innerHTML='<div class="nm">'+(sk.remote?'🌐 ':'')+esc(sk.name)+'</div><div class="ds">'+esc(skillDesc(sk))+'</div>';
@@ -2535,7 +2556,7 @@ function storePaint(){
     };
     ops.appendChild(view); ops.appendChild(inst); el.appendChild(ops); box.appendChild(el);
   }
-  pagerPaint('store-pager',listPage.store,ps.pages,ps.total,p=>{ listPage.store=p; storePaint(); });
+  pagerPaint('store-pager',listPage.store,ps.pages,ps.total,p=>{ listPage.store=p; storePaint(); },'card',ps.trunc);
 }
 let storeQT=null;
 async function loadSkillStore(){
@@ -2809,8 +2830,7 @@ function fileIcon(n){
 }
 // ---- 工作区（ADR-0007/0008）：本对话文件树始终跟随会话；「浏览全部」检索其他工作区 ----
 let lastSessions=[]; let archSet={}; let delWarned=false; let delRefreshT=null; // #4: 删除回执的 1.5s 兜底刷新定时器（收到 session_deleted 回执即撤销）
-let allFilter={q:'',sort:'mtime',chip:'active',page:1};
-const PAGE_N=30;
+let allFilter={q:'',sort:'mtime',chip:'active'}; // r4/S1: page 态迁入 listPage.all（手写分页迁 pageSlice 统一机制）
 
 async function loadArch(){ try{ const r=await fetch('/api/sessions/archive'); archSet=((await r.json()).arch)||{}; }catch{ archSet={}; } }
 async function archiveSession(sid,arch){
@@ -2994,7 +3014,7 @@ function renderChips(){
   const box=$('all-chips'); box.innerHTML='';
   for(const [k,label] of defs){
     const b=document.createElement('button'); b.className='chip'+(allFilter.chip===k?' on':''); b.textContent=label;
-    b.onclick=()=>{ allFilter.chip=k; allFilter.page=1; renderChips(); renderAllPane(); };
+    b.onclick=()=>{ allFilter.chip=k; listPage.all=1; renderChips(); renderAllPane(); };
     box.appendChild(b);
   }
 }
@@ -3013,9 +3033,8 @@ function filteredWs(){
 function renderAllPane(){
   if(!$('pane-all')||$('pane-all').style.display==='none'){ /* 数据先备着 */ }
   const list=filteredWs();
-  const pages=Math.max(1,Math.ceil(list.length/PAGE_N));
-  if(allFilter.page>pages) allFilter.page=pages;
-  const slice=list.slice((allFilter.page-1)*PAGE_N, allFilter.page*PAGE_N);
+  const ps=pageSlice(list,'all','row'); // r4/S1: 手写 Math.ceil/slice 分页迁 pageSlice（chips/搜索/排序交互不变，消灭第二份分页实现）
+  const slice=ps.rows;
   const box=$('all-list'); box.innerHTML='';
   if(allFilter.chip==='active'&&wsList.some(w=>w.state!=='active')){
     const tip=document.createElement('div'); tip.className='fnote'; tip.style.cssText='padding:2px 12px 8px';
@@ -3064,14 +3083,7 @@ function renderAllPane(){
     }
     box.appendChild(row);
   }
-  const pager=$('all-pager'); pager.innerHTML='';
-  if(pages>1){
-    const prev=document.createElement('button'); prev.className='mini'; prev.textContent='‹ 上一页'; prev.disabled=allFilter.page<=1;
-    prev.onclick=()=>{ allFilter.page--; renderAllPane(); };
-    const nx=document.createElement('button'); nx.className='mini'; nx.textContent='下一页 ›'; nx.disabled=allFilter.page>=pages;
-    nx.onclick=()=>{ allFilter.page++; renderAllPane(); };
-    pager.appendChild(prev); pager.appendChild(document.createTextNode(' '+allFilter.page+' / '+pages+' ')); pager.appendChild(nx);
-  }
+  pagerPaint('all-pager',listPage.all,ps.pages,ps.total,p=>{ listPage.all=p; renderAllPane(); },'row',ps.trunc);
 }
 function showTab(which){
   $('tabbtn-cur').classList.toggle('on',which==='cur');
@@ -3203,9 +3215,9 @@ function promptsPanelRender(){
   const list=(promptsCache||[]).filter(p=>!q||String(p.name||'').toLowerCase().includes(q)||String(p.body||'').toLowerCase().includes(q));
   box.innerHTML='';
   if(!list.length){ box.innerHTML='<div class="fnote" style="padding:8px 12px">'+(q?'没找到带「'+esc(q)+'」的提示词。':'还没有存过提示词。在输入框打好一段话，点上面「存当前输入框」就能留住它。')+'</div>'; pagerPaint('prompts-pager',1,1,0,null); return; }
-  const ps=pageSlice(list,'pr',PAGE_N); // 行型 30/页；≤30 条时 pagerPaint 自动零机制
+  const ps=pageSlice(list,'pr','row'); // r4/S1: 行型（row 档位记忆，缺省 30）；档内 pagerPaint 自动零机制
   for(const p of ps.rows) box.appendChild(promptRow(p));
-  pagerPaint('prompts-pager',listPage.pr,ps.pages,ps.total,p=>{ listPage.pr=p; promptsPanelRender(); });
+  pagerPaint('prompts-pager',listPage.pr,ps.pages,ps.total,p=>{ listPage.pr=p; promptsPanelRender(); },'row',ps.trunc);
 }
 function promptRow(p){
   const row=document.createElement('div'); row.className='mi';

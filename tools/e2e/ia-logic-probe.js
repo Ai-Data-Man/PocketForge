@@ -11,8 +11,9 @@ function grab(re, label) { const m = html.match(re); if (!m) { console.error('NO
 
 const renderSessionsSrc = grab(/function renderSessions\(list\)\{[\s\S]+?\n\}/, 'renderSessions');
 const paintSideChipsSrc = grab(/function paintSideChips\(\)\{[\s\S]+?\n\}/, 'paintSideChips');
-const pageSliceSrc = grab(/function pageSlice\(arr,key,n\)\{[\s\S]+?\n\}/, 'pageSlice');
-const pagerPaintSrc = grab(/function pagerPaint\(id,page,pages,total,go\)\{[\s\S]+?\n\}/, 'pagerPaint');
+const pageSliceSrc = grab(/function pageSlice\(arr,key,form\)\{[\s\S]+?\n\}/, 'pageSlice'); // r4/S1: 签名 n→form（'card'|'row'，页大小=pfPageSize 档位记忆）
+const pagerPaintSrc = grab(/function pagerPaint\(id,page,pages,total,go,form,trunc\)\{[\s\S]+?\n\}/, 'pagerPaint'); // r4/S1: +form/trunc（每页 N 条 select+超限注）
+const psBlockSrc = grab(/const PS_TIERS=[\s\S]*?function psSet\(form,v\)\{[^\n]+\}/, 'PS block'); // r4/S1: 档位块（pageSlice/pagerPaint 新依赖；沙盒无 localStorage→psGet 兜底缺省 12/30）
 const sessItemSrc = grab(/function sessItem\(s,archived\)\{[\s\S]+?\n\}/, 'sessItem');
 const tsLocalSrc = grab(/function tsLocal\(s\)\{[\s\S]+?\n\}/, 'tsLocal');
 const fmtMDHMSrc = grab(/function fmtMDHM\(d\)\{[^\n]+\}/, 'fmtMDHM');
@@ -52,9 +53,9 @@ const $ = id => { if (!els[id]) throw new Error('no stub #' + id); return els[id
 const sandbox = new Function('$', 'document', 'fetch', `
     let lastSessions=[], archSet={}, sideView='chat', archCount=0, installedAll=[], currentSid=null;
     let listPage={ins:1,store:1,mcp:1,arch:1};
-    const SKILL_N=12, PAGE_N=30;
     const skillsFilter={chip:'all'}; // s95/S2a
     ${skillsOriginClassSrc}
+    ${psBlockSrc}
     ${escSrc}
     ${tsLocalSrc}
     ${fmtMDHMSrc}
@@ -99,9 +100,9 @@ const sandbox2 = new Function('$', 'document', `
     const APP_STATE_ZH={run:'✅ 运行中',stop:'⏹ 已停',fail:'⚠️ 出错了'};
     const APP_PROC_ZH={run:'在跑',stop:'已停',fail:'出错',absent:'下次启动时自动带起'};
     let listPage={apps:1,sched:1};
-    const SKILL_N=12, PAGE_N=30;
     ${appsProcZhSrc}
     ${cronHumanSrc}
+    ${psBlockSrc}
     ${escSrc}
     ${pageSliceSrc}
     ${pagerPaintSrc}
@@ -130,7 +131,7 @@ sandbox.archSetV = archSet; sandbox.lastSessionsV = list;
 els['arch-q'].value = '';
 sandbox.renderSessions(list);
 ck('A0 对照: 65 归档→第1页渲染30行', els['sessions']._children.length === 30);
-ck('A0 对照: pager 绘出(pages=3, 3子节点)', els['arch-pager']._children.length === 3);
+ck('A0 对照: pager 绘出(pages=3, 4子节点=‹/计数/›/每页N条select r4/S1)', els['arch-pager']._children.length === 4);
 // 搜索不中 → 早退
 els['arch-q'].value = 'zzz不存在的词';
 sandbox.renderSessions(list);
@@ -197,7 +198,7 @@ sandbox.installedAllV = [];
     els2['apps-q'].value = '';
     sandbox2.appsChip = 'all';
     sandbox2.appsPaint();
-    ck('D1 apps 31 条→第 1 页 12 卡+翻页器在场+共 31 条', els2['apps-list']._children.length === 12 && els2['apps-pager']._children.length === 3 && /共 31 条/.test(els2['apps-pager']._children[1]._text));
+    ck('D1 apps 31 条→第 1 页 12 卡+翻页器在场+共 31 条', els2['apps-list']._children.length === 12 && els2['apps-pager']._children.length === 4 && /共 31 条/.test(els2['apps-pager']._children[1]._text));
     els2['apps-pager']._children[2].onclick(); // › 翻第 2 页
     ck('D2 › 翻页到第 2 页（页码推进+重渲染不炸）', sandbox2.page === 2 && els2['apps-list']._children.length === 12);
     const appsCardHtml = () => els2['apps-list']._children.map(c => c.innerHTML).join('');
@@ -248,7 +249,7 @@ sandbox.installedAllV = [];
     els2['sched-q'].value = '';
     sandbox2.schedChip = 'all';
     sandbox2.schedPaint();
-    ck('E1 sched 31 条→第 1 页 30 行+翻页器在场+共 31 条', els2['sched-list']._children.length === 30 && els2['sched-pager']._children.length === 3 && /共 31 条/.test(els2['sched-pager']._children[1]._text));
+    ck('E1 sched 31 条→第 1 页 30 行+翻页器在场+共 31 条', els2['sched-list']._children.length === 30 && els2['sched-pager']._children.length === 4 && /共 31 条/.test(els2['sched-pager']._children[1]._text));
     sandbox2.schedChip = 'paused';
     sandbox2.schedPaint();
     const schedRowHtml = () => els2['sched-list']._children.map(c => c.innerHTML).join('');
