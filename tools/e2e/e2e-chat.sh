@@ -15,8 +15,15 @@ rc=0; curl -s --max-time 3 "$B/healthz" | grep -q ok || rc=$?; ck "bridge up" $r
 
 SID="e2e-chat-$(date +%s)"
 J() { python -c "import sys,json;d=json.load(sys.stdin);print(json.dumps(d,ensure_ascii=False))"; }
+# s98/R1-F1: /api/ws/new 现校验 sid 真在会话库（防同端口旧聊天窗把死 sid 绑成幽灵工作区）——套件 sid
+# 先落库再测；负向量（不在库的伪造 sid）断言诚实拒绝；收尾 unseed 零残留
+SESS_DB="$FORGE/conf/goose/data/sessions/sessions.db"
+sid_seed(){ node -e 'const{DatabaseSync}=require("node:sqlite");const db=new DatabaseSync(process.argv[1]);db.prepare("INSERT OR REPLACE INTO sessions (id,name,working_dir) VALUES (?,?,?)").run(process.argv[2],"e2e-chat","");db.close()' "$SESS_DB" "$1"; }
+sid_unseed(){ node -e 'const{DatabaseSync}=require("node:sqlite");const db=new DatabaseSync(process.argv[1]);db.prepare("DELETE FROM sessions WHERE id=?").run(process.argv[2]);db.close()' "$SESS_DB" "$1"; }
+sid_seed "$SID"; sid_seed "$SID-act"
 
 # ---------- 1) 工作区创建（幂等性一并验证） ----------
+rc=0; curl -s "$B/api/ws/new?sid=$SID-notindb" | grep -q '这段对话已经不存在了' || rc=$?; ck "ws/new rejects sid not in sessions.db (s98/R1-F1)" $rc
 rc=0; W1=$(curl -s "$B/api/ws/new?sid=$SID" | python -c "import sys,json;print(json.load(sys.stdin).get('ws',''))") || rc=$?
 [ -n "$W1" ] || rc=$?; ck "ws/new creates workspace ($W1)" $rc
 rc=0; W2=$(curl -s "$B/api/ws/new?sid=$SID" | python -c "import sys,json;d=json.load(sys.stdin);print(d.get('ws','')+'|'+str(d.get('existed',False)))") || rc=$?
@@ -387,6 +394,7 @@ grep -E "^skill-desc-fallback-probe" /tmp/skill-desc-fb.log || true
 rm -f /tmp/skill-desc-fb.log
 
 rm -f /tmp/e2e-v1.md
+sid_unseed "$SID"; sid_unseed "$SID-act" # s98/R1-F1: 套件种子会话行随收尾清掉
 echo "=============================="
 echo "chat-link E2E: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" = "0" ]

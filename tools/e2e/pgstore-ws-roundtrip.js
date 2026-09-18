@@ -11,6 +11,10 @@ const B = process.argv[2] || 'http://127.0.0.1:8790';
     const postgres = require(path.join(ROOT, 'bin', 'vendor', 'pgstore', 'node_modules', 'postgres'));
     let port = 0; try { port = Number(fs.readFileSync(path.join(ROOT, 'data', 'pg.port'), 'utf8').trim()); } catch {}
     if (!port) { console.log('no pg.port'); process.exit(1); }
+    // s98/R1-F1: /api/ws/new 现校验 sid 真在会话库——探针 sid 先落库（收尾 unseed），负向量场景不归本探针管
+    const { DatabaseSync } = require('node:sqlite');
+    const sessDb = new DatabaseSync(path.join(ROOT, 'conf', 'goose', 'data', 'sessions', 'sessions.db'));
+    sessDb.prepare('INSERT OR REPLACE INTO sessions (id,name,working_dir) VALUES (?,?,?)').run(sid, 'pgstore-ws-roundtrip', '');
     const sql = postgres({ host: '127.0.0.1', port, user: 'postgres', database: 'forge_bridge', max: 1, connect_timeout: 2 });
     const row = async ws => [...await sql`SELECT sid, bound_at FROM forge_workspace_map WHERE ws = ${ws}`];
     let ws = '';
@@ -26,12 +30,15 @@ const B = process.argv[2] || 'http://127.0.0.1:8790';
         for (let i = 0; i < 20 && rows.length > 0; i++) { rows = await row(ws); if (rows.length) await new Promise(r => setTimeout(r, 500)); }
         if (rows.length !== 0) throw new Error('PG row survived ws/delete');
         await sql.end({ timeout: 1 });
+        sessDb.prepare('DELETE FROM sessions WHERE id=?').run(sid);
+        sessDb.close();
         console.log('wsmap row lifecycle ok (' + ws + ')');
         process.exit(0);
     } catch (e) {
         console.log('FAIL: ' + e.message);
         try { if (ws) await fetch(B + '/api/ws/delete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ws }) }); } catch {}
         try { await sql.end({ timeout: 1 }); } catch {}
+        try { sessDb.prepare('DELETE FROM sessions WHERE id=?').run(sid); sessDb.close(); } catch {}
         process.exit(1);
     }
 })();

@@ -46,6 +46,7 @@ const els = {
     'sessions': mkEl('sessions'), 'arch-pager': mkEl('arch-pager'),
     'svw-chat': mkEl('svw-chat'), 'svw-arch': mkEl('svw-arch'), 'arch-q': mkEl('arch-q'),
     'sess-orgbar': mkEl('sess-orgbar'), // r4/S2b: renderSessions 整理关闭分支引用的动作条桩
+    'sess-org': mkEl('sess-org'), // s98/R1-F7: renderSessions 空归档整理钮置灰新依赖
     'skills-list': mkEl('skills-list'), 'skills-pager': mkEl('skills-pager'), 'skills-q': mkEl('skills-q'),
 };
 const document = { createElement: t => mkEl(t), querySelectorAll: () => [] };
