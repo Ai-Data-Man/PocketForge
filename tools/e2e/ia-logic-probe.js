@@ -159,7 +159,7 @@ els['skills-q'].value = 'beta'; // 与 fetch 返回的 alpha 不匹配
 sandbox.installedAllV = [];
 (async () => {
     await sandbox.loadSkills2();
-    const silent = els['skills-list']._children.length === 0 && !/没有找到|还没有技能/.test(els['skills-list'].innerHTML);
+    const silent = els['skills-list']._children.length === 0 && !/没有找到|还没有手艺/.test(els['skills-list'].innerHTML); // r5/S1 锚随迁：空态词技能→手艺
     console.log('  [取证] loadSkills2 过滤空集: children=' + els['skills-list']._children.length + ' html=' + JSON.stringify(els['skills-list'].innerHTML));
     ck('B1 发现已修: loadSkills2 过滤空集显示「没有找到」不再静默 (silent=' + silent + ')', silent === false);
     // 对照：paintInstalled 同数据同查询给空态文案

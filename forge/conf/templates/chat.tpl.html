@@ -325,8 +325,8 @@ details.tz[open]>summary::before{content:'▾ '}
   <div id="arch-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 8px"></div>
   <footer>
     <button class="icobtn" id="refresh-sessions" title="刷新会话列表">⟳</button>
-    <button class="icobtn" id="open-skills" title="技能">🧩</button>
-    <button class="icobtn" id="open-manage" title="管理：本事/记忆/定时任务">🧠</button>
+    <button class="icobtn" id="open-skills" title="手艺">🧩</button>
+    <button class="icobtn" id="open-manage" title="管理：自带的/记忆/定时任务">🧠</button>
     <button class="icobtn" id="open-settings" title="设置：服务商/外观/升级">⚙️</button>
     <button class="icobtn" id="report-issue" title="反馈问题" aria-label="反馈问题">📮</button>
     <span style="font-size:.68rem;color:var(--mut);align-self:center" id="version"></span>
@@ -437,24 +437,24 @@ details.tz[open]>summary::before{content:'▾ '}
   </div>
 </div>
 <div id="slash-menu" style="display:none;position:absolute;bottom:64px;left:18px;right:18px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.14);z-index:40;max-height:250px;overflow-y:auto"></div>
-<div id="skills-modal" class="modal-bg"><div class="panel-box" role="dialog" aria-modal="true" aria-label="小 forge 的技能（它学会的本领）">
-  <h3>🧩 小 forge 的技能（它学会的本领）<button class="mclose" title="关闭" aria-label="关闭" onclick="$('skills-modal').classList.remove('on')">✕</button></h3>
-  <div class="fnote" style="margin-bottom:10px">这些是它积累的操作手册。聊天时说相关的活儿它就会自动用；也可以点「让它现在用」。</div>
+<div id="skills-modal" class="modal-bg"><div class="panel-box" role="dialog" aria-modal="true" aria-label="小 forge 的手艺（它学会的做法）">
+  <h3>🧩 小 forge 的手艺（它学会的做法）<button class="mclose" title="关闭" aria-label="关闭" onclick="$('skills-modal').classList.remove('on')">✕</button></h3>
+  <div class="fnote" style="margin-bottom:10px">这些是教它怎么干活的做法册：有出厂带的，有从市场装的，还有它干活时自己学会的。工具说的是「它有什么」，做法说的是「它怎么干」——聊天里说到相关的活儿它会自己用；也可以点「让它现在用」。</div>
   <!-- IA-1: R1 同实体两阶段 tab 化——已装/可装各自独立清单，不再同滚堆叠 -->
   <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:8px" role="tablist">
-    <button class="rtab on stab" data-pane="ins" role="tab" aria-selected="true">我的技能</button>
-    <button class="rtab stab" data-pane="store" role="tab" aria-selected="false">＋ 添加新技能</button>
+    <button class="rtab on stab" data-pane="ins" role="tab" aria-selected="true">它的手艺</button>
+    <button class="rtab stab" data-pane="store" role="tab" aria-selected="false">＋ 去市场学新做法</button>
   </div>
   <div class="spane" id="spane-ins">
     <!-- R2 规模声明（裁决 2026-09-16 §3）：我的技能终态=内置 5 + 市场装 ≤30 + 自己攒 0-5 → 合计 <40（31-100 档）；搜索+分页已有，来源 chips 本批补齐 -->
     <div id="skills-chips" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px"></div>
-    <input id="skills-q" placeholder="🔍 在我的技能里找…" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
+    <input id="skills-q" placeholder="🔍 在它的手艺里找…" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
     <div id="skills-list"></div>
     <div id="skills-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 0 6px"></div>
   </div>
   <div class="spane" id="spane-store" style="display:none">
-    <input id="store-q" placeholder="🔍 搜可添加的技能…" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
-    <div class="fnote" style="margin-bottom:10px">来源：本机技能库 + 🌐 Anthropic 官方开源技能库 + 🌐 宝玉开源技能库。装之前先点「先看内容」过一眼，确认没问题再添加。添加后立刻生效。</div>
+    <input id="store-q" placeholder="🔍 搜想学的做法…" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
+    <div class="fnote" style="margin-bottom:10px">货从市场来：本机库 + 🌐 Anthropic 官方开源库 + 🌐 宝玉开源库。学之前先点「先看内容」过一眼，确认没问题再装。装上立刻生效。</div>
     <div id="store-list"></div>
     <div id="store-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 0 6px"></div>
     <div class="fnote" id="store-note" style="display:none">中文说明整理中，稍后重开可见。</div>
@@ -478,19 +478,19 @@ details.tz[open]>summary::before{content:'▾ '}
 </div></div>
 <div id="manage-modal" class="modal-bg"><div class="panel-box" role="dialog" aria-modal="true" aria-label="管理小 forge">
   <h3>🧠 管理小 forge<button class="mclose" title="关闭" aria-label="关闭" onclick="$('manage-modal').classList.remove('on');clearTimeout(mcpPollTimer)">✕</button></h3>
-  <div class="fnote" style="margin-bottom:10px">它是什么样、会什么、记了什么、几点干活——都在这里。</div>
+  <div class="fnote" style="margin-bottom:10px">它身上自带的、记了什么、做过的东西、几点干活——都在这里；它学会的做法，去聊天窗口左下角的 🧩 看。</div>
   <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:8px" role="tablist">
-    <button class="rtab on mtab" data-pane="ext" role="tab" aria-selected="true">🧠 本事</button>
+    <button class="rtab on mtab" data-pane="ext" role="tab" aria-selected="true">🧠 自带的</button>
     <button class="rtab mtab" data-pane="db" role="tab" aria-selected="false">🗄️ 数据</button>
     <button class="rtab mtab" data-pane="made" role="tab" aria-selected="false">✨ 做过的东西</button>
     <button class="rtab mtab" data-pane="apps" role="tab" aria-selected="false">🚀 小应用</button>
     <button class="rtab mtab" data-pane="mem" role="tab" aria-selected="false">💭 记忆</button>
     <button class="rtab mtab" data-pane="sched" role="tab" aria-selected="false">⏰ 定时</button>
-    <button class="rtab mtab" data-pane="mcp" role="tab" aria-selected="false">🔌 插件</button>
+    <button class="rtab mtab" data-pane="mcp" role="tab" aria-selected="false">🔌 工具</button>
   </div>
   <div class="mpane" id="mpane-ext">
-    <h3 style="margin:0 0 8px">自带的本事（出厂就有）</h3>
-    <div class="fnote" style="margin-bottom:10px">这些是它出厂自带的本事。关掉哪个，它就不用哪个（重启数字员工后生效）。拿不准就都开着。后来装的新本事不在这里：插件在「🔌 插件」开和关，学会的技能在「🧩 技能」。</div>
+    <h3 style="margin:0 0 8px">自带的（出厂长在它身上）</h3>
+    <div class="fnote" style="margin-bottom:10px">这些是它出厂就长在身上的：数据库、浏览器、长期记忆。只能开和关——关上哪个，它这次就不用哪个（重启数字员工后生效）。添不了新的，也拆不掉。想给它添工具，去「🔌 工具」；想看它学会的做法，去「🧩 手艺」。</div>
     <div id="ext-list"></div>
   </div>
   <div class="mpane" id="mpane-db" style="display:none">
@@ -506,7 +506,7 @@ details.tz[open]>summary::before{content:'▾ '}
   </div>
   <div class="mpane" id="mpane-made" style="display:none">
     <h3 style="margin:0 0 8px">做过的东西</h3>
-    <div class="fnote" style="margin-bottom:10px">这是小 forge 干活的流水账，按时间从新到旧。点「打开」带您去东西住的地方，点「去当时对话看看」回到做它的那段对话。<b>这里只记账、带路；要看内容、要删改，去各自的家——数据在「🗄️ 数据」，本领在「🧩 技能」，文件在右边文件栏。</b></div>
+    <div class="fnote" style="margin-bottom:10px">这是小 forge 干活的流水账，按时间从新到旧。点「打开」带您去东西住的地方，点「去当时对话看看」回到做它的那段对话。<b>这里只记账、带路；要看内容、要删改，去各自的家——数据在「🗄️ 数据」，做法在「🧩 手艺」，文件在右边文件栏。</b></div>
     <div id="made-chips" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px"></div>
     <input id="made-q" placeholder="🔍 找做过的东西…（名字/文件名/说明）" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
     <div id="made-list" style="max-height:340px;overflow-y:auto"></div>
@@ -539,15 +539,15 @@ details.tz[open]>summary::before{content:'▾ '}
     <div id="sched-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 0 6px"></div><!-- r3/S4c: 翻页器（made-pager 同款） -->
   </div>
   <div class="mpane" id="mpane-mcp" style="display:none">
-    <h3 style="margin:0 0 8px">插件（给它装的新本事）</h3>
-    <div class="fnote" style="margin-bottom:10px">这里给小 forge 装新的本事。带「官方」牌的是官方出品，其余是自己加的。装好后，开和关也在这里（重启数字员工后生效）。</div>
-    <input id="mcp-q" placeholder="🔍 在插件目录里找…" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
+    <h3 style="margin:0 0 8px">工具（后来添的外接家伙）</h3>
+    <div class="fnote" style="margin-bottom:10px">这里是从工具目录给它添的外接工具。跟出厂自带的不一样：这些是后来装的，装一个多一件家伙，不用了可以卸掉。带「官方」牌的是官方出品，其余是自己加的。装、卸、开和关都在这里（重启数字员工后生效）。</div>
+    <input id="mcp-q" placeholder="🔍 在工具目录里找…" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
     <div id="mcp-list" style="max-height:340px;overflow-y:auto"></div>
     <div id="mcp-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:4px 0"></div>
     <!-- IA-1: 左栏（mkt-src）已随使用域搬入技能弹窗；残区单栏化，名实相符 -->
     <div style="border-top:1px solid var(--line);margin-top:12px;padding-top:10px">
-      <h3 style="margin:0 0 6px">自己加的插件（技术）</h3>
-      <div class="fnote" style="margin-bottom:8px">这里是插件目录「有哪些货」的配置面（给懂技术的你，平时不用动）。<b>插件目录新条目四道闸门</b>：① 许可证在白名单内 ② 装好后真实调用过一次 ③ npm 上有包、有维护方 ④ 注意 MCP 协议大版本不兼容风险。自己加的货自己负责。</div>
+      <h3 style="margin:0 0 6px">自己加的工具（技术）</h3>
+      <div class="fnote" style="margin-bottom:8px">这里是工具目录「有哪些货」的配置面（给懂技术的你，平时不用动）。<b>工具目录新条目四道闸门</b>：① 许可证在白名单内 ② 装好后真实调用过一次 ③ npm 上有包、有维护方 ④ 注意 MCP 协议大版本不兼容风险。自己加的货自己负责。</div>
       <div id="mkt-cat-list" style="max-height:130px;overflow-y:auto"></div>
       <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">
         <input id="mkt-cat-id" placeholder="标识(字母数字-)" style="flex:1;min-width:96px;padding:7px 9px;border:1.5px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.78rem;outline:none">
@@ -1570,7 +1570,7 @@ async function loadMcpUI(){
   box.innerHTML='';
   const q=(($('mcp-q')||{}).value||'').trim().toLowerCase(); // s95/S2e: pageSlice 前过滤（安装轮询复调带当前过滤词，输入不丢）
   list=list.filter(m=>!q||String(m.name||'').toLowerCase().includes(q)||String(m.desc||'').toLowerCase().includes(q));
-  if(!list.length){ box.innerHTML='<div class="fnote">没找到跟“'+esc(q)+'”有关的插件。</div>'; pagerPaint('mcp-pager',1,1,0,null); clearTimeout(mcpPollTimer); loadMarketUI(); return; }
+  if(!list.length){ box.innerHTML='<div class="fnote">没找到跟“'+esc(q)+'”有关的工具。</div>'; pagerPaint('mcp-pager',1,1,0,null); clearTimeout(mcpPollTimer); loadMarketUI(); return; }
   const ps=pageSlice(list,'mcp','card'); // s71: 目录配置化会增长，同款分页（≤card 首档零机制）；安装轮询复调时保留当前页
   let needPoll=false;
   for(const m of ps.rows){
@@ -1690,7 +1690,7 @@ async function loadMarketUI(){
     };
     row.appendChild(del); cl.appendChild(row);
   }
-  if(!d.mcpCatalog.some(x=>!x.official)) cl.innerHTML='<div class="fnote">还没有自己加的插件。</div>'; // r4/S4a: 空态（官方条目不进此清单，仅自加条目在场时空）
+  if(!d.mcpCatalog.some(x=>!x.official)) cl.innerHTML='<div class="fnote">还没有自己加的工具。</div>'; // r4/S4a: 空态（官方条目不进此清单，仅自加条目在场时空）
 }
 $('mkt-src-add').onclick=async()=>{
   const repo=$('mkt-src-repo').value.trim(), branch=$('mkt-src-branch').value.trim(), subdir=$('mkt-src-subdir').value.trim();
@@ -2066,9 +2066,9 @@ $('db-q').oninput=()=>{ clearTimeout(dbQT); dbQT=setTimeout(()=>{ listPage.db=1;
 // R4：主名=人话（表=forge_table_info 说明或「服务.表」结构性兜底；文件=文件名；技能=说明），无=不编造（时间「—」）。
 let madeAll=null, madeQT=null, madeTblMiss=false; // s83 返工💭6: 表源缺席标记（faucet 不可达→表静默缺席→一行可见说明）
 const madeFilter={chip:'all',q:''};
-const MADE_KIND_ZH={tbl:'🗄️ 数据表',file:'📄 文件',skill:'✨ 技能'};
+const MADE_KIND_ZH={tbl:'🗄️ 数据表',file:'📄 文件',skill:'✨ 手艺'};
 function madeChips(){
-  const defs=[['all','全部'],['tbl','🗄️ 数据表'],['file','📄 文件'],['skill','✨ 技能']];
+  const defs=[['all','全部'],['tbl','🗄️ 数据表'],['file','📄 文件'],['skill','✨ 手艺']];
   const box=$('made-chips'); box.innerHTML='';
   for(const [k,label] of defs){
     const b=document.createElement('button'); b.className='chip'+(madeFilter.chip===k?' on':''); b.textContent=label;
@@ -2086,19 +2086,19 @@ function madePaint(){
   box.innerHTML='';
   if(!list.length){
     // ia-rework S2-4：技能 chip 专属空态（搜索未中仍走「没找到」——它可能已学会只是没搜到，不误导）
-    const emptyMsg=(madeFilter.chip==='skill'&&!q)?'它还没自己学会过本领。跟它说「记住这个做法」，它学会了就会记在这里。':(madeAll.length?'没找到跟“'+esc(madeFilter.q)+'”有关的东西。换个词试试，或直接在聊天里问小 forge。':'还没做过的东西。让小 forge 做个报表、存个数据，就会出现在这里。');
+    const emptyMsg=(madeFilter.chip==='skill'&&!q)?'它还没自己学会过做法。跟它说「记住这个做法」，它学会了就会记在这里。':(madeAll.length?'没找到跟“'+esc(madeFilter.q)+'”有关的东西。换个词试试，或直接在聊天里问小 forge。':'还没做过的东西。让小 forge 做个报表、存个数据，就会出现在这里。');
     box.innerHTML='<div class="fnote">'+emptyMsg+'</div>';
     // qa s83d F-1：空态分支同置 tblMiss 注行——表源读失败恰逢空清单/筛到表 chip 时，纯「还没做过」=误导性空态（PM「误导性安慰」家族）；必须 innerHTML 之后再 append（赋值清子节点）
-    if(madeTblMiss){ const mn2=document.createElement('div'); mn2.className='fnote'; mn2.style.margin='4px 0'; mn2.textContent='另外：表这次没数进来（数据库暂时连不上），可能漏了东西；文件和技能不受影响。'; box.appendChild(mn2); }
+    if(madeTblMiss){ const mn2=document.createElement('div'); mn2.className='fnote'; mn2.style.margin='4px 0'; mn2.textContent='另外：表这次没数进来（数据库暂时连不上），可能漏了东西；文件和手艺不受影响。'; box.appendChild(mn2); }
     pagerPaint('made-pager',1,1,0,null); return;
   }
-  if(madeTblMiss){ const mn=document.createElement('div'); mn.className='fnote'; mn.style.margin='4px 0'; mn.textContent='表这次没数进来（数据库暂时连不上）；文件和技能不受影响。'; box.appendChild(mn); } // 💭6 同款诚实降级标记
+  if(madeTblMiss){ const mn=document.createElement('div'); mn.className='fnote'; mn.style.margin='4px 0'; mn.textContent='表这次没数进来（数据库暂时连不上）；文件和手艺不受影响。'; box.appendChild(mn); } // 💭6 同款诚实降级标记
   for(const it of ps.rows){
     const row=document.createElement('div');
     row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line)';
     const secondary=(it.human&&it.kind!=='file')?'<div class="fnote" style="margin-top:2px;word-break:break-all">'+esc(it.name)+'</div>':''; // 表/技能的人话名旁带真名，聊天里能直接 @
     const time=it.ts?new Date(it.ts).toLocaleString('zh',{year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
-    const src=it.kind==='skill'?'<span>它在对话里自己学会的本领</span>':(it.srcSid?'<span>来自对话：'+esc(it.srcTitle||'未命名')+'</span>':'<span>来源不详</span>'); // 无账存量=诚实降级，不考古
+    const src=it.kind==='skill'?'<span>它干活时自己学会的做法</span>':(it.srcSid?'<span>来自对话：'+esc(it.srcTitle||'未命名')+'</span>':'<span>来源不详</span>'); // 无账存量=诚实降级，不考古
     row.innerHTML='<div style="flex:1;min-width:0"><div style="font-size:.85rem;font-weight:600;word-break:break-all"><span class="bdg">'+MADE_KIND_ZH[it.kind]+'</span> '+esc(it.human||it.name)+'</div>'+secondary+
       '<div class="fnote" style="margin-top:2px;display:flex;gap:10px;flex-wrap:wrap">'+src+'<span>'+time+'</span></div></div>';
     const open=document.createElement('button'); open.className='mini'; open.textContent='打开';
@@ -2142,7 +2142,7 @@ function openAsset(it){
   } else if(it.kind==='skill'){
     $('open-skills').click();
     const t0=Date.now();
-    const iv=setInterval(()=>{ if(installedAll.length||Date.now()-t0>5000){ clearInterval(iv); $('skills-q').value=it.ref.name; paintInstalled(); if(!installedAll.length) $('skills-list').innerHTML='<div class="fnote">技能清单这次没拉到（可能没连上），关掉这个窗口重开试试；技能本身还在。</div>'; } },200); // 等弹窗拉完已装清单再过滤定位；s83 返工💭5: 超时+空清单=拉取失败，一行人话不静默
+    const iv=setInterval(()=>{ if(installedAll.length||Date.now()-t0>5000){ clearInterval(iv); $('skills-q').value=it.ref.name; paintInstalled(); if(!installedAll.length) $('skills-list').innerHTML='<div class="fnote">手艺清单这次没拉到（可能没连上），关掉这个窗口重开试试；手艺本身还在。</div>'; } },200); // 等弹窗拉完已装清单再过滤定位；s83 返工💭5: 超时+空清单=拉取失败，一行人话不静默
   }
 }
 
@@ -2563,14 +2563,14 @@ function paintInstalled(){ // s71: 自 open-skills 内联渲染提升为具名�
   const shown=installedAll
     .filter(sk=>skillsFilter.chip==='all'||skillsOriginClass(sk)===skillsFilter.chip) // s95/S2a: 来源 chip 过滤在搜索过滤前
     .filter(sk=>!q||String(sk.name||'').toLowerCase().includes(q)||String(sk.description||'').toLowerCase().includes(q));
-  if(!shown.length){ box.innerHTML='<div class="fnote">'+(q?('没有找到「'+esc(q)+'」'):'还没有技能。让它干活时说「记住这个做法」，它就会自己学。')+'</div>'; pagerPaint('skills-pager',1,1,0,null); return; }
+  if(!shown.length){ box.innerHTML='<div class="fnote">'+(q?('没有找到「'+esc(q)+'」'):'还没有手艺。让它干活时说「记住这个做法」，它就会自己学。')+'</div>'; pagerPaint('skills-pager',1,1,0,null); return; }
   const ps=pageSlice(shown,'ins','card'); // r3/S4e 措辞修正: 机制恒建（pageSlice 恒走）；pagerPaint 在 pages≤1 不渲染=阈值内零视觉机制——非「>N 再加分页」触发式
   for(const sk of ps.rows){
     const el=document.createElement('div'); el.className='skill';
     el.innerHTML='<div class="nm">'+esc(sk.name)+skillOriginBadge(sk)+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
     const ops=document.createElement('div'); ops.className='ops';
     const use=document.createElement('button'); use.className='mini'; use.textContent='让它现在用';
-    use.onclick=()=>{ $('skills-modal').classList.remove('on'); $('txt').value='请按技能 '+sk.name+' 的流程来做'; $('txt').focus(); };
+    use.onclick=()=>{ $('skills-modal').classList.remove('on'); $('txt').value='请按手艺 '+sk.name+' 的流程来做'; $('txt').focus(); };
     const view=document.createElement('button'); view.className='mini'; view.textContent='看内容';
     view.onclick=()=>{
       const pre=el.querySelector('pre');
@@ -2578,9 +2578,9 @@ function paintInstalled(){ // s71: 自 open-skills 内联渲染提升为具名�
       else { const pre=document.createElement('pre'); pre.textContent=sk.body; el.appendChild(pre); }
     };
     // s74 P1: 卸载钮并入唯一渲染器——原先只在 loadSkills2 的渲染分支里，默认打开路径（paintInstalled）不出，入口时隐时现
-    const del=document.createElement('button'); del.className='mini'; del.textContent='✕'; del.title='卸载这个技能';
+    const del=document.createElement('button'); del.className='mini'; del.textContent='✕'; del.title='卸载这条手艺';
     del.onclick=async()=>{
-      if(!confirm('卸载技能「'+sk.name+'」？')) return;
+      if(!confirm('卸载手艺「'+sk.name+'」？')) return;
       del.disabled=true;
       try{
         const res=await apiJSON('/api/skillstore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:sk.name,op:'uninstall'})});
@@ -2636,8 +2636,8 @@ function skillDesc(sk){ return sk.desc_zh || sk.description || '（无说明）'
 function skillOriginBadge(sk){ // s70 切片A: 来源徽标——市场=🌐+源短名 / 本机库=🌐 / 自己攒的=✍ / 内置=无标（local 徽标 s95/S2a 补齐）
   const o=sk.origin;
   if(!o) return '';
-  if(o.source==='market'){ const r=(o.repo||'').split('/').pop()||'市场'; return '<span class="obadge" title="从技能市场装的（'+esc(o.repo||'市场')+'）">🌐 '+esc(r)+'</span>'; }
-  if(o.source==='local') return '<span class="obadge" title="从本机技能库装的">🌐 本机库</span>';
+  if(o.source==='market'){ const r=(o.repo||'').split('/').pop()||'市场'; return '<span class="obadge" title="从市场学的（'+esc(o.repo||'市场')+'）">🌐 '+esc(r)+'</span>'; }
+  if(o.source==='local') return '<span class="obadge" title="从本机库学的">🌐 本机库</span>';
   if(o.source==='self') return '<span class="obadge" title="在这个小 forge 里自己攒的">✍ 自己攒的</span>';
   return '';
 }
@@ -2646,7 +2646,7 @@ function storePaint(){
   const q=(($('store-q')||{}).value||'').trim().toLowerCase();
   const avail=storeAll.filter(s=>!q || (s.name||'').toLowerCase().includes(q) || (s.description||'').toLowerCase().includes(q) || (s.desc_zh||'').toLowerCase().includes(q));
   box.innerHTML='';
-  if(!avail.length){ box.innerHTML='<div class="fnote">'+(q?'没有找到「'+esc(q)+'」':'没有可添加的新技能了。')+'</div>'; pagerPaint('store-pager',1,1,0,null); return; }
+  if(!avail.length){ box.innerHTML='<div class="fnote">'+(q?'没有找到「'+esc(q)+'」':'没有可学的新做法了。')+'</div>'; pagerPaint('store-pager',1,1,0,null); return; }
   const ps=pageSlice(avail,'store','card'); // s71: 商店恒分页（双源会持续增长）
   for(const sk of ps.rows){
     const el=document.createElement('div'); el.className='skill';
@@ -2682,7 +2682,7 @@ function storePaint(){
 let storeQT=null;
 async function loadSkillStore(){
   const box=$('store-list'); if(!box) return;
-  box.innerHTML='<div class="fnote">正在从技能源获取…</div>';
+  box.innerHTML='<div class="fnote">正在从市场进货…</div>';
   let local=[], remote=[], translating=false;
   try { local = await apiJSON('/api/skillstore'); } catch(e){}
   try {
@@ -2878,17 +2878,17 @@ function menuHl(menu,dir){
 async function loadSkillCmds(){
   try{
     const r=await fetch('/api/skills'); const list=await r.json();
-    skillCmds=list.map(sk=>({cmd:'/技能·'+sk.name, alias:[sk.name], desc:(sk.description||'让它按学会的本领来做').slice(0,42), isSkill:true,
-      run:()=>{ $('txt').value='请按技能 '+sk.name+' 的流程来做'; submit(); }}));
+    skillCmds=list.map(sk=>({cmd:'/手艺·'+sk.name, alias:[sk.name], desc:(sk.description||'让它按学会的做法来做').slice(0,42), isSkill:true,
+      run:()=>{ $('txt').value='请按手艺 '+sk.name+' 的流程来做'; submit(); }}));
   }catch{}
 }
 loadSkillCmds();
 const SLASH=[
   {cmd:'/新对话', alias:['new','xin','开新'], desc:'开始一个新对话', run:()=>$('newchat').click()}, // s69 P2-9 同门：走 newchat 入口吃 busy 护栏
-  {cmd:'/技能', alias:['skills','jineng'], desc:'看它学会的本领', run:()=>$('open-skills').click()},
+  {cmd:'/手艺', alias:['skills','jineng','技能'], desc:'看它学会的做法', run:()=>$('open-skills').click()},
   {cmd:'/文件', alias:['files','wenjian','工作区'], desc:'打开工作区文件面板', run:()=>$('rside-toggle').click()},
   {cmd:'/设置', alias:['settings','shezhi','服务商','模型'], desc:'服务商连接与模型', run:()=>$('open-settings').click()},
-  {cmd:'/管理', alias:['manage','guanli','记忆','定时','本事'], desc:'本事开关/记忆/定时任务', run:()=>$('open-manage').click()},
+  {cmd:'/管理', alias:['manage','guanli','记忆','定时','本事'], desc:'自带的开关/记忆/定时任务', run:()=>$('open-manage').click()},
   {cmd:'/体检', alias:['check','tijian','自检'], desc:'给它做全身检查', run:()=>{$('txt').value='做个体检'; submit();}},
   {cmd:'/导出', alias:['export','daochu','保存对话'], desc:'把这段对话存成文本', run:()=>exportChat()},
 ];

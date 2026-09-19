@@ -133,7 +133,7 @@ const noPd = () => { throw new Error('preventDefault 不应被调用'); };
 }
 {
     const s = build2(); // 对照组：无高亮 → Enter=第一项（对齐旧行为）
-    s.txt.value = '/技能'; s.slashMenu.style.display = 'block';
+    s.txt.value = '/手艺'; s.slashMenu.style.display = 'block'; // r5/S1 锚随迁：/技能→/手艺（alias 保旧词）
     s.slashMenu._items[0].run = () => { s.ranFirst = true; };
     SEC = 'txt.onkeydown (slash Enter)';
     s.txt.onkeydown({ key: 'Enter', isComposing: false, preventDefault: () => {} });
