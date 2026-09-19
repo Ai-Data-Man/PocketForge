@@ -56,7 +56,10 @@ const sandbox = new Function('$', 'document', 'fetch', `
     let lastSessions=[], archSet={}, sideView='chat', archCount=0, installedAll=[], currentSid=null;
     let listPage={ins:1,store:1,mcp:1,arch:1};
     let ssOrg={on:false,sel:new Set()}; // r4/S2b: 归档整理模式态桩（sessItem/renderSessions 新自由变量；本探针恒关闭态）
-    const skillsFilter={chip:'all'}; // s95/S2a
+    const skillsFilter={chip:'all',st:'all'}; // s95/S2a + r5/S3 状态维
+    let skOrg={on:false,sel:new Set()}; // r5/S3: 手艺整理模式态桩（paintInstalled 新自由变量；本探针恒关闭态）
+    function orgCheckBox(){ return document.createElement('input'); } // r5/S3: 桩（真身 r4 共用件；勾选交互不在本探针面）
+    function paintSkOrgBar(){} function loadSkillStore(){} function note(){} // r5/S3: 渲染尾调用桩
     ${skillsOriginClassSrc}
     ${psBlockSrc}
     ${escSrc}
@@ -70,13 +73,17 @@ const sandbox = new Function('$', 'document', 'fetch', `
     ${renderSessionsSrc}
     ${paintInstalledSrc}
     ${loadSkills2Src}
+    let loadSkillCmdsCalls=0; function loadSkillCmds(){ loadSkillCmdsCalls++; } // r5/S3-V5 桩：loadSkills2 尾部重拉计数
     function openSession(){} function archiveSession(){} function askDeleteSession(){}
     return {
         set sideView(v){sideView=v}, set archSetV(v){archSet=v}, set lastSessionsV(v){lastSessions=v}, set installedAllV(v){installedAll=v},
         set skillsChip(v){skillsFilter.chip=v}, // s96/P3-1：chip 过滤行为断言驱动口
+        set skillsSt(v){skillsFilter.st=v}, // r5/S3: 状态 chip 断言驱动口
+        set skOrgOn(v){skOrg.on=v},
         renderSessions, paintInstalled,
         loadSkills2: (...a)=>loadSkills2(...a),
         get state(){return {sideView,archCount}},
+        get loadSkillCmdsCalls(){return loadSkillCmdsCalls},
     };
 `)($, document, async () => ({ json: async () => [{ name: 'alpha', description: 'x' }] }));
 sandbox.sideView = 'arch';
@@ -189,6 +196,44 @@ sandbox.installedAllV = [];
     sandbox.skillsChip = 'all';
     sandbox.paintInstalled();
     ck('C4 chip=all 对照全渲染（4 卡）', els['skills-list']._children.length === 4);
+
+    // ============ C5-C8 组（r5/S3）：状态维（在用/停着）过滤+停启渲染+V5 重拉钩 ============
+    // 判据与前端同源（提取执行）：active===false=停着；缺省/true=在用（旧数据兼容口径）。
+    sandbox.installedAllV = [
+        { name: 'k-on-a', description: '在用甲', origin: null, active: true },
+        { name: 'k-on-b', description: '在用乙', origin: null },
+        { name: 'k-off-a', description: '停着甲', origin: null, active: false },
+        { name: 'k-off-b', description: '停着乙', origin: { source: 'self' }, active: false },
+    ];
+    els['skills-q'].value = '';
+    sandbox.skillsSt = 'off';
+    sandbox.paintInstalled();
+    const stCardsHtml = () => els['skills-list']._children.map(c => c.innerHTML + '|' + c._children.map(x => x.textContent || '').join(',')).join('\n');
+    ck('C5 st=停着 只渲染 active===false（2 卡，行内「停着」徽章在场）', els['skills-list']._children.length === 2 && /停着/.test(stCardsHtml()) && !/k-on-/.test(stCardsHtml()), stCardsHtml().slice(0, 120));
+    sandbox.skillsSt = 'on';
+    sandbox.paintInstalled();
+    ck('C6 st=在用 只渲染 active!==false（2 卡，含 active 缺省的旧数据兼容）', els['skills-list']._children.length === 2 && /k-on-a/.test(stCardsHtml()) && /k-on-b/.test(stCardsHtml()) && !/k-off-/.test(stCardsHtml()));
+    sandbox.skillsSt = 'off';
+    sandbox.paintInstalled();
+    ck('C7 停着的卡不出「让它现在用」（出上下文=模型侧不可装载）、给「▶ 开用」停启钮', (() => {
+        const cards = els['skills-list']._children;
+        const opsOf = c => c._children.filter(x => x._children && x._children.length).map(x => [...x._children].map(b => b.textContent || '').join(',')).join(',');
+        return cards.every(c => !opsOf(c).includes('让它现在用') && opsOf(c).includes('▶ 开用'));
+    })());
+    sandbox.skillsSt = 'all';
+    sandbox.paintInstalled();
+    ck('C8 st=all 在用卡带「⏸ 先停着」钮（开/关双态对称）', (() => {
+        const cards = els['skills-list']._children;
+        const opsOf = c => c._children.filter(x => x._children && x._children.length).map(x => [...x._children].map(b => b.textContent || '').join(',')).join(',');
+        return cards.length === 4 && cards.some(c => opsOf(c).includes('⏸ 先停着')) && cards.some(c => opsOf(c).includes('让它现在用'));
+    })());
+    ck('C9 st=off 空态=「现在没有停着的手艺。」（chip 空态三分）', (() => {
+        sandbox.installedAllV = [{ name: 'k-on-a', description: '在用甲', origin: null, active: true }];
+        sandbox.skillsSt = 'off';
+        sandbox.paintInstalled();
+        return /现在没有停着的手艺。/.test(els['skills-list'].innerHTML) && els['skills-pager']._children.length === 0;
+    })());
+    ck('C10 loadSkills2 尾部重拉 loadSkillCmds（V5 装/卸/停启后 slash 命令不再陈旧）', sandbox.loadSkillCmdsCalls >= 0 && (sandbox.loadSkills2(), sandbox.loadSkillCmdsCalls >= 1));
 
     // ============ D 组（r3/S4a+S4b）：apps 分页 12/页 + 状态 chips 四态（裁决 §7 机器断言） ============
     // fixture：31 个混排 = run 20 + stop 8 + fail 3（裁决 S4a/S4b 验收口径：31 触发 3 页、混排 chip 定向）

@@ -293,12 +293,19 @@ async function main() {
         // 应用
         say('apply', '写入新版本文件…');
         for (const rel of [...applied, ...added]) {
+            // r5/S3（裁决 2026-09-19-capability-semantics-r5 §5.2/T4）：出厂手艺停用态=SKILL.md.off 在盘（用户意愿）——
+            // 升级包里的 SKILL.md 不得复活它（差量判 added 直接回写会把停着的手艺顶回 goose 发现面+造成 .md/.off 并存）。
+            // 内容升级仍可达：未停用（无 .off 孪生）的 SKILL.md 照常差量替换。
+            if (rel.startsWith('.agents/skills/') && rel.endsWith('/SKILL.md') && fs.existsSync(path.join(ROOT, rel + '.off'))) continue;
             const src = path.join(newRoot, rel.split('/').join(path.sep));
             const dst = path.join(ROOT, rel.split('/').join(path.sep));
             fs.mkdirSync(path.dirname(dst), { recursive: true });
             fs.copyFileSync(src, dst);
         }
         for (const rel of deleted) {
+            // r5/S3：.agents/skills 是用户域（装的手艺/自沉淀/停用档案都不在升级包=差量误判 deleted）——永不因升级删改；
+            // 出厂手艺的下线走产品 release 说明，不做差量强删。
+            if (rel.startsWith('.agents/skills/')) continue;
             try { fs.rmSync(path.join(ROOT, rel.split('/').join(path.sep)), { force: true }); } catch {}
         }
 

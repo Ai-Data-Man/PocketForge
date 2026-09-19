@@ -1384,7 +1384,8 @@ function writeSkillOrigin(dst, source, repo, branch, subdir) {
 }
 function skillInstallBlocked(dst) {
     // 同名冲突语义：已装且（无标记或 self）→ 拒绝（防静默覆盖本机/自沉淀技能）；market/local → 覆盖=更新语义放行
-    if (!FSS.existsSync(path.join(dst, 'SKILL.md'))) return null; // 与卸载同门：SKILL.md 才算「已装」
+    // r5/S3: 停着的手艺（仅 SKILL.md.off）同样占名——否则 installAtomic 换名会连 .off 档案一起卷走
+    if (!FSS.existsSync(path.join(dst, 'SKILL.md')) && !FSS.existsSync(path.join(dst, 'SKILL.md.off'))) return null; // 与卸载同门：双后缀才算「在盘」
     const o = originOf(dst);
     if (o && o.source !== 'self') return null;
     return '这个名字小 forge 自己在用，先换个技能名再装。';
@@ -1843,9 +1844,17 @@ function scanInstalledSkills() {
         try {
             for (const ent of require('fs').readdirSync(d, { withFileTypes: true })) {
                 if (!ent.isDirectory()) continue;
+                // r5/S3（裁决 §5.2）：双扫 SKILL.md（在用）/SKILL.md.off（停着——goose 发现面按精确文件名匹配，.off 双盲=不进上下文不触发，
+                // 档案留盘）；.md+.off 并存按 .md 为真（停启 op 侧报错收敛）；两者皆缺=非手艺目录跳过
                 const f = path.join(d, ent.name, 'SKILL.md');
+                let active = true, src = f;
+                if (!FSS.existsSync(f)) {
+                    const fOff = f + '.off';
+                    if (!FSS.existsSync(fOff)) continue;
+                    active = false; src = fOff;
+                }
                 try {
-                    const raw = require('fs').readFileSync(f, 'utf8');
+                    const raw = require('fs').readFileSync(src, 'utf8');
                     const nl = String.fromCharCode(10);
                     const lines = raw.split(nl);
                     let meta = {}; const bodyLines = [];
@@ -1868,7 +1877,7 @@ function scanInstalledSkills() {
                     const desc0 = (meta.description || '').replace(/^['\"]|['\"]$/g, '');
                     const h1 = desc0 ? '' : (body.match(/^#[ \t]+\S.*$/m) || [''])[0].replace(/^#[ \t]+/, '').trim();
                     const o = originOf(path.join(d, ent.name)); // s70: 来源标记（无/坏 → null=本机随包）
-                    out.push({ name: ent.name, description: h1 ? h1.slice(0, 120) : desc0, body: body.slice(0, 4000), path: f, origin: o ? { source: o.source, repo: o.repo || '' } : null });
+                    out.push({ name: ent.name, description: h1 ? h1.slice(0, 120) : desc0, body: body.slice(0, 4000), path: src, origin: o ? { source: o.source, repo: o.repo || '' } : null, active }); // r5/S3: +active（停着=false；/api/skills +1 字段余形状不变，裁决 §5.2）
                 } catch {}
             }
         } catch {}
@@ -1910,11 +1919,12 @@ async function assetsOverview() {
     } catch {}
     // 源3 技能：仅自沉淀入账（origin.source==='self'）——「做过的」=对话产出（裁决 2026-09-15-made-ledger-ia-rework §1.3）；
     // 内置（origin=null）/市场（market/local）不是对话产出，永不入账（/api/skills 仍全量，家不收窄）；时间=SKILL.md mtime
+    // r5/S3（裁决 §5.2 台账接口）：停着的 self 手艺仍在册不减（台账=做过的事的记录）；active 随行进 ref 旁——前端行内状态可见
     for (const sk of scanInstalledSkills()) {
         if (!sk.origin || sk.origin.source !== 'self') continue;
         let mt = null;
         try { mt = FSS.statSync(sk.path).mtimeMs; } catch {}
-        items.push({ kind: 'skill', name: sk.name, human: (sk.description || '') || null, ts: mt, srcSid: null, srcTitle: null, ref: { name: sk.name } });
+        items.push({ kind: 'skill', name: sk.name, human: (sk.description || '') || null, ts: mt, srcSid: null, srcTitle: null, ref: { name: sk.name }, active: sk.active !== false });
     }
     items.sort((a, b) => ((a.ts == null) - (b.ts == null)) || ((b.ts || 0) - (a.ts || 0))); // ts 倒序，null 沉底
     const out = { ok: true, items };
@@ -2722,10 +2732,34 @@ function handleSkillstore(req, res, url) {
                 const b = JSON.parse(raw.toString('utf8'));
                 // s50h(FIND-3): 白名单外再过保留设备名（con 等），remote 与本地复制两分支同门
                 if (typeof b.name !== 'string' || !/^[\w\-]{1,64}$/.test(b.name) || !fileNameSafe(b.name)) throw new Error('参数不合法');
-                // s57: op=uninstall 删 .agents/skills/<dir>（白名单与安装同门）
+                // r5/S3（裁决 §5.2）：手艺停/启——SKILL.md ↔ SKILL.md.off 同目录单 rename（goose 与桥发现面均按精确文件名
+                // SKILL.md 匹配、对 .off 双盲，源码级已证：停=完全出上下文不删档，启=改名还原，事务可逆零 goose 改动）。
+                // disable 对已停幂等 ok（批量混态不炸）；enable 对在用拒（fuzz 负向量）；
+                // .md+.off 并存=档案重份：按 .md 为真并报错收敛——Windows rename 会静默覆盖目标，先拒防丢档。
+                if (b.op === 'disable' || b.op === 'enable') {
+                    const dir = path.join(INSTALLED, b.name);
+                    const md = path.join(dir, 'SKILL.md'), off = md + '.off';
+                    const hasMd = FSS.existsSync(md), hasOff = FSS.existsSync(off);
+                    if (hasMd && hasOff) throw new Error('这条手艺的档案重份了（SKILL.md 和 SKILL.md.off 并存），先在文件夹里删掉一份再来操作');
+                    if (b.op === 'disable') {
+                        if (!hasMd) {
+                            if (hasOff) { json200(res, { ok: true, note: '本来就没在用' }); return; }
+                            throw new Error('没有这条手艺');
+                        }
+                        try { FSS.renameSync(md, off); } catch (e) { throw new Error('没停成：' + (e && e.message ? e.message : '')); }
+                        json200(res, { ok: true, note: '已停' });
+                        return;
+                    }
+                    if (hasMd) throw new Error('这条手艺正在用，不用再开');
+                    if (!hasOff) throw new Error('没有这条手艺');
+                    try { FSS.renameSync(off, md); } catch (e) { throw new Error('没开成：' + (e && e.message ? e.message : '')); }
+                    json200(res, { ok: true, note: '已开' });
+                    return;
+                }
+                // s57: op=uninstall 删 .agents/skills/<dir>（白名单与安装同门）；r5/S3: 停着的手艺（仅 .off）同样可卸——存在性认双后缀
                 if (b.op === 'uninstall') {
                     const dst = path.join(INSTALLED, b.name);
-                    if (!FSS.existsSync(path.join(dst, 'SKILL.md'))) throw new Error('没有安装这个技能，不用卸载');
+                    if (!FSS.existsSync(path.join(dst, 'SKILL.md')) && !FSS.existsSync(path.join(dst, 'SKILL.md.off'))) throw new Error('没有安装这个技能，不用卸载');
                     FSS.rmSync(dst, { recursive: true, force: true });
                     json200(res, { ok: true, note: '已卸载' });
                     return;

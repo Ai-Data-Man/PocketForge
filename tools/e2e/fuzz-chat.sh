@@ -201,6 +201,45 @@ assert t and t[0].get('origin')=={'source':'local','repo':'skills-repo'}, t
 post '{"name":"fuzz-gate-tmp","op":"uninstall"}' | grep -q '"ok":true'; ck "skillstore uninstall ok (P3-4)" $?
 [ ! -d "$INST/fuzz-gate-tmp" ]; ck "uninstall removed skill dir (P3-4)" $?
 rm -rf "$REPO/fuzz-gate-tmp"
+# r5/S3（裁决 2026-09-19-capability-semantics-r5 §5.2/§6-S3）：手艺停/启 op=SKILL.md↔SKILL.md.off 改名——
+# 活体正路（停→盘上 .off+/api/skills active:false→幂等→启→还原）+负向量三族（未知名/enable 已在用/双后缀并存）+String([v]) 家族
+ST2="$INST/fuzz-toggle-tmp"
+trap 'rm -rf "$ST2"' EXIT
+mkdir -p "$ST2" && printf -- "$SKMD" fuzz-toggle-tmp 'toggle fuzz' > "$ST2/SKILL.md"
+post '{"name":"fuzz-toggle-tmp","op":"disable"}' | grep -q '"ok":true'; ck "skillstore disable ok (r5/S3)" $?
+[ -f "$ST2/SKILL.md.off" ] && [ ! -f "$ST2/SKILL.md" ]; ck "disable renamed SKILL.md -> SKILL.md.off on disk (r5/S3)" $?
+curl -s "$B/api/skills" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+t=[x for x in d if x['name']=='fuzz-toggle-tmp']
+assert t and t[0].get('active') is False, t"; ck "api/skills exposes active:false for stopped (r5/S3)" $?
+post '{"name":"fuzz-toggle-tmp","op":"disable"}' | grep -q '"ok":true'; ck "skillstore disable idempotent on .off (r5/S3)" $?
+post '{"name":"fuzz-toggle-tmp","op":"enable"}' | grep -q '"ok":true'; ck "skillstore enable ok (r5/S3)" $?
+[ -f "$ST2/SKILL.md" ] && [ ! -f "$ST2/SKILL.md.off" ]; ck "enable renamed .off back to SKILL.md (r5/S3)" $?
+curl -s "$B/api/skills" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+assert isinstance(d,list) and d and all(isinstance(x.get('active'),bool) for x in d), d"; ck "api/skills rows all carry boolean active (+1 field, shape else unchanged)" $?
+post '{"name":"fuzz-toggle-tmp","op":"enable"}' | grep -q '正在用'; ck "skillstore enable on active rejected friendly (r5/S3 negative)" $?
+post '{"name":"ghost-skill-zzz","op":"disable"}' | grep -q '没有这条手艺'; ck "skillstore disable unknown name friendly (r5/S3 negative)" $?
+post '{"name":"ghost-skill-zzz","op":"enable"}' | grep -q '没有这条手艺'; ck "skillstore enable unknown name friendly (r5/S3 negative)" $?
+post '{"name":["fuzz-toggle-tmp"],"op":"disable"}' | grep -q '参数不合法'; ck "skillstore disable array name rejected (String([v]) family)" $?
+post '{"name":true,"op":"disable"}' | grep -q '参数不合法'; ck "skillstore disable bool name rejected (String([v]) family)" $?
+post '{"name":"fuzz-toggle-tmp","op":["disable"]}' | grep -q '商店里没有这个技能'; ck "skillstore array op falls to install gate friendly, no toggle side effect (r5/S3)" $?
+[ -f "$ST2/SKILL.md" ] && [ ! -f "$ST2/SKILL.md.off" ]; ck "array op left skill untouched on disk (r5/S3)" $?
+cp "$ST2/SKILL.md" "$ST2/SKILL.md.off"
+curl -s "$B/api/skills" | python -c "
+import sys,json
+d=json.load(sys.stdin)
+t=[x for x in d if x['name']=='fuzz-toggle-tmp']
+assert t and t[0].get('active') is True, t"; ck "api/skills dual-suffix truth=.md (active) (r5/S3)" $?
+post '{"name":"fuzz-toggle-tmp","op":"disable"}' | grep -q '档案重份'; ck "skillstore dual-suffix disable errors out to converge (r5/S3)" $?
+post '{"name":"fuzz-toggle-tmp","op":"enable"}' | grep -q '档案重份'; ck "skillstore dual-suffix enable errors out to converge (r5/S3)" $?
+rm -f "$ST2/SKILL.md.off"
+post '{"name":"fuzz-toggle-tmp","op":"disable"}' | grep -q '"ok":true'; ck "skillstore re-disable after converge ok (r5/S3)" $?
+post '{"name":"fuzz-toggle-tmp","op":"uninstall"}' | grep -q '"ok":true'; ck "skillstore uninstall stopped skill ok (dual-suffix existence) (r5/S3)" $?
+[ ! -d "$ST2" ]; ck "uninstall removed stopped skill dir (r5/S3)" $?
+trap 'rm -rf "$INST/fuzz-swap-tmp" "$INST/fuzz-swap-tmp.tmp" "$INST/fuzz-swap-tmp.bak" "$INST/fuzz-walk-tmp" "$INST/fuzz-xss-tmp" "$CACHE/fuzz-swap-tmp" "$ST2"' EXIT
 # P2-2 实景①: market-over-market 原子更新——v1 装 → 缓存升 v2 → 再装=换名更新，dst 全新目录无合并残留
 mkdir -p "$CACHE/fuzz-swap-tmp"
 printf -- "$SKMD" fuzz-swap-tmp v1 > "$CACHE/fuzz-swap-tmp/SKILL.md"

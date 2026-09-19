@@ -439,18 +439,25 @@ details.tz[open]>summary::before{content:'▾ '}
 <div id="slash-menu" style="display:none;position:absolute;bottom:64px;left:18px;right:18px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.14);z-index:40;max-height:250px;overflow-y:auto"></div>
 <div id="skills-modal" class="modal-bg"><div class="panel-box" role="dialog" aria-modal="true" aria-label="小 forge 的手艺（它学会的做法）">
   <h3>🧩 小 forge 的手艺（它学会的做法）<button class="mclose" title="关闭" aria-label="关闭" onclick="$('skills-modal').classList.remove('on')">✕</button></h3>
-  <div class="fnote" style="margin-bottom:10px">这些是教它怎么干活的做法册：有出厂带的，有从市场装的，还有它干活时自己学会的。工具说的是「它有什么」，做法说的是「它怎么干」——聊天里说到相关的活儿它会自己用；也可以点「让它现在用」。</div>
+  <div class="fnote" style="margin-bottom:10px">这些是教它怎么干活的做法册：有出厂带的，有从市场装的，还有它干活时自己学会的。工具说的是「它有什么」，做法说的是「它怎么干」——聊天里说到相关的活儿它会自己用；也可以点「让它现在用」。它每回干活前，会把开着的手艺都过一遍；关掉的手艺它不翻、也不占它的心思。</div>
   <!-- IA-1: R1 同实体两阶段 tab 化——已装/可装各自独立清单，不再同滚堆叠 -->
   <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:8px" role="tablist">
     <button class="rtab on stab" data-pane="ins" role="tab" aria-selected="true">它的手艺</button>
     <button class="rtab stab" data-pane="store" role="tab" aria-selected="false">＋ 去市场学新做法</button>
   </div>
   <div class="spane" id="spane-ins">
-    <!-- R2 规模声明（裁决 2026-09-16 §3）：我的技能终态=内置 5 + 市场装 ≤30 + 自己攒 0-5 → 合计 <40（31-100 档）；搜索+分页已有，来源 chips 本批补齐 -->
-    <div id="skills-chips" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px"></div>
-    <input id="skills-q" placeholder="🔍 在它的手艺里找…" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
-    <div id="skills-list"></div>
+    <!-- R2 规模声明（r5 修订，裁决 2026-09-19-capability-semantics-r5 §5/§10）：手艺终态=100+（agent 自沉淀增长引擎——
+         skill-sediment 四信号三个自判，增长不经过用户点头）；机制面已合规（搜索+来源 chips+状态 chips+可调分页），
+         治理重心=每回合常驻上下文（停/启），非 DOM -->
+    <div id="skills-chips" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px"></div>
+    <div id="skills-stchips" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px"></div><!-- r5/S3: 状态 chips（全部/在用/停着），与来源 chips 并列 -->
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
+      <input id="skills-q" placeholder="🔍 在它的手艺里找…" style="flex:1;min-width:0;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none">
+      <button id="skills-org" class="mini" title="批量停/启手艺（不删档）" style="flex:none">整理</button><!-- r5/S3: 整理模式入口（批量停/启；批量卸载仍门控 r4-T2） -->
+    </div>
+    <div id="skills-list" style="max-height:340px;overflow-y:auto"></div><!-- r5/S3: 限高滚动（manage 弹窗同族先例）——翻页器/整理动作条钉在视口内不随长清单滚走 -->
     <div id="skills-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 0 6px"></div>
+    <div id="skills-orgbar" style="display:none;gap:6px;align-items:center;padding:2px 0 8px;flex-wrap:wrap"></div><!-- r5/S3: 整理模式动作条（已选 N｜全选｜停用/启用｜退出整理） -->
   </div>
   <div class="spane" id="spane-store" style="display:none">
     <input id="store-q" placeholder="🔍 搜想学的做法…" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
@@ -2099,7 +2106,8 @@ function madePaint(){
     const secondary=(it.human&&it.kind!=='file')?'<div class="fnote" style="margin-top:2px;word-break:break-all">'+esc(it.name)+'</div>':''; // 表/技能的人话名旁带真名，聊天里能直接 @
     const time=it.ts?new Date(it.ts).toLocaleString('zh',{year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
     const src=it.kind==='skill'?'<span>它干活时自己学会的做法</span>':(it.srcSid?'<span>来自对话：'+esc(it.srcTitle||'未命名')+'</span>':'<span>来源不详</span>'); // 无账存量=诚实降级，不考古
-    row.innerHTML='<div style="flex:1;min-width:0"><div style="font-size:.85rem;font-weight:600;word-break:break-all"><span class="bdg">'+MADE_KIND_ZH[it.kind]+'</span> '+esc(it.human||it.name)+'</div>'+secondary+
+    const stB=(it.kind==='skill'&&it.active===false)?' <span class="bdg">停着</span>':''; // r5/S3（裁决 §5.2 台账接口）：停着的 self 手艺仍在册，行内状态可见
+    row.innerHTML='<div style="flex:1;min-width:0"><div style="font-size:.85rem;font-weight:600;word-break:break-all"><span class="bdg">'+MADE_KIND_ZH[it.kind]+'</span> '+esc(it.human||it.name)+stB+'</div>'+secondary+
       '<div class="fnote" style="margin-top:2px;display:flex;gap:10px;flex-wrap:wrap">'+src+'<span>'+time+'</span></div></div>';
     const open=document.createElement('button'); open.className='mini'; open.textContent='打开';
     open.onclick=()=>openAsset(it);
@@ -2531,16 +2539,19 @@ function renderAtMenu(q){
 $('open-skills').onclick=async()=>{
   $('skills-modal').classList.add('on');
   listPage.ins=1; listPage.store=1; // s71: 重开弹窗回第 1 页
-  showStab('ins'); // IA-1: 每次打开默认落「我的技能」
-  skillsChips(); // s95/S2a: 来源 chips 随弹窗渲染（chip 状态跨开合保持，made-chips 同款）
+  showStab('ins'); // IA-1: 每次打开默认落「它的手艺」
+  skillsChips(); skillsStChips(); // s95/S2a 来源 chips + r5/S3 状态 chips（chip 状态跨开合保持，made-chips 同款）
+  skOrg={on:false,sel:new Set()}; // r5/S3: 重开弹窗散整理模式（裁决 §4-3 即开即用即散先例）
   if(!mktLoaded) loadMarketUI(); // IA-1 返工: 源列表随弹窗首开渲染（此前只有先访问过🔌插件页才有内容，违反裁决 IA-1 验收2 闭环）
   try{
     const r=await fetch('/api/skills'); installedAll=await r.json(); paintInstalled();
   }catch(e){ $('skills-list').innerHTML='<div class="fnote">读取失败：'+e.message+'</div>'; pagerPaint('skills-pager',1,1,0,null); }
   loadSkillStore();
 };
+$('skills-org').onclick=()=>{ skOrg.on=!skOrg.on; if(!skOrg.on) skOrg.sel.clear(); paintInstalled(); }; // r5/S3: 整理模式开关（重绘含勾选框/动作条）
 let installedAll=[]; // s71: 已装清单缓存——open 弹窗与装/卸刷新共用数据源，各自按原样渲染
-const skillsFilter={chip:'all'};
+const skillsFilter={chip:'all',st:'all'}; // r5/S3: +st 状态维（all/on/off——停启生命周期，裁决 §5.3）
+let skOrg={on:false,sel:new Set()}; // r5/S3: 手艺整理模式（勾选=手艺名；出厂/装/自攒同权可停启；批量卸载不在本动作条——r4-T2 门控维持）
 function skillsOriginClass(sk){ // s95/S2a: origin→chip 分类（null=自带 / market+local=装的 / self=自己攒的；与 skillOriginBadge 同源判据）
   const s=sk.origin&&sk.origin.source;
   if(s==='market'||s==='local') return 'ext';
@@ -2556,21 +2567,59 @@ function skillsChips(){ // s95/S2a: 来源 chips（made-chips 同款克隆；裁
     box.appendChild(b);
   }
 }
-function paintInstalled(){ // s71: 自 open-skills 内联渲染提升为具名函数以支持翻页重渲染；渲染内容与原内联逐行一致
+function skillsStChips(){ // r5/S3: 状态 chips（全部/在用/停着——made-chips 同款，与来源 chips 并列；100+ 条停用混排时的找回主维度，裁决 §5.3）
+  const defs=[['all','全部'],['on','在用'],['off','停着']];
+  const box=$('skills-stchips'); if(!box) return; box.innerHTML='';
+  for(const [k,label] of defs){
+    const b=document.createElement('button'); b.className='chip'+(skillsFilter.st===k?' on':''); b.textContent=label;
+    b.onclick=()=>{ skillsFilter.st=k; listPage.ins=1; skillsStChips(); paintInstalled(); };
+    box.appendChild(b);
+  }
+}
+function paintInstalled(){ // s71: 自 open-skills 内联渲染提升为具名函数以支持翻页重渲染；r5/S3: +停启态渲染与整理模式
   const box=$('skills-list'); if(!box) return;
   box.innerHTML='';
   const q=($('skills-q').value||'').trim().toLowerCase(); // IA-1: 已装区搜索（R2 9-30 档，仿 store-q）
   const shown=installedAll
     .filter(sk=>skillsFilter.chip==='all'||skillsOriginClass(sk)===skillsFilter.chip) // s95/S2a: 来源 chip 过滤在搜索过滤前
+    .filter(sk=>skillsFilter.st==='all'||(skillsFilter.st==='off'?sk.active===false:sk.active!==false)) // r5/S3: 状态 chip（active 缺省=在用，旧桥兼容）
     .filter(sk=>!q||String(sk.name||'').toLowerCase().includes(q)||String(sk.description||'').toLowerCase().includes(q));
-  if(!shown.length){ box.innerHTML='<div class="fnote">'+(q?('没有找到「'+esc(q)+'」'):'还没有手艺。让它干活时说「记住这个做法」，它就会自己学。')+'</div>'; pagerPaint('skills-pager',1,1,0,null); return; }
+  if(!shown.length){
+    const emptyMsg=q?('没有找到「'+esc(q)+'」'):(skillsFilter.st==='off'?'现在没有停着的手艺。':'还没有手艺。让它干活时说「记住这个做法」，它就会自己学。'); // r5/S3: 停着 chip 空态三分（apps 先例）
+    box.innerHTML='<div class="fnote">'+emptyMsg+'</div>'; pagerPaint('skills-pager',1,1,0,null); paintSkOrgBar(); return;
+  }
   const ps=pageSlice(shown,'ins','card'); // r3/S4e 措辞修正: 机制恒建（pageSlice 恒走）；pagerPaint 在 pages≤1 不渲染=阈值内零视觉机制——非「>N 再加分页」触发式
   for(const sk of ps.rows){
+    const stopped=sk.active===false;
     const el=document.createElement('div'); el.className='skill';
-    el.innerHTML='<div class="nm">'+esc(sk.name)+skillOriginBadge(sk)+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
+    el.innerHTML='<div class="nm">'+esc(sk.name)+skillOriginBadge(sk)+(stopped?' <span class="bdg">停着</span>':'')+'</div><div class="ds">'+esc(sk.description||'（无说明）')+'</div>';
+    if(skOrg.on){ // r5/S3: 整理模式行首勾选（出厂/装/自攒同权可停启）
+      const cb=orgCheckBox(skOrg.sel,sk.name,true,paintInstalled);
+      el.insertBefore(cb,el.firstChild);
+    }
     const ops=document.createElement('div'); ops.className='ops';
-    const use=document.createElement('button'); use.className='mini'; use.textContent='让它现在用';
-    use.onclick=()=>{ $('skills-modal').classList.remove('on'); $('txt').value='请按手艺 '+sk.name+' 的流程来做'; $('txt').focus(); };
+    if(!stopped){ // r5/S3: 停着的手艺不进上下文——「让它现在用」无意义（模型侧已不可装载），只给启用出路
+      const use=document.createElement('button'); use.className='mini'; use.textContent='让它现在用';
+      use.onclick=()=>{ $('skills-modal').classList.remove('on'); $('txt').value='请按手艺 '+sk.name+' 的流程来做'; $('txt').focus(); };
+      ops.appendChild(use);
+    }
+    // r5/S3: 开/关钮（ext 开关同款克隆，裁决 §5.2/§5.3）——停=SKILL.md 改名 .off 出上下文不删档；启=改名还原。
+    // 生效时机=V4 活体实证（tmp/r5-v1v4：同进程下一主回合即缺席/复现）——下回合即生效免重启，比工具的重启语义好用，文案如实写。
+    // 可逆低危无确认框（apps 停止同判先例）。
+    const tog=document.createElement('button'); tog.className='mini'; tog.style.minWidth='76px';
+    tog.title=stopped?'重新开用：它下一回干活就会再翻到这条（马上生效，不用重启）':'先停着：它下一回干活就不再翻这条（马上生效，不用重启）；档案都还在，随时可以再开';
+    const paintTog=()=>{ tog.textContent=stopped?'▶ 开用':'⏸ 先停着'; tog.style.borderColor=stopped?'var(--line-strong)':'var(--acc)';
+      tog.style.color=stopped?'var(--mut)':'var(--acc)'; };
+    paintTog();
+    tog.onclick=async()=>{
+      tog.disabled=true;
+      try{
+        const res=await apiJSON('/api/skillstore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:sk.name,op:stopped?'enable':'disable'})});
+        if(!res.ok) throw new Error(res.err||'失败');
+        loadSkills2(); loadSkillStore(); // qa-s57(P3) 同门：商店面板同步+已装列表重取重绘（loadSkills2 内含 loadSkillCmds 重拉=V5）
+      }catch(e){ tog.disabled=false; alert('没改成：'+e.message); }
+    };
+    ops.appendChild(tog);
     const view=document.createElement('button'); view.className='mini'; view.textContent='看内容';
     view.onclick=()=>{
       const pre=el.querySelector('pre');
@@ -2578,9 +2627,11 @@ function paintInstalled(){ // s71: 自 open-skills 内联渲染提升为具名�
       else { const pre=document.createElement('pre'); pre.textContent=sk.body; el.appendChild(pre); }
     };
     // s74 P1: 卸载钮并入唯一渲染器——原先只在 loadSkills2 的渲染分支里，默认打开路径（paintInstalled）不出，入口时隐时现
+    // r5/S3: self 删确认强化（裁决 §6-S3——学习成果不可恢复，确认句说穿）
     const del=document.createElement('button'); del.className='mini'; del.textContent='✕'; del.title='卸载这条手艺';
     del.onclick=async()=>{
-      if(!confirm('卸载手艺「'+sk.name+'」？')) return;
+      const selfMsg=skillsOriginClass(sk)==='self'?('这是它干活时自己学会的做法，删了就没了。\n'):'';
+      if(!confirm(selfMsg+'卸载手艺「'+sk.name+'」？')) return;
       del.disabled=true;
       try{
         const res=await apiJSON('/api/skillstore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:sk.name,op:'uninstall'})});
@@ -2588,9 +2639,46 @@ function paintInstalled(){ // s71: 自 open-skills 内联渲染提升为具名�
         loadSkills2(); loadSkillStore(); // qa-s57(P3): 商店面板同步 + 已装列表重取重绘（loadSkills2 已收敛为取数+委托）
       }catch(e){ del.disabled=false; alert('没卸成：'+e.message); }
     };
-    ops.appendChild(use); ops.appendChild(view); ops.appendChild(del); el.appendChild(ops); box.appendChild(el);
+    ops.appendChild(view); ops.appendChild(del); el.appendChild(ops); box.appendChild(el);
   }
   pagerPaint('skills-pager',listPage.ins,ps.pages,ps.total,p=>{ listPage.ins=p; paintInstalled(); },'card',ps.trunc);
+  paintSkOrgBar();
+}
+// r5/S3: 手艺整理模式动作条（orgBarPaint 动作钮组注入——批量停/启，单确认可逆低危；批量卸载不在场=r4-T2 门控维持）
+function paintSkOrgBar(){
+  const bar=$('skills-orgbar'); if(!bar) return;
+  if(!skOrg.on){ bar.style.display='none'; bar.innerHTML=''; return; }
+  const names=()=>installedAll
+    .filter(sk=>skillsFilter.chip==='all'||skillsOriginClass(sk)===skillsFilter.chip)
+    .filter(sk=>skillsFilter.st==='all'||(skillsFilter.st==='off'?sk.active===false:sk.active!==false))
+    .filter(sk=>{ const q=($('skills-q').value||'').trim().toLowerCase(); return !q||String(sk.name||'').toLowerCase().includes(q)||String(sk.description||'').toLowerCase().includes(q); })
+    .map(sk=>sk.name);
+  orgBarPaint('skills-orgbar',skOrg.sel,{
+    all:names,
+    repaint:paintInstalled,
+    acts:[
+      ['停用','把勾选的先停着（不删档，随时可再开）',()=>skOrgBatch('disable'),true],
+      ['启用','把勾选的重新开用',()=>skOrgBatch('enable'),false],
+    ],
+    exit:()=>{ skOrg.on=false; skOrg.sel.clear(); paintInstalled(); },
+  });
+}
+async function skOrgBatch(op){ // r5/S3: 批量停/启=逐条 POST（桥无批量端点=裁决 §6-S3 桥面只有 disable/enable 单条 op）；单确认，逐条容错汇总
+  const names=[...skOrg.sel];
+  if(!names.length) return;
+  const verb=op==='disable'?'先停着':'重新开用';
+  if(!confirm('把勾选的 '+names.length+' 条手艺'+verb+'？'+(op==='disable'?'它每回干活就不翻它们了，档案都还在，随时可以再开。':''))) return;
+  let done=0; const failed=[];
+  for(const n of names){
+    try{
+      const res=await apiJSON('/api/skillstore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:n,op})});
+      if(res.ok) done++; else failed.push(n+'：'+(res.err||'失败'));
+    }catch(e){ failed.push(n+'：'+e.message); }
+  }
+  skOrg.on=false; skOrg.sel.clear();
+  loadSkills2(); loadSkillStore();
+  if(failed.length) alert('处理了 '+done+' 条，'+failed.length+' 条没成：\n'+failed.slice(0,5).join('\n')+(failed.length>5?'\n…':''));
+  else note('已'+(op==='disable'?'停':'开')+' '+done+' 条手艺');
 }
 // s42/s45/s56: 技能商店（本地 skills-repo + 远程缓存；搜索过滤；中文说明优先）
 let storeAll=[]; // 当前可装列表（avail），供搜索过滤
@@ -2695,6 +2783,7 @@ async function loadSkillStore(){
 }
 async function loadSkills2(){ // s74 P1: 收敛为「重取数据+委托渲染」——#skills-list 唯一渲染器是 paintInstalled（过滤/空态/分页/卸载钮全在它），双渲染器内容分歧就此消除
   try{ const r=await fetch('/api/skills'); installedAll=await r.json(); paintInstalled(); }catch(e){}
+  loadSkillCmds(); // r5/S3-V5: 装/卸/停启后 slash 动态命令重拉（修前一次性拉取——装完新技能当回合菜单陈旧）
 }
 $('skills-modal').onclick=e=>{ if(e.target.id==='skills-modal') e.target.classList.remove('on'); };
 // IA-1: 技能弹窗双 tab 切换（管理面板 mtab 同款：rtab 样式 + role=tab/aria-selected，button 天然键盘可达）
@@ -2878,7 +2967,7 @@ function menuHl(menu,dir){
 async function loadSkillCmds(){
   try{
     const r=await fetch('/api/skills'); const list=await r.json();
-    skillCmds=list.map(sk=>({cmd:'/手艺·'+sk.name, alias:[sk.name], desc:(sk.description||'让它按学会的做法来做').slice(0,42), isSkill:true,
+    skillCmds=list.filter(sk=>sk.active!==false).map(sk=>({cmd:'/手艺·'+sk.name, alias:[sk.name], desc:(sk.description||'让它按学会的做法来做').slice(0,42), isSkill:true, // r5/S3: 停着的手艺不进 slash 触发面（=不进上下文的同一语义）
       run:()=>{ $('txt').value='请按手艺 '+sk.name+' 的流程来做'; submit(); }}));
   }catch{}
 }
@@ -2918,6 +3007,12 @@ txt.addEventListener('input',()=>{
       el.innerHTML='<b>'+(c.isSkill?'🧩 ':'')+esc(c.cmd)+'</b> <span style="color:var(--mut);font-size:.75rem">'+esc(c.desc||'')+'</span>';
       el.onclick=()=>{ txt.value=''; menu.style.display='none'; c.run(); };
       menu.appendChild(el);
+    }
+    if(slashCur.length>14){ // r5/S3（裁决 §5.3，r4-S3b @菜单同门补课）：slash 命中溢出提示——100+ 手艺动态并入后截断必须留出路
+      const more=document.createElement('div');
+      more.style.cssText='padding:3px 14px 6px;font-size:.68rem;color:var(--mut)';
+      more.textContent='还有 '+(slashCur.length-14)+' 个，多打几个字缩小范围。';
+      menu.appendChild(more);
     }
     menu.style.display=slashCur.length?'block':'none';
   } else { menu.style.display='none'; slashCur=[]; }
@@ -3154,13 +3249,15 @@ function orgCheckBox(sel,key,eligible,repaint){ // 行首勾选框；不可勾=�
   cb.onclick=e=>{ e.stopPropagation(); if(cb.checked) sel.add(key); else sel.delete(key); repaint(); };
   return cb;
 }
-function orgBarPaint(barId,sel,opts){ // 底部动作条：已选 N 项｜全选（=当前过滤结果的全部，跨页）｜删除｜退出整理
+function orgBarPaint(barId,sel,opts){ // 底部动作条：已选 N 项｜全选（=当前过滤结果的全部，跨页）｜动作钮组｜退出整理
+  // r5/S3: 动作钮组可注入（opts.acts=[[label,title,fn,danger]]，手艺批量停/启用）；缺省=删除（ws/sess 两用家照旧）
   const bar=$(barId); if(!bar) return;
   bar.style.display='flex'; bar.innerHTML='';
   const n=document.createElement('span'); n.className='fnote'; n.textContent='已选 '+sel.size+' 项'; bar.appendChild(n);
   const mk=(t,ttl,fn)=>{const b=document.createElement('button');b.className='mini';b.textContent=t;b.title=ttl;b.onclick=fn;return b;};
   bar.appendChild(mk('全选','选中当前过滤结果的全部（跨页）',()=>{ for(const k of opts.all()) sel.add(k); opts.repaint(); }));
-  const del=mk('删除','删掉勾选的',opts.del); del.style.borderColor='var(--danger)'; del.style.color='var(--danger)'; bar.appendChild(del);
+  const acts=opts.acts||[['删除','删掉勾选的',opts.del,true]];
+  for(const [t,ttl,fn,danger] of acts){ const b=mk(t,ttl,fn); if(danger){ b.style.borderColor='var(--danger)'; b.style.color='var(--danger)'; } bar.appendChild(b); }
   bar.appendChild(mk('退出整理','',opts.exit));
 }
 let wsOrg={on:false,sel:new Set()}; // r4/S2a: 浏览全部整理模式（勾选=工作区 id；资格=未关联+已归档，活跃/本对话不可勾——裁决 §2.2-S2a）
