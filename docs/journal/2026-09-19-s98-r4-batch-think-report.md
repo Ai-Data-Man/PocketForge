@@ -70,4 +70,13 @@
 - **R2 结果：F1-F7 七项修复全部确认；三支柱实操硬数字全过——但膨胀场景真刀真枪练出批量管理硬伤，裁决需要返工**（tmp/s98-iat15-r2-findings.md）：
   - 三支柱证据：页档（77 区 30→60→120 档页数递减正确+mem 520 条 30/页 17 页+一页看全 500 行+截断注+localStorage 记住）；工作区批量（56 未关联→全选 55 跨页语义→三段确认含 33.3MB→deleted=54 failed=1 被引用区拒+人话+磁盘核对+解除引用补删成功）；归档批删（最终 24 全选→deleted=21 skipped=3+人话注上墙+归档区自动转未关联文件完好+**批后 5 连开 sid 连续零烧号**）；ASCII 分类清空走通；搜索/三排序/@溢出注全过；控制台 9+ 次加载零 error；冷启 54.2s（30s 沉降等满为主因）。
   - **P1：服务端 ws/delete_batch 与 ws/delete 无状态门——直呼 API 活跃区+本对话区连删（deleted=2 failed=[]），UI「也不会被批量删除」承诺协议面不成立**；P2-1：session/list 恒「最近 50 ∩ 有消息」→ 归档积压从管理面消失（30 归档只露 5 分四批删）；P2-2：坏 created_at 行→session/list 报错被前端 catch 静默吞→侧栏永空零诊断；P2-3：中文记忆分类 forget 双双必败（category 正则仅 ASCII；中文分类是正常使用必然产物，dev 先例 个人.txt）；P3-1：零消息归档会话永不可见不可删（并入 P2-1 修）；P3-2：浏览全部搜索 hay（前端 50 窗标题）与行显（桥侧 DB 标题）不同源，重启后行显标题搜不到；P4×3：一页看全后翻页器隐藏无档位回退/沉降等满 30s/批删日志未落 pc.log（已知缓冲家族）。
-  - R2 修复批在飞：P1 状态门（fail-closed）+P2-1 归档数据源换桥侧索引全量+P2-2 诚实降级+P2-3 Unicode 文件名安全集+P3-2 同源+P4-1 困死+P4-2 沉降早退。
+  - R2 修复批（fc5464a，+71/−16，红绿对照探针 tmp/r2fix-probe.js 31/31）：**P1 状态门**=wsDeleteOne 增活跃绑定拒删（fail-closed，读不清拒删；既有四路径不破：当前区/归档区可删/junction 引用拒/未关联可删）；**P2-1+P3-1**=归档视图数据源换 readArch() 索引全量（与 goose 50 窗解耦；31 零消息归档 31/31 可见+单批 31 全清）；**P2-2**=前端 catch 显式「对话列表读取出错，刷新试试」+console.warn（不吞 goose 错，桥侧自查询容错）；**P2-3**=category 校验放宽 Unicode 文件名安全集（\p{L}\p{N}_\- 1-64+fileNameSafe，con/路径分隔/超长仍拒）；P3-2 搜索 hay 换 wsDisplayName 同源；P4-1 一页看全档 select 保留可逃逸；P4-2 沉降早退（全 Running/Completed 即走，30s 保底；dev 冷启实测未吃满）。期间工程师另发现 conf/dev-stack-up.ps1:30 三件套第三件 $out 未定义（s96 遗留）——主控当日小修 efffff7（显式 conf\apps.env.yaml）。
+- **R3 终验（iat16，C:\PF-TEST\s98c）：全 PASS 零红零黄**（tmp/s98-iat16-r3-findings.md，探针 53/53+冒烟 15/15）：P1 门活体（真会话绑定区单删/批删双拒 deleted=0+人话；未关联/归档照旧可删）；归档 35/35 全可见+单批 deleted=30 skipped=5 今日守卫按实况；中文分类清空+单删走通+6 负向量仍拒；一页看全 select 可逃逸；**冷启 21.1s（R2 54.2s→沉降早退生效）**；坏行诚实降级路径在场；五端点+favicon 204+CDP console 零 error/零网络失败；官方徽标/技术区空态/思考力度禁用态/三排序/搜索全过。B1（零消息零文件绑定区按噪音判据归 orphan 可删——同源 wsState 设计声明内，判可接受留档）/B2（收敛输出无文件日志）建议级留档。沙盒 s98a/b/c 三清零，C:\PF-TEST 空。
+
+## 会话终态
+
+- **五主线全部闭环**：主线1 膨胀三支柱（页大小可调+批量三件+mem 转分页+@溢出+死控件热修）；主线2 能力域去重（官方徽标降条目级+技术区收窄零状态+MCP 退出妻子面+词汇分职）；主线3 思考力度（goose 原生通道+能力显隐+诚实降级；glm 遮蔽态实证；9router 别名=用户侧开放问题）；主线4 报表卡双数据源（真链全通含 xlsx 产出）；主线5 从零三轮（R1 冒烟→R2 膨胀实操抓 P1+P2×3→修复→R3 终验零红）。
+- **总量**：11 产品 commit（f851b49/3bdf8eb/084a495/ff6ef43/411867d/52cc184/71ecd40/a86a8f6/dc7e8ce/19909eb/fc5464a）+efffff7+docs 若干，全推 origin；测试包 iat14/15/16 在 dist（不入发布序）。
+- **终态基线：e2e-chat 62/62 + fuzz 199/199 + ui-logic 56 + ia-logic 28**。
+- **留档**：P4-2 failed[].err 路径反射（单删同族预存在）、P4-3 fuzz 遍历/类型混淆批量向量、B1/B2 建议级、pc process stop 后 cmd 子进程 python 孤儿（s91 家族新数据点）、apps-probe 首跑间歇红（黑匣子已装待再现）、goose v1.51.0（09-17 发布，63 commits/244 files——升级窗口重开，走 playbook 十面验证；thinking 相关面定向核查因 diff 过大未果）。
+- **环境终态**：dev 栈 PFdrill2 复位 9 进程 restarts=0 healthz 200；C:\PF-TEST 空；e2e-report/8199/fake-PLM 残留清零。
