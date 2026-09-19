@@ -27,7 +27,7 @@ Write-Host "[dev-up] starting pc=$PC_PORT faucet=$FAUCET_PORT"
 Set-Location $ForgeRoot
 # s50: pc 以前台 & 挂在调用者进程树下，宿主（子代理后台任务）被收割时 pc 被连带硬杀（今日三样本实证，见 journal s50e/h）。
 # 改 detached 拉起：父链立即脱离，pc 存活不再绑定任何易死会话。目标机 启动数字员工.cmd 由用户双击（explorer 链）天然免疫，无需同改。
-$pcArgs = @('up','-f',(Join-Path $ForgeRoot 'conf\process-compose.yaml'),'-f',(Join-Path $ForgeRoot 'conf\ports.env.yaml'),'-f',$out,'-p',$PC_PORT,'-t=false')
+$pcArgs = @('up','-f',(Join-Path $ForgeRoot 'conf\process-compose.yaml'),'-f',(Join-Path $ForgeRoot 'conf\ports.env.yaml'),'-f',(Join-Path $ForgeRoot 'conf\apps.env.yaml'),'-p',$PC_PORT,'-t=false') # 三件套第三件=聚合 apps.env.yaml（s96 起由上方 apps-aggregate 生成；原 $out 变量从未定义=r2fix 批留档缺陷当日修）
 Start-Process -FilePath (Join-Path $ForgeRoot 'bin\pc\process-compose.exe') -ArgumentList $pcArgs -WorkingDirectory $ForgeRoot -WindowStyle Hidden
 # detached 后等待栈就绪再返回，调用方（探针/回归）才能直接用
 $deadline = (Get-Date).AddSeconds(30)
