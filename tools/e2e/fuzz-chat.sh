@@ -37,6 +37,25 @@ P "$B/api/ws/delete_batch" '{"ws":["ws-9%%%"],"sid":""}' "ws delete_batch invali
 OVERW=$(python -c "print(','.join('\"ws-fz%d\"' % i for i in range(201)))")
 curl -s -X POST "$B/api/ws/delete_batch" -H 'content-type: application/json' -d "{\"ws\":[$OVERW]}" | python -c "import sys,json;d=json.load(sys.stdin);sys.exit(0 if d.get('ok') is False and '200' in str(d.get('err','')) else 1)"; ck "ws delete_batch over-200 cap whole reject" $?
 node "$(dirname "$0")/ws-batchcap-probe.js" "$B" >/dev/null 2>&1; ck "ws delete_sessions over-200 cap whole reject (ws vector)" $?
+# s98/P4-3: 批量删除端点遍历+类型混淆向量——混合数组逐项人话拒、不 500、回执零路径反射（stdin.buffer 显式 utf8，防控制台码页干扰中文断言）
+curl -s -X POST "$B/api/ws/delete_batch" -H 'content-type: application/json' -d '{"ws":["../..","a/b",123,null,{},"ws-2099-010101"],"sid":""}' | python -c "
+import sys,json
+raw=sys.stdin.buffer.read().decode('utf8')
+d=json.loads(raw)
+assert d.get('ok') is True and d.get('deleted')==0 and len(d.get('failed',[]))==6, raw[:200]
+for f in d['failed']:
+    e=str(f.get('err',''))
+    assert e and 'C:' not in e and not any(k in e for k in ('EBUSY','EPERM','ENOENT')), raw[:200]
+assert [f['err'] for f in d['failed']][:5]==['参数不完整']*5, raw[:300]
+assert '绑定状态' in d['failed'][5]['err'], raw[:300]"; ck "ws delete_batch traversal+type-confusion mixed array: per-item human reject, no path (s98/p4-3)" $?
+LONGWS=$(python -c "print('ws-'+'9'*400)")
+curl -s -X POST "$B/api/ws/delete_batch" -H 'content-type: application/json' -d "{\"ws\":[\"$LONGWS\"],\"sid\":\"\"}" | python -c "
+import sys,json
+d=json.loads(sys.stdin.buffer.read().decode('utf8'))
+assert d.get('ok') is True and d.get('deleted')==0 and len(d.get('failed',[]))==1 and d['failed'][0]['err']=='参数不完整', str(d)[:200]"; ck "ws delete_batch overlong id friendly (s98/p4-3)" $?
+node "$(dirname "$0")/ws-batch-typefuzz-probe.js" "$B" >/dev/null 2>&1; ck "ws delete_sessions traversal+type-confusion+mixed vectors, bridge alive (s98/p4-3)" $?
+# s98/P4-2: 删除回执人话门——引用拒删/活跃拒删/占用(EBUSY)/会话库锁四向量 failed[].err 零路径（修前红=EBUSY message 反射绝对路径）
+node "$(dirname "$0")/ws-del-err-probe.js" "$B" >/dev/null 2>&1; ck "ws delete receipts humanized, zero path reflection (s98/p4-2)" $?
 P "$B/api/extensions" '{"id":1,"enabled":true}' "extensions numeric id"
 P "$B/api/extensions" '{"id":"browser","enabled":"yes"}' "extensions string enabled"
 curl -s -X POST "$B/api/schedules" -H 'content-type: application/json' -d '{"id":"../../x"}' | J; ck "schedules traversal id" $?

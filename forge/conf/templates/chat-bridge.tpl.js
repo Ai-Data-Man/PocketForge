@@ -602,6 +602,18 @@ function sidKnownToDb(sid) {
         try { return !!db.prepare('SELECT 1 FROM sessions WHERE id = ?').get(sid); } finally { db.close(); }
     } catch { return true; }
 }
+// s98/P4-2: 删除回执人话门——wsDeleteOne/hardDeleteSession 抛出的底层异常 message（rmSync 的 EBUSY/EPERM、
+// realpathSync 的 ENOENT、sqlite 锁错）含绝对路径，直接透传=回执反射安装路径（R2 留档；探针 ws-del-err-probe
+// 修前红实锤）。已知错误族→零路径人话句；未知→「删除失败」。原始错误恒落桥 console（pc.log）供诊断，回执不透路径。
+function humanDeleteErr(scope, id, e) {
+    const m = String((e && e.message) || e || '');
+    let h = '删除失败';
+    if (/\b(?:EPERM|EBUSY|EACCES)\b/.test(m)) h = '有文件正被别的程序占用，删不动——稍后再试';
+    else if (/\bENOENT\b/.test(m)) h = '已经不在了，可能刚被删过';
+    else if (/SQLITE_BUSY|database is locked/i.test(m)) h = '记录暂时被锁着，稍后再试';
+    console.log('delete err:', scope, id, m);
+    return h;
+}
 // r4/S2a: 单工作区删除守卫+落盘核心（/api/ws/delete 与 /api/ws/delete_batch 共用；逻辑自单删路径原样抽出，
 // 行为零变化）。成功删目录并从 map 摘键（写回由调用方收口：单删=删后即写，批量=末尾一次写）；失败返回人话 err 串。
 function wsDeleteOne(ws, curSid, map) {
@@ -3463,7 +3475,7 @@ const ext = path.extname(f).toLowerCase();
                         const err = wsDeleteOne(ws, curSid, map);
                         if (err) failed.push({ ws, err });
                         else deleted++;
-                    } catch (e) { failed.push({ ws, err: e.message }); }
+                    } catch (e) { failed.push({ ws, err: humanDeleteErr('ws', ws, e) }); } // s98/P4-2: 回执不透底层路径
                 }
                 if (deleted) writeWsMap(map);
                 console.log('ws batch deleted:', deleted, 'failed:', failed.length);
@@ -3993,7 +4005,7 @@ function handleClient(ws, msg) {
                     for (const c of subs) { if (c !== ws) { try { c.socket.destroy(); } catch {} } }
                 }
                 console.log('session deleted', msg.sessionId, 'messages:', st.m, 'row:', st.r, 'unbound:', st.unbound);
-            } catch (e) { ws.send({ sys: 'error', text: '删除失败: ' + e.message }); }
+            } catch (e) { ws.send({ sys: 'error', text: humanDeleteErr('session', msg.sessionId, e) }); } // s98/P4-2: 同门人话化（QA 注明单删同族预存在）
             return;
         }
 
@@ -4022,7 +4034,7 @@ function handleClient(ws, msg) {
                         const st = hardDeleteSession(sid);
                         if (st.r > 0) deleted.push(sid);
                         else failed.push({ sid, err: '没找到这段对话的记录' });
-                    } catch (e) { failed.push({ sid, err: e.message }); }
+                    } catch (e) { failed.push({ sid, err: humanDeleteErr('session', sid, e) }); } // s98/P4-2: 回执不透底层路径
                 }
                 // 订阅者清场先于回执同款语义：被删会话的其余订阅连接断开（请求者最后随回执断）
                 for (const sid of deleted) {

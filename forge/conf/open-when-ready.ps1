@@ -36,6 +36,18 @@ if (Test-Path $pcPortFile) {
     } catch { }
 }
 
+# s98/B2: 收敛过程落文件日志（追加式，时间戳+rc；成功/失败都落；黑窗 Write-Host 输出不动）——R3 QA 曾以
+# 时间线+源码双证替代，本件让下轮可直接读文件。data\logs 或文件不存在自动建；写不进只吞不阻断开窗。
+# 行内容保持 ASCII（PS5.1 Add-Content 新文件默认 ANSI 码页，中文会烂）。
+$ConvergeLog = Join-Path $ForgeRoot 'data\logs\open-when-ready.log'
+function Write-ConvergeLog([string]$msg) {
+    try {
+        $dir = Split-Path -Parent $ConvergeLog
+        if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        Add-Content -Path $ConvergeLog -Value ("{0} {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $msg)
+    } catch { }
+}
+
 function Test-BridgeReady {
     $client = New-Object Net.Sockets.TcpClient
     try {
@@ -143,14 +155,17 @@ if (Test-Path $regCmd) {
         if (-not $p.WaitForExit(90000)) {
             & taskkill /F /T /PID $p.Id | Out-Null
             Write-Host '[PocketForge] 收敛超时（90s），跳过——首次注册时再付一次重启代价，不致命。'
+            Write-ConvergeLog 'converge: timeout after 90s (killed)' # s98/B2
         } else {
             $p.WaitForExit()
+            Write-ConvergeLog ("converge rc={0}" -f $p.ExitCode) # s98/B2: 成功失败都落（rc=0 即收敛成功）
             if ($p.ExitCode -ne 0) {
                 Write-Host "[PocketForge] 收敛失败（rc=$($p.ExitCode)），跳过——首次注册时再付一次重启代价，不致命。"
             }
         }
     } catch {
         Write-Host "[PocketForge] 收敛异常：$($_.Exception.Message)"
+        Write-ConvergeLog ("converge exception: {0}" -f $_.Exception.Message) # s98/B2
     }
     # 首更全表重启含 chat-bridge——桥回 healthz 200 才开窗；共用同一 240s 总预算（deadline 不重置）。
     if (-not (Wait-BridgeReady $deadline)) {
