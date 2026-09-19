@@ -93,7 +93,7 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 #burger{background:none;border:none;font-size:1.125rem;cursor:pointer;color:var(--tx-2);padding:6px;border-radius:var(--r-s)}
 #burger:hover{background:var(--hover)}
 #mode{padding:7px 10px;border:1px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.82rem;cursor:pointer}
-#think{padding:7px 10px;border:1px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.82rem;cursor:pointer;max-width:180px}
+#think{padding:7px 10px;border:1px solid var(--line-strong);border-radius:var(--r-s);background:var(--panel);font-size:.82rem;cursor:pointer;max-width:230px}
 #think:disabled{color:var(--mut);cursor:default;border-color:var(--line)}
 #model-label{color:var(--mut);font-size:.75rem;margin-left:auto}
 #model-pick{position:relative;cursor:pointer;padding:7px 12px;border:1px solid var(--line-strong);border-radius:var(--r-m);background:var(--panel);font-size:.82rem;user-select:none;max-width:240px;transition:border-color .12s}
@@ -712,7 +712,7 @@ function connect(){
       ensureWs();
       return;
     }
-    if(m.sys==='error'){ if(pendingQueue.length){ rollbackQueue('对话没开好，刚才记下的话已放回，稍后再发一次。'); pendingForNew=false; } addErr(m.text+(m.text.includes('可选池')?'。到 ⚙️ 设置里勾选它，或换顶栏列表里有的模型。':'')); zombieToolcards(); setBusy(false); return; } // B1: 开新对话失败时队列倒回（仅队列非空时，不影响其他 error 路径）; s95/F-3: 中断终态帧同样收口工具卡
+    if(m.sys==='error'){ if(pendingQueue.length){ rollbackQueue('对话没开好，刚才记下的话已放回，稍后再发一次。'); pendingForNew=false; } addErr(m.text+(m.text.includes('可选池')?'。到 ⚙️ 设置里勾选它，或换顶栏列表里有的模型。':'')); zombieToolcards(); setBusy(false); renderThinkCtl(); return; } // B1: 开新对话失败时队列倒回（仅队列非空时，不影响其他 error 路径）; s95/F-3: 中断终态帧同样收口工具卡; s98/think-grad: 失败帧按真相源重绘（梯度选择切换失败回滚显示）
     if(m.sys==='hello'){ $('version').textContent=m.app||('v'+m.version); return; } // s64: app=应用版本（自带 v 前缀）；回落才是 WS 协议版本
     if(m.sys==='health'){ healthSync(m); return; } // 裁决 provider-health-probe S3: 健康态帧（态变化广播与缓存直发同形）
     if(m.sys==='models'){
@@ -722,7 +722,7 @@ function connect(){
       return;
     }
     if(m.sys==='test_result'){ note(m.ok?('✅ 连通 OK（HTTP '+m.http+'）回复: '+m.reply):('❌ 失败 HTTP '+m.http+' '+m.reply)); return; }
-    if(m.sys==='providers'){ providerList=m.list||[]; renderProviders(providerList); renderModelLabel(); return; }
+    if(m.sys==='providers'){ providerList=m.list||[]; renderProviders(providerList); renderModelLabel(); renderThinkCtl(); return; } // s98/think-grad: 池变了（设置勾/删模型）→快/深兄弟在场判定重算
     if(m.sys==='model_switched'){
       // 顶栏立即反映（不信 configOptions 缓存）
       $('model-cur').textContent=m.provider+' · '+m.model;
@@ -1028,18 +1028,34 @@ function openSession(sid){
     });
 }
 let lastKnownModel=null;
-// s98/think（research/35 通道 A）：思考力度三态控件。选项=最近 configOptions 里 thinking_effort.values
-// （真相源=goose 回包，零自带名单）；标签零术语。①多档→可选，选择即发 set_think；②恰 ["off"]（glm 系被
-// goose is_reasoning_model 名单遮蔽）→在场但禁用+人话提示；③无键→隐藏。切模型后 configOptions 刷新即自动重算三态。
+// s98/think（research/35 通道 A + research/37 L1）：思考力度四态控件。选项=最近 configOptions 里
+// thinking_effort.values（真相源=goose 回包，零自带名单）；标签零术语。①多档→可选，选择即发 set_think；
+// ②无多档（glm 系被 goose is_reasoning_model 名单遮蔽成 ["off"]；参数通道 5 样本×5 臂已证死，research/37）
+// 且池内有快/深兄弟模型（当前名以 -flash 结尾↔去后缀同名，.endsWith 精确——flashx 不算）→两档「快一点/想深点」，
+// 选择=走既有会话内切模型通道（真杠杆=模型本身）；当前模型是唯一真相（flash→快选中、完整版→深选中），不做独立
+// 持久化防双真相源；③遮蔽且无兄弟→在场但禁用+人话提示；④无键→隐藏。切模型/providers 池刷新后自动重算。
 const THINK_LABELS={off:'不用额外想',low:'快一点',medium:'标准',high:'深想',max:'尽全力想'};
+let thinkGrad=null; // 态②快/深档的兄弟模型对 {fast,deep}——renderThinkCtl 派生、onchange 消费
 function renderThinkCtl(){
   const sel=$('think'); if(!sel) return;
+  thinkGrad=null;
   const o=configOptions.find(c=>c&&c.id==='thinking_effort');
-  if(!o||!Array.isArray(o.options)||!o.options.length){ sel.style.display='none'; return; } // 三态③：模型没有这个配置面
+  if(!o||!Array.isArray(o.options)||!o.options.length){ sel.style.display='none'; return; } // 态④：模型没有这个配置面
   const vals=o.options.map(x=>x&&x.value).filter(v=>typeof v==='string');
   sel.style.display='';
-  if(vals.length<=1){ // 三态②：只剩 off——这个模型想多深它自己定，调不了快慢
-    sel.disabled=true; sel.innerHTML='';
+  if(vals.length<=1){ // 无多档：先试池内快/深兄弟（态②），没有才诚实禁用（态③）
+    const cur=lastKnownModel||((configOptions.find(c=>c&&c.id==='model')||{}).currentValue);
+    const sib=typeof cur==='string'?(cur.endsWith('-flash')?cur.slice(0,-6):cur+'-flash'):null;
+    if(sib&&poolModels().some(m=>m&&m.value===sib)){
+      thinkGrad=cur.endsWith('-flash')?{fast:cur,deep:sib}:{fast:sib,deep:cur};
+      sel.disabled=false; sel.title='想深一点会换成完整版模型，更准，也稍慢一点。'; sel.innerHTML='';
+      for(const p of [[thinkGrad.fast,'快一点（快速版）'],[thinkGrad.deep,'想深点（完整版，更准也稍慢）']]){
+        const op=document.createElement('option'); op.value=p[0]; op.textContent=p[1]; sel.appendChild(op);
+      }
+      sel.value=(cur===thinkGrad.deep)?thinkGrad.deep:thinkGrad.fast; // 与模型选择器同一真相：现在是谁谁选中
+      return;
+    }
+    sel.disabled=true; sel.innerHTML=''; // 态③：只剩 off——这个模型想多深它自己定，调不了快慢
     const op=document.createElement('option'); op.value='off'; op.textContent='想多深它自己定'; sel.appendChild(op);
     sel.title='这个模型想多深它自己定，调不了快慢';
     return;
@@ -1051,7 +1067,7 @@ function renderThinkCtl(){
   for(const v of vals){ const op=document.createElement('option'); op.value=v; op.textContent=THINK_LABELS[v]||v; sel.appendChild(op); }
   sel.value=pick;
 }
-$('think').onchange=e=>{ const v=e.target.value; localStorage.setItem('pfThinkEffort',v); if(!wssend({type:'set_think',sessionId:currentSid,value:v})) renderThinkCtl(); }; // s98/think: 主控裁「会话内切换即记习惯」；没连上按 configOptions 真相源回滚显示
+$('think').onchange=e=>{ const v=e.target.value; if(thinkGrad){ switchModel(v); return; } localStorage.setItem('pfThinkEffort',v); if(!wssend({type:'set_think',sessionId:currentSid,value:v})) renderThinkCtl(); }; // s98/think: 主控裁「会话内切换即记习惯」；没连上按 configOptions 真相源回滚显示。s98/think-grad: 态②=既有切模型通道（不记 pfThinkEffort——切模型不冒充 effort 习惯；失败由 error 帧重绘回滚）
 function renderModelLabel(){
   try{
     const cur=configOptions.find(o=>o.id==='model');
