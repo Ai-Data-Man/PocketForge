@@ -76,6 +76,60 @@ ck('台账来源句=它干活时自己学会的做法', js.indexOf('它干活时
 ck('made fnote 指路=做法在「🧩 手艺」', htmlNoBody.indexOf('做法在「🧩 手艺」') >= 0);
 ck('技术区措辞：自己加的工具（技术）+ 工具目录', htmlNoBody.indexOf('自己加的工具（技术）') >= 0 && htmlNoBody.indexOf('在工具目录里找') >= 0);
 
+// ---- ④ 桥侧用户面段（qa2/P2-1：QA 用 curl 活体证伪 faucet-db desc 带「本事」，探针扫描面从 chat.tpl.html 扩到桥模板）----
+// 手法=audit-r5-probe 取桥文件同款：提取 LABELS / MCP_CATALOG / handleSkillstore 回执三段，剥注释后扫字符串面
+// （注释里的旧词=代码面合法存活不计数）。三段内 技能/插件 无豁免居所（技术区「技能源」串与 agent 面均不在段内）。
+const bridge = fs.readFileSync(__dirname + '/../../forge/conf/templates/chat-bridge.tpl.js', 'utf8');
+const BRIDGE_BAD = ['本事', '本领', '插件', '技能'];
+function bridgeZero(segName, seg) {
+    for (const w of BRIDGE_BAD) {
+        const i = seg.indexOf(w);
+        if (i >= 0) return '「' + w + '」@ ' + seg.slice(Math.max(0, i - 40), i + 40);
+    }
+    return '';
+}
+const labelsSeg = stripJsComments((bridge.match(/const LABELS = \{[\s\S]*?\n        \};/) || [''])[0]);
+const mcpSeg = stripJsComments((bridge.match(/const MCP_CATALOG = \[[\s\S]*?\n\];/) || [''])[0]);
+const skillSeg = stripJsComments((bridge.match(/function handleSkillstore\(req, res, url\) \{[\s\S]*?\n\}\n\nasync function handleHttp/) || [''])[0]);
+ck('桥段可定位：LABELS / MCP_CATALOG / skillstore 回执', !!labelsSeg && !!mcpSeg && !!skillSeg);
+ck('桥 LABELS 段旧词清零（本事|本领|插件|技能）', !bridgeZero('LABELS', labelsSeg), bridgeZero('LABELS', labelsSeg));
+ck('桥 MCP_CATALOG 段旧词清零', !bridgeZero('MCP_CATALOG', mcpSeg), bridgeZero('MCP_CATALOG', mcpSeg));
+ck('桥 skillstore 回执段旧词清零', !bridgeZero('skillstore', skillSeg), bridgeZero('skillstore', skillSeg));
+// 欢迎页=妻子面首屏（qa2/P2-1 顺手清扫面）：纯 HTML 零注释剥离，四旧词直接清零
+const welcome = fs.readFileSync(__dirname + '/../../forge/conf/templates/welcome.tpl.html', 'utf8');
+ck('欢迎页旧词清零（本事|本领|插件|技能）', !bridgeZero('welcome', welcome), bridgeZero('welcome', welcome));
+
+// ---- ⑤ 活体断言：GET /api/extensions 四行 desc 零旧词（QA curl 证伪形态进断言；桥不在线=SKIP 不计数）----
+(function live() {
+    const http = require('http');
+    const base = process.env.PF_BRIDGE || 'http://127.0.0.1:8790';
+    let finished = false;
+    const finish = () => {
+        if (finished) return;
+        finished = true;
+        console.log('semantics-r5-probe: PASS=' + pass + ' FAIL=' + fail);
+        process.exit(fail ? 1 : 0);
+    };
+    const skip = () => { console.log('SKIP: 活体 /api/extensions 断言（桥不在线，离线单跑模式）'); finish(); };
+    const req = http.get(base + '/api/extensions', res => {
+        let body = '';
+        res.on('data', d => body += d);
+        res.on('end', () => {
+            let rows = null;
+            try { rows = JSON.parse(body); } catch {}
+            const ok4 = Array.isArray(rows) && rows.length === 4 && rows.every(r => typeof r.name === 'string' && typeof r.desc === 'string');
+            ck('活体 /api/extensions 四行形状（含 name/desc 字符串）', ok4, body.slice(0, 120));
+            if (ok4) {
+                const hitW = rows.map(r => [r.name, r.desc].join(' ')).map(s => BRIDGE_BAD.filter(w => s.indexOf(w) >= 0)).filter(a => a.length);
+                ck('活体 /api/extensions desc 零旧词（本事|本领|插件|技能）', hitW.length === 0, JSON.stringify(hitW));
+            }
+            finish();
+        });
+    });
+    req.setTimeout(2500, () => { try { req.destroy(); } catch {} skip(); });
+    req.on('error', skip);
+})();
+
 // ---- 工具函数 ----
 function hit(seg, w) { const i = seg.indexOf(w); return i < 0 ? '' : seg.slice(Math.max(0, i - 40), i + 40); }
 function scriptNoC() { return stripJsComments(scriptPart); }
@@ -101,6 +155,4 @@ function stripJsComments(src) {
     }
     return out;
 }
-
-console.log('semantics-r5-probe: PASS=' + pass + ' FAIL=' + fail);
-process.exit(fail ? 1 : 0);
+// 汇总与退出由上方活体块 finish() 收口（离线时 2.5s 超时 SKIP 兜底，不悬挂）

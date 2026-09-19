@@ -293,12 +293,19 @@ async function main() {
         // 应用
         say('apply', '写入新版本文件…');
         for (const rel of [...applied, ...added]) {
-            // r5/S3（裁决 2026-09-19-capability-semantics-r5 §5.2/T4）：出厂手艺停用态=SKILL.md.off 在盘（用户意愿）——
-            // 升级包里的 SKILL.md 不得复活它（差量判 added 直接回写会把停着的手艺顶回 goose 发现面+造成 .md/.off 并存）。
-            // 内容升级仍可达：未停用（无 .off 孪生）的 SKILL.md 照常差量替换。
-            if (rel.startsWith('.agents/skills/') && rel.endsWith('/SKILL.md') && fs.existsSync(path.join(ROOT, rel + '.off'))) continue;
             const src = path.join(newRoot, rel.split('/').join(path.sep));
             const dst = path.join(ROOT, rel.split('/').join(path.sep));
+            // r5/S3（裁决 2026-09-19-capability-semantics-r5 §5.2/T4）：出厂手艺停用态=SKILL.md.off 在盘（用户意愿）——
+            // 升级包里的 SKILL.md 不得复活它（差量判 added 直接回写会把停着的手艺顶回 goose 发现面+造成 .md/.off 并存）。
+            // qa2/P3（QA 复审 P3）：停用态内容保鲜——.off 孪生在且包内内容≠.off 现内容→新内容写进 .off（状态保护
+            // 不变，启用即得新版；.off=出厂内容改名非用户手改档案，语义无损）；等内容跳过照旧；刷新失败不挡升级。
+            if (rel.startsWith('.agents/skills/') && rel.endsWith('/SKILL.md') && fs.existsSync(dst + '.off')) {
+                try {
+                    const incoming = fs.readFileSync(src, 'utf8');
+                    if (fs.readFileSync(dst + '.off', 'utf8') !== incoming) fs.writeFileSync(dst + '.off', incoming);
+                } catch (e) { console.log('off twin refresh skipped:', rel, (e && e.message) || e); }
+                continue;
+            }
             fs.mkdirSync(path.dirname(dst), { recursive: true });
             fs.copyFileSync(src, dst);
         }

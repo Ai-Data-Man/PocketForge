@@ -126,7 +126,7 @@ curl -s -X POST "$B/api/skillstore" -H 'content-type: application/json' -d '{"na
 curl -s -X POST "$B/api/mcpstore" -H 'content-type: application/json' -d '{"id":"../../x","op":"uninstall"}' | grep -q '没有安装这个 MCP'; ck "mcpstore uninstall foreign id rejected" $?
 curl -s -X POST "$B/api/mcpstore" -H 'content-type: application/json' -d '{"id":["fetch"],"op":"uninstall"}' | grep -q '目录里没有这个 MCP'; ck "mcpstore uninstall array id rejected" $?
 curl -s -X POST "$B/api/mcpstore" -H 'content-type: application/json' -d '{"id":"ghost-mcp","op":"uninstall"}' | grep -q '没有安装这个 MCP'; ck "mcpstore uninstall unknown id friendly" $?
-curl -s -X POST "$B/api/skillstore" -H 'content-type: application/json' -d '{"name":"ghost-skill-zzz","op":"uninstall"}' | grep -q '没有安装这个技能'; ck "skillstore uninstall unknown name friendly" $?
+curl -s -X POST "$B/api/skillstore" -H 'content-type: application/json' -d '{"name":"ghost-skill-zzz","op":"uninstall"}' | grep -q '没有安装这个手艺'; ck "skillstore uninstall unknown name friendly" $?
 # s57 并入已撤（裁决 2026-09-16 §2）：GET=纯内置四行（chatrecall visible:false 在内），零 mcp-*；写通道 POST 保留给插件 tab 开关钮
 curl -s "$B/api/extensions" | python -c "
 import sys,json
@@ -225,8 +225,16 @@ post '{"name":"ghost-skill-zzz","op":"disable"}' | grep -q '没有这条手艺';
 post '{"name":"ghost-skill-zzz","op":"enable"}' | grep -q '没有这条手艺'; ck "skillstore enable unknown name friendly (r5/S3 negative)" $?
 post '{"name":["fuzz-toggle-tmp"],"op":"disable"}' | grep -q '参数不合法'; ck "skillstore disable array name rejected (String([v]) family)" $?
 post '{"name":true,"op":"disable"}' | grep -q '参数不合法'; ck "skillstore disable bool name rejected (String([v]) family)" $?
-post '{"name":"fuzz-toggle-tmp","op":["disable"]}' | grep -q '商店里没有这个技能'; ck "skillstore array op falls to install gate friendly, no toggle side effect (r5/S3)" $?
+# qa2/P4-b: op 严格枚举门——类型混淆（数组/数字/对象）一律人话拒，不再落进安装分支；qa2/P2-1: 市场未知名措辞钉新词汇
+post '{"name":"fuzz-toggle-tmp","op":["disable"]}' | grep -q '参数不合法' && post '{"name":"ghost-skill-zzz"}' | grep -q '商店里没有这个手艺'; ck "skillstore array op rejected at op gate + market miss wording 手艺 (qa2/P4-b+P2-1)" $?
 [ -f "$ST2/SKILL.md" ] && [ ! -f "$ST2/SKILL.md.off" ]; ck "array op left skill untouched on disk (r5/S3)" $?
+post '{"name":"fuzz-toggle-tmp","op":123}' | grep -q '参数不合法' && post '{"name":"fuzz-toggle-tmp","op":{}}' | grep -q '参数不合法'; ck "skillstore op type confusion (123/{}) rejected friendly (qa2/P4-b)" $?
+# qa2/P2-2: 停/启 rename 失败人话门——PowerShell 无 Delete 共享锁（QA M3 同款形态桩）占住档案，disable 与 enable 回执均人话零路径
+PSTO="$(dirname "$0")"; command -v cygpath >/dev/null 2>&1 && PSTO="$(cygpath -w "$PSTO")"
+PSMD="$ST2/SKILL.md"; command -v cygpath >/dev/null 2>&1 && PSMD="$(cygpath -w "$ST2/SKILL.md")"
+powershell -NoProfile -ExecutionPolicy Bypass -File "$PSTO/skillstore-lock-fixture.ps1" -Base "$B" -MdPath "$PSMD" -Name fuzz-toggle-tmp > /tmp/qa2-lock-out.txt 2>&1
+grep -q 'PH1:.*有程序正占着这个文件' /tmp/qa2-lock-out.txt && grep -q 'PH2:.*有程序正占着这个文件' /tmp/qa2-lock-out.txt && ! grep -qE 'EBUSY|\.agents' /tmp/qa2-lock-out.txt; ck "skillstore disable+enable locked-file human gate, zero path reflect (qa2/P2-2)" $?
+rm -f /tmp/qa2-lock-out.txt
 cp "$ST2/SKILL.md" "$ST2/SKILL.md.off"
 curl -s "$B/api/skills" | python -c "
 import sys,json

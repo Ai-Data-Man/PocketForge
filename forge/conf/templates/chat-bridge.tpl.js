@@ -614,6 +614,16 @@ function humanDeleteErr(scope, id, e) {
     console.log('delete err:', scope, id, m);
     return h;
 }
+// qa2/P2-2: 手艺停/启 rename 失败人话门（humanDeleteErr 同款）——disable/enable 的 rename 底层异常 message
+// 含绝对内部路径，直接透传=回执反射安装路径（QA PowerShell 无 Delete 共享锁活体红证，enable 同构）。
+// 已知错误族→零路径人话句；未知→「没停成/没开成」。原始错误恒落桥 console（pc.log）供诊断，回执不透路径。
+function humanToggleErr(failText, e) {
+    const m = String((e && e.message) || e || '');
+    console.log('skillstore toggle err:', failText, m);
+    if (/\b(?:EPERM|EBUSY|EACCES)\b/.test(m)) return '有程序正占着这个文件，稍后再试';
+    if (/\bENOENT\b/.test(m)) return '已经不在了';
+    return failText + '，稍后再试';
+}
 // r4/S2a: 单工作区删除守卫+落盘核心（/api/ws/delete 与 /api/ws/delete_batch 共用；逻辑自单删路径原样抽出，
 // 行为零变化）。成功删目录并从 map 摘键（写回由调用方收口：单删=删后即写，批量=末尾一次写）；失败返回人话 err 串。
 function wsDeleteOne(ws, curSid, map) {
@@ -1259,7 +1269,7 @@ async function fetchAllRemoteSkills(failedOut) {
             // qa-P2: 上游 GitHub 返回的目录名与用户输入同门——白名单外跳过（防源被攻破写出缓存树之外）
             if (!/^[\w\-]{1,64}$/.test(e.name) || !fileNameSafe(e.name)) continue;
             if (skills.some(s => s.dir === e.name)) { console.log('skill source dup skip:', e.name, '(先到保留, 后到源 ' + src.repo + ')'); continue; }
-            let meta = { name: e.name, description: '(远程技能)' };
+            let meta = { name: e.name, description: '(远程手艺)' }; // qa2/P2-1: 旧词清零（市场 tab 可见串）
             try { meta = parseSkillMeta(await ghText('https://raw.githubusercontent.com/' + src.repo + '/' + src.branch + '/' + src.subdir + '/' + e.name + '/SKILL.md'), e.name); } catch {}
             const body = meta.body; delete meta.body;
             const ddir = path.join(SKILL_CACHE, e.name);
@@ -1388,7 +1398,7 @@ function skillInstallBlocked(dst) {
     if (!FSS.existsSync(path.join(dst, 'SKILL.md')) && !FSS.existsSync(path.join(dst, 'SKILL.md.off'))) return null; // 与卸载同门：双后缀才算「在盘」
     const o = originOf(dst);
     if (o && o.source !== 'self') return null;
-    return '这个名字小 forge 自己在用，先换个技能名再装。';
+    return '这个名字小 forge 自己在用，先换个手艺名再装。'; // qa2/P2-1: 旧词清零
 }
 // qa返工(P2-2): 覆盖=更新先装到 dst.tmp，全部成功后旧版→.bak→tmp 换名→删 bak；任一步失败清 tmp（必要时还原 .bak）再抛错——失败时旧版完好。
 // 换名后 dst 为全新目录，无 cpSync 合并残留（qa-P3-3 随之消除）。调用方 name 已过白名单+保留名过滤，.tmp/.bak 后缀不产生新保留名。
@@ -1659,8 +1669,8 @@ function marketMutate(b) {
                 const id = typeof b.id === 'string' ? b.id : '';
                 const i = list.findIndex(x => x.id === id);
                 if (i < 0) return bad('目录里没有这个条目，请刷新后重试');
-                if ((mcpInstallState[id] || {}).stage === 'installing') return bad('这个插件正在安装，等装完再删');
-                if (mcpInstalled(id)) return bad('这个插件已安装，先在上方卸载，再从目录删除'); // 孤儿规则：目录删了已装项，config.yaml 块与 vendor 目录会成孤儿
+                    if ((mcpInstallState[id] || {}).stage === 'installing') return bad('这个工具正在安装，等装完再删'); // qa2/P2-1: 旧词清零（工具目录技术区回执同门）
+                    if (mcpInstalled(id)) return bad('这个工具已安装，先在上方卸载，再从目录删除'); // 孤儿规则：目录删了已装项，config.yaml 块与 vendor 目录会成孤儿
                 if (list.length <= 1) return bad('目录至少要保留一个条目'); // 读取器把空 catalog 视为坏配置回落内置默认，写空无意义
                 list.splice(i, 1);
             }
@@ -2732,6 +2742,9 @@ function handleSkillstore(req, res, url) {
                 const b = JSON.parse(raw.toString('utf8'));
                 // s50h(FIND-3): 白名单外再过保留设备名（con 等），remote 与本地复制两分支同门
                 if (typeof b.name !== 'string' || !/^[\w\-]{1,64}$/.test(b.name) || !fileNameSafe(b.name)) throw new Error('参数不合法');
+                // qa2/P4-b: op 严格枚举门——已给 op 就必须是 disable/enable/uninstall 之一（含类型混淆 op:123/[]/{} 与
+                // 未知串），不再落进安装分支（market/local 覆盖=更新语义，类型混淆会静默重装；QA P4-2）
+                if (b.op !== undefined && b.op !== 'disable' && b.op !== 'enable' && b.op !== 'uninstall') throw new Error('参数不合法');
                 // r5/S3（裁决 §5.2）：手艺停/启——SKILL.md ↔ SKILL.md.off 同目录单 rename（goose 与桥发现面均按精确文件名
                 // SKILL.md 匹配、对 .off 双盲，源码级已证：停=完全出上下文不删档，启=改名还原，事务可逆零 goose 改动）。
                 // disable 对已停幂等 ok（批量混态不炸）；enable 对在用拒（fuzz 负向量）；
@@ -2746,20 +2759,20 @@ function handleSkillstore(req, res, url) {
                             if (hasOff) { json200(res, { ok: true, note: '本来就没在用' }); return; }
                             throw new Error('没有这条手艺');
                         }
-                        try { FSS.renameSync(md, off); } catch (e) { throw new Error('没停成：' + (e && e.message ? e.message : '')); }
+                        try { FSS.renameSync(md, off); } catch (e) { throw new Error(humanToggleErr('没停成', e)); } // qa2/P2-2: 人话门（回执零路径，原始错误落 console）
                         json200(res, { ok: true, note: '已停' });
                         return;
                     }
                     if (hasMd) throw new Error('这条手艺正在用，不用再开');
                     if (!hasOff) throw new Error('没有这条手艺');
-                    try { FSS.renameSync(off, md); } catch (e) { throw new Error('没开成：' + (e && e.message ? e.message : '')); }
+                    try { FSS.renameSync(off, md); } catch (e) { throw new Error(humanToggleErr('没开成', e)); } // qa2/P2-2
                     json200(res, { ok: true, note: '已开' });
                     return;
                 }
                 // s57: op=uninstall 删 .agents/skills/<dir>（白名单与安装同门）；r5/S3: 停着的手艺（仅 .off）同样可卸——存在性认双后缀
                 if (b.op === 'uninstall') {
                     const dst = path.join(INSTALLED, b.name);
-                    if (!FSS.existsSync(path.join(dst, 'SKILL.md')) && !FSS.existsSync(path.join(dst, 'SKILL.md.off'))) throw new Error('没有安装这个技能，不用卸载');
+                    if (!FSS.existsSync(path.join(dst, 'SKILL.md')) && !FSS.existsSync(path.join(dst, 'SKILL.md.off'))) throw new Error('没有安装这个手艺，不用卸载'); // qa2/P2-1: 旧词清零
                     FSS.rmSync(dst, { recursive: true, force: true });
                     json200(res, { ok: true, note: '已卸载' });
                     return;
@@ -2767,7 +2780,7 @@ function handleSkillstore(req, res, url) {
                 if (b.remote) { installRemoteSkill(b.name, res); return; }
                 const src = path.join(REPO, b.name);
                 const dst = path.join(INSTALLED, b.name);
-                if (!FSS.existsSync(path.join(src, 'SKILL.md'))) throw new Error('商店里没有这个技能');
+                if (!FSS.existsSync(path.join(src, 'SKILL.md'))) throw new Error('商店里没有这个手艺'); // qa2/P2-1: 旧词清零
                 const blocked = skillInstallBlocked(dst); // s70: 同名冲突保护（本地精选目录安装同门）
                 if (blocked) throw new Error(blocked);
                 // qa返工(P2-2): 本地复制同门原子安装——写 origin 失败（P3-1）随整体回滚，不假成功
@@ -3131,7 +3144,7 @@ const ext = path.extname(f).toLowerCase();
         const CFG = path.join(ROOT, 'conf', 'goose', 'config', 'config.yaml');
         // 对小白隐藏 chatrecall（纯增强，关掉无收益）；只暴露有感知差异的扩展
         const LABELS = {
-            'faucet-db': { name: '数据库', desc: '存数据、查数据的本事（保留它基本功能都在）' },
+            'faucet-db': { name: '数据库', desc: '存数据、查数据的（保留它基本功能都在）' }, // qa2/P2-1: 去「本事」（裁决 §3 词汇表；QA 活体证伪的桥侧残留）
             // r5/S2（裁决 §4 归置审计）：browser 收窄为「要用真浏览器」——抓表格让给工具/手艺划界句；memory 补反向指路（与 memory-graph 双向划界）
             'browser': { name: '浏览器自动化', desc: '要用真浏览器的活儿：要登录、要点按的页面，看内网系统' },
             'memory': { name: '长期记忆', desc: '平时的喜好和常用做法它自己记，去「💭 记忆」看、可删；人物设备的台账关系用「关系图谱记忆」（🔌 工具）' },
@@ -4349,7 +4362,20 @@ function handleClient(ws, msg) {
                 healthCache.at = 0; probeProviderHealth(); // 跨档 switch=换档，同 §S1 失效语义
                 ws.send({ sys: 'provider_switching', to: target.name, model: msg.model });
                 hotRestartProvider().then(() => {
-                    ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, restarted: true });
+                    // qa2/P4-a: restarted 回执补 configOptions（ff6ef43 无会话分支同款——回包档位随行，前端思考力度
+                    // 控件刷新窗口闭合：重开会话前 select 不 stale）。真相源取法：有绑定 sid 走 session/load（幂等
+                    // evicted-restore，用户重开对话时的同一通道提前走）；无绑定/回包无键=照旧不带（下次开盒由回包重算）。
+                    const osid = wsSession.get(ws);
+                    const plain = () => ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, restarted: true });
+                    if (!osid) return plain();
+                    const rid = nextId++;
+                    waiting.set(rid, { ws, resolve: (res) => {
+                        const co = res && Array.isArray(res.configOptions) ? res.configOptions : null;
+                        const frame = { sys: 'model_switched', model: msg.model, provider: target.name, restarted: true };
+                        if (co) { frame.configOptions = co; noteThinkOptions(osid, co); }
+                        ws.send(frame);
+                    }, reject: () => plain() });
+                    acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: rid, method: 'session/load', params: { sessionId: osid } }) + '\n');
                 }).catch(e => ws.send({ sys: 'error', text: '切换供应商失败: ' + e.message }));
             }
             return;
