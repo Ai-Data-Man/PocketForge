@@ -1673,7 +1673,7 @@ function marketMutate(b) {
     }
 }
 
-// ---- s50b: 库里有什么（GET /api/db/overview）——faucet CLI 发现实 + REST 数行数；端点不收任何用户参数 ----
+// ---- s50b: 库里有什么（GET /api/db/overview）——faucet CLI 发现实 + 每库两次 REST 富化（tinfo 说明/forge_meta 建账）；端点不收任何用户参数 ----
 const FAUCET_EXE = path.join(ROOT, 'bin', 'faucet', 'faucet.exe');
 const DB_NAME_RE = /^[A-Za-z0-9_\-]+$/; // 服务/表名白名单：来自 faucet 输出，拼 CLI 参数/REST 路径前强制过一遍
 // FINDING-1（fuzz bea6ee7）：并发 GET /api/assets 与 /api/db/overview 时，桥迸发的 faucet CLI 进程同撞 config store
@@ -1750,7 +1750,7 @@ async function dbOverview() {
         let names = [];
         try { names = ((JSON.parse(await faucetCli(['db', 'schema', svc]) || 'x') || {}).tables || []).map(t => (t && t.name) || '').filter(x => DB_NAME_RE.test(x)); } catch { schemaMiss = true; } // FINDING-1: schema 通道与 list 同病（SQLITE_BUSY 重试后仍败）——置 tblMiss 不再静默
         for (const nm of names) {
-            if (n >= 200) { truncated++; continue; } // s95/S2b（裁决 2026-09-16 §3）：截断护栏 50→200（重度抓数装机可至 200+ 表；truncated 注与双出路文案维持）
+            if (n >= 2000) { truncated++; continue; } // s98/db-scale：护栏 200→2000（表名唯一成本=每库一次 schema CLI，faucet 实测全量返回无内部分页/上限）；>2000=防御异常库，truncated 注同步改真话（搜索已全覆盖）
             entry.tables.push({ name: nm, rows: null, desc: null, ts: null }); n++;
         }
     }
@@ -1759,8 +1759,8 @@ async function dbOverview() {
     if (port && key) {
         const jobs = [];
         for (const en of services) {
-            for (const t of en.tables) jobs.push(faucetGet('/api/v1/' + en.service + '/_table/' + t.name + '?fields=id', port, key, b => { const j = JSON.parse(b); return j.meta && typeof j.meta.count === 'number' ? j.meta.count : null; }).then(c => { t.rows = c; }));
-            jobs.push(faucetGet('/api/v1/' + en.service + '/_table/' + TINFO_TBL + '?max_results=200', port, key, b => {
+            // s98/db-scale：删每表 ?fields=id 行数预取（200 表=200 并发 HTTP 请求风暴）——行数移至 /api/db/_schema 响应 rows 字段按需取（dbTableSchema）
+            jobs.push(faucetGet('/api/v1/' + en.service + '/_table/' + TINFO_TBL + '?max_results=1000', port, key, b => {
                 const rows = JSON.parse(b).resource;
                 if (!Array.isArray(rows)) return null; // 表不存在/读不到 → 无说明，静默降级
                 const m = new Map();
@@ -1770,7 +1770,7 @@ async function dbOverview() {
                     m.set(row.tbl, { d: row.description.length > 200 ? row.description.slice(0, 200) : row.description, ts: parseAssetTs(row.created_at) }); // s83: created_at 同轮硬化解析（表级时间账，裁决 §3-S2）
                 }
                 return m.size ? m : null;
-            }).then(m => { if (m) for (const t of en.tables) { const e = m.get(t.name); if (e !== undefined) { t.desc = e.d; t.ts = e.ts; } } })); // IA-3：与行数取数同轮并发，每库一次请求
+            }).then(m => { if (m) for (const t of en.tables) { const e = m.get(t.name); if (e !== undefined) { t.desc = e.d; t.ts = e.ts; } } })); // IA-3：每库一次请求
             // s83: 每库读 forge_meta 建账行（hints 建库留账义务）——desc/ts/source；缺表/无行 → null 静默降级（存量服务=来源不详，不考古）
             // s83 返工🟡3: 逐行校验（对齐上方 tinfo :1560-1564 读法纪律）——字段类型合法才算好行，坏行跳过取首个好行；全坏=null 不编造
             jobs.push(faucetGet('/api/v1/' + en.service + '/_table/' + META_TBL + '?max_results=2', port, key, b => {
@@ -1816,8 +1816,15 @@ async function dbTableSchema(svc, tbl) {
     try { port = parseInt(FSS.readFileSync(path.join(ROOT, 'data', 'faucet.port'), 'utf8').trim(), 10) || 0; } catch {}
     try { key = FSS.readFileSync(path.join(ROOT, 'data', 'faucet', '.apikey'), 'utf8').trim(); } catch {}
     let samples = null;
-    if (port && key) samples = await faucetGet('/api/v1/' + svc + '/_table/' + tbl + '?max_results=3', port, key, b => (JSON.parse(b).resource) || []);
-    return { ok: true, columns, samples: Array.isArray(samples) ? samples : null };
+    let rows = null; // s98/db-scale: 行数按需取（overview 富化已删预取；读法=原预取同款 ?fields=id meta.count；null=未知前端显「－」）
+    if (port && key) {
+        const [s, r] = await Promise.all([
+            faucetGet('/api/v1/' + svc + '/_table/' + tbl + '?max_results=3', port, key, b => (JSON.parse(b).resource) || []),
+            faucetGet('/api/v1/' + svc + '/_table/' + tbl + '?fields=id', port, key, b => { const j = JSON.parse(b); return j.meta && typeof j.meta.count === 'number' ? j.meta.count : null; }),
+        ]);
+        samples = s; rows = r;
+    }
+    return { ok: true, columns, samples: Array.isArray(samples) ? samples : null, rows };
 }
 
 // ---- s83: 做过的东西——三源只读聚合（GET /api/assets；裁决 2026-09-13-app-management-ledger §3-S2）----

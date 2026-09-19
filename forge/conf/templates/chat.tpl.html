@@ -1950,8 +1950,9 @@ function dbRowEl(svc,t){ // 单表行：表名+说明（无说明占位）+行�
   row.style.cssText='border-bottom:1px dashed var(--line);font-size:.82rem';
   const head=document.createElement('div');
   head.style.cssText='display:flex;align-items:baseline;gap:8px;padding:7px 4px;cursor:pointer';
-  const descPart=t.desc?'<span style="flex:1;word-break:break-all">'+esc(t.desc)+'</span>':'<span class="fnote" style="flex:1">（还没说明——点开看结构）</span>';
-  head.innerHTML='<span style="word-break:break-all;text-decoration:underline dotted">'+esc(t.name)+'</span>'+descPart+'<span class="fnote" style="white-space:nowrap">'+(t.rows==null?'－':t.rows+' 条')+'</span><span class="fnote">▾</span>';
+  const paintHead=()=>{ const descPart=t.desc?'<span style="flex:1;word-break:break-all">'+esc(t.desc)+'</span>':'<span class="fnote" style="flex:1">（还没说明——点开看结构）</span>';
+    head.innerHTML='<span style="word-break:break-all;text-decoration:underline dotted">'+esc(t.name)+'</span>'+descPart+'<span class="fnote" style="white-space:nowrap">'+(t.rows==null?'－':t.rows+' 条')+'</span><span class="fnote">▾</span>'; };
+  paintHead(); // s98/db-scale: 抽可重渲染——overview 不再预取行数（未展开显「－」），展开带回 rows 后就地刷新行头
   const det=document.createElement('div');
   det.style.display='none'; det.style.padding='2px 4px 8px 14px';
   head.onclick=async()=>{
@@ -1973,6 +1974,7 @@ function dbRowEl(svc,t){ // 单表行：表名+说明（无说明占位）+行�
         h+='</tbody></table>';
         det.innerHTML=cols.length?h:'<div class="fnote">这张表还没有列定义。</div>';
         if(d.samples&&!d.samples.length){ const e2=document.createElement('div'); e2.className='fnote'; e2.textContent='（空表，还没存过数据）'; det.appendChild(e2); }
+        if(d.rows!=null){ t.rows=d.rows; paintHead(); } // s98/db-scale: _schema 带回行数（行未重渲染时就地更新行头）
       }
     } else { det.style.display='none'; }
   };
@@ -2024,10 +2026,10 @@ function dbPaint(){
     g.appendChild(dbRowEl(svc,t));
   }
   pagerPaint('db-pager',listPage.db,ps.pages,ps.total,p=>{ listPage.db=p; dbPaint(); },'row',ps.trunc);
-  if(lastDbOv.truncated){ // R2：截断必须留出路——先搜，搜不到聊天问小 forge
+  if(lastDbOv.truncated){ // s98/db-scale: >2000 异常库防御护栏注——搜索跑在全量表名上（真出路），不再有「问小 forge」兜底误导
     const tr=document.createElement('div');
     tr.className='fnote'; tr.style.marginTop='6px';
-    tr.textContent='表很多，这里先列了一部分（不影响小 forge 使用）。想找哪张：先用上面的搜索框找；没搜到，直接在聊天里问小 forge。';
+    tr.textContent='表特别多，这里先列了一部分。想找哪张：上面的搜索框能搜到全部表名。';
     box.appendChild(tr);
   }
 }
