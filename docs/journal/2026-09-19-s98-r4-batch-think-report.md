@@ -76,7 +76,9 @@
 ## 会话终态
 
 - **五主线全部闭环**：主线1 膨胀三支柱（页大小可调+批量三件+mem 转分页+@溢出+死控件热修）；主线2 能力域去重（官方徽标降条目级+技术区收窄零状态+MCP 退出妻子面+词汇分职）；主线3 思考力度（goose 原生通道+能力显隐+诚实降级；glm 遮蔽态实证；9router 别名=用户侧开放问题）；主线4 报表卡双数据源（真链全通含 xlsx 产出）；主线5 从零三轮（R1 冒烟→R2 膨胀实操抓 P1+P2×3→修复→R3 终验零红）。
-- **总量**：11 产品 commit（f851b49/3bdf8eb/084a495/ff6ef43/411867d/52cc184/71ecd40/a86a8f6/dc7e8ce/19909eb/fc5464a）+efffff7+docs 若干，全推 origin；测试包 iat14/15/16 在 dist（不入发布序）。
-- **终态基线：e2e-chat 62/62 + fuzz 199/199 + ui-logic 56 + ia-logic 28**。
-- **留档**：P4-2 failed[].err 路径反射（单删同族预存在）、P4-3 fuzz 遍历/类型混淆批量向量、B1/B2 建议级、pc process stop 后 cmd 子进程 python 孤儿（s91 家族新数据点）、apps-probe 首跑间歇红（黑匣子已装待再现）、goose v1.51.0（09-17 发布，63 commits/244 files——升级窗口重开，走 playbook 十面验证；thinking 相关面定向核查因 diff 过大未果）。
+- **总量**：12 产品 commit（f851b49/3bdf8eb/084a495/ff6ef43/411867d/52cc184/71ecd40/a86a8f6/dc7e8ce/19909eb/fc5464a/ed52988）+efffff7+docs 若干，全推 origin；测试包 iat14/15/16 在 dist（不入发布序）。
+- **终态基线：e2e-chat 62/62 + fuzz 203/203 + ui-logic 56 + ia-logic 28**。
+- **收尾追加批（ed52988）**：P4-2 humanDeleteErr（批量/单删回执 err 人话化零路径反射，EBUSY/ENOENT/SQLITE_BUSY 族映射+原始错误恒落 pc.log）；P4-3 fuzz 批量类型混淆/遍历向量 4 条（199→203）；B2 converge 落 data/logs/open-when-ready.log（四口全落+ASCII 防码页+真跑实证）。
+- **支线：goose v1.51.0 定向分诊（research/36，80eec76）**——红线五面源码级过门（model.rs/dispatch.rs/response_builder.rs 双 tag 逐字节一致=思考闸门/configOptions 面不变；session_manager 仅 cfg(unix) 权限加固=sid/DDL/truncate/closed 集全不动；acp/server.rs 仅 resource-link 渲染改造=新元数据形态入 playbook 注意项）；「Session not found」单源措辞 4 处原样；升级可立项无硬阻断。
+- **留档**：pc process stop 后 cmd 子进程 python 孤儿（s91 家族新数据点）、apps-probe 首跑间歇红（黑匣子已装待再现；本轮再现两次复跑恒绿）、9router 别名开放问题（用户侧，research/35 §4）。
 - **环境终态**：dev 栈 PFdrill2 复位 9 进程 restarts=0 healthz 200；C:\PF-TEST 空；e2e-report/8199/fake-PLM 残留清零。
