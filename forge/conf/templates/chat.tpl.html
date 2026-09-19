@@ -803,7 +803,15 @@ function onRpc(d){
     renderThinkCtl(); // s98/think: session/load 等回包也带 configOptions——老会话开盒即重算三态
   }
 }
-function loadSessions(){ rpc2('session/list').then(d=>{ const s=(d.result&&d.result.sessions)||[]; lastSessions=s; renderSessions(s); }).catch(()=>{}); }
+// s98/R2-P2-2: session/list 失败显性化——goose 拒帧走 d.error（pendingMap 恒 resolve，.catch 兜不到）、
+// 网络层异常走 catch；此前 .catch(()=>{}) 静默吞 → 侧栏恒空零诊断（R2 报告 §4-P2-2 坏行事故实录）。
+// console.warn 留痕 + sessListErr 驱动 renderSessions 活跃视图出「读取出错」人话行（归档视图数据源
+// 已是桥侧索引全量，session/list 失败不再拖垮归档管理面）。
+let sessListErr=false;
+function loadSessions(){ rpc2('session/list').then(d=>{
+  if(d&&d.error){ console.warn('session/list error:',d.error); sessListErr=true; renderSessions([]); return; }
+  sessListErr=false; const s=(d.result&&d.result.sessions)||[]; lastSessions=s; renderSessions(s);
+}).catch(e=>{ console.warn('session/list failed:',e); sessListErr=true; renderSessions([]); }); }
 let currentSid=null;
 let sideView='chat', archCount=0; // IA-2: 侧栏视图切换（对话/归档）——旧尾部折叠头机制被视图取代；archCount 喂「📦 归档 N」计数
 function tsLocal(s){ // goose 两种时间串：ACP 带 +00:00 后缀、sessions.db 是无时区 UTC 裸串；统一转本地，失败回落原串
@@ -846,10 +854,13 @@ function renderSessions(list){
   const real=list.filter(s=>{const t=(s._meta&&s._meta.sessionType)||'standard';return t!=='scheduled';});
   const byNew=s=>{const d=tsLocal(s.updatedAt);return d?d.getTime():0;}; // s64: 解析失败按 0 沉底；sort 稳定，时间相同保持原序
   const act=real.filter(s=>!archSet[s.sessionId]).sort((a,b)=>byNew(b)-byNew(a));
-  const arc=real.filter(s=>archSet[s.sessionId]).sort((a,b)=>byNew(b)-byNew(a));
+  // s98/R2-P2-1/P3-1: 归档行喂桥侧索引全量（30+ 积压全可见、零消息归档在列）；索引未就绪回落旧交集口径
+  const arc=(typeof lastArchRows!=='undefined'&&Array.isArray(lastArchRows))
+    ?lastArchRows.slice().sort((a,b)=>byNew(b)-byNew(a))
+    :real.filter(s=>archSet[s.sessionId]).sort((a,b)=>byNew(b)-byNew(a));
   archCount=arc.length; paintSideChips(); // IA-2: 归档计数跟随列表刷新
   $('sess-org').disabled=!arc.length; // s98/R1-F7: 空归档整理模式无可勾条目——置灰不可点（在场/隐藏仍归 showSideView 管）
-  if(!act.length&&!arc.length){ box.innerHTML='<div style="padding:12px;font-size:.75rem;color:var(--mut)">'+(sideView==='arch'?'还没有归档的对话。日常对话右边的 📥 点一下就会收进这里。':'还没有对话。点上面「＋ 新对话」开始。')+'</div>'; pagerPaint('arch-pager',1,1,0,null); return; } // qa P3: 全空早退同样清翻页器（归档视图下逐条删光可达）；s98/R1-F7: 早退先于归档分支——归档视图须用归档空态文案（修前沿用活跃态误导）
+  if(!act.length&&!arc.length){ box.innerHTML='<div style="padding:12px;font-size:.75rem;color:var(--mut)">'+(sideView==='arch'?'还没有归档的对话。日常对话右边的 📥 点一下就会收进这里。':((typeof sessListErr!=='undefined'&&sessListErr)?'对话列表读取出错，刷新试试。':'还没有对话。点上面「＋ 新对话」开始。'))+'</div>'; pagerPaint('arch-pager',1,1,0,null); return; } // qa P3: 全空早退同样清翻页器（归档视图下逐条删光可达）；s98/R1-F7: 早退先于归档分支——归档视图须用归档空态文案（修前沿用活跃态误导）；s98/R2-P2-2: session/list 失败时活跃侧给人话不装「还没有对话」
   if(sideView==='arch'){ // IA-2: 归档视图=全量清单+搜索+行型分页（30/页）——30 截断从此有出路（R2）
     if(!arc.length){ box.innerHTML='<div style="padding:12px;font-size:.75rem;color:var(--mut)">还没有归档的对话。日常对话右边的 📥 点一下就会收进这里。</div>'; pagerPaint('arch-pager',1,1,0,null); return; } // qa P3: 早退清翻页器，防旧「第 N/M 页」残留
     const q=($('arch-q').value||'').trim().toLowerCase();
@@ -873,7 +884,7 @@ function renderSessions(list){
   // 当前落 R2 31-100 档=分页+搜索；超 100 条即复审归档引导。
   const q=($('arch-q').value||'').trim().toLowerCase();
   const shown=act.filter(s=>!q||String(s.title||'').toLowerCase().includes(q));
-  if(!shown.length){ box.innerHTML='<div class="fnote" style="padding:8px 10px">'+(q?'没找到带「'+esc(q)+'」的对话。':'还没有对话。点上面「＋ 新对话」开始。')+'</div>'; pagerPaint('arch-pager',1,1,0,null); return; } // qa P3: 早退清翻页器，同归档分支
+  if(!shown.length){ box.innerHTML='<div class="fnote" style="padding:8px 10px">'+(q?'没找到带「'+esc(q)+'」的对话。':((typeof sessListErr!=='undefined'&&sessListErr)?'对话列表读取出错，刷新试试。':'还没有对话。点上面「＋ 新对话」开始。'))+'</div>'; pagerPaint('arch-pager',1,1,0,null); return; } // qa P3: 早退清翻页器，同归档分支；s98/R2-P2-2: 读取出错人话（console.warn 同步留痕）
   const ps=pageSlice(shown,'chat','row');
   for(const s of ps.rows) box.appendChild(sessItem(s,false));
   pagerPaint('arch-pager',listPage.chat,ps.pages,ps.total,p=>{ listPage.chat=p; renderSessions(lastSessions); },'row',ps.trunc);
@@ -2582,7 +2593,7 @@ function pageSlice(arr,key,form){ // r4/S1: 形态 'card'|'row'——实际页�
 function pagerPaint(id,page,pages,total,go,form,trunc){ // pages≤1 且无截断注时整块不渲染（≤阈值零视觉，r3 语义保持——机制恒走）；‹›按钮热区≥32px；r4/S1: 右侧「每页 N 条」选择器，改档即 go(1) 回第 1 页重渲染（go 回调内置 listPage[key]=p）
   const pager=$(id); if(!pager) return;
   pager.innerHTML='';
-  if(pages<=1&&!trunc) return;
+  if(pages<=1&&!trunc&&(!form||psGet(form)!==PS_ALL)) return; // s98/R2-P4-1: 当前档=「一页看全」（或 trunc 在场）时保留 select 最小渲染——修前 pages=1 整块隐藏，本面板无 UI 路径换回分页档；普通档 pages=1 仍零视觉（r3 语义不变）
   const mk=(tx,aria,dis,fn)=>{const b=document.createElement('button');b.className='mini';b.textContent=tx;b.style.cssText='min-width:36px;min-height:32px';b.setAttribute('aria-label',aria);b.disabled=dis;b.onclick=fn;return b;};
   if(pages>1){
     pager.appendChild(mk('‹','上一页',page<=1,()=>go(page-1)));
@@ -2925,7 +2936,10 @@ let lastSessions=[]; let archSet={}; let delWarned=false; let delRefreshT=null; 
 let allFilter={q:'',sort:'mtime',chip:'active'}; // r4/S1: page 态迁入 listPage.all（手写分页迁 pageSlice 统一机制）
 let allQT=null; // r4/S3c: 搜索防抖句柄（apps-q 同款 200ms）
 
-async function loadArch(){ try{ const r=await fetch('/api/sessions/archive'); archSet=((await r.json()).arch)||{}; }catch{ archSet={}; } }
+// s98/R2-P2-1/P3-1: lastArchRows=桥侧归档索引全量行（/api/sessions/archive rows：sessionId/title/updatedAt），
+// 归档视图数据源与 goose 50 窗解耦；null=未取到（回落旧「列表∩归档集」口径）
+let lastArchRows=null;
+async function loadArch(){ try{ const r=await fetch('/api/sessions/archive'); const d=await r.json(); archSet=d.arch||{}; lastArchRows=Array.isArray(d.rows)?d.rows:null; }catch{ archSet={}; lastArchRows=null; } }
 async function archiveSession(sid,arch){
   try{
     const r=await fetch('/api/sessions/archive',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sid,archived:arch})});
@@ -3170,7 +3184,7 @@ function filteredWs(){
     if(allFilter.chip==='active'&&!(w.state==='active'||w.sid===sessionId)) return false;
     if(allFilter.chip==='orphan'&&w.state!=='orphan') return false;
     if(allFilter.chip==='archived'&&w.state!=='archived') return false;
-    if(allFilter.q){ const hay=(w.id+' '+(sessionTitle(w.sid)||'')).toLowerCase(); if(!hay.includes(allFilter.q.toLowerCase())) return false; }
+    if(allFilter.q){ const hay=(w.id+' '+wsDisplayName(w)).toLowerCase(); if(!hay.includes(allFilter.q.toLowerCase())) return false; } // s98/R2-P3-2: hay 与行显标题同源（wsDisplayName=桥侧 DB 标题优先）——重启后/50 窗外的行显标题照样搜得到（修前 hay 用前端 sessionTitle，窗外恒 null 搜不中）
     return true;
   });
   const k=allFilter.sort;

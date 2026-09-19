@@ -11,8 +11,8 @@
 # s97/v0.9.15 发布门：收敛 update 的全表重启会打伤尚在 pending 的一次性（is_daemon:false）链——恰逢
 # 依赖判定窗口（faucet healthy 判定中）时 daily-backup/faucet-provision/faucet-rawsql/goose-scheduler
 # 全部 Skipped exit=1（restart:'no' 不自愈）→备份/供给/调度缺失（rel151 实录）。两层防护：
-# ①沉降等待：收敛前轮询主 yaml 现读的 is_daemon:false 键集，全部离开在飞态（Pending/Launching/
-# Running 之外即终态：Completed/Skipped/Error）才收敛；独立 30s 上限（不吃 240s 预算），超时照跑
+# ①沉降等待：收敛前轮询主 yaml 现读的 is_daemon:false 键集，全部离开 Pending/Restarting（依赖判定窗口，
+# s98/R2-P4-2 早退判据；Launching/Running/终态均放行）即收敛；独立 30s 上限（不吃 240s 预算），超时照跑
 # 收敛（进入第②层兜底）。终态判据只用 status——pc v1.122 JSON 对在飞进程 exit_code 也报 0 而非
 # null（rel152 实测：Launching exit_code=0），null 判据恒假会让等待空转直达超时。
 # ②补跑校验：收敛+healthz 200 后复查键集，Skipped/Pending/Error 者逐个 pc process start 补跑
@@ -118,11 +118,13 @@ if (Test-Path $regCmd) {
         if ($null -ne $procs) {
             $settled = $true
             foreach ($k in $oneshotKeys) {
-                $e = @($procs | Where-Object { $_.name -eq $k })
-                # 在飞才等：Pending/Launching/Running 之外（Completed/Skipped/Error…）都是终态。
-                # 不用 exit_code 判终态——pc v1.122 对在飞进程也报 exit_code=0（rel152 实测）。
-                if ($e.Count -eq 0) { $settled = $false; break }
-                if (@('Pending', 'Launching', 'Running') -contains $e[0].status) { $settled = $false; break }
+        $e = @($procs | Where-Object { $_.name -eq $k })
+        # s98/R2-P4-2: 早退判据=全部离开 Pending/Restarting 即收敛（依赖判定窗口=rel151 Skipped 家族的真正
+        # 危险窗；Launching/Running/终态均放行）。修前等全终态，R2 实测常吃满 30s 上限（冷启 54.2s vs R1 35.4s）；
+        # 30s 上限保底不动，第②层补跑校验继续兜底。不用 exit_code 判终态——pc v1.122 对在飞进程也报 exit_code=0
+        # （rel152 实测）。
+        if ($e.Count -eq 0) { $settled = $false; break }
+        if (@('Pending', 'Restarting') -contains $e[0].status) { $settled = $false; break }
             }
         }
         if ($settled) { break }

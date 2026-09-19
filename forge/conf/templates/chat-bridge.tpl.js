@@ -608,6 +608,26 @@ function wsDeleteOne(ws, curSid, map) {
     if (!wsValidId(ws)) return '参数不完整';
     const bsid = (map[ws] || {}).sid || null;
     if (bsid && curSid && bsid === curSid) return '这是当前对话正在用的工作区，不能删';
+    // s98/R2-P1: 状态门——绑定到「活跃会话」的区一律拒删（R2 报告 §4-P1：QA 直呼 API 把活跃区+本对话区连
+    // 文件硬删 deleted=2，首用警告「也不会被批量删除」协议面此前不成立）。判据与 /api/workspaces 的 wsState
+    // 同源：未关联（含空区+零消息噪音）与已归档照旧可删——与前端 wsOrgEligible 勾选面逐字对齐，不破 R2 已验
+    // 路径（未关联删/归档删/junction 引用拒删/当前会话拒删）。读不清绑定态=按最保守解释拒删（fail-closed：
+    // 删除路径宁拒不误删；空区+零消息噪音在会话库读不到时按空集处理=维持可删，删空目录无损用户数据）。
+    try {
+        let files = 0;
+        (function walk(d, b) { // 与 /api/workspaces 列举同口径：.git/.forge 与符号链接不计（预算同 2000）
+            for (const f of FSS.readdirSync(d)) {
+                if (f === '.git' || f === '.forge') continue;
+                const full = path.join(d, f);
+                const st = FSS.lstatSync(full);
+                if (st.isSymbolicLink()) continue;
+                if (st.isDirectory()) { if (--b.n > 0) walk(full, b); }
+                else files++;
+            }
+        })(wsDir(ws), { n: 2000 });
+        if (wsState(ws, map, readArch(), bsid, files, sessionMeta()) === 'active')
+            return '这段对话还在用这个文件夹，先归档或删对话再清理';
+    } catch (e) { return '这个工作区的绑定状态读不清，先不删（宁可少删不误删）——重启数字员工后再试'; }
     const tReal = FSS.realpathSync(wsDir(ws));
     for (const ent of FSS.readdirSync(ART_DIR, { withFileTypes: true })) {
         if (!ent.isDirectory() || !wsValidId(ent.name) || ent.name === ws) continue;
@@ -3137,7 +3157,10 @@ const ext = path.extname(f).toLowerCase();
             readJsonBody(req, res, raw => {
                 try {
                     const b = JSON.parse(raw.toString('utf8'));
-                    if (typeof b.category !== 'string' || !/^[A-Za-z0-9_\-]{1,64}$/.test(b.category)) throw new Error('分类名不合法');
+                    // s98/R2-P2-3: 分类名=落盘文件名——校验放宽为「文件名安全字符集」（Unicode 字母+数字+_+-，
+                    // forget_all/forget_one 同门）：中文分类是正常使用必然产物（agent 自拟名，dev 先例 个人.txt）。
+                    // 路径分隔符/../空格/控制字符仍拒；Windows 保留名（con.txt 变体）仍拒；读侧 GET 由目录枚举天然同门。
+                    if (typeof b.category !== 'string' || !/^[\p{L}\p{N}_\-]{1,64}$/u.test(b.category) || !fileNameSafe(b.category)) throw new Error('分类名不合法');
                     const cat = b.category;
                     const f = path.join(MEM_DIR, cat + '.txt');
                     if (!FSS.existsSync(f)) throw new Error('没有这个分类的记忆');
@@ -3316,7 +3339,23 @@ const ext = path.extname(f).toLowerCase();
                 } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
             });
         } else {
-            res.end(JSON.stringify({ ok: true, arch: readArch() }));
+            // s98/R2-P2-1/P3-1: 归档管理面数据源=归档索引全量（readArch 键集，前端归档视图 rows 消费），与
+            // goose session/list「最近 50 ∩ 有消息」窗解耦——带消息会话超 50 后老归档不再从管理面消失，
+            // 零消息归档会话（未聊先归档）同样在列可删。标题/时间=sessions.db 行回落（残留键查不到行时用
+            // 归档时间戳兜底）；坏 created_at 行按原串透传——前端 tsLocal 解析失败自然沉底/回落显示，桥不吞错。
+            const arch = readArch();
+            const rows = [];
+            const bySid = new Map();
+            try {
+                const { DatabaseSync } = require('node:sqlite');
+                const db = new DatabaseSync(path.join(ROOT, 'conf', 'goose', 'data', 'sessions', 'sessions.db'));
+                try { for (const r of db.prepare('SELECT id, name, updated_at, created_at FROM sessions').all()) bySid.set(r.id, r); } finally { db.close(); }
+            } catch {}
+            for (const sid of Object.keys(arch)) {
+                const r = bySid.get(sid);
+                rows.push({ sessionId: sid, title: r ? (r.name || null) : null, updatedAt: r ? (r.updated_at || r.created_at || null) : new Date(arch[sid]).toISOString() });
+            }
+            res.end(JSON.stringify({ ok: true, arch, rows }));
         }
     }
     else if (url === '/api/ws/tree') {
