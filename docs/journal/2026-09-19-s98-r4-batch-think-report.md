@@ -81,4 +81,5 @@
 - **收尾追加批（ed52988）**：P4-2 humanDeleteErr（批量/单删回执 err 人话化零路径反射，EBUSY/ENOENT/SQLITE_BUSY 族映射+原始错误恒落 pc.log）；P4-3 fuzz 批量类型混淆/遍历向量 4 条（199→203）；B2 converge 落 data/logs/open-when-ready.log（四口全落+ASCII 防码页+真跑实证）。
 - **支线：goose v1.51.0 定向分诊（research/36，80eec76）**——红线五面源码级过门（model.rs/dispatch.rs/response_builder.rs 双 tag 逐字节一致=思考闸门/configOptions 面不变；session_manager 仅 cfg(unix) 权限加固=sid/DDL/truncate/closed 集全不动；acp/server.rs 仅 resource-link 渲染改造=新元数据形态入 playbook 注意项）；「Session not found」单源措辞 4 处原样；升级可立项无硬阻断。
 - **留档**：pc process stop 后 cmd 子进程 python 孤儿（s91 家族新数据点）、apps-probe 首跑间歇红（黑匣子已装待再现；本轮再现两次复跑恒绿）、9router 别名开放问题（用户侧，research/35 §4）。
+- **收尾最后两件**：使用说明.md 补 s98 四新面（报表卡选库里的表/每页 N 条/整理批量清理含今日不入批说明/思考力度+插件官方徽标半句，零术语口径，c6e855b）；**iat17 终包**（3ef03c04…，323,642,138B，含全部 12 commit+手册，包内新段验证 True）——iat 系列最新即此。
 - **环境终态**：dev 栈 PFdrill2 复位 9 进程 restarts=0 healthz 200；C:\PF-TEST 空；e2e-report/8199/fake-PLM 残留清零。
