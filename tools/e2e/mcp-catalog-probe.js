@@ -168,7 +168,8 @@ let child = null;
     await stopBridge(child); child = null;
 
     // D8 字段级合并（qa s78f P3-2：整文件优先→条目级合并，模板演进对存量合法文件可见）
-    // 一文件三态同测：sequential-thinking=自定义 name/desc（保住）+ fetch=缺 desc 键（回填模板含 s78e 注记特征）
+    // 一文件三态同测：sequential-thinking=自定义 name/desc（保住）+ fetch=缺 desc 键（回填模板含 r5/S2 划界特征「不开浏览器」，
+    // s78e json 拒收注记已随裁决 2026-09-19-capability-semantics-r5 §4 换成划界句——特征串随模板 desc 演进同步）
     // + memory-graph=整条缺（模板全量补尾，运行时序优先）。判别=无回落警告（整体回落必 warn+清空自定义）。
     writeCfg({ _schema: 1, catalog: [
         { id: 'sequential-thinking', name: '自定义思考', desc: '我的自定义说明', pkg: '@modelcontextprotocol/server-sequential-thinking', entry: 'node_modules/@modelcontextprotocol/server-sequential-thinking/dist/index.js', license: 'MIT' },
@@ -179,9 +180,9 @@ let child = null;
     const r8 = await getJson('/api/mcpstore');
     const m8 = await getJson('/api/config/market'); // market GET 带全字段（mcpstore 视图只出 id/name/desc/license，验 pkg/entry 须走此端点）
     const w8 = await getJson('/api/update/status');
-    ck('切片C-8 缺键回填: fetch 缺 desc 键→回填模板 desc(含 s78e 注记特征)+无回落警告', () => {
+    ck('切片C-8 缺键回填: fetch 缺 desc 键→回填模板 desc(含 r5/S2 划界特征「不开浏览器」)+无回落警告', () => {
         const f = r8.find(x => x.id === 'fetch');
-        C.ok(f && f.desc && f.desc.indexOf('接口类(json)') >= 0, JSON.stringify(f)); // 模板 desc 再演进时同步此特征串（desc 演进可见性正是本 ck 回归对象）
+        C.ok(f && f.desc && f.desc.indexOf('不开浏览器') >= 0 && f.desc.indexOf('自带的浏览器') >= 0, JSON.stringify(f)); // 模板 desc 再演进时同步此特征串（desc 演进可见性正是本 ck 回归对象）
         C.equal(w8.warnings.some(x => x.includes('mcp-catalog.json')), false, JSON.stringify(w8.warnings)); // 修前整体回落必 warn=本 ck 红的判别点
     });
     ck('切片C-8 自定义保住: 运行时自定义 name/desc 不被模板盖（同文件走合并非回落）', () => {

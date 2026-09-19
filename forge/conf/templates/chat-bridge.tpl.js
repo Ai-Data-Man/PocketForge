@@ -1476,11 +1476,13 @@ async function installRemoteSkill(dirName, res) {
 // 新目录项准入=人工四条闸门（①许可证白名单②goose 实装真调③npm 可达有维护方④MCP SDK 大版本护栏），每入一枚留 journal 选型——
 // JSON 无注释，清单落档 docs/verdicts/2026-09-05-marketplace-ecosystem.md 切片C 与 docs/research/13。
 const MCP_CATALOG = [
-    { id: 'sequential-thinking', name: '深度思考', desc: '复杂任务先拆步骤再动手，提升多步推理质量', pkg: '@modelcontextprotocol/server-sequential-thinking', entry: 'node_modules/@modelcontextprotocol/server-sequential-thinking/dist/index.js', license: 'MIT' },
-    { id: 'memory-graph', name: '关系图谱记忆', desc: '实体关系图谱（人物/设备台账类结构化记忆），与内置长期记忆互补', pkg: '@modelcontextprotocol/server-memory', entry: 'node_modules/@modelcontextprotocol/server-memory/dist/index.js', license: 'MIT' },
+    // r5/S2（裁决 §4）：三条 desc 改为与类定义/近义对双向划界——外接思考辅助器（机制=外部进程服务可解释）、
+    // 图谱记忆与自带的长期记忆「什么时候用谁」、fetch 与自带的浏览器划界。
+    { id: 'sequential-thinking', name: '深度思考', desc: '外接的思考辅助器：复杂任务先拆步骤再动手', pkg: '@modelcontextprotocol/server-sequential-thinking', entry: 'node_modules/@modelcontextprotocol/server-sequential-thinking/dist/index.js', license: 'MIT' },
+    { id: 'memory-graph', name: '关系图谱记忆', desc: '记人物设备的台账关系（谁管哪台机器这类网状账）用它；平时的喜好和常用做法它自己记（自带的长期记忆，💭 记忆面板）', pkg: '@modelcontextprotocol/server-memory', entry: 'node_modules/@modelcontextprotocol/server-memory/dist/index.js', license: 'MIT' },
     // s54: fetch（Backlog「MCP 商店最小形态」收尾项）——轻量网页抓取转文本，不开浏览器即可读网页
-    // s78e: desc 注记——fetch-mcp 包固有 text/* 白名单（活体实证），接口类(json)目标拒收，员工自动改道
-    { id: 'fetch', name: '网页抓取', desc: '把网页内容抓下来转成文字（不开浏览器，轻量快速），适合读文章、取表格数据。适合网页/文本类；接口类(json)目标会拒收，员工会自动改用其他方式抓', pkg: 'fetch-mcp', entry: 'node_modules/fetch-mcp/cli.js', license: 'MIT' },
+    // s78e: fetch-mcp 包固有 text/* 白名单（活体实证），接口类(json)目标拒收，员工自动改道——r5/S2 后该注记移交划界句语义
+    { id: 'fetch', name: '网页抓取', desc: '快取网页文字的外接工具，不开浏览器；要登录要点按的页面它用不上（那是自带的浏览器）', pkg: 'fetch-mcp', entry: 'node_modules/fetch-mcp/cli.js', license: 'MIT' },
 ];
 const MCP_CATALOG_FILE = path.join(ROOT, 'data', 'config', 'mcp-catalog.json');
 // s72: 目录条目校验器上提共用（原 readMcpCatalog 内联 okItem）——市场配置端点写侧同门复验
@@ -1833,7 +1835,8 @@ async function dbTableSchema(svc, tbl) {
 // + 工作区顶层成品文件（扩展名白名单）；排序=ts 倒序、null 沉底；物理路径不进主字段（零术语）。
 // 已装技能扫描（/api/skills 与 /api/assets 技能源同读法；s83 自 /api/skills 处理器逐字节平移提升为具名函数）
 function scanInstalledSkills() {
-    // scan .agents/skills/*/SKILL.md (project) + conf/goose/config/skills (global-ish)
+    // scan .agents/skills/*/SKILL.md（唯一扫描面）——conf/goose/config/skills 是 v150 遮蔽桩的家（桩=影子化 goose
+    // 二进制内置同名技能的反指令，非能力），故意不入弹窗（裁决 2026-09-19-capability-semantics-r5 §4/F4-F5）
     const out = [];
     const dirs = [path.join(ROOT, '.agents', 'skills')];
     for (const d of dirs) {
@@ -2776,7 +2779,7 @@ async function handleHttp(req, res) {
     } else if (url === '/healthz') { res.writeHead(200); res.end('ok'); }
     else if (url === '/favicon.ico') { res.writeHead(204); res.end(); } // s98/R1-F4: 无图标诚实空回——此前 404 是浏览器控制台唯一 error
     else if (url === '/api/skills') {
-        // scan .agents/skills/*/SKILL.md (project) + conf/goose/config/skills (global-ish)
+        // 扫描面与判据见 scanInstalledSkills 头注（.agents/skills 唯一扫描面；v150 桩故意不入）
         json200(res, scanInstalledSkills()); // s83: 读法平移至具名函数（/api/assets 技能源共用）
     }
     else if (url.startsWith('/vendor/')) {
@@ -3095,8 +3098,9 @@ const ext = path.extname(f).toLowerCase();
         // 对小白隐藏 chatrecall（纯增强，关掉无收益）；只暴露有感知差异的扩展
         const LABELS = {
             'faucet-db': { name: '数据库', desc: '存数据、查数据的本事（保留它基本功能都在）' },
-            'browser': { name: '浏览器自动化', desc: '让它能打开网页帮你抓表格、看内网系统' },
-            'memory': { name: '长期记忆', desc: '记住您的偏好和常用做法（可在下方「记住的事」里查看删除）' },
+            // r5/S2（裁决 §4 归置审计）：browser 收窄为「要用真浏览器」——抓表格让给工具/手艺划界句；memory 补反向指路（与 memory-graph 双向划界）
+            'browser': { name: '浏览器自动化', desc: '要用真浏览器的活儿：要登录、要点按的页面，看内网系统' },
+            'memory': { name: '长期记忆', desc: '平时的喜好和常用做法它自己记，去「💭 记忆」看、可删；人物设备的台账关系用「关系图谱记忆」（🔌 工具）' },
             'chatrecall': { name: '会话回忆', desc: '能翻自己以前聊过的内容' },
         };
         if (req.method === 'GET') {
