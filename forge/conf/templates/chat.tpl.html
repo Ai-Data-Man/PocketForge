@@ -238,6 +238,20 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 #modal.on{display:flex}
 .panel-box,#panel{background:var(--panel);border-radius:var(--r-l);width:520px;max-width:calc(100vw - 24px);max-height:86vh;overflow-y:auto;padding:22px 24px;box-shadow:var(--shadow-3);color:var(--tx)}
 .panel-box h3,#panel h3{margin:0 0 14px;font-size:1.05rem}
+/* s99/S1: ⚙️ 设置左导航骨架（裁决 2026-09-21 §2.3）——#panel 改 780 宽 flex 列容器，滚动归属从 #panel 下移 .set-body（导航与大标题恒在视口）；
+   窄窗降级取并集边界：<640 视口或 modal 实宽<640（实宽=100vw-24<640 ⟺ vw<664）都落横向类目条形态（rtab/mtab 同款），宽窗才立竖列 */
+#panel{width:780px;padding:0;display:flex;flex-direction:column;overflow:visible}
+.set-wrap{display:flex;flex:1;min-height:0;flex-direction:column}
+#set-nav{display:flex;gap:4px;flex-wrap:wrap;margin:0 24px 10px;border-bottom:1px solid var(--line);padding-bottom:8px}
+.set-body{flex:1;min-height:0;min-width:0;overflow-y:auto;padding:0 24px 20px}
+.sp-head{position:sticky;top:0;z-index:1;background:var(--panel);padding:6px 0 10px;margin-bottom:4px}
+@media (min-width:664px){
+  .set-wrap{flex-direction:row}
+  #set-nav{flex-direction:column;flex-wrap:nowrap;width:170px;flex-shrink:0;margin:0;padding:4px 12px 14px 22px;border-bottom:none;gap:2px}
+  #set-nav .stab{position:relative;text-align:left;padding:10px 12px;border-radius:var(--r-m)}
+  #set-nav .stab.on{background:var(--acc-softer);color:var(--acc)}
+  #set-nav .stab.on::before{content:'';position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--acc)}
+}
 .skill{border:1px solid var(--line);border-radius:var(--r-m);padding:12px 14px;margin-bottom:10px}
 .skill .nm{font-weight:600;font-size:.88rem}
 .skill .ds{font-size:.78rem;color:var(--mut);margin:4px 0 8px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -572,9 +586,20 @@ details.tz[open]>summary::before{content:'▾ '}
     </div>
   </div>
 </div></div>
-<div id="modal"><div id="panel" role="dialog" aria-modal="true" aria-label="服务商连接">
-  <h3>⚙️ 服务商连接<button class="mclose" title="关闭" aria-label="关闭" onclick="$('modal').classList.remove('on');cfgKeyTouched=false;$('cfg-key').value=''">✕</button></h3>
-  <div class="fnote" style="margin-bottom:10px">这里管"连到哪家大模型服务商"。每个档案 = 地址 + Key + 默认模型。顶栏可随时换模型（不用来这里）。</div>
+<div id="modal"><div id="panel" role="dialog" aria-modal="true" aria-label="设置">
+  <h3 style="padding:18px 24px 10px">⚙️ 设置<button class="mclose" title="关闭" aria-label="关闭" onclick="$('modal').classList.remove('on');cfgKeyTouched=false;$('cfg-key').value=''">✕</button></h3>
+  <div class="set-wrap">
+  <div id="set-nav" role="tablist" aria-label="设置分类">
+    <button class="rtab on stab" data-pane="prov" role="tab" aria-selected="true">🔌 大模型连接</button>
+    <button class="rtab stab" data-pane="look" role="tab" aria-selected="false">🎨 外观</button>
+    <button class="rtab stab" data-pane="about" role="tab" aria-selected="false">🩹 关于与升级</button>
+  </div>
+  <div class="set-body">
+  <div class="spane" id="set-pane-prov">
+  <div class="sp-head">
+    <h3 style="margin:0 0 4px;font-size:1.13rem">🔌 大模型连接</h3>
+    <div class="fnote">它连到哪家大模型服务商、用哪些模型。地址和钥匙都在这；平时换模型去顶栏，不用来这</div>
+  </div>
   <div class="frow"><label for="prov-name">服务商档案</label>
     <div id="prov-list"></div>
     <div style="display:flex;gap:6px;margin-top:6px">
@@ -594,7 +619,12 @@ details.tz[open]>summary::before{content:'▾ '}
   </div>
   <button id="save-cfg" style="width:100%;padding:11px;background:var(--acc);color:var(--acc-contrast);border:none;border-radius:9px;font-size:.94rem;cursor:pointer">💾 保存这家服务商</button>
   <div class="fnote" id="save-note" style="margin-top:10px"></div>
-    <h3 style="margin:18px 0 8px">🎨 外观</h3>
+  </div>
+  <div class="spane" id="set-pane-look" style="display:none">
+  <div class="sp-head">
+    <h3 style="margin:0 0 4px;font-size:1.13rem">🎨 外观</h3>
+    <div class="fnote">白天黑夜、颜色、字号、松紧——怎么看着舒服怎么来</div>
+  </div>
   <div class="frow"><label for="th-mode">夜间模式（顶栏 ◐ 可快速切换；"跟随系统"自动昼夜）</label>
     <select id="th-mode"><option value="auto">跟随系统</option><option value="light">白天</option><option value="dark">夜间</option></select></div>
   <div class="frow"><label>主题皮肤</label>
@@ -603,7 +633,12 @@ details.tz[open]>summary::before{content:'▾ '}
     <div id="th-fsz" style="display:flex;gap:6px"></div></div>
   <div class="frow"><label>信息密度（间距大小）</label>
     <div id="th-dens" style="display:flex;gap:6px"></div></div>
-<h3 style="margin:18px 0 8px">🩹 关于与升级</h3>
+  </div>
+  <div class="spane" id="set-pane-about" style="display:none">
+  <div class="sp-head">
+    <h3 style="margin:0 0 4px;font-size:1.13rem">🩹 关于与升级</h3>
+    <div class="fnote">现在用的版本、检查更新、离线升级。升级不会动你的对话和文件</div>
+  </div>
   <div class="fnote" style="margin-bottom:8px">当前版本 <b id="upd-cur">…</b><span id="upd-warn" style="color:var(--warn-tx)"></span>。升级自动完成，你的对话和文件都不会动；万一失败会自动还原。</div>
   <div style="display:flex;gap:6px">
     <button id="upd-check" class="mini" style="flex:1">检查更新</button>
@@ -620,6 +655,8 @@ details.tz[open]>summary::before{content:'▾ '}
     <button id="upd-manual-go" class="mini" style="display:none;width:100%;background:var(--acc);color:var(--acc-contrast)">开始离线升级</button>
   </div>
   <div class="fnote" id="upd-status" style="margin-top:8px"></div>
+  </div>
+  </div>
 </div></div>
 <script>
 // 顶层防崩：任何一处初始化异常不允许杀死整页 JS（s12 ClipboardItem、s13 up-btn 两次教训）
@@ -1565,7 +1602,13 @@ $('mode').onchange=e=>{
     .then(()=>addInfo('已切到'+MODE_TIPS[v])) // 切换成功才弹一句；失败只报错（取消/失败路径不弹成功语）
     .catch(()=>addErr('模式切换失败'));
 };
-$('open-settings').onclick=()=>{ $('modal').classList.add('on'); loadProvidersUI(); };
+/* s99/S1: ⚙️ 设置左导航（裁决 2026-09-21 §2.2-2.4）——switchPane 同一逻辑驱动宽窗竖列与窄窗横向条两形态（showMtab 同款，无第二状态机）；打开即默认 🔌 pane */
+function switchPane(name){
+  document.querySelectorAll('#set-nav .stab').forEach(b=>{const on=b.dataset.pane===name;b.classList.toggle('on',on);b.setAttribute('aria-selected',on);});
+  document.querySelectorAll('#panel .spane').forEach(p=>p.style.display=p.id==='set-pane-'+name?'':'none');
+}
+document.querySelectorAll('#set-nav .stab').forEach(b=>b.onclick=()=>switchPane(b.dataset.pane));
+$('open-settings').onclick=()=>{ $('modal').classList.add('on'); switchPane('prov'); loadProvidersUI(); };
 // s43: 管理面板——本事/记忆/定时任务从设置迁出，一级入口
 // s51: 区块→标签页，懒加载（首次切到该 tab 才拉，拉过缓存不重复拉）
 const mtabs={ext:['loadExtUI',false],db:['loadDbUI',false],made:['loadMadeUI',false],apps:['loadAppsUI',false],mem:['loadMemUI',false],sched:['loadSchedUI',false],mcp:['loadMcpUI',false]};
@@ -2321,7 +2364,7 @@ function keyGuideSync(list){
   el.style.cssText='display:flex;align-items:center;gap:10px;flex-wrap:wrap';
   const t=document.createElement('span'); t.textContent='还没连上大模型，发消息会失败。点这里 2 分钟配好 →';
   const b=document.createElement('button'); b.className='msgbtn'; b.textContent='去配置';
-  b.onclick=()=>{ $('modal').classList.add('on'); loadProvidersUI(); setTimeout(()=>$('cfg-key').focus(),100); };
+  b.onclick=()=>{ $('modal').classList.add('on'); switchPane('prov'); loadProvidersUI(); setTimeout(()=>$('cfg-key').focus(),100); };
   el.appendChild(t); el.appendChild(b);
   chat.insertBefore(el, chat.firstChild);
 }
@@ -2352,7 +2395,7 @@ function healthSync(m){
     else{ t.textContent='你正在用的模型已被服务商下线，发消息会失败。点这里更新模型 →'; }
     b.textContent=(st==='down'&&m.kind==='key')?'去设置':(st==='down'?'检查线路':'更新模型');
     b.style.display='';
-    b.onclick=()=>{ $('modal').classList.add('on'); loadProvidersUI(); if(st==='down'&&m.kind==='key') setTimeout(()=>$('cfg-key').focus(),100); };
+    b.onclick=()=>{ $('modal').classList.add('on'); switchPane('prov'); loadProvidersUI(); if(st==='down'&&m.kind==='key') setTimeout(()=>$('cfg-key').focus(),100); };
   }else{ t.textContent=''; b.style.display='none'; } // s94 F-4c: 代理-only 形态——正文只有下面那句代理提示
   let px=el.querySelector('.px');
   if(m.proxy){ // 事故一形态诚实提示：只说明风险存在，不装作探测结论、不阻断
