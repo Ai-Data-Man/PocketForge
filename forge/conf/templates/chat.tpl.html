@@ -607,7 +607,7 @@ details.tz[open]>summary::before{content:'▾ '}
       <button id="prov-add" class="mini">添加</button>
     </div>
   </div>
-  <div class="frow"><label for="cfg-host">接口地址（OpenAI 兼容 /v1 结尾）</label><input id="cfg-host" placeholder="https://.../v1/"></div>
+  <div class="frow"><label for="cfg-host">接口地址（OpenAI 兼容 /v1 结尾，代配的人看）</label><input id="cfg-host" placeholder="https://.../v1/"></div>
   <div class="frow"><label for="cfg-key">API Key</label><input id="cfg-key" type="password" placeholder="sk-..."></div>
   <div class="frow"><label>这家服务商的模型（先拉取，勾选进员工可选池）</label>
     <div style="display:flex;gap:6px;margin-bottom:8px">
@@ -1095,8 +1095,8 @@ function renderThinkCtl(){
   sel.style.display='';
   const fam=thinkFamily();
   if(fam){ // 态①：深度家族两档——值=原生 effort low/max，翻译在桥
-    sel.disabled=false; sel.title='想深一点会换成完整版模型，更准，也稍慢一点。'; sel.innerHTML='';
-    for(const p of [['low','快一点（快速版）'],['max','想深点（完整版，更准也稍慢）']]){
+    sel.disabled=false; sel.title='深的更准，也多花一点时间'; sel.innerHTML='';
+    for(const p of [['low','快一点'],['max','想深点（更准，稍慢）']]){
       const op=document.createElement('option'); op.value=p[0]; op.textContent=p[1]; sel.appendChild(op);
     }
     const cur=lastKnownModel||((configOptions.find(c=>c.id==='model')||{}).currentValue);
@@ -1149,7 +1149,7 @@ function buildModelItems(filter){
     const c=modelCaps[o.value]; // s98/llm-proxy C2: 能力元数据随行（能看图/上下文约值；估计值标「约」）
     const bits=[];
     if(c){ if(c.multimodal) bits.push('能看图'); if(c.context_len) bits.push('上下文约'+(c.context_len>=1000?(c.context_len/1000)+'k':c.context_len)+(c.context_est?'（估计）':'')); }
-    el.title=o.provider+' · '+o.value+(bits.length?' — '+bits.join('，'):''); // s69 P3-7: 截断的长模型名悬停可看全
+    el.title=o.provider+' · '+o.value+((c&&!c.user)?'（猜的）':'')+(bits.length?' — '+bits.join('，'):''); // s69 P3-7: 截断的长模型名悬停可看全；s99/S2 §3.5: 未改过的条目=按名字猜的（与 context_est「（估计）」同构），改过（user）不标
     el.onclick=()=>{ switchModel(o.value); $('model-pick').classList.remove('open'); };
     box.appendChild(el);
   }
@@ -2479,7 +2479,7 @@ function renderModelPool(pr){
           note('已从可选池移除 '+m); }
       }
     };
-    lab.appendChild(cb); lab.appendChild(document.createTextNode(' '+m));
+    lab.appendChild(cb); lab.appendChild(document.createTextNode(' '+m+((modelCaps[m]&&!modelCaps[m].user)?'（猜的）':''))); // s99/S2 §3.5: 池行来源标注——按名字自动认、没改过的标「（猜的）」，改过（user）不标
     const capBtn=document.createElement('button'); capBtn.className='mini'; capBtn.textContent='能力'; capBtn.title='改这个模型的本事：能不能看图、上下文多大、思考力度怎么调（识别错了可以改）';
     capBtn.onclick=(e)=>{ e.preventDefault(); e.stopPropagation(); openCapEditor(m); }; // s98/llm-proxy C2: 能力编辑入口
     lab.appendChild(capBtn);
@@ -2499,10 +2499,11 @@ function renderModelPool(pr){
     };
   },0);
 }
-// s98/llm-proxy C2: 模型能力编辑器——三字段零术语小表单（能看图/上下文大约多少/思考力度怎么调）。
-// 数据面=桥侧 data/model-caps.json（providers 帧 caps 镜像只读展示，写走 /api/modelcaps 单一真相源）；
-// 识别是启发式自动生成的（名字猜的），错了这里改：变体=「想深点」时换成池内另一个模型（深浅互换，桥代理
-// 即时跟随）；上下文留空=按「估计」处理。
+// s99/S2（裁决 2026-09-21 §3.3）：能力编辑器重做——主面两问（能不能看图/快慢怎么调），上下文降级进折叠
+// 技术区（details.tz 技能弹窗先例；消费面仅展示=信息行，§3.1 裁剪判据）。措辞红线：用户面零「换模型/变体」
+// 机制词——深档=能力归属（「给它配一个深档」），配对模型只在编辑器点名（配置需要）。数据面=桥侧
+// data/model-caps.json（providers 帧 caps 镜像只读，写走 /api/modelcaps 单一真相源，patch 形状零改动）；
+// 快档锚定被编辑模型自身（variant.fast=model，桥侧家族自锚约定 chat-bridge :789 不破坏）。
 function openCapEditor(model){
   const box=$('model-pool'); if(!box) return;
   const old=box.querySelector('.cap-edit'); if(old) old.remove();
@@ -2510,23 +2511,43 @@ function openCapEditor(model){
   const t=cap.thinking||{mode:'none'};
   const panel=document.createElement('div'); panel.className='cap-edit'; panel.style.cssText='margin:8px 0;padding:10px;border:1px dashed var(--line-strong);border-radius:9px;font-size:.78rem';
   const poolNow=(providerList.find(x=>x.name===curProvName)||{}).models||[];
-  const row=(label,ctrl)=>{ const r=document.createElement('div'); r.style.cssText='display:flex;align-items:center;gap:8px;margin:5px 0'; const l=document.createElement('span'); l.textContent=label; l.style.minWidth='92px'; r.appendChild(l); r.appendChild(ctrl); return r; };
   const mkSel=(opts,val)=>{ const s=document.createElement('select'); for(const [v,n] of opts){ const o=document.createElement('option'); o.value=v; o.textContent=n; s.appendChild(o); } s.value=val; return s; };
-  const mm=mkSel([['true','能看图'],['false','不能看图']],String(!!cap.multimodal)); mm.style.cssText=cap.multimodal?'':'';
-  const ctx=document.createElement('input'); ctx.type='number'; ctx.min='1000'; ctx.step='1000'; ctx.placeholder='不知道就留空（按估计处理）'; ctx.value=(cap.context_len!=null)?cap.context_len:'';
-  ctx.style.cssText='flex:1;padding:5px 8px;border:1px solid var(--line);border-radius:6px';
-  const tk=mkSel([['none','它自己定（调不了快慢）'],['native','它自带档位'],['variant','快/深换模型（想深点时换成另一个模型）']],t.mode==='variant'?'variant':(t.mode==='native'?'native':'none'));
-  const deepRow=document.createElement('div'); deepRow.style.cssText='display:none;margin:5px 0 5px 100px';
+  const head=document.createElement('div'); head.textContent='「'+model+'」的本事'; head.style.cssText='font-weight:600;margin-bottom:2px';
+  const headSub=document.createElement('div'); headSub.className='fnote'; headSub.textContent='按名字自动认的，认错了您改；改过就记住您的。'; headSub.style.marginBottom='6px';
+  panel.appendChild(head); panel.appendChild(headSub);
+  const mm=mkSel([['true','能看图'],['false','不能看图']],String(!!cap.multimodal));
+  const mmRow=document.createElement('div'); mmRow.style.cssText='display:flex;align-items:center;gap:8px;margin:5px 0';
+  const mmLab=document.createElement('span'); mmLab.textContent='能不能看图：'; mmLab.style.minWidth='92px';
+  mmRow.appendChild(mmLab); mmRow.appendChild(mm); mmRow.appendChild(document.createTextNode('（她贴照片时用得上）'));
+  panel.appendChild(mmRow);
+  const paceLbl=document.createElement('div'); paceLbl.textContent='快慢怎么调：'; paceLbl.style.margin='5px 0 2px';
+  panel.appendChild(paceLbl);
+  const paceDefs=[['none','它自己定（顶栏没有快慢选择）'],['native','它自带快慢档（顶栏能调快慢）'],['variant','给它配一个深档（顶栏出现「快一点 / 想深点」）']];
+  const curPace=t.mode==='variant'?'variant':(t.mode==='native'?'native':'none');
+  const radios=[];
+  const paceVal=()=>{ const r=radios.find(x=>x.checked); return r?r.value:'none'; };
+  const deepRow=document.createElement('div'); deepRow.style.cssText='display:none;margin:5px 0 5px 24px';
   const deep=mkSel(poolNow.filter(x=>x!==model).map(x=>[x,x]),(t.variant&&t.variant.deep)||'');
-  deepRow.appendChild(document.createTextNode('想深点时换成：')); deepRow.appendChild(deep);
-  tk.onchange=()=>{ deepRow.style.display=(tk.value==='variant'&&(poolNow.filter(x=>x!==model).length))?'block':'none'; };
-  tk.onchange();
-  const head=document.createElement('div'); head.textContent='「'+model+'」的能力（自动识别的，不对就改）：'; head.style.marginBottom='4px';
-  panel.appendChild(head);
-  panel.appendChild(row('能不能看图：',mm));
-  panel.appendChild(row('上下文大约：',ctx));
-  panel.appendChild(row('思考力度：',tk));
-  panel.appendChild(deepRow);
+  deepRow.appendChild(document.createTextNode('深档用哪个模型：')); deepRow.appendChild(deep);
+  const deepNote=document.createElement('div'); deepNote.className='fnote'; deepNote.textContent='深档＝干这活时让它用更完整的那个模型，更准，也更花时间。'; deepNote.style.margin='2px 0 0 12px';
+  function syncDeep(){ deepRow.style.display=(paceVal()==='variant'&&poolNow.filter(x=>x!==model).length)?'block':'none'; }
+  for(const [v,n] of paceDefs){
+    const lab=document.createElement('label'); lab.style.cssText='display:flex;align-items:center;gap:6px;margin:3px 0 3px 12px;cursor:pointer';
+    const r=document.createElement('input'); r.type='radio'; r.name='cap-pace'; r.value=v; r.checked=(v===curPace);
+    r.onchange=syncDeep;
+    lab.appendChild(r); lab.appendChild(document.createTextNode(n));
+    radios.push(r); panel.appendChild(lab);
+  }
+  panel.appendChild(deepRow); panel.appendChild(deepNote);
+  syncDeep();
+  const tech=document.createElement('details'); tech.className='tz'; tech.style.cssText='border-top:1px solid var(--line);margin-top:8px;padding-top:6px';
+  const sum=document.createElement('summary'); sum.textContent='技术细节（平时不用动）'; tech.appendChild(sum);
+  const ctxRow=document.createElement('div'); ctxRow.style.cssText='display:flex;align-items:center;gap:8px;margin:5px 0';
+  const ctxLab=document.createElement('span'); ctxLab.textContent='上下文大约多少字：';
+  const ctx=document.createElement('input'); ctx.type='number'; ctx.min='1000'; ctx.step='1000'; ctx.placeholder='能一次读进多少字；不知道就留空，按估计显示'; ctx.value=(cap.context_len!=null)?cap.context_len:'';
+  ctx.style.cssText='flex:1;padding:5px 8px;border:1px solid var(--line);border-radius:6px';
+  ctxRow.appendChild(ctxLab); ctxRow.appendChild(ctx); tech.appendChild(ctxRow);
+  panel.appendChild(tech);
   const act=document.createElement('div'); act.style.cssText='display:flex;gap:8px;margin-top:8px';
   const save=document.createElement('button'); save.className='mini'; save.textContent='保存';
   const cancel=document.createElement('button'); cancel.className='mini'; cancel.textContent='取消';
@@ -2534,8 +2555,8 @@ function openCapEditor(model){
   save.onclick=async()=>{
     const patch={ multimodal:mm.value==='true' };
     if(ctx.value.trim()!==''){ const n=parseInt(ctx.value,10); if(!isFinite(n)||n<=0){ note('上下文要填正整数，不知道就留空'); return; } patch.context_len=n; } else if(cap.context_len!=null){ patch.context_len=null; }
-    if(tk.value==='variant'){ if(!deep.value){ note('先选「想深点时换成」哪个模型'); return; } patch.thinking={mode:'variant',variant:{fast:model,deep:deep.value}}; }
-    else patch.thinking={mode:tk.value};
+    if(paceVal()==='variant'){ if(!deep.value){ note('先选深档用哪个模型'); return; } patch.thinking={mode:'variant',variant:{fast:model,deep:deep.value}}; }
+    else patch.thinking={mode:paceVal()};
     try{
       const r=await fetch('/api/modelcaps',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op:'set',model,patch})});
       const d=await r.json();

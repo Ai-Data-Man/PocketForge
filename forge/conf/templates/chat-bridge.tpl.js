@@ -508,6 +508,7 @@ const STATE_SCHEMAS = {
         },
     },
     'config/mcp-catalog.json': { latest: 1, steps: {} }, // s70 切片C: MCP 目录配置（缺失时由 readMcpCatalog 首启生成内置默认）
+    'model-caps.json': { latest: 1, steps: {} }, // s99/S2（ADR-0009 补账）: 模型能力注册表——s98 C2 落盘 _schema:1 时未登记；零迁移纯纳入 migrateJsonAt 伞下。此后字段演进=同提交 _schema+1+迁移步骤+迁移自测
 };
 function migrateJsonAt(f, key) {
     const meta = STATE_SCHEMAS[key];
