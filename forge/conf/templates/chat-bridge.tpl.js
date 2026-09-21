@@ -1298,6 +1298,14 @@ function xlateConfigOptions(configOptions) {
     const th = configOptions.find(c => c && c.id === 'thinking_effort');
     const effort = th && typeof th.currentValue === 'string' ? th.currentValue : '';
     const deep = effort === 'high' || effort === 'max';
+    // s98/llm-proxy P1（QA 复审返工）：家族成员有两种会话形态，翻译必须分开——
+    //   ① 别名会话（本特性上线后的新会话，goose 侧 currentValue=别名）：模型身份由 spawn env 钉死、深度真相=thinking_effort，
+    //      按 effort 译成成员真名并挂 gradient（前端两档数据面）。
+    //   ② 存量真名会话（上线前创建/被 session-load 回放真名）：goose 侧就是真名成员、档位被 goose 遮蔽。此时**不得**按
+    //      effort 合成成员——否则界面显示与实际跑的模型背离（P1 实录：显示快档、实跑深档，每回合多付 2.8x 成本且零报错）。
+    //      真名原样呈现、不挂 gradient（前端落诚实遮蔽态）；该会话的模型由 switch_model/对账按真名生效（真名过 goose 目录校验）。
+    const onAlias = mo.currentValue === fam.alias;
+    if (!onAlias) return configOptions; // 形态②：零翻译零合成，界面=真相
     const member = deep ? fam.deep : fam.fast; // 档位是深度真相（对账/随行后 wire 即按此走）
     mo.currentValue = member;
     if (Array.isArray(mo.options)) { // 选项列表里的别名也翻（goose 把当前模型列进 options；成员已在列则去重）
@@ -1305,7 +1313,7 @@ function xlateConfigOptions(configOptions) {
             .filter((o, i, a) => a.findIndex(x => x && x.value === o.value) === i);
     }
     const vals = th && Array.isArray(th.options) ? th.options.map(x => x && x.value).filter(v => typeof v === 'string') : [];
-    if (th && vals.length <= 1) { // 遮蔽态合成五档（别名下 goose 本就报五档；此分支只救存量真名会话的开盒窗口）
+    if (th && vals.length <= 1) { // 遮蔽态合成五档（别名会话下 goose 一般已报五档；此分支兜底回包形态缺失）
         th.options = ['off', 'low', 'medium', 'high', 'max'].map(v => ({ value: v, name: v }));
         th.currentValue = deep ? 'max' : 'low';
     }
@@ -1334,19 +1342,23 @@ function thinkAllowed(sid, value) {
     return true;
 }
 function applyModelBeforeTurn(sid, model, next) {
-    // s98/llm-proxy: 家族目标跳过 set_config_option——别名按 goose 自带目录校验必拒（实测它从不请求 /models）；
-    // 家族会话的模型身份由 spawn env 的 session/new 钉死，深度只由 thinking_effort 决定，桥面真名记账即为真相
-    // （存量真名会话的迁移走 switch_model 的热重启+新会话路，不在此追改）。
-    if (/^gpt-5-forge-/.test(gooseModelName(activeProvider(), model))) { sidModelApplied.set(sid, model); return next(); }
+    // s98/llm-proxy（QA 复审 P1 返工）：家族成员的两种会话形态在此同样分开——
+    //   ① 会话已钉在别名上（sidGooseModel===别名）：模型身份由 spawn env 的 session/new 钉死，深度只由 thinking_effort
+    //      决定；此处不得写 model（别名按 goose 自带目录校验必拒），跳过即真相。
+    //   ② 存量真名会话/其他情况：写入**reconciliation 值**（家族成员用真名——真名在 goose 目录里、校验通过），
+    //      使「界面选的模型」与「会话实跑模型」一致（P1 缺口=此前对②也跳过，导致显示与实跑静默背离）。
+    const act = activeProvider();
+    const fam = familyOfModel(act, model);
+    const goosed = gooseModelName(act, model);
+    if (fam && sidGooseModel.get(sid) === fam.alias) { sidModelApplied.set(sid, model); return next(); }
+    const writeVal = fam ? model : goosed; // 家族成员（形态②）写真名；非家族走既有别名/真名映射
     const id = nextId++;
     let done = false;
     const t = setTimeout(() => { if (!done) { done = true; next(); } }, 15000); // goose 挂起不应答不得扣住回合
     if (t.unref) t.unref();
     waiting.set(id, { ws: null, resolve: (res) => { if (done) return; done = true; clearTimeout(t); if (res && res.configOptions) noteGooseModel(sid, res.configOptions); sidModelApplied.set(sid, model); next(); }, reject: () => { if (done) return; done = true; clearTimeout(t); next(); } });
     try {
-        // s98/llm-proxy: 对账值走 gooseModelName——家族成员对账到别名（存量真名会话由此迁移）；记账仍存真名
-        // （sidModelApplied 与 effectiveModel 同一真名世界，比较语义不变）
-        acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/set_config_option', params: { sessionId: sid, configId: 'model', value: gooseModelName(activeProvider(), model) } }) + '\n');
+        acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/set_config_option', params: { sessionId: sid, configId: 'model', value: writeVal } }) + '\n');
     } catch (e) { if (!done) { done = true; clearTimeout(t); waiting.delete(id); next(); } } // acp 已死：直接放行，prompt 自身的写失败人话收口
 }
 
@@ -3055,6 +3067,7 @@ function handleLlmProxy(req, res) {
                         const e = typeof j.reasoning_effort === 'string' ? j.reasoning_effort : '';
                         const target = (e === 'high' || e === 'max') ? fam.deep : fam.fast; // off/low/medium/缺省→快
                         console.log('llmproxy: 深度档', (e || '未设'), '→', target, '(快侧', fam.fast + ')'); // 运营观测：只写真名（假名不出厂约束覆盖日志面）
+                        try { FSS.appendFileSync(path.join(ROOT, 'data', 'logs', 'llmproxy.log'), new Date().toISOString() + ' effort=' + (e || 'none') + ' model=' + target + ' fast=' + fam.fast + String.fromCharCode(10)); } catch {}
                         delete j.reasoning_effort; delete j.reasoning; delete j.thinking; // 上游 no-op 参数不上真线
                         j.model = target;
                         body = Buffer.from(JSON.stringify(j), 'utf8');
@@ -4341,9 +4354,13 @@ function handleClient(ws, msg) {
                         // s26: 新对话沿用顶栏当前模型——session/new 默认回落 env 首模型（STATE 开放问题#4）
                         if (msg.model) {
                             lastModelOverride = msg.model; // qa s78b P3-2: 新会话显式带模型（顶栏当前模型）=生效模型，探测目标随行
-                            const mid = nextId++;
-                            // s98/llm-proxy: 家族成员以别名入 goose（spawn env 已别名化，此处对账同款）；记账存真名
-                            acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: mid, method: 'session/set_config_option', params: { sessionId: res.sessionId, configId: 'model', value: gooseModelName(activeProvider(), msg.model) } }) + '\n');
+                            // s98/llm-proxy（QA P3-1 对齐）：会话若已钉在别名上（env 钉的），**不再写 model**——别名按 goose
+                            // 自带目录校验必拒，写=废帧；记账照旧（真名世界）。形态②（真名会话）才写真名。
+                            const f0 = familyOfModel(activeProvider(), msg.model);
+                            if (!(f0 && sidGooseModel.get(res.sessionId) === f0.alias)) {
+                                const mid = nextId++;
+                                acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: mid, method: 'session/set_config_option', params: { sessionId: res.sessionId, configId: 'model', value: gooseModelName(activeProvider(), msg.model) } }) + '\n');
+                            }
                             sidModelApplied.set(res.sessionId, msg.model); // s94-b2 F-3: 记账（乐观：写失败=acp 已死，prompt 同死由其错误链收口）
                             // s98/llm-proxy: 带模型不带档且是家族成员→按成员预置档（选完整版开新对话=深），有习惯则习惯优先
                             if (!msg.think) { const f = familyOfModel(activeProvider(), msg.model); if (f) msg.think = msg.model === f.deep ? 'max' : 'low'; }
