@@ -9,6 +9,8 @@ const crypto = require('crypto');
 
 const ROOT = process.env.FORGE_ROOT || path.resolve(__dirname, '..');
 const PORT = Number(process.env.PORT || 8790);
+// s98/llm-proxy: goose 的 LLM 流量恒指桥内反代（spawnAcp OPENAI_HOST 与 providers 块 sig2 指纹同用此常量）
+const GOOSE_LLM_HOST = 'http://127.0.0.1:' + PORT + '/llmproxy/v1';
 // s50c: POST body 统一预算（照片/表格上传绰绰有余；防超大 body 撑爆内存）
 const POST_MAX_BYTES = 50 * 1024 * 1024;
 // s78-C1（research/24 §7）：POST body 读取助手——17 处累积样板收敛一处，s50c 防线逐字保留（累积超预算即断开）。
@@ -725,6 +727,36 @@ function activeProvider() {
     return list.find(p => p.active) || null;
 }
 
+// ---- s98/llm-proxy: 深度家族与假名表（桥内单一真相源；别名只活在 goose 眼里，任何用户可见面翻回真名） ----
+// 家族=当前活跃池内「X-flash ↔ X（去 -flash 后缀同名）」对。research/37 定案：glm 线参数通道 5 样本×5 臂
+// 实证死透，真实深度=模型本身两档——flash=快，完整版=深（思考量 4x/难题正确 3/3 vs 2/3/单回合成本约 2.8x）。
+// 别名锚定 fast 成员名（gpt-5-forge-<fast>）：重指向 deep 时别名不变=钉着旧别名的存量 goose 会话不失联。
+// 形状必须命中 goose is_reasoning_model 闸门（gpt-5 开头且后续为 -/.，research/35 §1）——goose 以为在跟
+// gpt-5 系说话，放出原生 thinking_effort 五档并把 effort 带上 wire，/llmproxy 反代再把它翻译回模型选择。
+function forgeFamilies(act) {
+    const pool = (act && act.models) || [];
+    const has = new Set(pool.filter(m => typeof m === 'string'));
+    const out = [];
+    for (const m of pool) {
+        if (typeof m !== 'string' || !m.endsWith('-flash')) continue; // .endsWith 精确：flashx 不认（同 58228dc 判据）
+        const base = m.slice(0, -'-flash'.length);
+        if (!base || !has.has(base)) continue;
+        const alias = 'gpt-5-forge-' + m;
+        if (has.has(alias)) continue; // 池里恰好有同名真模型——让位不撞名
+        out.push({ fast: m, deep: base, alias });
+    }
+    return out;
+}
+function familyOfModel(act, name) { // 任一家族身份（fast/deep/别名）→家族；否则 null
+    if (typeof name !== 'string' || !name) return null;
+    for (const f of forgeFamilies(act)) if (name === f.fast || name === f.deep || name === f.alias) return f;
+    return null;
+}
+function gooseModelName(act, real) { // 真名→goose 侧名：家族成员=别名（goose 眼里只有别名一个条目），其余原样
+    const f = real ? familyOfModel(act, real) : null;
+    return (f && real !== f.alias) ? f.alias : real;
+}
+
 // ---- 裁决 2026-09-12-provider-health-probe S1/S2: provider 直连健康探测 ----
 // 单次 GET {host}/models（零 token）；只读信号——不写 upstream 计数、不触发任何自动动作（s50e 边界原样有效）。
 // 状态机：down / down+key(401/403) / stale-model(200 且当前模型名∉活列表，事故二形态) / ok；未配置不探（key-guide 独占，s51d）。
@@ -833,9 +865,12 @@ function spawnAcp() {
         GOOSE_PROVIDER: 'openai',
         // 末级回落链到此为止（主控拍板 2026-09-12：不再硬编码任何模型名——死名回落是两次事故的共同放大器；
         // 空则 goose 用其自身默认，空态暴露交健康告警条，裁决 provider-health-probe S3）
-        GOOSE_MODEL: effectiveModel(act), // qa s78c P3-1: 跨档选非首位模型时 env 随行（修前恒池首——前端被告知 a2、实跑 b1、探锚 a2 三者错位）
+        GOOSE_MODEL: gooseModelName(act, effectiveModel(act)), // s98/llm-proxy: 家族成员以别名入 goose（闸门放开原生 effort 档）；effectiveModel 仍是真名单源（探测锚/env0Model 不动）
         OPENAI_API_KEY: (act && act.key) || secrets.FORGE_AGENT_API_KEY || process.env.OPENAI_API_KEY,
-        OPENAI_HOST: (act && act.host) || secrets.FORGE_AGENT_HOST || process.env.OPENAI_HOST,
+        // s98/llm-proxy: goose 的 LLM 流量恒走桥内反代（/llmproxy/*）——goose URL 拼接=host 剥尾 /v1 + OPENAI_BASE_PATH
+        // （openai_def.rs parse_openai_base_url，1.46 源码实证），实际 wire 路径= /llmproxy/chat/completions。
+        // 代理按 providers.json 真值转发活跃服务商；非别名请求字节级透传，健康探测/直调链路不经此路（原 host 不动）。
+        OPENAI_HOST: GOOSE_LLM_HOST,
         OPENAI_BASE_PATH: 'chat/completions',
     };
     // s94 F-4a: goose(reqwest 0.13→hyper-util matcher) 默认吃 Windows 系统代理，但绕行表只认 NO_PROXY 环境变量——
@@ -843,6 +878,13 @@ function spawnAcp() {
     // from_env 先行、win::with_system 后补且 ProxyOverride 只在 builder.no 为空时套用；intercept() 首查 no.contains）。
     // 注入活跃服务商主机到 NO_PROXY，防系统代理吞掉 LLM 流量致回合永久挂起（ia1 实锤 15s 超时×3 ESTABLISHED）。
     let noProxy = (process.env.NO_PROXY || process.env.no_proxy || '').trim();
+    // s98/llm-proxy: goose 的 LLM 流量现在恒指回环（桥反代）——显式排除回环，防系统代理吞掉本地链路
+    // （既有事故记忆：子进程默认吃系统代理设置去连本机服务）。远端服务商由桥进程直连（Node http 不读系统代理）。
+    {
+        const parts = noProxy.split(',').map(s => s.trim()).filter(Boolean);
+        for (const lb of ['127.0.0.1', 'localhost']) if (!parts.some(p => p.toLowerCase() === lb)) parts.push(lb);
+        noProxy = parts.join(',');
+    }
     try {
         const hn = new URL(env.OPENAI_HOST || '').hostname;
         if (hn && hostIsRemote(hn)) { // 本机服务商（127./localhost/::1）无需绕行条目
@@ -890,9 +932,14 @@ function onAcpData(chunk) {
             if (w.resolve) { w.resolve(msg.result !== undefined ? msg.result : msg); }
             else if (w.ws && w.ws.alive) {
                 // I8: 带回客户端关联 id
+                if (w.__loadSid && msg.result && Array.isArray(msg.result.configOptions)) {
+                    // s98/llm-proxy: rpc 直通响应的 configOptions 同过跨界翻译点（session/load 开盒/含 configOptions
+                    // 的回包）——model.currentValue 翻真名+gradient 随行，别名零出厂
+                    xlateConfigOptions(msg.result.configOptions);
+                    noteThinkOptions(w.__loadSid, msg.result.configOptions);
+                }
                 const out = { rpc: msg };
                 if (w.__cid !== undefined) out.rpc.__cid = w.__cid;
-                if (w.__loadSid && msg.result && msg.result.configOptions) noteThinkOptions(w.__loadSid, msg.result.configOptions); // s98/think: session/load 回包刷缓存（老会话开盒）
                 w.ws.send(out);
             }
             continue;
@@ -922,6 +969,12 @@ function onAcpData(chunk) {
                     if (S26_ERR_RE.test(txt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(txt)); }
                 }
             } catch {}
+            // s98/llm-proxy: config_option_update 通知同过跨界翻译点（goose 会话档/模型变化时主动推的 configOptions
+            // 带别名）——翻真名+gradient，别名零出厂；档位缓存同刷（真相源=goose 回包，通知与回包同源）
+            if (msg.params && msg.params.update && msg.params.update.sessionUpdate === 'config_option_update' && Array.isArray(msg.params.update.configOptions)) {
+                xlateConfigOptions(msg.params.update.configOptions);
+                if (sid) noteThinkOptions(sid, msg.params.update.configOptions);
+            }
             humanizeDecline(msg); // s78 P2-2b: 拒绝回填文案人话门先于转发（含 session/load 回放同路帧）
             const set = sid ? sessionClients.get(sid) : null;
             const obj = { agent: msg };
@@ -1065,6 +1118,7 @@ function rescueSession(ws, text) {
         if (!ws.alive) return; // qa s76 P3-4: 救援窗口内客户端已断开（drop 已清各表）——不再回挂死连接/续发重放（rpc 直通 alive 门同款）
         bindWs(ws, res.sessionId);
         // 前端 subscribed 处理器会更新 sessionId/currentSid（与 hotRestart 后 rebind 同款），用户表现为「继续聊」
+        xlateConfigOptions(res.configOptions); // s98/llm-proxy: 翻真名+gradient（跨界翻译点）
         ws.send({ sys: 'subscribed', sessionId: res.sessionId, newSession: true, modes: res.modes || [], configOptions: res.configOptions || [] });
         noteThinkOptions(res.sessionId, res.configOptions); // s98/think: 救援新会话同样入缓存
         if (lastThinkOverride && thinkAllowed(res.sessionId, lastThinkOverride) && acpSetThink(res.sessionId, lastThinkOverride)) sidThinkApplied.set(res.sessionId, lastThinkOverride); // s98/think: 全局档随行（与 subscribe 同款；s98/R1: rescue 第四旁路同样过白名单——不合法不发帧不记账）
@@ -1127,6 +1181,38 @@ const sidModelApplied = new Map(); // sid -> 已确认落到 goose 会话的模�
 const sidThinkValues = new Map(); // sid -> 最近一次会话建立/load 回包的 thinking_effort values 列表（set_think 校验源）
 const sidThinkApplied = new Map(); // sid -> 已落到 goose 会话的思考档（prompt 前对账防重发，同 sidModelApplied 语义）
 let lastThinkOverride = ''; // 全局默认档（subscribe/set_think 记账；rescue/prompt 对账/switch_model 随行，同 lastModelOverride 语义）
+// s98/llm-proxy: configOptions 跨界翻译点（唯一）——goose 眼里会话模型=别名；对前端一律翻回真名并附 gradient
+// 家族提示（前端据此渲染两档「快一点/想深点」，值=原生 effort low/max）。currentValue 三种形态都到得了这里：
+// 别名（新会话）、真成员名（存量会话）、别名+档位（对账后）。档位被遮蔽成 ["off"] 的家族会话同步合成五档——
+// 下一 prompt 的模型对账必然把会话落到别名（applyModelBeforeTurn 走 gooseModelName），合成值即对账后的真相。
+function xlateConfigOptions(configOptions) {
+    if (!Array.isArray(configOptions)) return configOptions;
+    const mo = configOptions.find(c => c && c.id === 'model');
+    if (!mo || typeof mo.currentValue !== 'string') return configOptions;
+    const fam = familyOfModel(activeProvider(), mo.currentValue);
+    if (!fam) {
+        // s98/llm-proxy: 家族已散（池被编辑）但会话还钉着旧别名——落回生效真名（effectiveModel 单源），假名零出厂；
+        // 下一 prompt 的模型对账即收敛到新池形态
+        if (/^gpt-5-forge-/.test(mo.currentValue)) mo.currentValue = effectiveModel(activeProvider()) || mo.currentValue.replace(/^gpt-5-forge-/, '');
+        return configOptions;
+    }
+    const th = configOptions.find(c => c && c.id === 'thinking_effort');
+    const effort = th && typeof th.currentValue === 'string' ? th.currentValue : '';
+    const deep = effort === 'high' || effort === 'max';
+    const member = deep ? fam.deep : fam.fast; // 档位是深度真相（对账/随行后 wire 即按此走）
+    mo.currentValue = member;
+    if (Array.isArray(mo.options)) { // 选项列表里的别名也翻（goose 把当前模型列进 options；成员已在列则去重）
+        mo.options = mo.options.map(o => (o && o.value === fam.alias) ? { ...o, value: member, name: member } : o)
+            .filter((o, i, a) => a.findIndex(x => x && x.value === o.value) === i);
+    }
+    const vals = th && Array.isArray(th.options) ? th.options.map(x => x && x.value).filter(v => typeof v === 'string') : [];
+    if (th && vals.length <= 1) { // 遮蔽态合成五档（别名下 goose 本就报五档；此分支只救存量真名会话的开盒窗口）
+        th.options = ['off', 'low', 'medium', 'high', 'max'].map(v => ({ value: v, name: v }));
+        th.currentValue = deep ? 'max' : 'low';
+    }
+    mo.gradient = { family: fam.deep, fast: fam.fast, deep: fam.deep }; // 前端两档数据面（挂在 model 选项上，只加不破既有形状）
+    return configOptions;
+}
 function noteThinkOptions(sid, configOptions) {
     const o = (Array.isArray(configOptions) ? configOptions : []).find(c => c && c.id === 'thinking_effort'); // 非数组回包（桩/异常形态）按无键处理，不炸 resolve 链
     if (o && Array.isArray(o.options)) sidThinkValues.set(sid, o.options.map(x => x && x.value).filter(v => typeof v === 'string'));
@@ -1155,7 +1241,9 @@ function applyModelBeforeTurn(sid, model, next) {
     if (t.unref) t.unref();
     waiting.set(id, { ws: null, resolve: () => { if (done) return; done = true; clearTimeout(t); sidModelApplied.set(sid, model); next(); }, reject: () => { if (done) return; done = true; clearTimeout(t); next(); } });
     try {
-        acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/set_config_option', params: { sessionId: sid, configId: 'model', value: model } }) + '\n');
+        // s98/llm-proxy: 对账值走 gooseModelName——家族成员对账到别名（存量真名会话由此迁移）；记账仍存真名
+        // （sidModelApplied 与 effectiveModel 同一真名世界，比较语义不变）
+        acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/set_config_option', params: { sessionId: sid, configId: 'model', value: gooseModelName(activeProvider(), model) } }) + '\n');
     } catch (e) { if (!done) { done = true; clearTimeout(t); waiting.delete(id); next(); } } // acp 已死：直接放行，prompt 自身的写失败人话收口
 }
 
@@ -2796,6 +2884,111 @@ function handleSkillstore(req, res, url) {
     } else { res.writeHead(405); res.end(); }
 }
 
+// ---- s98/llm-proxy: 桥内 LLM 反向代理（/llmproxy/*） ----
+// goose 的 LLM 流量恒经此（spawnAcp OPENAI_HOST=http://127.0.0.1:PORT/llmproxy/v1；goose URL 拼接实测路径=
+// /llmproxy/chat/completions，openai_def.rs 剥尾 /v1 + OPENAI_BASE_PATH）。目标=providers.json 活跃档真值 host。
+// 别名请求：model=别名 → 按 effort 选真模型（off/low/medium/缺省→fast，high/max→deep——research/37 量化事实：
+// 完整版思考量 4x/难题正确 3/3 vs 2/3/单回合成本约 2.8x，参数通道 5×5 实证死透，模型本身是唯一真杠杆），
+// 剥掉 reasoning/reasoning_effort/thinking（上游 no-op，假参数不上真线），响应流里真名换回别名（goose 世界观
+// 一致）。非别名请求：字节级透传（SSE 逐块零缓冲、状态码与错误体原样——既有人话错误链不受影响）。并发安全：
+// 全程无共享可变态，每请求独立闭包。
+function llmStreamReplacer(from, to) { // 字节流替换器（from/to 均为 JSON 引号包裹的 ASCII 模型名）：逐块直发，
+    // 仅扣留可能跨块劈开的尾部前缀（≤from.length-1 字节）——UTF-8 自同步，ASCII 针不会跨多字节字符
+    const fromB = Buffer.from(from, 'utf8'), toB = Buffer.from(to, 'utf8');
+    let tail = Buffer.alloc(0);
+    const replaceIn = buf => {
+        if (!buf.length || buf.indexOf(fromB) < 0) return buf;
+        const parts = [];
+        let at = 0;
+        for (;;) {
+            const i = buf.indexOf(fromB, at);
+            if (i < 0) break;
+            parts.push(buf.subarray(at, i), toB);
+            at = i + fromB.length;
+        }
+        parts.push(buf.subarray(at));
+        return Buffer.concat(parts);
+    };
+    return {
+        push(chunk) {
+            const buf = tail.length ? Buffer.concat([tail, chunk]) : chunk;
+            let hold = 0; // buf 尾部是 from 前缀的最长长度（须扣留防劈半）
+            const maxHold = Math.min(fromB.length - 1, buf.length);
+            for (let i = maxHold; i > 0; i--) {
+                if (fromB.subarray(0, i).equals(buf.subarray(buf.length - i))) { hold = i; break; }
+            }
+            tail = hold ? Buffer.from(buf.subarray(buf.length - hold)) : Buffer.alloc(0);
+            const emit = hold ? buf.subarray(0, buf.length - hold) : buf;
+            return emit.length ? replaceIn(emit) : emit;
+        },
+        flush() { const t = tail; tail = Buffer.alloc(0); return replaceIn(t); },
+    };
+}
+const HOP_BY_HOP = ['connection', 'keep-alive', 'transfer-encoding', 'upgrade', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer'];
+function handleLlmProxy(req, res) {
+    const chunks = [];
+    let postBytes = 0, aborted = false;
+    req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { aborted = true; req.destroy(); return; } chunks.push(c); }); // 同 s50c 预算
+    req.on('error', () => { aborted = true; });
+    req.on('end', () => {
+        if (aborted) return;
+        const act = activeProvider();
+        const host = ((act && act.host) || secrets.FORGE_AGENT_HOST || '').replace(/\/$/, '');
+        if (!host) { res.writeHead(502, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { message: 'no active provider (providers.json)' } })); return; }
+        let body = chunks.length ? Buffer.concat(chunks) : null;
+        let xlate = null; // {fam, target}
+        if (body && req.method === 'POST') {
+            try {
+                const j = JSON.parse(body.toString('utf8'));
+                if (j && typeof j.model === 'string') {
+                    const fam = familyOfModel(act, j.model);
+                    if (fam && j.model === fam.alias) {
+                        // effort 档位映射（写死并注释：两档是 9router×glm 线的真实上限，research/37 §6）
+                        const e = typeof j.reasoning_effort === 'string' ? j.reasoning_effort : '';
+                        const target = (e === 'high' || e === 'max') ? fam.deep : fam.fast; // off/low/medium/缺省→快
+                        delete j.reasoning_effort; delete j.reasoning; delete j.thinking; // 上游 no-op 参数不上真线
+                        j.model = target;
+                        body = Buffer.from(JSON.stringify(j), 'utf8');
+                        xlate = { fam, target };
+                    }
+                }
+            } catch {} // 坏 JSON：原样透传（上游自己回 4xx，错误链原样）
+        }
+        let upUrl;
+        try { upUrl = new URL(host + (req.url || '').slice('/llmproxy'.length)); }
+        catch (e) { res.writeHead(502, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { message: 'bad upstream host: ' + host } })); return; }
+        const headers = { ...req.headers };
+        delete headers.host; // 让 Node 按目标 URL 自设
+        for (const h of HOP_BY_HOP) delete headers[h];
+        if (xlate) {
+            delete headers['accept-encoding']; // 要做响应翻译，收 identity（压缩字节里换不了名）
+            headers['content-length'] = String(body.length); // 重写后的长度
+        }
+        const mod = require(upUrl.protocol === 'https:' ? 'https' : 'http');
+        const up = mod.request(upUrl, { method: req.method, headers }, ur => {
+            const rh = { ...ur.headers };
+            for (const h of HOP_BY_HOP) delete rh[h];
+            if (xlate) delete rh['content-length']; // 换名后长度不定，走 chunked
+            try { res.writeHead(ur.statusCode, rh); } catch { ur.destroy(); return; }
+            if (xlate) {
+                const rep = llmStreamReplacer('"' + xlate.target + '"', '"' + xlate.fam.alias + '"'); // 真名→别名（同一翻译点）
+                ur.on('data', c => { const out = rep.push(c); if (out.length) res.write(out); });
+                ur.on('end', () => { const out = rep.flush(); try { res.end(out.length ? out : undefined); } catch {} });
+                ur.on('error', () => { try { res.end(); } catch {} });
+            } else {
+                ur.pipe(res); // 非别名：字节级零缓冲透传
+                ur.on('error', () => { try { res.end(); } catch {} });
+            }
+        });
+        up.on('error', e => { // 连接层失败（上游不可达）——人话错误体；HTTP 层错误状态由上方原样透传
+            try { res.writeHead(502, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { message: 'upstream unreachable: ' + (e && e.message || e) } })); } catch {}
+        });
+        res.on('close', () => { if (!res.writableEnded) { try { up.destroy(); } catch {} } }); // 客户端半途断开（goose 超时/取消）→ 掐上游，不留孤儿流
+        if (body) up.write(body);
+        up.end();
+    });
+}
+
 async function handleHttp(req, res) {
     const url = (req.url || '/').split('?')[0];
     // R2-C1b(审查s17): WS 层有 Origin 校验，HTTP 层没有——恶意网页可跨站 POST
@@ -2825,6 +3018,7 @@ async function handleHttp(req, res) {
         res.end(html);
     } else if (url === '/healthz') { res.writeHead(200); res.end('ok'); }
     else if (url === '/favicon.ico') { res.writeHead(204); res.end(); } // s98/R1-F4: 无图标诚实空回——此前 404 是浏览器控制台唯一 error
+    else if (url === '/llmproxy' || url.startsWith('/llmproxy/')) { handleLlmProxy(req, res); } // s98/llm-proxy: 桥内 LLM 反代（goose 专用；见 handleLlmProxy 头注）
     else if (url === '/api/skills') {
         // 扫描面与判据见 scanInstalledSkills 头注（.agents/skills 唯一扫描面；v150 桩故意不入）
         json200(res, scanInstalledSkills()); // s83: 读法平移至具名函数（/api/assets 技能源共用）
@@ -3979,13 +4173,17 @@ function handleClient(ws, msg) {
                         statsBump('sessionsCreated'); // P31-③
                         wsFirstPrompt.set(ws, true); // research/18 断点①: 新绑定首轮允许救援
                         bindWs(ws, res.sessionId);
+                        xlateConfigOptions(res.configOptions); // s98/llm-proxy: 翻真名+gradient（跨界翻译点）
                         ws.send({ sys: 'subscribed', sessionId: res.sessionId, newSession: true, modes: res.modes || [], configOptions: res.configOptions || [] });
                         // s26: 新对话沿用顶栏当前模型——session/new 默认回落 env 首模型（STATE 开放问题#4）
                         if (msg.model) {
                             lastModelOverride = msg.model; // qa s78b P3-2: 新会话显式带模型（顶栏当前模型）=生效模型，探测目标随行
                             const mid = nextId++;
-                            acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: mid, method: 'session/set_config_option', params: { sessionId: res.sessionId, configId: 'model', value: msg.model } }) + '\n');
+                            // s98/llm-proxy: 家族成员以别名入 goose（spawn env 已别名化，此处对账同款）；记账存真名
+                            acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: mid, method: 'session/set_config_option', params: { sessionId: res.sessionId, configId: 'model', value: gooseModelName(activeProvider(), msg.model) } }) + '\n');
                             sidModelApplied.set(res.sessionId, msg.model); // s94-b2 F-3: 记账（乐观：写失败=acp 已死，prompt 同死由其错误链收口）
+                            // s98/llm-proxy: 带模型不带档且是家族成员→按成员预置档（选完整版开新对话=深），有习惯则习惯优先
+                            if (!msg.think) { const f = familyOfModel(activeProvider(), msg.model); if (f) msg.think = msg.model === f.deep ? 'max' : 'low'; }
                         }
                         // s98/think: 新会话带思考档（与带 model 同款语义）——goose 按会话记住并持久化；模型被遮蔽时为
                         // no-op（前端三态②已诚实呈现）。qa s98 P3-2: 沿用习惯同样过白名单（localStorage 陈旧高档位
@@ -4024,9 +4222,12 @@ function handleClient(ws, msg) {
             // 不追改就会出现「UI 宣称已切、实跑还是种子模型」（ia2 全部 llm_request=mimo-v2.5）。
             // s98/think: 会话档 ≠ 全局档时先追发（fire-and-forget：stdin 写序保证先于 prompt 落地；模型对账在其后照常；
             // qa s98 P3-2: 过白名单才发——越档不发帧不记账只留 debug）
-            if (lastThinkOverride && sidThinkApplied.get(sid) !== lastThinkOverride && thinkAllowed(sid, lastThinkOverride) && acpSetThink(sid, lastThinkOverride)) sidThinkApplied.set(sid, lastThinkOverride);
+            // s98/llm-proxy: 档位习惯缺省——生效模型是家族成员且无习惯时按成员预置（快=low/深=max）：存量深会话
+            // 迁移到别名后第一回合仍跑深模型，不静默降级到快；已有习惯不覆盖（set_think/选择预置优先）。
             const wantModel = effectiveModel(activeProvider());
-            const goTurn = () => sendTurn(ws, sid, msg.text, firstTurn); // research/18 断点①: 错误帧→reject 人话/首轮单次救援（sendTurn）
+            if (!lastThinkOverride) { const fam0 = familyOfModel(activeProvider(), wantModel); if (fam0) lastThinkOverride = wantModel === fam0.deep ? 'max' : 'low'; }
+            if (lastThinkOverride && sidThinkApplied.get(sid) !== lastThinkOverride && thinkAllowed(sid, lastThinkOverride) && acpSetThink(sid, lastThinkOverride)) sidThinkApplied.set(sid, lastThinkOverride);
+            const goTurn = () => sendTurn(ws, sid, msg.text, firstTurn);
             if (wantModel && sidModelApplied.get(sid) !== wantModel) applyModelBeforeTurn(sid, wantModel, goTurn);
             else goTurn();
             return;
@@ -4307,7 +4508,11 @@ function handleClient(ws, msg) {
                 const act2 = activeProvider();
                 // s94-b3 P4-5: sig2 与 lastSpawnEnv 同源——host/key 走 spawnAcp 同款三级回落链（活跃档→secrets 快照→process.env）。
                 // 修前裸 act2.host/key：空 host/key 退化档的 sig2 恒缺回落值 → 该档每次保存都白热重启一次
-                const sig2 = ((act2 && act2.name) || 'secrets.env') + '\0' + effectiveModel(act2) + '\0' + ((act2 && act2.host) || secrets.FORGE_AGENT_HOST || process.env.OPENAI_HOST) + '\0' + ((act2 && act2.key) || secrets.FORGE_AGENT_API_KEY || process.env.OPENAI_API_KEY);
+                // s98/llm-proxy: 模型项与 spawnAcp 同读法（gooseModelName）——同家族换选成员时 goose 侧 env 不变（同别名），
+                // 裸真名会让 sig2 与 lastSpawnEnv 恒错位=连打保存白重启。
+                // s98/llm-proxy: 模型项与 spawnAcp 同读法（gooseModelName）；host 项同用 GOOSE_LLM_HOST 常量
+                // （goose env 的 host 已恒为桥反代，真实服务商 host 不再入指纹——同家族换成员/改 host 均不白重启）。
+                const sig2 = ((act2 && act2.name) || 'secrets.env') + '\0' + gooseModelName(act2, effectiveModel(act2)) + '\0' + GOOSE_LLM_HOST + '\0' + ((act2 && act2.key) || secrets.FORGE_AGENT_API_KEY || process.env.OPENAI_API_KEY);
                 if (sig2 !== lastSpawnEnv) hotRestartProvider().catch(e => console.error('hot restart failed', e));
             }
             return;
@@ -4323,12 +4528,20 @@ function handleClient(ws, msg) {
                 healthCache.at = 0; probeProviderHealth(); // qa s78b P3-2: 同档切换=换生效模型，同 §S1 失效语义（顶栏切健康兄弟模型→条即消，不等 30min TTL）
                 const doSet = (sessionId) => {
                     const id = nextId++;
-                    acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/set_config_option', params: { sessionId, configId: 'model', value: msg.model } }) + '\n');
+                    // s98/llm-proxy: 家族成员以别名入 goose（选择器两成员=goose 侧同一条目，深度由档位旋钮单一控制）；
+                    // 深度预置随选择（选完整版→max/选 flash→low），与 set_think 同点位过白名单，成功记习惯
+                    const fam = familyOfModel(target, msg.model);
+                    acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/set_config_option', params: { sessionId, configId: 'model', value: gooseModelName(target, msg.model) } }) + '\n');
                     waiting.set(id, { ws, resolve: (res) => {
                         if (res && res.configOptions) {
-                            sidModelApplied.set(sessionId, msg.model); // s94-b2 F-3: 成功才记账，失败留给 prompt 前对账重试
+                            xlateConfigOptions(res.configOptions); // s98/llm-proxy: 翻真名+gradient（跨界翻译点）
+                            sidModelApplied.set(sessionId, msg.model); // s94-b2 F-3: 成功才记账，失败留给 prompt 前对账重试（真名世界）
                             noteThinkOptions(sessionId, res.configOptions); // s98/think: 切模型后档位列表可能变（goose 名单制）——回包即刷缓存
-                            if (lastThinkOverride && sidThinkApplied.get(sessionId) !== lastThinkOverride && thinkAllowed(sessionId, lastThinkOverride) && acpSetThink(sessionId, lastThinkOverride)) sidThinkApplied.set(sessionId, lastThinkOverride); // s98/think: 同点位并联（goose INHERITED 继承链之外再对账一次；qa s98 P3-2: 过白名单才发）
+                            if (fam) { // s98/llm-proxy: 成员选择=深度预置（fire-and-forget，stdin 写序先于后续 prompt）
+                                const v = msg.model === fam.deep ? 'max' : 'low';
+                                lastThinkOverride = v;
+                                if (sidThinkApplied.get(sessionId) !== v && thinkAllowed(sessionId, v) && acpSetThink(sessionId, v)) sidThinkApplied.set(sessionId, v);
+                            } else if (lastThinkOverride && sidThinkApplied.get(sessionId) !== lastThinkOverride && thinkAllowed(sessionId, lastThinkOverride) && acpSetThink(sessionId, lastThinkOverride)) sidThinkApplied.set(sessionId, lastThinkOverride); // s98/think: 同点位并联（goose INHERITED 继承链之外再对账一次；qa s98 P3-2: 过白名单才发）
                             ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, configOptions: res.configOptions }); // s98/think: 前端据此刷新思考力度三态（会话内切模型不走 session/new→subscribed）
                         }
                         else ws.send({ sys: 'error', text: '切换失败，试试重开对话' });
@@ -4371,6 +4584,7 @@ function handleClient(ws, msg) {
                     const rid = nextId++;
                     waiting.set(rid, { ws, resolve: (res) => {
                         const co = res && Array.isArray(res.configOptions) ? res.configOptions : null;
+                        if (co) xlateConfigOptions(co); // s98/llm-proxy: 翻真名+gradient（跨界翻译点）
                         const frame = { sys: 'model_switched', model: msg.model, provider: target.name, restarted: true };
                         if (co) { frame.configOptions = co; noteThinkOptions(osid, co); }
                         ws.send(frame);
@@ -4392,6 +4606,7 @@ function handleClient(ws, msg) {
             const id = nextId++;
             waiting.set(id, { ws, resolve: (res) => {
                 if (res && res.configOptions) {
+                    xlateConfigOptions(res.configOptions); // s98/llm-proxy: 翻真名+gradient（跨界翻译点）
                     noteThinkOptions(sid, res.configOptions);
                     sidThinkApplied.set(sid, v);
                     lastThinkOverride = v; // 主控裁：会话内切换即记习惯（新会话 subscribe 随行）

@@ -711,6 +711,7 @@ function connect(){
       pendingForNew=false;
       document.querySelectorAll('.sitem').forEach(el=>el.classList.toggle('active', el.dataset.sid===m.sessionId));
       modes=(m.modes&&m.modes.availableModes)||[]; configOptions=m.configOptions||[];
+      thinkEcho=''; // s98/llm-proxy: 新会话/重订阅——档位显值从 configOptions/成员选择重算
     let cur=(m.modes&&m.modes.currentModeId); const saved=localStorage.getItem('pf_mode');
     if(saved&&cur&&saved!==cur){ rpc2('session/set_mode',{sessionId:m.sessionId,modeId:saved}); cur=saved; }
     if(cur){ $('mode').value=cur; paintModeTip(); } // 恢复路径静默：只同步 select 与 title，不弹提示
@@ -729,19 +730,21 @@ function connect(){
       return;
     }
     if(m.sys==='test_result'){ note(m.ok?('✅ 连通 OK（HTTP '+m.http+'）回复: '+m.reply):('❌ 失败 HTTP '+m.http+' '+m.reply)); return; }
-    if(m.sys==='providers'){ providerList=m.list||[]; renderProviders(providerList); renderModelLabel(); renderThinkCtl(); return; } // s98/think-grad: 池变了（设置勾/删模型）→快/深兄弟在场判定重算
+    if(m.sys==='providers'){ providerList=m.list||[]; renderProviders(providerList); renderModelLabel(); thinkEcho=''; renderThinkCtl(); return; } // s98/think-grad→llm-proxy: 池变了→家族在场判定重算（成员被勾掉即散）
     if(m.sys==='model_switched'){
       // 顶栏立即反映（不信 configOptions 缓存）
       $('model-cur').textContent=m.provider+' · '+m.model;
       lastKnownModel=m.model;
+      thinkEcho=''; // s98/llm-proxy: 换了模型——档位显值按新模型重算（成员选择=深度，桥随后对账）
       if(m.configOptions){ configOptions=m.configOptions; renderThinkCtl(); } // s98/think: 会话内切模型不走 subscribed——回包档位即刷三态
       if(m.restarted){ addInfo('✅ 已切到 '+m.provider+' · '+m.model+'。刚才的对话要先重新打开：点左侧列表里的那个对话即可继续（内容都在）。'); loadSessions(); }
       else addInfo('✅ 已切到 '+m.provider+' · '+m.model+'，直接继续说话就行。');
       return;
     }
-    if(m.sys==='think_set'){ // s98/think: 切档回执——失败回滚显示（按 configOptions 真相源重绘）
+    if(m.sys==='think_set'){ // s98/think: 切档回执——失败回滚显示（按 configOptions 真相源重绘）；llm-proxy: 成功值即显（thinkEcho）
       if(m.ok&&m.configOptions){ configOptions=m.configOptions; }
-      if(m.ok){ addInfo('思考力度已切到「'+(THINK_LABELS[m.value]||m.value)+'」。'); } else { addErr(m.err||'没切换成功，稍后再试。'); }
+      thinkEcho=m.ok?(m.value||''):'';
+      if(m.ok){ addInfo(m.configOptions&&thinkFamily()?('思考力度已切到「'+(m.value==='max'?'想深点':'快一点')+'」。'):('思考力度已切到「'+(THINK_LABELS[m.value]||m.value)+'」。')); } else { addErr(m.err||'没切换成功，稍后再试。'); }
       renderThinkCtl();
       return;
     }
@@ -1035,33 +1038,37 @@ function openSession(sid){
     });
 }
 let lastKnownModel=null;
-// s98/think（research/35 通道 A + research/37 L1）：思考力度四态控件。选项=最近 configOptions 里
-// thinking_effort.values（真相源=goose 回包，零自带名单）；标签零术语。①多档→可选，选择即发 set_think；
-// ②无多档（glm 系被 goose is_reasoning_model 名单遮蔽成 ["off"]；参数通道 5 样本×5 臂已证死，research/37）
-// 且池内有快/深兄弟模型（当前名以 -flash 结尾↔去后缀同名，.endsWith 精确——flashx 不算）→两档「快一点/想深点」，
-// 选择=走既有会话内切模型通道（真杠杆=模型本身）；当前模型是唯一真相（flash→快选中、完整版→深选中），不做独立
-// 持久化防双真相源；③遮蔽且无兄弟→在场但禁用+人话提示；④无键→隐藏。切模型/providers 池刷新后自动重算。
+// s98/llm-proxy 思考力度控件（research/35 通道 A + research/37 L1 + 主控新方案）。档位真相源=最近 configOptions
+// 里 thinking_effort（桥已统一翻译：别名翻真名、家族会话补五档）；深度家族提示=桥在 model 选项上附的 gradient
+// （{family,fast,deep}，只在桥内生成——假名永不出厂）。四态：①gradient 家族在场→两档「快一点/想深点」，值发
+// 原生 effort low/max（桥 /llmproxy 反代把力度翻译成快/深真模型——真杠杆=模型本身，参数通道 5 样本×5 臂已证死）；
+// ②无家族但多档→原生五档照旧（名单模型真 effort）；③遮蔽单档无家族→诚实禁用「想多深它自己定」；④无键→隐藏。
+// 58228dc 的池内兄弟切换梯度模式已删（被本通道取代——同一件事只留一个机制）。
 const THINK_LABELS={off:'不用额外想',low:'快一点',medium:'标准',high:'深想',max:'尽全力想'};
-let thinkGrad=null; // 态②快/深档的兄弟模型对 {fast,deep}——renderThinkCtl 派生、onchange 消费
+let thinkEcho=''; // 最近一次 set_think 成功值（回执即显，等下一帧 configOptions 追认；切模型/重订阅即失效重算）
+function thinkFamily(){ // 桥单源家族提示；成员不在池（设置里勾掉了）即不认——池变后家族解散不再双控
+  const g=((configOptions.find(c=>c&&c.id==='model')||{}).gradient)||null;
+  if(g&&g.fast&&g.deep&&poolModels().some(m=>m&&(m.value===g.fast||m.value===g.deep))) return g;
+  return null;
+}
 function renderThinkCtl(){
   const sel=$('think'); if(!sel) return;
-  thinkGrad=null;
   const o=configOptions.find(c=>c&&c.id==='thinking_effort');
   if(!o||!Array.isArray(o.options)||!o.options.length){ sel.style.display='none'; return; } // 态④：模型没有这个配置面
-  const vals=o.options.map(x=>x&&x.value).filter(v=>typeof v==='string');
   sel.style.display='';
-  if(vals.length<=1){ // 无多档：先试池内快/深兄弟（态②），没有才诚实禁用（态③）
-    const cur=lastKnownModel||((configOptions.find(c=>c&&c.id==='model')||{}).currentValue);
-    const sib=typeof cur==='string'?(cur.endsWith('-flash')?cur.slice(0,-6):cur+'-flash'):null;
-    if(sib&&poolModels().some(m=>m&&m.value===sib)){
-      thinkGrad=cur.endsWith('-flash')?{fast:cur,deep:sib}:{fast:sib,deep:cur};
-      sel.disabled=false; sel.title='想深一点会换成完整版模型，更准，也稍慢一点。'; sel.innerHTML='';
-      for(const p of [[thinkGrad.fast,'快一点（快速版）'],[thinkGrad.deep,'想深点（完整版，更准也稍慢）']]){
-        const op=document.createElement('option'); op.value=p[0]; op.textContent=p[1]; sel.appendChild(op);
-      }
-      sel.value=(cur===thinkGrad.deep)?thinkGrad.deep:thinkGrad.fast; // 与模型选择器同一真相：现在是谁谁选中
-      return;
+  const fam=thinkFamily();
+  if(fam){ // 态①：深度家族两档——值=原生 effort low/max，翻译在桥
+    sel.disabled=false; sel.title='想深一点会换成完整版模型，更准，也稍慢一点。'; sel.innerHTML='';
+    for(const p of [['low','快一点（快速版）'],['max','想深点（完整版，更准也稍慢）']]){
+      const op=document.createElement('option'); op.value=p[0]; op.textContent=p[1]; sel.appendChild(op);
     }
+    const cur=lastKnownModel||((configOptions.find(c=>c.id==='model')||{}).currentValue);
+    const byModel=(cur===fam.deep)?'max':(cur===fam.fast)?'low':''; // 选了哪个成员=哪个深度（与模型选择器同一真相）
+    sel.value=thinkEcho||byModel||((o.currentValue==='high'||o.currentValue==='max')?'max':'low');
+    return;
+  }
+  const vals=o.options.map(x=>x&&x.value).filter(v=>typeof v==='string');
+  if(vals.length<=1){
     sel.disabled=true; sel.innerHTML=''; // 态③：只剩 off——这个模型想多深它自己定，调不了快慢
     const op=document.createElement('option'); op.value='off'; op.textContent='想多深它自己定'; sel.appendChild(op);
     sel.title='这个模型想多深它自己定，调不了快慢';
@@ -1074,7 +1081,7 @@ function renderThinkCtl(){
   for(const v of vals){ const op=document.createElement('option'); op.value=v; op.textContent=THINK_LABELS[v]||v; sel.appendChild(op); }
   sel.value=pick;
 }
-$('think').onchange=e=>{ const v=e.target.value; if(thinkGrad){ switchModel(v); return; } localStorage.setItem('pfThinkEffort',v); if(!wssend({type:'set_think',sessionId:currentSid,value:v})) renderThinkCtl(); }; // s98/think: 主控裁「会话内切换即记习惯」；没连上按 configOptions 真相源回滚显示。s98/think-grad: 态②=既有切模型通道（不记 pfThinkEffort——切模型不冒充 effort 习惯；失败由 error 帧重绘回滚）
+$('think').onchange=e=>{ const v=e.target.value; localStorage.setItem('pfThinkEffort',v); if(!wssend({type:'set_think',sessionId:currentSid,value:v})) renderThinkCtl(); }; // s98/think+llm-proxy: 家族两档与原生五档同走 set_think（值 low/max 均在桥翻译后的合法档内）；主控裁「会话内切换即记习惯」；没连上按 configOptions 真相源回滚显示
 function renderModelLabel(){
   try{
     const cur=configOptions.find(o=>o.id==='model');
