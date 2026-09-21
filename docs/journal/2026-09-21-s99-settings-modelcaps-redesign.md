@@ -19,9 +19,17 @@
 7. **think-grad 预存红 RCA**（tmp/s99-thinkgrad-red-rca.md）：探针期望过时非产品缺陷（1874b94/72350ca 有意变更未随迁+验证清单漏跑）；**流程改进：触桥批必跑清单纳入 think-grad-probe**。
 8. iat20b 挡位翻译终证：mock 上游实收 model=glm-5.3（深）/glm-5.3-flash（快），别名零泄漏。
 
+## 尾段（2026-09-22 凌晨，闲时循环续产三批）
+
+- **r6 清扫批 f2db0a6**：深侧编辑器预选/工具 pane 技术区折叠（裁决盘点#5）/remember_memory 权限卡预告句（s88 U4+s76 遗留⑤双销账）。
+- **T3 度量批 60b3cc2**：六项 S 级计数（permissionCards 分桶/switchModel 11 出口/rescues/retryAfterError/assetsCount/health+upgrade 事件）全挂既有 stats 管线；**P31-③ 卡点关键词规格改写收口**（=retryAfterError 计数+📮 报告承担）。
+- **QA 双通过 + P2-1 收口 b7c6ccd**：深侧成员深档下拉自身作「（现状）」候选+预选，直存=家族等值；**主控追认门控=解散态不挂现状项**（桥必拒 fast∉池 deep=self，挂了复刻不可保存陷阱；解散态维持无预选+提示句）。
+- 全程终态：e2e 62/fuzz 225/ui-logic 56/ia-logic 34/semantics-r5 38/capeditor 75；dev 栈 healthz 200；C:\PF-TEST 空。
+- goose v1.51.0 升级窗口维持开，闲时会话按章程边界（不升级依赖）不动，归用户在场合。
+
 ## 留痕清单
 
-- commit：5164004(verdict)/8d9520c(S1)/87dcea8(S2)/a700c96(S3)/818fd40(S4)/5ce50e9(qa-rework)+本文档——本地未 push（闲时批次协调惯例）。
+- commit：5164004(verdict)/8d9520c(S1)/87dcea8(S2)/a700c96(S3)/818fd40(S4)/5ce50e9(qa-rework)/681d925(docs 终态)/f2db0a6(r6-sweep)/60b3cc2(t3-metrics)/b7c6ccd(deep-self)——本地未 push（闲时批次协调惯例）。
 - 测试包：dist/*iat20a.zip（sha256 55769aa5…）/​*iat20b.zip（sha256 559dcc7f…）不入发布序。
 - tmp 资产（gitignored）：s99-redesign-factbase / s99-thinkgrad-red-rca / qa-s99-review(+复验节) / s99-iat20b-probe / capeditor-probe(64ck 活体臂+P4-9 自清) / think-grad-probe(随迁 19ck) / s99-s1-nav-probe(25ck) / rework-s99-gui-probe / qa-s99-rework-replay。
 - 遗留与触发器：见 STATE.md 顶部行「盘点遗留」节（P3 深侧开态预选空、MCP 技术区折叠后续批、两条挂起、welcome 首启物化边界、e2e 瞬时抖动观察项）。
