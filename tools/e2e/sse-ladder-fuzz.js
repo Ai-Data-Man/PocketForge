@@ -186,7 +186,7 @@ let bridge = null, prov = null, C = null;
     const lateDelta = C.inbox.filter(m => m.sys === 'tool_explanation_delta' && m.id === r9.id && String(m.text || '').includes('迟到垃圾')).length;
     ck('L13b 终局=解释失败+上游消息（error 帧人话，不再空回误导重复撞墙）+迟到 delta 丢弃', r9.text === '解释失败: quota out' && lateDelta === 0, JSON.stringify(r9.text) + ' late=' + lateDelta);
     const r9k = await explainOnce(C, 'L9KEY', 1, 'L13c SSE error 帧 401/key 族：key 人话不裸英文');
-    ck('L13c 终局=key 族人话（解释失败+Key 指引，classifyUpstream unauthorized 映射）', r9k.text === '解释失败: 这家服务商的 Key 没配上或不对。到 ⚙️ 设置 → 服务商档案，填好 Key 再发一次。', JSON.stringify(r9k.text));
+    ck('L13c 终局=key 族人话（解释失败+Key 指引，classifyUpstream unauthorized 映射）', r9k.text === '解释失败: 这家服务商的 Key 没配上或不对。到 ⚙️ 设置 → 大模型连接，填好 Key 再发一次。', JSON.stringify(r9k.text)); // s99/S4: 期望随 TURN_KEY_TEXT 指引改版同步
     const r10 = await explainOnce(C, 'L10HTTP500', 1, 'L14 HTTP500 JSON 错误体：upstream 措辞透传');
     ck('L14b 终局=解释失败+上游消息', /^解释失败: 配额用光/.test(r10.text || ''), JSON.stringify(r10.text));
     const r11 = await explainOnce(C, 'L11NOTJSON', 1, 'L15 200 非 JSON：parse 措辞稳定');

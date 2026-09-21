@@ -341,7 +341,7 @@ details.tz[open]>summary::before{content:'▾ '}
     <button class="icobtn" id="refresh-sessions" title="刷新会话列表">⟳</button>
     <button class="icobtn" id="open-skills" title="手艺">🧩</button>
     <button class="icobtn" id="open-manage" title="管理：自带的/记忆/定时任务">🧠</button>
-    <button class="icobtn" id="open-settings" title="设置：服务商/外观/升级">⚙️</button>
+    <button class="icobtn" id="open-settings" title="设置：大模型连接/外观/关于与升级">⚙️</button><!-- s99/S4: 旧三块名随 S1 左导航类目名同步 -->
     <button class="icobtn" id="report-issue" title="反馈问题" aria-label="反馈问题">📮</button>
     <span style="font-size:.68rem;color:var(--mut);align-self:center" id="version"></span>
   </footer>
@@ -587,7 +587,8 @@ details.tz[open]>summary::before{content:'▾ '}
   </div>
 </div></div>
 <div id="modal"><div id="panel" role="dialog" aria-modal="true" aria-label="设置">
-  <h3 style="padding:18px 24px 10px">⚙️ 设置<button class="mclose" title="关闭" aria-label="关闭" onclick="$('modal').classList.remove('on');cfgKeyTouched=false;$('cfg-key').value=''">✕</button></h3>
+  <h3 style="padding:18px 24px 4px">⚙️ 设置<button class="mclose" title="关闭" aria-label="关闭" onclick="$('modal').classList.remove('on');cfgKeyTouched=false;$('cfg-key').value=''">✕</button></h3>
+  <div class="fnote" style="padding:0 24px 10px">连到哪、长什么样、版本新旧——都在这</div><!-- s99/S4 边界句（裁决 §2.1）：⚙️=配置域弹窗级；pane 级母句在 .sp-head，层级分清 -->
   <div class="set-wrap">
   <div id="set-nav" role="tablist" aria-label="设置分类">
     <button class="rtab on stab" data-pane="prov" role="tab" aria-selected="true">🔌 大模型连接</button>
@@ -600,7 +601,7 @@ details.tz[open]>summary::before{content:'▾ '}
     <h3 style="margin:0 0 4px;font-size:1.13rem">🔌 大模型连接</h3>
     <div class="fnote">它连到哪家大模型服务商、用哪些模型。地址和钥匙都在这；平时换模型去顶栏，不用来这</div>
   </div>
-  <div class="frow"><label for="prov-name">服务商档案</label>
+  <div class="frow"><label for="prov-name">服务商</label><!-- s99/S4: 旧区块名「服务商档案」随 S1 类目名清洗（裁决 §4 同族） -->
     <div id="prov-list"></div>
     <div style="display:flex;gap:6px;margin-top:6px">
       <input id="prov-name" placeholder="名称，如 公司中转" style="flex:1">
@@ -1142,7 +1143,7 @@ function buildModelItems(filter){
   const f=(filter||'').toLowerCase();
   const shown=pool.filter(o=>!f||(o.value+' '+o.provider).toLowerCase().includes(f)).slice(0,80);
   box.innerHTML='';
-  if(!pool.length){ box.innerHTML='<div class="model-note">可选池是空的——到 ⚙️ 设置里，选一个服务商档案，拉取模型后勾选几个。</div>'; return; }
+  if(!pool.length){ box.innerHTML='<div class="model-note">可选池是空的——到 ⚙️ 设置 → 大模型连接，选一家服务商，拉取模型后勾选几个。</div>'; return; }
   for(const o of shown){
     const el=document.createElement('div'); el.className='mi'+((cur&&cur.currentValue)===o.value&&o.activeProvider?' cur':'');
     el.textContent=o.provider+' · '+o.value;
@@ -1268,7 +1269,7 @@ function endStream(){ if(streamEl){
       el.textContent='💡 你正在用的模型已被服务商下架，等也不会好。点 ⚙️ 换一个模型：⟳ 拉取→勾选→保存。';
       chat.appendChild(el);
     } else if((hst==='down'&&lastHealthFrame.kind==='key')||/401\s*(unauthorized|invalid|forbidden)?[^\n]{0,40}(unauthorized|invalid|api[ _-]?key)|api[ _-]?key|unauthorized/i.test(txtRaw)){ // s50f: 裸 401 须伴随上下文词，避免「共 401 条记录」误报
-      el.textContent='💡 这家服务商的 Key 没配上或不对。到 ⚙️ 设置 → 服务商档案，填好 Key 再回来，点你刚发那条消息下方的「取回修改」检查后发送。'; // s76: 操作条「重发」已改名「取回修改」（裁决 batch1-C），文案同步，行为零改动；qa P3-7 指代校准
+      el.textContent='💡 这家服务商的 Key 没配上或不对。到 ⚙️ 设置 → 大模型连接，填好 Key 再回来，点你刚发那条消息下方的「取回修改」检查后发送。'; // s76: 操作条「重发」已改名「取回修改」（裁决 batch1-C），文案同步，行为零改动；qa P3-7 指代校准；s99/S4 指引随 S1 类目名
       chat.appendChild(el);
     } else {
       el.textContent='💡 看起来是大模型服务商那边暂时不通（不是你的操作问题）。'+(hst==='down'?'一般几分钟内恢复；顶部提醒条消失就是好了。':'')+'等一两分钟，点这条消息下方的「取回修改」再发送一次；老不行就换个模型（点上面的模型名字）。'; // s76: 同上，纯文案；R3 半句只在健康态=down 时出现（条必在，指称成立）
@@ -2390,7 +2391,7 @@ function healthSync(m){
   }
   const t=el.firstChild, b=el.querySelector('button');
   if(bad){
-    if(st==='down'&&m.kind==='key'){ t.textContent='这家服务商的 Key 没配上或不对。到 ⚙️ 设置 → 服务商档案，填好 Key 再发一次。'; }
+    if(st==='down'&&m.kind==='key'){ t.textContent='这家服务商的 Key 没配上或不对。到 ⚙️ 设置 → 大模型连接，填好 Key 再发一次。'; }
     else if(st==='down'){ t.textContent='现在联系不上大模型服务商，发消息可能没回音（不是你的操作问题）。点这里检查线路 →'; }
     else{ t.textContent='你正在用的模型已被服务商下线，发消息会失败。点这里更新模型 →'; }
     b.textContent=(st==='down'&&m.kind==='key')?'去设置':(st==='down'?'检查线路':'更新模型');
@@ -2480,7 +2481,7 @@ function renderModelPool(pr){
       }
     };
     lab.appendChild(cb); lab.appendChild(document.createTextNode(' '+m+((modelCaps[m]&&!modelCaps[m].user)?'（猜的）':''))); // s99/S2 §3.5: 池行来源标注——按名字自动认、没改过的标「（猜的）」，改过（user）不标
-    const capBtn=document.createElement('button'); capBtn.className='mini'; capBtn.textContent='能力'; capBtn.title='改这个模型的本事：能不能看图、上下文多大、思考力度怎么调（识别错了可以改）';
+    const capBtn=document.createElement('button'); capBtn.className='mini'; capBtn.textContent='能力'; capBtn.title='改这个模型会什么：能不能看图、上下文多大、快慢怎么调（认错了可以改）'; // s99/S4: r5 词汇合规——「本事」改「会什么」（主控裁决覆盖裁决书 §3.3 字面）
     capBtn.onclick=(e)=>{ e.preventDefault(); e.stopPropagation(); openCapEditor(m); }; // s98/llm-proxy C2: 能力编辑入口
     lab.appendChild(capBtn);
     box.appendChild(lab);
@@ -2512,7 +2513,7 @@ function openCapEditor(model){
   const panel=document.createElement('div'); panel.className='cap-edit'; panel.style.cssText='margin:8px 0;padding:10px;border:1px dashed var(--line-strong);border-radius:9px;font-size:.78rem';
   const poolNow=(providerList.find(x=>x.name===curProvName)||{}).models||[];
   const mkSel=(opts,val)=>{ const s=document.createElement('select'); for(const [v,n] of opts){ const o=document.createElement('option'); o.value=v; o.textContent=n; s.appendChild(o); } s.value=val; return s; };
-  const head=document.createElement('div'); head.textContent='「'+model+'」的本事'; head.style.cssText='font-weight:600;margin-bottom:2px';
+  const head=document.createElement('div'); head.textContent='「'+model+'」会什么'; head.style.cssText='font-weight:600;margin-bottom:2px'; // s99/S4: r5 词汇合规——「本事」改「会什么」
   const headSub=document.createElement('div'); headSub.className='fnote'; headSub.textContent='按名字自动认的，认错了您改；改过就记住您的。'; headSub.style.marginBottom='6px';
   panel.appendChild(head); panel.appendChild(headSub);
   const mm=mkSel([['true','能看图'],['false','不能看图']],String(!!cap.multimodal));
