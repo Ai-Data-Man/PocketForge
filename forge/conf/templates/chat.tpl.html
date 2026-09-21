@@ -2536,13 +2536,16 @@ function openCapEditor(model){
   const radios=[];
   const paceVal=()=>{ const r=radios.find(x=>x.checked); return r?r.value:'none'; };
   const deepRow=document.createElement('div'); deepRow.style.cssText='display:none;margin:5px 0 5px 24px';
-  // r6/sweep-1（s99 QA P3 遗留）：深侧成员开态——家族 deep=自身被滤出候选，存值不可选即预选家族伙伴 fast（在池时）；
-  // 伙伴也不在池=家族解散形态：回落无预选+诚实提示句（不装哑巴；新家族/无家族形态零变化）
+  // fix(s99/deep-self)（QA 批1 P2-1 收口）：深侧成员开态——自身即家族 deep，作「（现状）」候选首位+预选，
+  // 直存=patch 与现状家族等值（桥 :883-887 幂等接受，家族零变），不再落进「预选值全表单唯一不可保存」死胡同；
+  // 仅限快侧伙伴在池（现状可表达）——伙伴不在池=解散态维持 r6 形态（无预选+提示句：桥 fast 回落 model 必拒
+  // deep=self，不挂保存必败的现状项）；快侧成员零变化（自身=fast 锚，deep 候选不含自身，桥拒人话语义保持）
   const deepCands=poolNow.filter(x=>x!==model);
   const deepOld=(t.variant&&t.variant.deep)||'', deepMate=(t.variant&&t.variant.fast)||'';
-  const deepVal=deepCands.includes(deepOld)?deepOld:(deepCands.includes(deepMate)?deepMate:'');
+  const deepSelf=!!t.variant&&t.variant.deep===model&&deepCands.includes(deepMate);
+  const deepVal=deepSelf?model:(deepCands.includes(deepOld)?deepOld:(deepCands.includes(deepMate)?deepMate:''));
   const mateLost=(t.mode==='variant'&&!!t.variant&&deepCands.length>0&&!deepCands.includes(deepOld)&&!deepCands.includes(deepMate));
-  const deep=mkSel(deepCands.map(x=>[x,x]),deepVal);
+  const deep=mkSel(deepSelf?[[model,'（现状）'+model]].concat(deepCands.map(x=>[x,x])):deepCands.map(x=>[x,x]),deepVal);
   deepRow.appendChild(document.createTextNode('深档用哪个模型：')); deepRow.appendChild(deep);
   const deepNote=document.createElement('div'); deepNote.className='fnote'; deepNote.textContent='深档＝干这活时让它用更完整的那个模型，更准，也更花时间。'; deepNote.style.margin='2px 0 0 12px';
   const deepHint=document.createElement('div'); deepHint.className='fnote'; deepHint.textContent='深档要用另一个模型——先在可选池里多勾一个。'; deepHint.style.cssText='display:none;margin:2px 0 0 12px'; // s99/qa P3-1: 池内无第二个模型——子行不装哑巴，诚实指路（拒因同款句）
