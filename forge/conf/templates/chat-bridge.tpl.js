@@ -831,8 +831,8 @@ function validModelCapsPatch(model, patch, poolSet) {
             let fast = typeof v.fast === 'string' && poolSet.has(v.fast) ? v.fast : null;
             if (!fast && cap.thinking.mode === 'variant' && cap.thinking.variant && poolSet.has(cap.thinking.variant.fast)) fast = cap.thinking.variant.fast;
             if (!fast) fast = model;
-            if (typeof v.deep !== 'string' || !poolSet.has(v.deep)) return { ok: false, err: '「想深点」要换成池里的另一个模型' };
-            if (v.deep === fast) return { ok: false, err: '深浅变体不能是同一个模型' };
+            if (typeof v.deep !== 'string' || !poolSet.has(v.deep)) return { ok: false, err: '深档要用另一个模型——先在可选池里多勾一个。' }; // s99/qa P3-2: 拒因收口人话（原句带机制词「想深点…换成…」；与页侧 P3-1 提示句同款）
+            if (v.deep === fast) return { ok: false, err: '深档要用另一个模型——不能选它自己。' }; // s99/qa P3-2: 原句带机制词「变体/深浅」
             const levels = (Array.isArray(t.levels) && t.levels.every(x => typeof x === 'string') && t.levels.length) ? t.levels : ['low', 'max'];
             cap.thinking = { mode: 'variant', levels, variant: { fast, deep: v.deep } };
         } else cap.thinking = { mode: t.mode };

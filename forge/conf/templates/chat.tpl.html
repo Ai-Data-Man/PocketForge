@@ -768,7 +768,7 @@ function connect(){
       return;
     }
     if(m.sys==='test_result'){ note(m.ok?('✅ 连通 OK（HTTP '+m.http+'）回复: '+m.reply):('❌ 失败 HTTP '+m.http+' '+m.reply)); return; }
-    if(m.sys==='providers'){ providerList=m.list||[]; modelCaps=m.caps||{}; renderProviders(providerList); renderModelLabel(); thinkEcho=''; renderThinkCtl(); return; } // s98/think-grad→llm-proxy: 池变了→家族在场判定重算（成员被勾掉即散）；C2: caps 随帧下发（能力编辑器数据面）
+    if(m.sys==='providers'){ providerList=m.list||[]; modelCaps=Object.assign({}, ...(m.list||[]).map(p=>p.caps||{})); renderProviders(providerList); renderModelLabel(); thinkEcho=''; renderThinkCtl(); return; } // s98/think-grad→llm-proxy: 池变了→家族在场判定重算（成员被勾掉即散）；C2: caps 随帧下发（能力编辑器数据面）；s99/qa R1: caps 嵌在每个 provider 条目 list[].caps 内（桥 :4685）——页侧按条目合并，帧级 m.caps 不存在
     if(m.sys==='model_switched'){
       // 顶栏立即反映（不信 configOptions 缓存）
       $('model-cur').textContent=m.provider+' · '+m.model;
@@ -2504,7 +2504,8 @@ function renderModelPool(pr){
 // 技术区（details.tz 技能弹窗先例；消费面仅展示=信息行，§3.1 裁剪判据）。措辞红线：用户面零「换模型/变体」
 // 机制词——深档=能力归属（「给它配一个深档」），配对模型只在编辑器点名（配置需要）。数据面=桥侧
 // data/model-caps.json（providers 帧 caps 镜像只读，写走 /api/modelcaps 单一真相源，patch 形状零改动）；
-// 快档锚定被编辑模型自身（variant.fast=model，桥侧家族自锚约定 chat-bridge :789 不破坏）。
+// 快档锚=既有家族原锚优先（t.variant.fast——深侧编辑不换锚，桥侧 :829-833 承诺路径）；新家族=被编辑模型
+// 自锚（桥侧家族自锚约定 chat-bridge :789 不破坏）。（s99/qa R2）
 function openCapEditor(model){
   const box=$('model-pool'); if(!box) return;
   const old=box.querySelector('.cap-edit'); if(old) old.remove();
@@ -2531,7 +2532,8 @@ function openCapEditor(model){
   const deep=mkSel(poolNow.filter(x=>x!==model).map(x=>[x,x]),(t.variant&&t.variant.deep)||'');
   deepRow.appendChild(document.createTextNode('深档用哪个模型：')); deepRow.appendChild(deep);
   const deepNote=document.createElement('div'); deepNote.className='fnote'; deepNote.textContent='深档＝干这活时让它用更完整的那个模型，更准，也更花时间。'; deepNote.style.margin='2px 0 0 12px';
-  function syncDeep(){ deepRow.style.display=(paceVal()==='variant'&&poolNow.filter(x=>x!==model).length)?'block':'none'; }
+  const deepHint=document.createElement('div'); deepHint.className='fnote'; deepHint.textContent='深档要用另一个模型——先在可选池里多勾一个。'; deepHint.style.cssText='display:none;margin:2px 0 0 12px'; // s99/qa P3-1: 池内无第二个模型——子行不装哑巴，诚实指路（拒因同款句）
+  function syncDeep(){ const on=paceVal()==='variant'; deepRow.style.display=on?'block':'none'; deepHint.style.display=(on&&!deep.children.length)?'block':'none'; } // s99/qa P3-1: 选中即见子行；无候选时 hint 替代言权（不再永隐子行）
   for(const [v,n] of paceDefs){
     const lab=document.createElement('label'); lab.style.cssText='display:flex;align-items:center;gap:6px;margin:3px 0 3px 12px;cursor:pointer';
     const r=document.createElement('input'); r.type='radio'; r.name='cap-pace'; r.value=v; r.checked=(v===curPace);
@@ -2539,7 +2541,7 @@ function openCapEditor(model){
     lab.appendChild(r); lab.appendChild(document.createTextNode(n));
     radios.push(r); panel.appendChild(lab);
   }
-  panel.appendChild(deepRow); panel.appendChild(deepNote);
+  panel.appendChild(deepRow); panel.appendChild(deepNote); panel.appendChild(deepHint);
   syncDeep();
   const tech=document.createElement('details'); tech.className='tz'; tech.style.cssText='border-top:1px solid var(--line);margin-top:8px;padding-top:6px';
   const sum=document.createElement('summary'); sum.textContent='技术细节（平时不用动）'; tech.appendChild(sum);
@@ -2556,7 +2558,7 @@ function openCapEditor(model){
   save.onclick=async()=>{
     const patch={ multimodal:mm.value==='true' };
     if(ctx.value.trim()!==''){ const n=parseInt(ctx.value,10); if(!isFinite(n)||n<=0){ note('上下文要填正整数，不知道就留空'); return; } patch.context_len=n; } else if(cap.context_len!=null){ patch.context_len=null; }
-    if(paceVal()==='variant'){ if(!deep.value){ note('先选深档用哪个模型'); return; } patch.thinking={mode:'variant',variant:{fast:model,deep:deep.value}}; }
+    if(paceVal()==='variant'){ if(!deep.value){ note(deep.children.length?'先选深档用哪个模型':'深档要用另一个模型——先在可选池里多勾一个。'); return; } patch.thinking={mode:'variant',variant:{fast:(t.variant&&t.variant.fast)||model,deep:deep.value}}; } // s99/qa R2: 深侧编辑发原家族锚（桥 :829-833 承诺路径激活），新家族=被编辑模型自锚；P3-1: 无候选时拒因=诚实指路句，不指向不存在的下拉
     else patch.thinking={mode:paceVal()};
     try{
       const r=await fetch('/api/modelcaps',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op:'set',model,patch})});
