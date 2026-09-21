@@ -74,7 +74,8 @@ ck('请按手艺 X 的流程（use/run 两处家族词）', js.indexOf('请按�
 ck('台账徽章 ✨ 手艺（MADE_KIND_ZH+chips）', (js.match(/'✨ 手艺'/g) || []).length >= 2);
 ck('台账来源句=它干活时自己学会的做法', js.indexOf('它干活时自己学会的做法') >= 0);
 ck('made fnote 指路=做法在「🧩 手艺」', htmlNoBody.indexOf('做法在「🧩 手艺」') >= 0);
-ck('技术区措辞：自己加的工具（技术）+ 工具目录', htmlNoBody.indexOf('自己加的工具（技术）') >= 0 && htmlNoBody.indexOf('在工具目录里找') >= 0);
+const mcpTz = htmlNoBody.match(/<details class="tz"[^>]*>\s*<summary>自己加的工具目录（技术，平时不用动）<\/summary>/); // r6/sweep-2: 技术区收进折叠 details 默认收起——锚随迁
+ck('技术区措辞：自己加的工具目录（技术，平时不用动）折叠默认收起 + 工具目录', !!mcpTz && mcpTz[0].indexOf(' open') < 0 && htmlNoBody.indexOf('在工具目录里找') >= 0);
 
 // ---- ④ 桥侧用户面段（qa2/P2-1：QA 用 curl 活体证伪 faucet-db desc 带「本事」，探针扫描面从 chat.tpl.html 扩到桥模板）----
 // 手法=audit-r5-probe 取桥文件同款：提取 LABELS / MCP_CATALOG / handleSkillstore 回执三段，剥注释后扫字符串面
