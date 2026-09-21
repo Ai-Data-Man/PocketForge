@@ -26,3 +26,5 @@
 - 升级动机评估归 PM/下会话（release 主打 GPT-live/EUrouter/Operator allowlist——对单机离线场景增益有限；MCP HTTP retries 与 thinking 流序修复有一定质量价值）。
 
 状态：VERIFIED-DOC（源码级）；活体十面沙盒=升级实施时按 playbook 执行。
+
+- 巡检（2026-09-22 s99 尾段）：上游仍 v1.51.0（2026-09-17 发布）无新版本，窗口判断维持；闲时会话按章程边界「不升级依赖」不动，升级实施归用户在场合。
