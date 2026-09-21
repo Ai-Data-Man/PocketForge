@@ -364,6 +364,7 @@ async function main() {
         } catch (e2) {
             ST.ok = false; ST.msg = '升级失败且回滚异常，请用离线包重试或联系支持: ' + e2.message;
         }
+        ST.stage = 'failed'; // s99/t3-F: 终态标记（与 done 对偶）——桥侧 upgradeEvents.fail 观察判据；前端两消费点均按 ok/rolledBack 分支，stage 串不进显示（msg 优先）
         writeStatus(ST);
         process.exitCode = 1;
     } finally {

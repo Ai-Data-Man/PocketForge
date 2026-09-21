@@ -122,9 +122,19 @@ function readJson(f, dft) { try { return JSON.parse(FSS.readFileSync(f, 'utf8').
 // ---- P31-③ 匿名本地使用统计 v1：仅写本地 data/stats/usage-YYYYMMDD.json，无外传、无 UI ----
 // permissionCards.timeout：前端 60s 超时兜底同样发 acp_reply（s71 G2 起为 reject_once），桥内按「回包距 shown ≥60s」判超时计 timeout（s75 口径修正）；存量旧文件按旧口径累计（denied 含超时拒绝），读侧不回改
 // artifactsGenerated v1 恒 0：gen-xlsx 走 goose 扩展不经过桥，无侵入的工作区 diff 扫描代价大，先只占位
+// s99/t3-metrics（research/2026-09-14-product-direction-scan.md §T3 六项，s88 主控采纳批）：内测度量补强，全挂既有 statsBump/flush 管线，零新面板零新端点——
+//   ① permissionCards 按选项分裂四键（allowAlways/allowOnce/rejectOnce/rejectAlways，事件点=acp_reply 归类处；approved/denied 聚合键照旧双计，读侧旧文件兼容）；
+//   ② switchModel ok/fail（switch_model 处理器各成败收口，家族/跨档 restarts 不分，成功即 ok）；
+//   ③ rescues triggered/guardHit（s76 救援路径：触发即记点+SID_RESCUED 去重命中点）；
+//   ④ retryAfterError（P31-③「卡点关键词」规格收口：s49 承诺的关键词抓取从未实现亦不再做——本计数=出错后 10 分钟内同会话再发 prompt，
+//     错误标记与 errorsByType 同源同路径（sendTurn 错误收口三路+acp 死中断），不另造第二套分类；「卡在哪句话」由 📮 报告人工描述承担——报告经 secStats 原文嵌 data/stats，本键即自动入报）；
+//   ⑤ assetsCount last/max（gauge 型，/api/assets 每次成功调用记条目数——计数器族外唯一非增量键）；
+//   ⑥ healthEvents ok↔非ok 迁移（探测态变化事件，非轮询值）+ upgradeEvents start/ok/fail（start=/api/update/start 实际拉起 runner；
+//     ok/fail=status.json 终态观察（done=ok / failed|rolledBack=fail），lastSeen=ts|stage 指纹防轮询与桥重启双观察点重计）。
+//   读侧兼容：statsRestore/statsBump 跨天/pgUsageBackfill 对新键均有旧文件默认补齐，缺键不炸。
 const STATS_DIR = path.join(ROOT, 'data', 'stats');
 const S26_ERR_RE = /Ran into this error|Server error|rate limit|timed? out|ECONN|fetch failed|could not connect|network error/i; // 与前端 endStream(s26) 同款上游故障正则
-const stats = { date: '', sessionsCreated: 0, messages: 0, errors: 0, errorsByType: { upstream: 0, websocket: 0, other: 0, upstreamByKind: { unauthorized: 0, rate: 0, timeout: 0, server: 0 } }, permissionCards: { shown: 0, approved: 0, denied: 0, timeout: 0 }, artifactsGenerated: 0, updated: '' };
+const stats = { date: '', sessionsCreated: 0, messages: 0, errors: 0, errorsByType: { upstream: 0, websocket: 0, other: 0, upstreamByKind: { unauthorized: 0, rate: 0, timeout: 0, server: 0 } }, permissionCards: { shown: 0, approved: 0, denied: 0, timeout: 0, allow_always: 0, allow_once: 0, reject_once: 0, reject_always: 0 }, artifactsGenerated: 0, retryAfterError: 0, switchModel: { ok: 0, fail: 0 }, rescues: { triggered: 0, guardHit: 0 }, healthEvents: { recovered: 0, degraded: 0 }, upgradeEvents: { start: 0, ok: 0, fail: 0, lastSeen: '' }, assetsCount: { last: 0, max: 0 }, updated: '' };
 function classifyUpstream(txt) { // s50e: 上游错误细分（401=Key 没配好，429=限流，超时，其余=服务端）；取第一个命中
     const s = String(txt || '');
     if (/401|api key|unauthorized/i.test(s)) return 'unauthorized';
@@ -153,6 +163,7 @@ function humanizeDecline(msg) {
 }
 const permKinds = new Map(); // request_permission callId -> {m: optionId->kind, t: shown 时间戳}，供 acp_reply 分类+超时判定
 const turnText = new Map();  // sessionId -> 当轮 agent 文本累计（s26 流内报错检测用）
+const sidErrAt = new Map();  // s99/t3-D: sessionId -> 最近一次回合错误时间戳（retryAfterError 判据；sendTurn 错误三路+acp 死中断写入，prompt 路径读——与 errorsByType 同源，不另造分类）
 const busySids = new Set();  // sessionId -> 有在飞 prompt/流式未收尾（主线5 rollback_rewrite 的 busy 门，桥侧权威）
 function statsDay() { const d = new Date(), p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
 function statsFlush() {
@@ -169,8 +180,14 @@ function statsBump(key) {
             stats.date = today;
             stats.sessionsCreated = 0; stats.messages = 0; stats.errors = 0;
             stats.errorsByType = { upstream: 0, websocket: 0, other: 0, upstreamByKind: { unauthorized: 0, rate: 0, timeout: 0, server: 0 } };
-            stats.permissionCards = { shown: 0, approved: 0, denied: 0, timeout: 0 };
+            stats.permissionCards = { shown: 0, approved: 0, denied: 0, timeout: 0, allow_always: 0, allow_once: 0, reject_once: 0, reject_always: 0 };
             stats.artifactsGenerated = 0;
+            stats.retryAfterError = 0; // s99/t3-D
+            stats.switchModel = { ok: 0, fail: 0 }; // s99/t3-B
+            stats.rescues = { triggered: 0, guardHit: 0 }; // s99/t3-C
+            stats.healthEvents = { recovered: 0, degraded: 0 }; // s99/t3-F
+            stats.upgradeEvents = { start: 0, ok: 0, fail: 0, lastSeen: stats.upgradeEvents.lastSeen || '' }; // s99/t3-F: lastSeen 跨天保留——昨天的终态今天不重计
+            stats.assetsCount = { last: 0, max: 0 }; // s99/t3-E
         }
         const seg = key.split('.'); const last = seg.pop();
         let o = stats; for (const s of seg) o = o[s];
@@ -203,14 +220,41 @@ function statsFlushDebounced() {
         const f = path.join(STATS_DIR, 'usage-' + stats.date.replace(/-/g, '') + '.json');
         const saved = readJson(f, null);
         if (saved && saved.date === stats.date) {
-            for (const k of ['sessionsCreated', 'messages', 'errors', 'errorsByType', 'permissionCards', 'artifactsGenerated']) {
+            for (const k of ['sessionsCreated', 'messages', 'errors', 'errorsByType', 'permissionCards', 'artifactsGenerated', 'retryAfterError', 'switchModel', 'rescues', 'healthEvents', 'upgradeEvents', 'assetsCount']) {
                 if (saved[k] !== undefined) stats[k] = saved[k];
             }
             if (!stats.errorsByType.upstreamByKind) stats.errorsByType.upstreamByKind = { unauthorized: 0, rate: 0, timeout: 0, server: 0 }; // s50e: 旧格式当天文件补默认
+            for (const k of ['allow_always', 'allow_once', 'reject_once', 'reject_always']) if (stats.permissionCards[k] === undefined) stats.permissionCards[k] = 0; // s99/t3-A: 旧格式当天文件补默认（:207 先例）
+            if (stats.upgradeEvents.lastSeen === undefined) stats.upgradeEvents.lastSeen = ''; // s99/t3-F
             stats.updated = saved.updated || '';
         } else statsFlush();
     } catch {}
 })();
+// s99/t3-F: 升级事件观察（ok/fail 收口）——start 在 /api/update/start 实际拉起 runner 处计；ok/fail 只认 status.json 终态：
+// done+ok=升级完成（runner 唯一写入点）；failed（runner catch 终写）或 rolledBack=失败（含回滚完成）。桥在升级 restart 段会被
+// 杀掉重启，故双观察点共用本函数（开机对账 + /api/update/status 读取），lastSeen=ts|stage 指纹防同态重计（statsRestore
+// 带回内存指纹，桥重启不重计）。非终态只前移指纹不计次。
+function noteUpgradeStatus(st) {
+    try {
+        if (!st || typeof st !== 'object' || !st.stage) return;
+        const term = (st.ok === true && st.stage === 'done' && st.dryRun !== true) ? 'ok' : (st.stage === 'failed' || st.rolledBack === true) ? 'fail' : null;
+        const fp = String(st.ts || '') + '|' + String(st.stage || '');
+        if (stats.upgradeEvents.lastSeen === fp) return;
+        stats.upgradeEvents.lastSeen = fp;
+        if (term) statsBump('upgradeEvents.' + term); else statsFlushDebounced();
+    } catch {}
+}
+noteUpgradeStatus(readJson(path.join(ROOT, 'data', 'updates', 'status.json'), null)); // s99/t3-F: 开机对账——升级跨桥重启的终态在此被新桥看见
+// s99/t3-E: assets 条目数 gauge（计数器族外唯一非增量键）——/api/assets 每次成功聚合记 last/max；失败聚合不计。
+// 日报消费=max/last 两键（做过的东西的存量证据，research/23 判据），零 diff 扫描零新探测
+function statsAssetsGauge(n) {
+    try {
+        const v = Number(n) || 0;
+        stats.assetsCount.last = v;
+        if (v > stats.assetsCount.max) stats.assetsCount.max = v;
+        statsFlushDebounced();
+    } catch {}
+}
 
 // ---- 桥状态存储层（裁决 2026-09-06-pg-forge-backend §4）：桥内唯一 PG 触点 ----
 // 模式机 off→connecting→pg|file：pg=写 forge_bridge+文件镜像双写（回落无缝）；file=纯文件（与切片前逐位一致，永久支持态）；
@@ -322,6 +366,14 @@ function pgUsageBackfill() { // pg 态确立后台一次：当日内存与 PG �
                 for (const k of ['upstream', 'websocket', 'other']) stats.errorsByType[k] = mx(stats.errorsByType[k], (p.errorsByType || {})[k]);
                 for (const k of ['unauthorized', 'rate', 'timeout', 'server']) stats.errorsByType.upstreamByKind[k] = mx(stats.errorsByType.upstreamByKind[k], ((p.errorsByType || {}).upstreamByKind || {})[k]);
                 for (const k of ['shown', 'approved', 'denied', 'timeout']) stats.permissionCards[k] = mx(stats.permissionCards[k], (p.permissionCards || {})[k]);
+                for (const k of ['allow_always', 'allow_once', 'reject_once', 'reject_always']) stats.permissionCards[k] = mx(stats.permissionCards[k], (p.permissionCards || {})[k]); // s99/t3-A: 旧 PG 行缺键回落 0
+                stats.retryAfterError = mx(stats.retryAfterError, p.retryAfterError); // s99/t3-D
+                for (const k of ['ok', 'fail']) stats.switchModel[k] = mx(stats.switchModel[k], (p.switchModel || {})[k]); // s99/t3-B
+                for (const k of ['triggered', 'guardHit']) stats.rescues[k] = mx(stats.rescues[k], (p.rescues || {})[k]); // s99/t3-C
+                for (const k of ['recovered', 'degraded']) stats.healthEvents[k] = mx(stats.healthEvents[k], (p.healthEvents || {})[k]); // s99/t3-F
+                for (const k of ['start', 'ok', 'fail']) stats.upgradeEvents[k] = mx(stats.upgradeEvents[k], (p.upgradeEvents || {})[k]); // s99/t3-F: lastSeen 指纹不合并（字符串非计数，内存态已够）
+                stats.assetsCount.last = mx(stats.assetsCount.last, (p.assetsCount || {}).last); // s99/t3-E: gauge 同取大（上界语义，回退不丢）
+                stats.assetsCount.max = mx(stats.assetsCount.max, (p.assetsCount || {}).max);
                 console.log('pg usage backfill: max-merged today row (P3-4)');
             }
             await sql`INSERT INTO usage_daily (date, payload) VALUES (${stats.date}, ${stats}) ON CONFLICT (date) DO UPDATE SET payload = EXCLUDED.payload, updated_at = now()`;
@@ -908,6 +960,10 @@ async function probeProviderHealth(reply) { // qa s78b P1-1: reply=触发方 ws�
         healthCache.proxy = !!(pr && pr.enabled) && hostIsRemote(probeHn); // s94 F-4c: 代理旗只对远端服务商亮（本机服务商不经代理）
         healthCache.at = Date.now();
         const now = healthFrame();
+        // s99/t3-F: 健康 state 迁移事件——只计 ok↔非ok 跨越（recovered=非ok→ok / degraded=ok→非ok）；
+        // 非 ok 之间的换态（down↔stale-model、kind 变化）与态不变的周期重探不计（迁移事件非轮询值；
+        // prev=null=首探无前态，不伪计）。判据=research/23 模型链韧性；挂点唯一：探测收敛点即广播点。
+        if (prev && now && prev.state !== now.state && (prev.state === 'ok' || now.state === 'ok')) statsBump('healthEvents.' + (now.state === 'ok' ? 'recovered' : 'degraded'));
         if (JSON.stringify(prev) !== JSON.stringify(now)) for (const ws of allClients) ws.send(now); // 态变化才广播（s77 delete 广播同款）；now 恒非空——state=null 唯一路径在上方未配置分支已提前 return
         else if (reply && reply.alive && now) reply.send(now); // qa s78b P1-1: 态不变也必答触发方——隔夜首开（TTL 必过期）链路持续坏时告警条不再缺失（裁决 §6 主指标）
     } finally { healthBusy = false; if (healthPend) { healthPend = false; probeProviderHealth(); } } // pend 补探不带 reply（QA 裁定）
@@ -1148,18 +1204,19 @@ function sendTurn(ws, sid, text, allowRescue) {
         // 故在 turn 结束处对当轮累计文本跑 s26 正则（:349 的 stop 通知分支 goose ACP 模式从不发，为死代码）
         const txt = turnText.get(sid) || '';
         turnText.delete(sid);
-        if (S26_ERR_RE.test(txt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(txt)); healthFailDebounce(ws); }
+        if (S26_ERR_RE.test(txt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(txt)); healthFailDebounce(ws); sidErrAt.set(sid, Date.now()); if (sidErrAt.size > 500) sidErrAt.delete(sidErrAt.keys().next().value); } // s99/t3-D: 错误标记（与 errorsByType 同源同路；上限同 sidBorn 先例）
         ws.send({ agent: { method: 'stop', params: { sessionId: sid, reason: 'end' } } });
     }, reject: (e) => {
         busySids.delete(sid);
+        sidErrAt.set(sid, Date.now()); if (sidErrAt.size > 500) sidErrAt.delete(sidErrAt.keys().next().value); // s99/t3-D: reject 即回合错误（救援/人话/上游同收——救援重放走新 sid，旧 sid 标记只随死 sid 退役）
         // P31-③: turn 失败按 s26 正则归类上游故障
         // goose 的 JSON-RPC error：message=错误类（如 Resource not found），具体原因在 data（如 Session not found: <sid>）——拼接后供匹配
         const etxt = String((e && e.message) || e) + ' ' + String((e && e.data) || '');
         if (S26_ERR_RE.test(etxt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(etxt)); healthFailDebounce(ws); }
         else statsBump('errorsByType.other');
         if (allowRescue && SESSION_NF_RE.test(etxt)) {
-            if (rescuedSids.has(sid)) { ws.send({ sys: 'error', text: SID_RESCUED_TEXT }); return; } // P3-3 去重命中
-            rescuedSids.add(sid); // 触发即记不回滚：sid 已死，救援成败与否重试都只会再撞同一守卫
+            if (rescuedSids.has(sid)) { statsBump('rescues.guardHit'); ws.send({ sys: 'error', text: SID_RESCUED_TEXT }); return; } // P3-3 去重命中（s99/t3-C：SID_RESCUED 守卫命中计数）
+            rescuedSids.add(sid); statsBump('rescues.triggered'); // 触发即记不回滚：sid 已死，救援成败与否重试都只会再撞同一守卫（s99/t3-C：救援触发计数）
             console.log('session/prompt rejected by goose, single rescue:', etxt);
             try { rescueSession(ws, text); return; } catch (er) { console.error('rescue failed:', er); }
         }
@@ -1174,7 +1231,7 @@ function sendTurn(ws, sid, text, allowRescue) {
     // reject 回调可能来自 onAcpData 栈（不在 handleClient try 内），acp 写失败必须就地接住
     try {
         acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/prompt', params: { sessionId: sid, prompt: [{ type: 'text', text }] } }) + '\n');
-    } catch (e) { waiting.delete(id); busySids.delete(sid); ws.send({ sys: 'error', text: '服务忙不过来（对话引擎没响应），稍等几秒再发一次。' }); }
+    } catch (e) { waiting.delete(id); busySids.delete(sid); sidErrAt.set(sid, Date.now()); ws.send({ sys: 'error', text: '服务忙不过来（对话引擎没响应），稍等几秒再发一次。' }); } // s99/t3-D: 写失败同错误标记（用户看到的等价物=错误卡）
 }
 // s95/F-3: 会话中断终态兜底——acp 一死，它在飞回合不会被任何人收尾（goose 侧那次工具调用连 toolResponse
 // 都没落库），必须由桥补发终态。帧形状沿用既有错误卡通道（{sys:'error',text}，前端既有分支直接消费：
@@ -1186,6 +1243,7 @@ function abortInflightTurns(text) {
         const set = sessionClients.get(sid);
         if (set) for (const ws of set) { try { ws.send({ sys: 'error', text }); } catch {} }
         turnText.delete(sid); // 当轮文本累计随回合作废（残留会让下一个回合的报错检测误判）
+        sidErrAt.set(sid, Date.now()); // s99/t3-D: acp 死中断=该会话当轮错误（用户后续再发=错误后重试）
     }
     busySids.clear();
     return n;
@@ -3218,6 +3276,7 @@ async function handleHttp(req, res) {
             staged = FSS.readdirSync(path.join(ROOT, 'data', 'updates')).filter(n => /^PocketForge-.+\.zip$/.test(n) && !n.endsWith('.sha256'));
         } catch {}
         const status = readJson(path.join(ROOT, 'data', 'updates', 'status.json'), null);
+        if (status) noteUpgradeStatus(status); // s99/t3-F: 读取即观察（前端页载/升级轮询的本端点=桥侧唯一持续观察面；开机对账为另一观察点）
         json200(res, { ok: true, version: APP_VERSION, warnings: stateWarnings, staged, status });
     }
     else if (url === '/api/update/check') {
@@ -3267,6 +3326,7 @@ async function handleHttp(req, res) {
                 spawn('powershell', ['-NoProfile', '-Command',
                     '$n=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("' + updNode + '"));$a=@(' + updArgs + ')|ForEach-Object{[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_))};Start-Process -FilePath $n -ArgumentList ($a|ForEach-Object{\'"\'+$_+\'"\'}) -WindowStyle Hidden'],
                     { stdio: 'ignore', windowsHide: true }).unref();
+                statsBump('upgradeEvents.start'); // s99/t3-F: 升级真实拉起（仅 runner 成功 spawn 后；参数校验拒绝不计——从未开始）
                 res.end(JSON.stringify({ ok: true }));
             } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
         });
@@ -3713,7 +3773,7 @@ const ext = path.extname(f).toLowerCase();
         // s83: 做过的东西三源聚合（只读；无参数无持久化，Origin 校验走 handleHttp 顶部全局规则）；仅 GET
         if (req.method !== 'GET') { res.writeHead(405); res.end(); return; }
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        assetsOverview().then(out => res.end(JSON.stringify(out))).catch(() => res.end(JSON.stringify({ ok: false })));
+        assetsOverview().then(out => { if (out && out.ok && Array.isArray(out.items)) statsAssetsGauge(out.items.length); res.end(JSON.stringify(out)); }).catch(() => res.end(JSON.stringify({ ok: false }))); // s99/t3-E: 成功聚合记 gauge（失败/降级不计）
     }
     else if (url === '/api/apps') {
         // s87: 小应用运行面板 GET（只读 appsOverview，无参数无持久化；Origin 校验走 handleHttp 顶部全局规则）。
@@ -4397,6 +4457,9 @@ function handleClient(ws, msg) {
             if (typeof msg.text !== 'string' || !msg.text.trim()) return ws.send({ sys: 'error', text: '想让我做的事不能是空的。' });
             if (msg.text.length > 262144) return ws.send({ sys: 'error', text: '这条消息太长了，拆成几条发吧。' });
             statsBump('messages'); // P31-③: 用户发出 prompt 计数（agent 回复不计）
+            // s99/t3-D: retryAfterError——同会话上次回合错误 10 分钟内再发 prompt 即计（卡点频率代理，P31-③ 卡点关键词规格收口；
+            // 不删标记：窗口内多次重发逐次计（判据「同类重复≥3」需要看见每一次），新错误刷新时间戳，窗口外自然失效）
+            { const eAt = sidErrAt.get(sid); if (eAt && Date.now() - eAt < 600000) statsBump('retryAfterError'); }
             const firstTurn = wsFirstPrompt.get(ws) !== false;
             wsFirstPrompt.set(ws, false);
             // s94-b2 F-3: 发 turn 前对账会话模型——热重启/换档后既有会话仍钉着旧模型（evicted-restore 按 DB 回放），
@@ -4588,8 +4651,8 @@ function handleClient(ws, msg) {
                 const ke = permKinds.get(msg.callId); permKinds.delete(msg.callId);
                 const kind = ke && ke.m.get(msg.option);
                 if (ke && Date.now() - ke.t >= 60000) statsBump('permissionCards.timeout');
-                else if (kind === 'allow_once' || kind === 'allow_always') statsBump('permissionCards.approved');
-                else if (kind === 'reject_once' || kind === 'reject_always') statsBump('permissionCards.denied');
+                else if (kind === 'allow_once' || kind === 'allow_always') { statsBump('permissionCards.approved'); statsBump('permissionCards.' + kind); } // s99/t3-A: 按选项分裂（键名=ACP kind 原文，零映射；approved 聚合键照旧双计，读侧兼容）
+                else if (kind === 'reject_once' || kind === 'reject_always') { statsBump('permissionCards.denied'); statsBump('permissionCards.' + kind); } // s99/t3-A
             } catch {}
             acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: msg.callId, result: { outcome: { outcome: 'selected', optionId: msg.option } } }) + '\n');
             return;
@@ -4704,7 +4767,7 @@ function handleClient(ws, msg) {
             // {model} — 可选池内切换：同供应商走 set_config_option，跨供应商热重启 acp
             const list = readProviders();
             const target = list.find(p => (p.models || []).includes(msg.model));
-            if (!target) return ws.send({ sys: 'error', text: '该模型不在可选池：' + msg.model });
+            if (!target) { statsBump('switchModel.fail'); return ws.send({ sys: 'error', text: '该模型不在可选池：' + msg.model }); } // s99/t3-B: 不在池=换线未成（用户视角同败）
             lastModelOverride = msg.model; // qa s78b P3-2 / s78c P3-1: 生效模型记录，effectiveModel 单源消费（同档 set_config_option / 跨档 spawn env / 探测锚三处同读；∉池自愈回落池首，面板换档清除）
             if (target.active) {
                 healthCache.at = 0; probeProviderHealth(); // qa s78b P3-2: 同档切换=换生效模型，同 §S1 失效语义（顶栏切健康兄弟模型→条即消，不等 30min TTL）
@@ -4729,6 +4792,7 @@ function handleClient(ws, msg) {
                     const co = sidGooseCo.get(curSid) || [];
                     const mo2 = co.find(c => c && c.id === 'model'); if (mo2) mo2.currentValue = msg.model;
                     const th2 = co.find(c => c && c.id === 'thinking_effort'); if (th2 && applied) th2.currentValue = v;
+                    statsBump('switchModel.ok'); // s99/t3-B: 家族内快↔深切换成功
                     ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, configOptions: co });
                     return;
                 }
@@ -4742,7 +4806,7 @@ function handleClient(ws, msg) {
                             if (res && res.sessionId) noteSessionBorn(res.sessionId);
                             if (staleNewSession(ws, nid, res)) return;
                             wsPendingNew.delete(ws);
-                            if (!res || !res.sessionId) return ws.send({ sys: 'error', text: '开新对话失败，稍后再试' });
+                            if (!res || !res.sessionId) { statsBump('switchModel.fail'); return ws.send({ sys: 'error', text: '开新对话失败，稍后再试' }); } // s99/t3-B
                             statsBump('sessionsCreated');
                             wsFirstPrompt.set(ws, true);
                             bindWs(ws, res.sessionId);
@@ -4755,13 +4819,14 @@ function handleClient(ws, msg) {
                             lastThinkOverride = v;
                             if (thinkAllowed(res.sessionId, v) && acpSetThink(res.sessionId, v)) sidThinkApplied.set(res.sessionId, v);
                             ws.send({ sys: 'subscribed', sessionId: res.sessionId, newSession: true, modes: res.modes || [], configOptions: co });
+                            statsBump('switchModel.ok'); // s99/t3-B: 进家族（含热重启+新会话）成功——restarts 情况不分，成功即 ok
                             ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, restarted: true, configOptions: co });
                         }});
                         flushPendingCloses();
                         acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: nid, method: 'session/new', params: { cwd: ROOT, mcpServers: [] } }) + '\n');
                     };
                     if ((lastSpawnEnv || '').split('\0')[1] === fam.alias) return spawnFamNew();
-                    return hotRestartProvider().then(spawnFamNew).catch(e => ws.send({ sys: 'error', text: '切换失败: ' + e.message }));
+                    return hotRestartProvider().then(spawnFamNew).catch(e => { statsBump('switchModel.fail'); ws.send({ sys: 'error', text: '切换失败: ' + e.message }); }); // s99/t3-B
                 }
                 const doSet = (sessionId) => { // 非家族目标：真名直写（家族已在上方两路分流——别名过不了 goose 目录校验）
                     const id = nextId++;
@@ -4774,8 +4839,9 @@ function handleClient(ws, msg) {
                             noteThinkOptions(sessionId, res.configOptions); // s98/think: 切模型后档位列表可能变（goose 名单制）——回包即刷缓存
                             if (lastThinkOverride && sidThinkApplied.get(sessionId) !== lastThinkOverride && thinkAllowed(sessionId, lastThinkOverride) && acpSetThink(sessionId, lastThinkOverride)) sidThinkApplied.set(sessionId, lastThinkOverride); // s98/think: 同点位并联（goose INHERITED 继承链之外再对账一次；qa s98 P3-2: 过白名单才发）
                             ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, configOptions: res.configOptions }); // s98/think: 前端据此刷新思考力度三态（会话内切模型不走 session/new→subscribed）
+                            statsBump('switchModel.ok'); // s99/t3-B: 真名 set_config_option 成功
                         }
-                        else ws.send({ sys: 'error', text: '切换失败，试试重开对话' });
+                        else { statsBump('switchModel.fail'); ws.send({ sys: 'error', text: '切换失败，试试重开对话' }); } // s99/t3-B
                     }});
                 };
                 const sid = wsSession.get(ws);
@@ -4796,7 +4862,7 @@ function handleClient(ws, msg) {
                             ws.send({ sys: 'subscribed', sessionId: res.sessionId, modes: res.modes || [], configOptions: res.configOptions || [] });
                             noteThinkOptions(res.sessionId, res.configOptions); // s98/think: 会话建立即入缓存
                             doSet(res.sessionId);
-                        } else ws.send({ sys: 'error', text: '开新对话失败，稍后再试' });
+                        } else { statsBump('switchModel.fail'); ws.send({ sys: 'error', text: '开新对话失败，稍后再试' }); } // s99/t3-B: 无会话分支的代开失败
                     }});
                     flushPendingCloses(); // s80g: 新会话可能复用 pending 中的 sid——close 先落笔保今日复用语义
                     acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: nid, method: 'session/new', params: { cwd: ROOT, mcpServers: [] } }) + '\n');
@@ -4811,7 +4877,7 @@ function handleClient(ws, msg) {
                     // 控件刷新窗口闭合：重开会话前 select 不 stale）。真相源取法：有绑定 sid 走 session/load（幂等
                     // evicted-restore，用户重开对话时的同一通道提前走）；无绑定/回包无键=照旧不带（下次开盒由回包重算）。
                     const osid = wsSession.get(ws);
-                    const plain = () => ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, restarted: true });
+                    const plain = () => { statsBump('switchModel.ok'); ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, restarted: true }); } // s99/t3-B: 跨档换线成功（无绑定 sid / load 回包无键两收口；load reject 走此路=切换本体已成功，仅档位回执缺席）
                     if (!osid) return plain();
                     const rid = nextId++;
                     waiting.set(rid, { ws, resolve: (res) => {
@@ -4819,10 +4885,11 @@ function handleClient(ws, msg) {
                         if (co) { noteGooseModel(osid, co); xlateConfigOptions(co); } // s98/llm-proxy: xlate 前抓 goose 侧原始模型名（load 按 DB 回放旧模型的真相）+ 翻真名+gradient（跨界翻译点）
                         const frame = { sys: 'model_switched', model: msg.model, provider: target.name, restarted: true };
                         if (co) { frame.configOptions = co; noteThinkOptions(osid, co); }
+                        statsBump('switchModel.ok'); // s99/t3-B: 跨档换线成功（带档位回执）
                         ws.send(frame);
                     }, reject: () => plain() });
                     acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: rid, method: 'session/load', params: { sessionId: osid } }) + '\n');
-                }).catch(e => ws.send({ sys: 'error', text: '切换供应商失败: ' + e.message }));
+                }).catch(e => { statsBump('switchModel.fail'); ws.send({ sys: 'error', text: '切换供应商失败: ' + e.message }); }); // s99/t3-B
             }
             return;
         }

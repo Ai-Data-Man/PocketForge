@@ -19,6 +19,7 @@ function makeEnv(s26re, classify, health) { // s76c: 可注入 S26 正则/归类
         waiting: new Map(),
         nextId: 1,
         turnText: new Map(),
+        sidErrAt: new Map(), // s99/t3-D: sendTurn/abortInflightTurns 错误标记（retryAfterError 判据）——真 Map 直传零桩化
         S26_ERR_RE: s26re || /(?!)/,
         classifyUpstream: classify || (() => 'unknown'),
         statsCalls: [],
@@ -38,12 +39,13 @@ function makeEnv(s26re, classify, health) { // s76c: 可注入 S26 正则/归类
     const thinkEnd = src.indexOf('function applyModelBeforeTurn');
     if (thinkStart < 0 || thinkEnd < 0 || thinkEnd <= thinkStart) { console.log('FAIL: s98/think extraction anchors not found'); process.exit(1); }
     const thinkSrc = src.slice(thinkStart, thinkEnd);
-    const factory = new Function('waiting', '__nid', 'turnText', 'S26_ERR_RE', 'classifyUpstream', 'statsBump', 'acp', 'console', 'ROOT', 'wsSession', 'sessionClients', 'busySids', 'healthFailDebounce', 'bindWs', 'healthCache',
+    const factory = new Function('waiting', '__nid', 'turnText', 'sidErrAt', 'S26_ERR_RE', 'classifyUpstream', 'statsBump', 'acp', 'console', 'ROOT', 'wsSession', 'sessionClients', 'busySids', 'healthFailDebounce', 'bindWs', 'healthCache',
         // s95/F-3: 提取块新增 abortInflightTurns（它读的 busySids/turnText/sessionClients 已是本工厂的入参，零额外声明）
+        // s99/t3-D: 提取块新增 sidErrAt 错误标记（同 busySids 手法：真 Map 直传）
         thinkSrc + '\n' + block.replace(/nextId\+\+/g, '__nid()') + '\nreturn { sendTurn, rescueSession, abortInflightTurns, bindWs, noteThinkOptions, acpSetThink };');
     // s78: 桥端 bindWs 提升为共享助手（提取块外）——桩内以 wsSession/sessionClients 复刻同语义
     const bindWs = (ws, sid) => { env.wsSession.set(ws, sid); if (!env.sessionClients.has(sid)) env.sessionClients.set(sid, new Set()); env.sessionClients.get(sid).add(ws); };
-    const api = factory(env.waiting, () => env.nextId++, env.turnText, env.S26_ERR_RE, env.classifyUpstream, k => env.statsBump(k), env.acp, env.console, 'C:/PF-ROOT', env.wsSession, env.sessionClients, env.busySids, () => env.healthCalls++, bindWs, env.healthCache);
+    const api = factory(env.waiting, () => env.nextId++, env.turnText, env.sidErrAt, env.S26_ERR_RE, env.classifyUpstream, k => env.statsBump(k), env.acp, env.console, 'C:/PF-ROOT', env.wsSession, env.sessionClients, env.busySids, () => env.healthCalls++, bindWs, env.healthCache);
     return { env, api };
 }
 const mkWs = () => ({ alive: true, sends: [], send(o) { this.sends.push(o); } });
