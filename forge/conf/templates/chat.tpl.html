@@ -730,7 +730,7 @@ function connect(){
       return;
     }
     if(m.sys==='test_result'){ note(m.ok?('✅ 连通 OK（HTTP '+m.http+'）回复: '+m.reply):('❌ 失败 HTTP '+m.http+' '+m.reply)); return; }
-    if(m.sys==='providers'){ providerList=m.list||[]; renderProviders(providerList); renderModelLabel(); thinkEcho=''; renderThinkCtl(); return; } // s98/think-grad→llm-proxy: 池变了→家族在场判定重算（成员被勾掉即散）
+    if(m.sys==='providers'){ providerList=m.list||[]; modelCaps=m.caps||{}; renderProviders(providerList); renderModelLabel(); thinkEcho=''; renderThinkCtl(); return; } // s98/think-grad→llm-proxy: 池变了→家族在场判定重算（成员被勾掉即散）；C2: caps 随帧下发（能力编辑器数据面）
     if(m.sys==='model_switched'){
       // 顶栏立即反映（不信 configOptions 缓存）
       $('model-cur').textContent=m.provider+' · '+m.model;
@@ -1091,7 +1091,7 @@ function renderModelLabel(){
     buildModelItems();
   }catch{}
 }
-let providerList=[]; let curProvName=null;
+let providerList=[]; let curProvName=null; let modelCaps={}; // s98/llm-proxy C2: 模型能力注册表镜像（providers 帧随行；编辑经 /api/modelcaps 落桥侧单一真相源）
 function poolModels(){
   // 可选池 = 各家勾选的 models，标 (家·模型)
   const out=[];
@@ -1109,7 +1109,10 @@ function buildModelItems(filter){
   for(const o of shown){
     const el=document.createElement('div'); el.className='mi'+((cur&&cur.currentValue)===o.value&&o.activeProvider?' cur':'');
     el.textContent=o.provider+' · '+o.value;
-    el.title=o.provider+' · '+o.value; // s69 P3-7: 截断的长模型名悬停可看全
+    const c=modelCaps[o.value]; // s98/llm-proxy C2: 能力元数据随行（能看图/上下文约值；估计值标「约」）
+    const bits=[];
+    if(c){ if(c.multimodal) bits.push('能看图'); if(c.context_len) bits.push('上下文约'+(c.context_len>=1000?(c.context_len/1000)+'k':c.context_len)+(c.context_est?'（估计）':'')); }
+    el.title=o.provider+' · '+o.value+(bits.length?' — '+bits.join('，'):''); // s69 P3-7: 截断的长模型名悬停可看全
     el.onclick=()=>{ switchModel(o.value); $('model-pick').classList.remove('open'); };
     box.appendChild(el);
   }
@@ -2434,6 +2437,9 @@ function renderModelPool(pr){
       }
     };
     lab.appendChild(cb); lab.appendChild(document.createTextNode(' '+m));
+    const capBtn=document.createElement('button'); capBtn.className='mini'; capBtn.textContent='能力'; capBtn.title='改这个模型的本事：能不能看图、上下文多大、思考力度怎么调（识别错了可以改）';
+    capBtn.onclick=(e)=>{ e.preventDefault(); e.stopPropagation(); openCapEditor(m); }; // s98/llm-proxy C2: 能力编辑入口
+    lab.appendChild(capBtn);
     box.appendChild(lab);
   }
   const addrow=document.createElement('div'); addrow.style.cssText='display:flex;gap:6px;margin-top:8px';
@@ -2449,6 +2455,54 @@ function renderModelPool(pr){
         note('已加入 '+v); renderModelPool(upd); }
     };
   },0);
+}
+// s98/llm-proxy C2: 模型能力编辑器——三字段零术语小表单（能看图/上下文大约多少/思考力度怎么调）。
+// 数据面=桥侧 data/model-caps.json（providers 帧 caps 镜像只读展示，写走 /api/modelcaps 单一真相源）；
+// 识别是启发式自动生成的（名字猜的），错了这里改：变体=「想深点」时换成池内另一个模型（深浅互换，桥代理
+// 即时跟随）；上下文留空=按「估计」处理。
+function openCapEditor(model){
+  const box=$('model-pool'); if(!box) return;
+  const old=box.querySelector('.cap-edit'); if(old) old.remove();
+  const cap=modelCaps[model]||{};
+  const t=cap.thinking||{mode:'none'};
+  const panel=document.createElement('div'); panel.className='cap-edit'; panel.style.cssText='margin:8px 0;padding:10px;border:1px dashed var(--line-strong);border-radius:9px;font-size:.78rem';
+  const poolNow=(providerList.find(x=>x.name===curProvName)||{}).models||[];
+  const row=(label,ctrl)=>{ const r=document.createElement('div'); r.style.cssText='display:flex;align-items:center;gap:8px;margin:5px 0'; const l=document.createElement('span'); l.textContent=label; l.style.minWidth='92px'; r.appendChild(l); r.appendChild(ctrl); return r; };
+  const mkSel=(opts,val)=>{ const s=document.createElement('select'); for(const [v,n] of opts){ const o=document.createElement('option'); o.value=v; o.textContent=n; s.appendChild(o); } s.value=val; return s; };
+  const mm=mkSel([['true','能看图'],['false','不能看图']],String(!!cap.multimodal)); mm.style.cssText=cap.multimodal?'':'';
+  const ctx=document.createElement('input'); ctx.type='number'; ctx.min='1000'; ctx.step='1000'; ctx.placeholder='不知道就留空（按估计处理）'; ctx.value=(cap.context_len!=null)?cap.context_len:'';
+  ctx.style.cssText='flex:1;padding:5px 8px;border:1px solid var(--line);border-radius:6px';
+  const tk=mkSel([['none','它自己定（调不了快慢）'],['native','它自带档位'],['variant','快/深换模型（想深点时换成另一个模型）']],t.mode==='variant'?'variant':(t.mode==='native'?'native':'none'));
+  const deepRow=document.createElement('div'); deepRow.style.cssText='display:none;margin:5px 0 5px 100px';
+  const deep=mkSel(poolNow.filter(x=>x!==model).map(x=>[x,x]),(t.variant&&t.variant.deep)||'');
+  deepRow.appendChild(document.createTextNode('想深点时换成：')); deepRow.appendChild(deep);
+  tk.onchange=()=>{ deepRow.style.display=(tk.value==='variant'&&(poolNow.filter(x=>x!==model).length))?'block':'none'; };
+  tk.onchange();
+  const head=document.createElement('div'); head.textContent='「'+model+'」的能力（自动识别的，不对就改）：'; head.style.marginBottom='4px';
+  panel.appendChild(head);
+  panel.appendChild(row('能不能看图：',mm));
+  panel.appendChild(row('上下文大约：',ctx));
+  panel.appendChild(row('思考力度：',tk));
+  panel.appendChild(deepRow);
+  const act=document.createElement('div'); act.style.cssText='display:flex;gap:8px;margin-top:8px';
+  const save=document.createElement('button'); save.className='mini'; save.textContent='保存';
+  const cancel=document.createElement('button'); cancel.className='mini'; cancel.textContent='取消';
+  cancel.onclick=()=>panel.remove();
+  save.onclick=async()=>{
+    const patch={ multimodal:mm.value==='true' };
+    if(ctx.value.trim()!==''){ const n=parseInt(ctx.value,10); if(!isFinite(n)||n<=0){ note('上下文要填正整数，不知道就留空'); return; } patch.context_len=n; } else if(cap.context_len!=null){ patch.context_len=null; }
+    if(tk.value==='variant'){ if(!deep.value){ note('先选「想深点时换成」哪个模型'); return; } patch.thinking={mode:'variant',variant:{fast:model,deep:deep.value}}; }
+    else patch.thinking={mode:tk.value};
+    try{
+      const r=await fetch('/api/modelcaps',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op:'set',model,patch})});
+      const d=await r.json();
+      if(!d||!d.ok){ note((d&&d.err)||'没保存上，稍后再试'); return; }
+      note('「'+model+'」的能力已保存。');
+      loadProvidersUI(); // providers 帧重下发→caps 镜像+池区重绘（编辑器随重绘收起）
+    }catch(e){ note('没保存上：'+e.message); }
+  };
+  act.appendChild(save); act.appendChild(cancel); panel.appendChild(act);
+  box.appendChild(panel);
 }
 $('fetch-models').onclick=()=>{
   const host=$('cfg-host').value.trim();

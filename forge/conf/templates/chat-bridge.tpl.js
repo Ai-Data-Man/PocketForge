@@ -728,25 +728,75 @@ function activeProvider() {
 }
 
 // ---- s98/llm-proxy: 深度家族与假名表（桥内单一真相源；别名只活在 goose 眼里，任何用户可见面翻回真名） ----
-// 家族=当前活跃池内「X-flash ↔ X（去 -flash 后缀同名）」对。research/37 定案：glm 线参数通道 5 样本×5 臂
-// 实证死透，真实深度=模型本身两档——flash=快，完整版=深（思考量 4x/难题正确 3/3 vs 2/3/单回合成本约 2.8x）。
-// 别名锚定 fast 成员名（gpt-5-forge-<fast>）：重指向 deep 时别名不变=钉着旧别名的存量 goose 会话不失联。
-// 形状必须命中 goose is_reasoning_model 闸门（gpt-5 开头且后续为 -/.，research/35 §1）——goose 以为在跟
-// gpt-5 系说话，放出原生 thinking_effort 五档并把 effort 带上 wire，/llmproxy 反代再把它翻译回模型选择。
-function forgeFamilies(act) {
-    const pool = (act && act.models) || [];
-    const has = new Set(pool.filter(m => typeof m === 'string'));
+// 家族=能力注册表（data/model-caps.json）里的 variant 条目（X-flash ↔ X 互为快/深变体）。research/37 定案：
+// glm 线参数通道 5 样本×5 臂实证死透，真实深度=模型本身两档——flash=快，完整版=深（思考量 4x/难题正确
+// 3/3 vs 2/3/单回合成本约 2.8x）。别名锚定 fast 成员名（gpt-5-forge-<fast>）：注册表重指向 deep 时别名
+// 不变=钉着旧别名的存量 goose 会话不失联。形状必须命中 goose is_reasoning_model 闸门（gpt-5 开头且后续为
+// -/.，research/35 §1）——goose 以为在跟 gpt-5 系说话，放出原生 thinking_effort 五档并把 effort 带上 wire，
+// /llmproxy 反代再把它翻译回模型选择。
+// ---- s98/llm-proxy C2: 模型能力注册表（data/model-caps.json，单一真相源） ----
+// 每池内模型一条 {context_len, context_est, multimodal, thinking, user}；thinking 结构化：
+//   none=想多深它自己定（无可调面）/ native=名单模型原生 effort 档 / variant=深度家族（effort→模型变体，
+//   levels=['low','max'] 即前端两档的值域，variant={fast,deep} 即代理翻译的映射源——不再写死）。
+// 启发式只补缺（user 改过的条目永不覆写），错了用户可改（/api/modelcaps + 前端服务商区能力编辑）：
+//   ① -flash 结尾且池内有去后缀兄弟（或反向）→ variant 家族（.endsWith 精确，flashx 不认）；
+//   ② 名单模型（o*/gpt-5*/claude/gemini-3/grok-4，同 goose 闸门同族正则）→ native；
+//   ③ 其余 → none；④ multimodal 候选=vision/4o/omni/vl/gemini/claude 命名族——-flash 是速度档不是视觉证据，
+//     保守 false（误报看图比误拒成本高，方向经主控批准）；⑤ context_len 未知=null+context_est=true（「估计」标注）。
+const CAPS_FILE = path.join(ROOT, 'data', 'model-caps.json');
+const THINK_GATE_RE = /(?:^|[-/])(?:o\d+(?:$|-)|gpt-5(?:$|[-.])|claude|gemini-3|grok-4)/; // 与 goose 名单同族（research/35 §1）
+const MULTIMODAL_RE = /vision|4o|omni|\bvl\b|gemini|claude/i;
+function capsDefault(model, poolSet) { // 启发式缺省条目（规则见上块注释）
+    let fam = null;
+    if (typeof model === 'string' && model.endsWith('-flash')) {
+        const base = model.slice(0, -'-flash'.length);
+        if (base && poolSet.has(base) && !poolSet.has('gpt-5-forge-' + model)) fam = { fast: model, deep: base };
+    } else if (typeof model === 'string' && poolSet.has(model + '-flash') && !poolSet.has('gpt-5-forge-' + model + '-flash')) {
+        fam = { fast: model + '-flash', deep: model };
+    }
+    return {
+        context_len: null, context_est: true,
+        multimodal: MULTIMODAL_RE.test(model),
+        thinking: fam ? { mode: 'variant', levels: ['low', 'max'], variant: fam } : { mode: THINK_GATE_RE.test(model) ? 'native' : 'none' },
+    };
+}
+function readModelCaps() { // 坏 JSON/缺文件→空表（由 syncModelCaps 重生成自愈；桥不炸，stateWarnings 不占位——文件本就坏了）
+    try {
+        const j = JSON.parse(FSS.readFileSync(CAPS_FILE, 'utf8').replace(/^\uFEFF/, ''));
+        if (j && typeof j === 'object' && j.caps && typeof j.caps === 'object') return { _schema: 1, caps: j.caps };
+    } catch {}
+    return { _schema: 1, caps: {} };
+}
+function allPoolModels() { const s = new Set(); for (const p of readProviders()) for (const m of (p.models || [])) if (typeof m === 'string') s.add(m); return s; }
+function syncModelCaps() { // 池变化时补缺省（只补缺失条目，存在即不动——user 改过的天然保鲜）；有脏即落盘
+    const j = readModelCaps();
+    const pool = allPoolModels();
+    let dirty = false;
+    for (const m of pool) if (!j.caps[m]) { j.caps[m] = capsDefault(m, pool); dirty = true; }
+    if (dirty) atomicWrite(CAPS_FILE, JSON.stringify(j, null, 2));
+    return j;
+}
+function registryFamilies(act) { // 注册表→当前活跃池有效的家族表（C1 消费面唯一来源；池成员不全=家族解散不激活）
+    const pool = new Set(((act && act.models) || []).filter(m => typeof m === 'string'));
+    if (!pool.size) return [];
+    const caps = syncModelCaps().caps;
     const out = [];
-    for (const m of pool) {
-        if (typeof m !== 'string' || !m.endsWith('-flash')) continue; // .endsWith 精确：flashx 不认（同 58228dc 判据）
-        const base = m.slice(0, -'-flash'.length);
-        if (!base || !has.has(base)) continue;
-        const alias = 'gpt-5-forge-' + m;
-        if (has.has(alias)) continue; // 池里恰好有同名真模型——让位不撞名
-        out.push({ fast: m, deep: base, alias });
+    for (const [m, cap] of Object.entries(caps)) {
+        const t = cap && cap.thinking;
+        if (!t || t.mode !== 'variant' || !t.variant) continue;
+        // 只认自锚条目（variant.fast===条目自身）：镜像条目仅供展示——否则家族两侧被改成 none 后，
+        // 镜像进第三方的旧条目会把家族复活（探针 R5b 实证）
+        if (t.variant.fast !== m) continue;
+        const fast = t.variant.fast, deep = t.variant.deep;
+        if (typeof deep !== 'string' || fast === deep) continue;
+        if (!pool.has(fast) || !pool.has(deep)) continue; // 家族须整体在活跃池（设置勾掉一侧即散，防陈旧家族双控）
+        const alias = 'gpt-5-forge-' + fast;
+        if (pool.has(alias)) continue; // 池里恰好有同名真模型——让位不撞名
+        if (!out.some(f => f.alias === alias)) out.push({ fast, deep, alias });
     }
     return out;
 }
+function forgeFamilies(act) { return registryFamilies(act); }
 function familyOfModel(act, name) { // 任一家族身份（fast/deep/别名）→家族；否则 null
     if (typeof name !== 'string' || !name) return null;
     for (const f of forgeFamilies(act)) if (name === f.fast || name === f.deep || name === f.alias) return f;
@@ -755,6 +805,39 @@ function familyOfModel(act, name) { // 任一家族身份（fast/deep/别名）�
 function gooseModelName(act, real) { // 真名→goose 侧名：家族成员=别名（goose 眼里只有别名一个条目），其余原样
     const f = real ? familyOfModel(act, real) : null;
     return (f && real !== f.alias) ? f.alias : real;
+}
+// s98/llm-proxy C2: /api/modelcaps 写通道的校验+合并（人话错因；家族写入双侧镜像，防单侧漂移）
+function validModelCapsPatch(model, patch, poolSet) {
+    if (typeof model !== 'string' || !model || !poolSet.has(model)) return { ok: false, err: '这个模型不在可选池里' };
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return { ok: false, err: '参数不合法' };
+    const cap = JSON.parse(JSON.stringify(syncModelCaps().caps[model] || capsDefault(model, poolSet)));
+    if ('context_len' in patch) {
+        const v = patch.context_len;
+        if (v !== null && (typeof v !== 'number' || !isFinite(v) || v <= 0 || v > 10000000 || Math.floor(v) !== v)) return { ok: false, err: '上下文长度要填正整数（不知道就留空）' };
+        cap.context_len = v; cap.context_est = false; // 手填=不再是估计
+    }
+    if ('multimodal' in patch) {
+        if (typeof patch.multimodal !== 'boolean') return { ok: false, err: '能看图只能选是/否' };
+        cap.multimodal = patch.multimodal;
+    }
+    if ('thinking' in patch) {
+        const t = patch.thinking;
+        if (!t || typeof t !== 'object' || Array.isArray(t)) return { ok: false, err: '参数不合法' };
+        if (['none', 'native', 'variant'].indexOf(t.mode) < 0) return { ok: false, err: '思考力度的类型不对' };
+        if (t.mode === 'variant') {
+            const v = t.variant || {};
+            // fast 锚缺省：已是家族的条目保原锚（在深侧编辑不换锚）；新家族以被编辑模型为快侧锚
+            let fast = typeof v.fast === 'string' && poolSet.has(v.fast) ? v.fast : null;
+            if (!fast && cap.thinking.mode === 'variant' && cap.thinking.variant && poolSet.has(cap.thinking.variant.fast)) fast = cap.thinking.variant.fast;
+            if (!fast) fast = model;
+            if (typeof v.deep !== 'string' || !poolSet.has(v.deep)) return { ok: false, err: '「想深点」要换成池里的另一个模型' };
+            if (v.deep === fast) return { ok: false, err: '深浅变体不能是同一个模型' };
+            const levels = (Array.isArray(t.levels) && t.levels.every(x => typeof x === 'string') && t.levels.length) ? t.levels : ['low', 'max'];
+            cap.thinking = { mode: 'variant', levels, variant: { fast, deep: v.deep } };
+        } else cap.thinking = { mode: t.mode };
+    }
+    cap.user = true; // 用户改过——启发式永不覆写
+    return { ok: true, cap };
 }
 
 // ---- 裁决 2026-09-12-provider-health-probe S1/S2: provider 直连健康探测 ----
@@ -934,7 +1017,8 @@ function onAcpData(chunk) {
                 // I8: 带回客户端关联 id
                 if (w.__loadSid && msg.result && Array.isArray(msg.result.configOptions)) {
                     // s98/llm-proxy: rpc 直通响应的 configOptions 同过跨界翻译点（session/load 开盒/含 configOptions
-                    // 的回包）——model.currentValue 翻真名+gradient 随行，别名零出厂
+                    // 的回包）——model.currentValue 翻真名+gradient 随行，别名零出厂；xlate 前抓 goose 侧原始模型名
+                    noteGooseModel(w.__loadSid, msg.result.configOptions);
                     xlateConfigOptions(msg.result.configOptions);
                     noteThinkOptions(w.__loadSid, msg.result.configOptions);
                 }
@@ -972,6 +1056,7 @@ function onAcpData(chunk) {
             // s98/llm-proxy: config_option_update 通知同过跨界翻译点（goose 会话档/模型变化时主动推的 configOptions
             // 带别名）——翻真名+gradient，别名零出厂；档位缓存同刷（真相源=goose 回包，通知与回包同源）
             if (msg.params && msg.params.update && msg.params.update.sessionUpdate === 'config_option_update' && Array.isArray(msg.params.update.configOptions)) {
+                if (sid) noteGooseModel(sid, msg.params.update.configOptions); // s98/llm-proxy: xlate 前抓原始值（goose 侧模型若真变了，记账随行）
                 xlateConfigOptions(msg.params.update.configOptions);
                 if (sid) noteThinkOptions(sid, msg.params.update.configOptions);
             }
@@ -1118,6 +1203,7 @@ function rescueSession(ws, text) {
         if (!ws.alive) return; // qa s76 P3-4: 救援窗口内客户端已断开（drop 已清各表）——不再回挂死连接/续发重放（rpc 直通 alive 门同款）
         bindWs(ws, res.sessionId);
         // 前端 subscribed 处理器会更新 sessionId/currentSid（与 hotRestart 后 rebind 同款），用户表现为「继续聊」
+        noteGooseModel(res.sessionId, res.configOptions); // s98/llm-proxy: xlate 前抓 goose 侧原始模型名
         xlateConfigOptions(res.configOptions); // s98/llm-proxy: 翻真名+gradient（跨界翻译点）
         ws.send({ sys: 'subscribed', sessionId: res.sessionId, newSession: true, modes: res.modes || [], configOptions: res.configOptions || [] });
         noteThinkOptions(res.sessionId, res.configOptions); // s98/think: 救援新会话同样入缓存
@@ -1181,6 +1267,19 @@ const sidModelApplied = new Map(); // sid -> 已确认落到 goose 会话的模�
 const sidThinkValues = new Map(); // sid -> 最近一次会话建立/load 回包的 thinking_effort values 列表（set_think 校验源）
 const sidThinkApplied = new Map(); // sid -> 已落到 goose 会话的思考档（prompt 前对账防重发，同 sidModelApplied 语义）
 let lastThinkOverride = ''; // 全局默认档（subscribe/set_think 记账；rescue/prompt 对账/switch_model 随行，同 lastModelOverride 语义）
+// s98/llm-proxy: goose 侧模型记账（翻译前抓原始值）。goose 的 set_config_option(model) 按它自带静态目录校验
+// （实测从不请求 /models，别名不在目录必拒）；别名唯一可靠入口=spawn env 的 session/new。sidGooseModel=该会话
+// 钉在 goose 侧的条目名——家族会话的正确形态=别名（快↔深只是 thinking_effort 的事，不换 goose 模型），
+// switch_model 据此分「只调力度」与「热重启+新会话」两路。sidGooseCo 存同一次回包的数组引用：xlate 原地翻译后
+// 该引用即「经 xlate 的副本」，家族内力度切换的 model_switched 回执直接复用（别名零出厂）。抓取点=所有拿到
+// configOptions 的位置（rpc 直通 load 回包/config_option_update/救援/subscribe/switch_model 各回包），一律 xlate 前调。
+const sidGooseModel = new Map(); // sid -> goose 侧原始模型名（xlate 前）
+const sidGooseCo = new Map(); // sid -> 最近一次会话回包 configOptions（引用，随 xlate 原地成译后副本）
+function noteGooseModel(sid, configOptions) {
+    if (!sid || !Array.isArray(configOptions)) return;
+    const mo = configOptions.find(c => c && c.id === 'model');
+    if (mo && typeof mo.currentValue === 'string' && mo.currentValue) { sidGooseModel.set(sid, mo.currentValue); sidGooseCo.set(sid, configOptions); }
+}
 // s98/llm-proxy: configOptions 跨界翻译点（唯一）——goose 眼里会话模型=别名；对前端一律翻回真名并附 gradient
 // 家族提示（前端据此渲染两档「快一点/想深点」，值=原生 effort low/max）。currentValue 三种形态都到得了这里：
 // 别名（新会话）、真成员名（存量会话）、别名+档位（对账后）。档位被遮蔽成 ["off"] 的家族会话同步合成五档——
@@ -1235,11 +1334,15 @@ function thinkAllowed(sid, value) {
     return true;
 }
 function applyModelBeforeTurn(sid, model, next) {
+    // s98/llm-proxy: 家族目标跳过 set_config_option——别名按 goose 自带目录校验必拒（实测它从不请求 /models）；
+    // 家族会话的模型身份由 spawn env 的 session/new 钉死，深度只由 thinking_effort 决定，桥面真名记账即为真相
+    // （存量真名会话的迁移走 switch_model 的热重启+新会话路，不在此追改）。
+    if (/^gpt-5-forge-/.test(gooseModelName(activeProvider(), model))) { sidModelApplied.set(sid, model); return next(); }
     const id = nextId++;
     let done = false;
     const t = setTimeout(() => { if (!done) { done = true; next(); } }, 15000); // goose 挂起不应答不得扣住回合
     if (t.unref) t.unref();
-    waiting.set(id, { ws: null, resolve: () => { if (done) return; done = true; clearTimeout(t); sidModelApplied.set(sid, model); next(); }, reject: () => { if (done) return; done = true; clearTimeout(t); next(); } });
+    waiting.set(id, { ws: null, resolve: (res) => { if (done) return; done = true; clearTimeout(t); if (res && res.configOptions) noteGooseModel(sid, res.configOptions); sidModelApplied.set(sid, model); next(); }, reject: () => { if (done) return; done = true; clearTimeout(t); next(); } });
     try {
         // s98/llm-proxy: 对账值走 gooseModelName——家族成员对账到别名（存量真名会话由此迁移）；记账仍存真名
         // （sidModelApplied 与 effectiveModel 同一真名世界，比较语义不变）
@@ -2936,6 +3039,11 @@ function handleLlmProxy(req, res) {
         const host = ((act && act.host) || secrets.FORGE_AGENT_HOST || '').replace(/\/$/, '');
         if (!host) { res.writeHead(502, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { message: 'no active provider (providers.json)' } })); return; }
         let body = chunks.length ? Buffer.concat(chunks) : null;
+        // s98/llm-proxy: 上游 /models 清单注入别名。后续实测修正：goose 的 set_config_option 校验用自带静态目录、
+        // 从不请求 /models——本注入对 goose 目录校验无作用（别名仍必拒，switch_model 已按 sidGooseModel 分流绕开）。
+        // 留着（无害，只加不删真名）：① /llmproxy 是通用 OpenAI 兼容面，其他客户端按 /models 认别名即可直接用；
+        // ② 若 goose 将来改为按 /models 校验，此路即通。翻译点在下方 modelsInject。
+        const isModels = req.method === 'GET' && /\/models$/.test((req.url || '').split('?')[0]);
         let xlate = null; // {fam, target}
         if (body && req.method === 'POST') {
             try {
@@ -2946,6 +3054,7 @@ function handleLlmProxy(req, res) {
                         // effort 档位映射（写死并注释：两档是 9router×glm 线的真实上限，research/37 §6）
                         const e = typeof j.reasoning_effort === 'string' ? j.reasoning_effort : '';
                         const target = (e === 'high' || e === 'max') ? fam.deep : fam.fast; // off/low/medium/缺省→快
+                        console.log('llmproxy: 深度档', (e || '未设'), '→', target, '(快侧', fam.fast + ')'); // 运营观测：只写真名（假名不出厂约束覆盖日志面）
                         delete j.reasoning_effort; delete j.reasoning; delete j.thinking; // 上游 no-op 参数不上真线
                         j.model = target;
                         body = Buffer.from(JSON.stringify(j), 'utf8');
@@ -2969,11 +3078,31 @@ function handleLlmProxy(req, res) {
             const rh = { ...ur.headers };
             for (const h of HOP_BY_HOP) delete rh[h];
             if (xlate) delete rh['content-length']; // 换名后长度不定，走 chunked
+            if (isModels) delete rh['content-length']; // 注入别名后长度变，走 chunked
             try { res.writeHead(ur.statusCode, rh); } catch { ur.destroy(); return; }
             if (xlate) {
                 const rep = llmStreamReplacer('"' + xlate.target + '"', '"' + xlate.fam.alias + '"'); // 真名→别名（同一翻译点）
                 ur.on('data', c => { const out = rep.push(c); if (out.length) res.write(out); });
                 ur.on('end', () => { const out = rep.flush(); try { res.end(out.length ? out : undefined); } catch {} });
+                ur.on('error', () => { try { res.end(); } catch {} });
+            } else if (isModels) {
+                // s98/llm-proxy: /models 注入别名（缓冲整个清单——它小、非流式；失败则原样透传不阻断）
+                const bufs = [];
+                ur.on('data', c => bufs.push(c));
+                ur.on('end', () => {
+                    let out = Buffer.concat(bufs);
+                    try {
+                        const j = JSON.parse(out.toString('utf8'));
+                        const list = Array.isArray(j) ? j : (Array.isArray(j.data) ? j.data : null);
+                        if (list) {
+                            const have = new Set(list.map(x => x && (x.id || x.name)));
+                            const missing = forgeFamilies(act).map(f => f.alias).filter(a => a && !have.has(a));
+                            for (const a of missing) list.push({ id: a, object: 'model', created: 0, owned_by: 'forge-proxy' });
+                            if (missing.length) out = Buffer.from(JSON.stringify(j), 'utf8');
+                        }
+                    } catch {} // 上游清单形状异常：原样透传
+                    try { res.end(out); } catch {}
+                });
                 ur.on('error', () => { try { res.end(); } catch {} });
             } else {
                 ur.pipe(res); // 非别名：字节级零缓冲透传
@@ -3019,6 +3148,38 @@ async function handleHttp(req, res) {
     } else if (url === '/healthz') { res.writeHead(200); res.end('ok'); }
     else if (url === '/favicon.ico') { res.writeHead(204); res.end(); } // s98/R1-F4: 无图标诚实空回——此前 404 是浏览器控制台唯一 error
     else if (url === '/llmproxy' || url.startsWith('/llmproxy/')) { handleLlmProxy(req, res); } // s98/llm-proxy: 桥内 LLM 反代（goose 专用；见 handleLlmProxy 头注）
+    else if (url === '/api/modelcaps') {
+        // s98/llm-proxy C2: 模型能力注册表读写。GET=全量（前端能力编辑器+模型选择器元数据）；
+        // POST {op:'set', model, patch} —— Origin 门由 handleHttp 顶部全局门覆盖（跨站写 403），
+        // 字段校验见 validModelCapsPatch；家族写入双侧镜像。
+        if (req.method === 'GET') { json200(res, { ok: true, caps: syncModelCaps().caps }); }
+        else if (req.method === 'POST') {
+            readJsonBody(req, res, raw => {
+                try {
+                    const b = JSON.parse(raw.toString('utf8'));
+                    if (!b || b.op !== 'set') return json200(res, { ok: false, err: '参数不合法' });
+                    const poolSet = allPoolModels();
+                    const r = validModelCapsPatch(String(b.model || ''), b.patch, poolSet);
+                    if (!r.ok) return json200(res, { ok: false, err: r.err });
+                    const j = syncModelCaps();
+                    j.caps[b.model] = r.cap;
+                    const t = r.cap.thinking;
+                    if (t.mode === 'variant' && t.variant) { // 家族镜像：另一侧条目同步写（user 同标），防单侧漂移
+                        for (const m of [t.variant.fast, t.variant.deep]) {
+                            if (typeof m === 'string' && poolSet.has(m) && m !== b.model) {
+                                const other = JSON.parse(JSON.stringify(j.caps[m] || capsDefault(m, poolSet)));
+                                other.thinking = JSON.parse(JSON.stringify(t)); other.user = true;
+                                j.caps[m] = other;
+                            }
+                        }
+                    }
+                    atomicWrite(CAPS_FILE, JSON.stringify(j, null, 2));
+                    console.log('model-caps updated:', b.model);
+                    json200(res, { ok: true, caps: j.caps });
+                } catch (e) { json200(res, { ok: false, err: '保存失败：' + e.message }); }
+            });
+        } else { res.writeHead(405); res.end(); }
+    }
     else if (url === '/api/skills') {
         // 扫描面与判据见 scanInstalledSkills 头注（.agents/skills 唯一扫描面；v150 桩故意不入）
         json200(res, scanInstalledSkills()); // s83: 读法平移至具名函数（/api/assets 技能源共用）
@@ -4125,6 +4286,7 @@ function hardDeleteSession(sessionId) {
     acpCloseSession(sessionId);
     sidModelApplied.delete(sessionId); // qa s94 P4-4: 会话已删，模型记账随之清（防 Map 无界增长/陈旧条目）
     sidThinkValues.delete(sessionId); sidThinkApplied.delete(sessionId); // s98/think: 同款清账
+    sidGooseModel.delete(sessionId); sidGooseCo.delete(sessionId); // s98/llm-proxy: goose 侧模型记账同清（防陈旧别名判定/Map 无界）
     // I1(审查s15): 会话删了就解除其工作区绑定，否则区卡在 active 态永远无法清理
     const wsm = readWsMap();
     let unbound = false;
@@ -4173,6 +4335,7 @@ function handleClient(ws, msg) {
                         statsBump('sessionsCreated'); // P31-③
                         wsFirstPrompt.set(ws, true); // research/18 断点①: 新绑定首轮允许救援
                         bindWs(ws, res.sessionId);
+                        noteGooseModel(res.sessionId, res.configOptions); // s98/llm-proxy: xlate 前抓 goose 侧原始模型名（新会话=env 钉的别名）
                         xlateConfigOptions(res.configOptions); // s98/llm-proxy: 翻真名+gradient（跨界翻译点）
                         ws.send({ sys: 'subscribed', sessionId: res.sessionId, newSession: true, modes: res.modes || [], configOptions: res.configOptions || [] });
                         // s26: 新对话沿用顶栏当前模型——session/new 默认回落 env 首模型（STATE 开放问题#4）
@@ -4500,7 +4663,8 @@ function handleClient(ws, msg) {
             }
             const act = list.find(p => p.active);
             if (act) rewriteSecretsEnv({ model: act.models && act.models[0] || '', host: act.host || '', key: act.key || '' });
-            ws.send({ sys: 'providers', list: list.map(pr => ({ name: pr.name, host: pr.host, models: pr.models || [], active: !!pr.active, hasKey: !!pr.key })) });
+            const capsAll = syncModelCaps().caps; // s98/llm-proxy C2: 池刚落盘——先补缺省再随帧下发（只加不破既有形状）
+            ws.send({ sys: 'providers', list: list.map(pr => ({ name: pr.name, host: pr.host, models: pr.models || [], active: !!pr.active, hasKey: !!pr.key, caps: (function () { const o = {}; for (const m of (pr.models || [])) o[m] = capsAll[m] || null; return o; })() })) });
             if (needRestart) {
                 lastModelOverride = ''; // qa s78c P3-1: 面板换档/改池清除 override——生效模型随档回落池首（防同名模型跨家碰撞时探测/重启假锚旧选择）
                 // s94-b2 F-3: env 指纹与上次落地一致的热重启是纯噪音——ia2 首配连打保存触发三连重启：
@@ -4526,22 +4690,71 @@ function handleClient(ws, msg) {
             lastModelOverride = msg.model; // qa s78b P3-2 / s78c P3-1: 生效模型记录，effectiveModel 单源消费（同档 set_config_option / 跨档 spawn env / 探测锚三处同读；∉池自愈回落池首，面板换档清除）
             if (target.active) {
                 healthCache.at = 0; probeProviderHealth(); // qa s78b P3-2: 同档切换=换生效模型，同 §S1 失效语义（顶栏切健康兄弟模型→条即消，不等 30min TTL）
-                const doSet = (sessionId) => {
+                // s98/llm-proxy: 家族成员在 goose 侧=别名，而 goose 的 set_config_option(model) 按它自带静态目录校验
+                // （实测它从不请求 /models，别名必拒「切换失败」）；别名唯一可靠入口=spawn env 的 session/new
+                // （GOOSE_MODEL 路径已活体实证放出五档）。家族目标分两路：
+                // ① 会话已钉在别名上（sidGooseModel）→ 快↔深只是力度切换，不碰 set_config_option(model)；
+                // ② 不在别名上（中性/存量真名/无会话）→ 需要别名 env 的新会话。新开而非 load 旧会话——goose 的
+                //   session/load 按 DB 回放旧模型（model_config_json 持久化，F-3 家族），load 回来档位仍被遮蔽。
+                //   env 已是别名（如无会话页）则免重启直开——热重启会错杀其他窗口的活会话。
+                const fam = familyOfModel(target, msg.model);
+                const curSid = wsSession.get(ws);
+                if (fam && curSid && sidGooseModel.get(curSid) === fam.alias) {
+                    // ① 家族内快↔深：goose 侧同一条目（别名），深度只由 thinking_effort 决定。走 set_think 同款
+                    // 白名单（thinkAllowed+acpSetThink）；回执 configOptions 复用该会话最近一次经 xlate 的副本
+                    // （sidGooseCo，按本次选择改显值），别名零出厂
+                    const v = msg.model === fam.deep ? 'max' : 'low';
+                    lastThinkOverride = v;
+                    let applied = false;
+                    if (sidThinkApplied.get(curSid) !== v && thinkAllowed(curSid, v) && acpSetThink(curSid, v)) { sidThinkApplied.set(curSid, v); applied = true; }
+                    sidModelApplied.set(curSid, msg.model); // 记账（真名世界）：prompt 前对账对家族会话跳过别名写入，此即真相
+                    const co = sidGooseCo.get(curSid) || [];
+                    const mo2 = co.find(c => c && c.id === 'model'); if (mo2) mo2.currentValue = msg.model;
+                    const th2 = co.find(c => c && c.id === 'thinking_effort'); if (th2 && applied) th2.currentValue = v;
+                    ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, configOptions: co });
+                    return;
+                }
+                if (fam) {
+                    // ② 进家族：热重启换 env（env 已在别名上则免重启）+ session/new 新会话
+                    ws.send({ sys: 'provider_switching', to: target.name, model: msg.model });
+                    const spawnFamNew = () => {
+                        const nid = nextId++;
+                        wsPendingNew.set(ws, nid);
+                        waiting.set(nid, { ws, resolve: (res) => {
+                            if (res && res.sessionId) noteSessionBorn(res.sessionId);
+                            if (staleNewSession(ws, nid, res)) return;
+                            wsPendingNew.delete(ws);
+                            if (!res || !res.sessionId) return ws.send({ sys: 'error', text: '开新对话失败，稍后再试' });
+                            statsBump('sessionsCreated');
+                            wsFirstPrompt.set(ws, true);
+                            bindWs(ws, res.sessionId);
+                            const co = Array.isArray(res.configOptions) ? res.configOptions : [];
+                            noteGooseModel(res.sessionId, co); // s98/llm-proxy: xlate 前抓 goose 侧原始模型名（env 钉的别名）——此后家族内切换走路①
+                            xlateConfigOptions(co);
+                            noteThinkOptions(res.sessionId, co);
+                            sidModelApplied.set(res.sessionId, msg.model);
+                            const v = msg.model === fam.deep ? 'max' : 'low';
+                            lastThinkOverride = v;
+                            if (thinkAllowed(res.sessionId, v) && acpSetThink(res.sessionId, v)) sidThinkApplied.set(res.sessionId, v);
+                            ws.send({ sys: 'subscribed', sessionId: res.sessionId, newSession: true, modes: res.modes || [], configOptions: co });
+                            ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, restarted: true, configOptions: co });
+                        }});
+                        flushPendingCloses();
+                        acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: nid, method: 'session/new', params: { cwd: ROOT, mcpServers: [] } }) + '\n');
+                    };
+                    if ((lastSpawnEnv || '').split('\0')[1] === fam.alias) return spawnFamNew();
+                    return hotRestartProvider().then(spawnFamNew).catch(e => ws.send({ sys: 'error', text: '切换失败: ' + e.message }));
+                }
+                const doSet = (sessionId) => { // 非家族目标：真名直写（家族已在上方两路分流——别名过不了 goose 目录校验）
                     const id = nextId++;
-                    // s98/llm-proxy: 家族成员以别名入 goose（选择器两成员=goose 侧同一条目，深度由档位旋钮单一控制）；
-                    // 深度预置随选择（选完整版→max/选 flash→low），与 set_think 同点位过白名单，成功记习惯
-                    const fam = familyOfModel(target, msg.model);
                     acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/set_config_option', params: { sessionId, configId: 'model', value: gooseModelName(target, msg.model) } }) + '\n');
                     waiting.set(id, { ws, resolve: (res) => {
                         if (res && res.configOptions) {
+                            noteGooseModel(sessionId, res.configOptions); // s98/llm-proxy: xlate 前抓 goose 侧原始模型名
                             xlateConfigOptions(res.configOptions); // s98/llm-proxy: 翻真名+gradient（跨界翻译点）
                             sidModelApplied.set(sessionId, msg.model); // s94-b2 F-3: 成功才记账，失败留给 prompt 前对账重试（真名世界）
                             noteThinkOptions(sessionId, res.configOptions); // s98/think: 切模型后档位列表可能变（goose 名单制）——回包即刷缓存
-                            if (fam) { // s98/llm-proxy: 成员选择=深度预置（fire-and-forget，stdin 写序先于后续 prompt）
-                                const v = msg.model === fam.deep ? 'max' : 'low';
-                                lastThinkOverride = v;
-                                if (sidThinkApplied.get(sessionId) !== v && thinkAllowed(sessionId, v) && acpSetThink(sessionId, v)) sidThinkApplied.set(sessionId, v);
-                            } else if (lastThinkOverride && sidThinkApplied.get(sessionId) !== lastThinkOverride && thinkAllowed(sessionId, lastThinkOverride) && acpSetThink(sessionId, lastThinkOverride)) sidThinkApplied.set(sessionId, lastThinkOverride); // s98/think: 同点位并联（goose INHERITED 继承链之外再对账一次；qa s98 P3-2: 过白名单才发）
+                            if (lastThinkOverride && sidThinkApplied.get(sessionId) !== lastThinkOverride && thinkAllowed(sessionId, lastThinkOverride) && acpSetThink(sessionId, lastThinkOverride)) sidThinkApplied.set(sessionId, lastThinkOverride); // s98/think: 同点位并联（goose INHERITED 继承链之外再对账一次；qa s98 P3-2: 过白名单才发）
                             ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, configOptions: res.configOptions }); // s98/think: 前端据此刷新思考力度三态（会话内切模型不走 session/new→subscribed）
                         }
                         else ws.send({ sys: 'error', text: '切换失败，试试重开对话' });
@@ -4561,6 +4774,7 @@ function handleClient(ws, msg) {
                             statsBump('sessionsCreated'); // P31-③
                             wsFirstPrompt.set(ws, true); // research/18 断点①: 新绑定首轮允许救援
                             bindWs(ws, res.sessionId);
+                            if (Array.isArray(res.configOptions)) { noteGooseModel(res.sessionId, res.configOptions); xlateConfigOptions(res.configOptions); } // s98/llm-proxy: 开盒即翻+记账——env 可能钉着别名（无会话页切非家族），subscribed 帧同样别名零出厂
                             ws.send({ sys: 'subscribed', sessionId: res.sessionId, modes: res.modes || [], configOptions: res.configOptions || [] });
                             noteThinkOptions(res.sessionId, res.configOptions); // s98/think: 会话建立即入缓存
                             doSet(res.sessionId);
@@ -4584,7 +4798,7 @@ function handleClient(ws, msg) {
                     const rid = nextId++;
                     waiting.set(rid, { ws, resolve: (res) => {
                         const co = res && Array.isArray(res.configOptions) ? res.configOptions : null;
-                        if (co) xlateConfigOptions(co); // s98/llm-proxy: 翻真名+gradient（跨界翻译点）
+                        if (co) { noteGooseModel(osid, co); xlateConfigOptions(co); } // s98/llm-proxy: xlate 前抓 goose 侧原始模型名（load 按 DB 回放旧模型的真相）+ 翻真名+gradient（跨界翻译点）
                         const frame = { sys: 'model_switched', model: msg.model, provider: target.name, restarted: true };
                         if (co) { frame.configOptions = co; noteThinkOptions(osid, co); }
                         ws.send(frame);
@@ -4606,6 +4820,7 @@ function handleClient(ws, msg) {
             const id = nextId++;
             waiting.set(id, { ws, resolve: (res) => {
                 if (res && res.configOptions) {
+                    noteGooseModel(sid, res.configOptions); // s98/llm-proxy: xlate 前抓 goose 侧原始模型名（档位回包同样带模型键）
                     xlateConfigOptions(res.configOptions); // s98/llm-proxy: 翻真名+gradient（跨界翻译点）
                     noteThinkOptions(sid, res.configOptions);
                     sidThinkApplied.set(sid, v);
