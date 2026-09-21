@@ -86,6 +86,10 @@
 2. **升级安装**：旧版本包先安装并产生数据 → 新版本包按发布说明的升级路径覆盖/就位 → 冷启 → 验证数据保留与新面生效。
 3. 执行细则（安装路径变体、抓字节证据、判卷口径）见 docs/runbooks/2026-09-14-cold-start-codec-audit.md。
 
+### 8.2 触桥批必跑探针清单（2026-09-22 s99 立；背景=s98 1874b94/72350ca 两次有意语义变更后漏跑 think-grad-probe，预存红漂到 s99 才归因，RCA=tmp/s99-thinkgrad-red-rca.md）
+
+任何改动 `conf/templates/chat-bridge.tpl.js`（或其物化链 bootstrap 消费方）的批次，验收必须跑齐：**e2e-chat 全量 + fuzz 全量 + ui-logic + ia-logic + semantics-r5 + think-grad + capeditor（活体臂）+ modelcaps + proxythink + llmproxy-xlate**。既有 tmp 探针的期望断言随语义变更**同批随迁**（红绿对照留证），不允许"探针不在套件里就不跑"。改前端 chat.tpl.html 的帧消费（providers/caps/think 面）时，至少一条**活体探针**（真桥真 WS 帧，禁桩）覆盖帧→页链路——桩探针只验逻辑不验链路（s99 QA P1 系统性假绿教训）。
+
 ### 8.1 约定测试目录（2026-09-15 s93 用户拍板；所有会话/子智能体必须遵守）
 
 - **全新安装测试的约定位置 = `C:\PF-TEST\<场景名>`**（例如 `C:\PF-TEST\cold`、`C:\PF-TEST\upgrade`）。这是唯一认可的沙盒根：好找、好清、不会误删用户数据。
