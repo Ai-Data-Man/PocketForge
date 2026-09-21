@@ -127,10 +127,12 @@ if (-not $memOk) {
 # 桥的 provider 同步随后把 secrets.env 改写成档案真值→「运行值≠文件值」→pc project update 按
 # wrapper 现读 env 重渲染判 chat-bridge 漂移→重启（在飞回合孤儿化，s97b/d 实录）。源头收敛：
 # 种下的就是档案真值（桥同步写 host 原样、models 取池首，与本种子同源同形）→运行渲染==文件值==桥同步值，三点恒同。
-# providers.json 缺失/坏 JSON/无 active 档案 → 回落旧缺省（fail-safe，行为同旧版）。
-$pvHost = 'http://127.0.0.1:20128/v1/'
+# providers.json 缺失/坏 JSON/无 active 档案 → 回落空值（s99/S3 裁决 2026-09-21 §3.6：出厂空态+引导——
+# 未配置是一等 UX（桥 !host 不探→黄条 key-guide 指引），死种子=探测死地址→红条「联系不上」误诊为故障；
+# 「种空值而非缺省」同下方退化活跃档先例）。F-11 自愈块（:177-179）仍匹配旧出厂字面值，与新空值无交集。
+$pvHost = ''
 $pvKey = ''
-$pvModel = 'mimo-v2.5'
+$pvModel = ''
 $pvLive = $false
 try {
     $pvFile = Join-Path $ForgeRoot 'data\providers.json'

@@ -27,7 +27,10 @@ rm -rf "$TMP/forge-pkg/data"/* "$TMP/forge-pkg/conf/goose/state" "$TMP/forge-pkg
        "$TMP/forge-pkg/nul。" \
        "$TMP/forge-pkg/bin/bu-config" \
        "$TMP/forge-pkg/bin/memory-mcp.cmd" "$TMP/forge-pkg/conf/diag.ps1" \
-       "$TMP/forge-pkg/conf/goose/config/memory" "$TMP/forge-pkg/conf/goose/config/config.yaml" "$TMP/forge-pkg/conf/goose/config/permission.yaml" "$TMP/forge-pkg/conf/goose/config/permission.yaml.lock"        "$TMP/forge-pkg/data/chat-window-profile" "$TMP/forge-pkg/data/pw-chat-check" "$TMP/forge-pkg/data/pw-chat-v2check"        "$TMP/forge-pkg/data/backups" "$TMP/forge-pkg/.playwright-mcp" 2>/dev/null || true
+       "$TMP/forge-pkg/conf/goose/config/memory" "$TMP/forge-pkg/conf/goose/config/config.yaml" "$TMP/forge-pkg/conf/goose/config/permission.yaml" "$TMP/forge-pkg/conf/goose/config/permission.yaml.lock"        "$TMP/forge-pkg/data/chat-window-profile" "$TMP/forge-pkg/data/pw-chat-check" "$TMP/forge-pkg/data/pw-chat-v2check"        "$TMP/forge-pkg/data/backups" "$TMP/forge-pkg/.playwright-mcp" \
+       "$TMP/forge-pkg/conf/goose/config/custom_providers" 2>/dev/null || true
+# s99/S3（裁决 2026-09-21 §3.6）：custom_providers 目录级剔除——开发占位 forge-router.json 已删源，
+# 此行防再犯（未来误放回/路径事故产物不随包发行；用户自配 custom_providers 属用户树，出厂包本就不含）
 mkdir -p "$TMP/forge-pkg/data/logs" "$TMP/forge-pkg/apps" "$TMP/forge-pkg/data/sqlite"
 printf "%s" "$VER" > "$TMP/forge-pkg/VERSION"   # ADR-0009: 版本唯一真相源,升级器据此对比
 # s20: .goosehints 用模板原文（占位符版）——运行版已被 bootstrap 替换为本机绝对路径，不能进包

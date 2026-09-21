@@ -87,7 +87,10 @@ if (cmd === '--list-models') {
         process.exit(2);
     }
     const ext = path.extname(imgPath).slice(1).toLowerCase() || 'png';
-    const host = (secrets.FORGE_AGENT_HOST || 'http://127.0.0.1:20128/v1/').replace(/\/$/, '');
+    // s99/S3（裁决 2026-09-21 §3.6）：空 host 不再回落 127.0.0.1:20128 死地址（与出厂空态一致）——
+    // 诚实报未配置并指路（--list-models 同款），不打永远连不上的占位端点。
+    const host = (secrets.FORGE_AGENT_HOST || '').replace(/\/$/, '');
+    if (!host) { console.error('看图失败：还没连上大模型——先在聊天窗口的 ⚙️ 设置里配好服务商（地址+Key），保存后再试。'); process.exit(1); }
     const key = secrets.FORGE_AGENT_API_KEY || '';
 
     const body = JSON.stringify({

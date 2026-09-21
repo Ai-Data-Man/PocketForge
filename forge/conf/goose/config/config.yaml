@@ -1,7 +1,8 @@
 # 由启动器生成（C:/ZCodeWorks/PocketForge/forge 占位）——goose 不会展开 ${VAR}，必须写入绝对路径
 GOOSE_PROVIDER: openai
-# 种子=池首模型（deepseek 官方故障期出厂默认换 mimo-v2.5，v4.1-flash 留池可切回——2026-09-15）
-GOOSE_MODEL: mimo-v2.5
+# s99/S3（裁决 2026-09-21 §3.6）：出厂空态——GOOSE_MODEL 与 bootstrap 种子同步改空；桥路径 spawn env
+# 恒注入真值（env 压 config），本键只是 env 缺位时的兜底（直接跑 goose CLI 的开发场景）。
+GOOSE_MODEL: ''
 GOOSE_MODE: smart_approve
 # T1（裁决书 S-B）：hints 只认 .goosehints，不再吸入 AGENTS.md（dev 仓库工作契约/用户域文件泄漏面）
 CONTEXT_FILE_NAMES: ['.goosehints']
