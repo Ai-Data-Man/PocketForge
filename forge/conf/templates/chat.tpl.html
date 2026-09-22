@@ -2529,7 +2529,7 @@ function renderModelPool(pr){
       }
     };
     lab.appendChild(cb); lab.appendChild(document.createTextNode(' '+m+((modelCaps[m]&&!modelCaps[m].user)?'（猜的）':''))); // s99/S2 §3.5: 池行来源标注——按名字自动认、没改过的标「（猜的）」，改过（user）不标
-    const capBtn=document.createElement('button'); capBtn.className='mini'; capBtn.textContent='配置'; capBtn.title='改这个模型的配置：能不能看图、上下文多大、思考档位（认错了可以改）'; // s100/T1: 「能力」更名「配置」+标题随字段重排（裁决 §2.1）
+    const capBtn=document.createElement('button'); capBtn.className='mini'; capBtn.textContent='配置'; capBtn.title='改这个模型的配置：能不能看图、上下文多大（认错了可以改）'; // s100/T1: 「能力」更名「配置」（裁决 §2.1）；s100/QA P2-1: 档位零消费方→标题撤「思考档位」（真可改的只剩看图/上下文两字段）
     capBtn.onclick=(e)=>{ e.preventDefault(); e.stopPropagation(); openCapEditor(m); }; // s98/llm-proxy C2: 配置编辑入口（s100/T1 起=独立弹窗）
     lab.appendChild(capBtn);
     rows.appendChild(lab);
@@ -2537,12 +2537,14 @@ function renderModelPool(pr){
 }
 // s100/T1（裁决 2026-09-22-capability-config-v2 §2.1）：能力配置=独立弹窗（#cap-modal，废 inline 展开）。字段：
 // ①能不能看图（消费面=贴照片预期，s99 判据维持）②上下文大约多少字（信息行非旋钮；context_est 标「（估计）」；
-// 留空按估计）③思考档位（从低到高）=有序档位集——同 ZCode optionSpecs.reasoningLevel.values 同构（research/38 §1），
-// 标签按钮可增删，标签=顶栏 THINK_LABELS 同一人话词汇，值域=识别/现有 levels ④技术折叠只读句（翻译体系存在感，
-// 不可改=非假旋钮）。「快慢怎么调」三选与「深档用哪个模型」框架整体删除——research/38 §2 负验证：对标产品零
-// 换模型形态；模型配对（家族）=桥 llmproxy 私有实现，用户面零出现。数据面（providers 帧 caps 镜像只读，写走
-// /api/modelcaps 单一真相源）：POST patch={multimodal, context_len, thinking:{levels:[...]}}——thinking.variant
-// 用户面零发（桥 validModelCapsPatch 拒收=家族配对系统自管，s100/T2）。上下文/看图语义与 s99 现状一致。
+// 留空按估计）③顶栏快慢=只读信息行（s100/QA P2-1 主控拍板：thinking.levels 全库零读路径=假旋钮，降级为信息行，
+// 档位增删旋钮整体撤除）——三态按真相源派生（providers 帧 caps 镜像 variant 在场性+mode 字段）：家族成员在池=
+// 家族配对两档（页侧 THINK_LABELS 同人话）/ mode=native=goose 给档走自带快慢 / 其余=无顶栏快慢；文案与顶栏四态
+// 口径对齐（think-probe 文案锚零动）④技术折叠只读句（翻译体系存在感，不可改=非假旋钮）。「快慢怎么调」三选与
+// 框架整体删除——research/38 §2 负验证：对标产品零换模型形态；模型配对（家族）=桥 llmproxy 私有实现，用户面零出现。
+// 数据面（providers 帧 caps 镜像只读，写走 /api/modelcaps 单一真相源）：POST patch={multimodal, context_len} only——
+// thinking 零发（mode/variant 桥 validModelCapsPatch 拒收=快慢识别/家族配对系统自管；levels 写通道停用=零消费方，
+// s100/P2+P3-a）。上下文/看图语义与 s99 现状一致。
 function closeCapModal(){ const m=$('cap-modal'); if(!m||!m.classList.contains('on')) return false; m.classList.remove('on'); return true; } // 关闭三路（✕/Esc/遮罩）共用出口：只关本弹窗不碰主设置弹窗
 function openCapEditor(model){
   const body=$('cap-body'); if(!body) return;
@@ -2550,7 +2552,7 @@ function openCapEditor(model){
   const cap=modelCaps[model]||{};
   const t=cap.thinking||{};
   const head=document.createElement('div'); head.textContent='「'+model+'」会什么'; head.style.cssText='font-weight:600;margin-bottom:2px';
-  const headSub=document.createElement('div'); headSub.className='fnote'; headSub.textContent='按名字自动认的，认错了您改；改过就记住您的。'; headSub.style.marginBottom='6px';
+  const headSub=document.createElement('div'); headSub.className='fnote'; headSub.textContent='看图和上下文按名字自动认的，认错了您改；改过就记住您的。'; headSub.style.marginBottom='6px';
   body.appendChild(head); body.appendChild(headSub);
   const mm=document.createElement('select');
   for(const [v,n] of [['true','能看图'],['false','不能看图']]){ const o=document.createElement('option'); o.value=v; o.textContent=n; mm.appendChild(o); }
@@ -2567,39 +2569,20 @@ function openCapEditor(model){
   if(cap.context_est){ const est=document.createElement('span'); est.className='fnote'; est.textContent='（估计）'; ctxRow.appendChild(est); } // 数字信息行+「（估计）」标注（context_est 时；ZCode contextWindow 同位）
   body.appendChild(ctxRow);
   const lvRow=document.createElement('div'); lvRow.style.margin='5px 0 2px';
-  const lvLab=document.createElement('span'); lvLab.textContent='思考档位（从低到高）：';
-  lvRow.appendChild(lvLab);
-  const chips=document.createElement('span'); chips.style.cssText='display:inline-flex;flex-wrap:wrap;gap:6px;vertical-align:middle';
-  lvRow.appendChild(chips);
+  const lvLab=document.createElement('span'); lvLab.textContent='顶栏快慢：';
+  const lvVal=document.createElement('span'); lvVal.className='fnote';
+  // s100/QA P2-1（主控拍板）：thinking.levels 全库零读路径（顶栏值域=家族硬编码两档/goose 回包）=假旋钮——
+  // 档位增删 chips 整体撤除，降级只读信息行；三态按真相源派生（providers 帧 caps 镜像 variant 在场性+mode 字段），
+  // 文案与顶栏四态口径对齐（think-probe 文案锚零动，只动编辑器）。
+  const actPr=providerList.find(p=>p&&p.active)||null; // 成员在池判据=活跃池（registryFamilies 同面=顶栏 gradient 同源；无活跃档退回全池）
+  const pool=new Set(); for(const p of (actPr?[actPr]:providerList)) for(const mn of ((p&&p.models)||[])) pool.add(mn);
+  const fam=!!(t.variant&&typeof t.variant==='object'&&pool.has(t.variant.fast)&&pool.has(t.variant.deep));
+  lvVal.textContent=fam?'快一点 / 想深点（更准，稍慢）——系统按模型自动配对的'
+    :(t.mode==='native'?'跟这个模型自带的快慢档走——开一个对话，顶栏就能看到'
+    :'这个模型想多深它自己定，顶栏没有快慢选择');
+  lvRow.appendChild(lvLab); lvRow.appendChild(lvVal);
   body.appendChild(lvRow);
-  const ORDER=['off','low','medium','high','max']; // 值域=顶栏 THINK_LABELS 同一套（goose thinking_effort 五档，从低到高）
-  const levels=(Array.isArray(t.levels)?t.levels:[]).slice(); // 预填=该模型现有档位集（按名字识别的初值；改过=user 记住）
-  const addSel=document.createElement('select'); addSel.style.cssText='margin:2px 0 6px';
-  function fillAdd(){
-    addSel.innerHTML='';
-    const o0=document.createElement('option'); o0.value=''; o0.textContent='＋ 加一档'; addSel.appendChild(o0);
-    for(const v of ORDER) if(levels.indexOf(v)<0){ const o=document.createElement('option'); o.value=v; o.textContent=THINK_LABELS[v]||v; addSel.appendChild(o); }
-    addSel.value='';
-  }
-  function renderChips(){
-    chips.innerHTML='';
-    for(let i=0;i<levels.length;i++){
-      const v=levels[i];
-      const w=document.createElement('span'); w.style.cssText='display:inline-flex;align-items:center;gap:3px;border:1px solid var(--line);border-radius:11px;padding:1px 4px 1px 8px;background:var(--hover);font-size:.75rem';
-      const nm=document.createElement('span'); nm.textContent=THINK_LABELS[v]||v;
-      const x=document.createElement('button'); x.className='mini'; x.textContent='✕'; x.title='去掉这一档'; x.style.padding='0 3px';
-      x.onclick=()=>{ levels.splice(levels.indexOf(v),1); renderChips(); fillAdd(); };
-      w.appendChild(nm); w.appendChild(x); chips.appendChild(w);
-    }
-  }
-  addSel.onchange=()=>{ // 增档：按 从低到高 插位（值域外自定义档排已知档之后、保持原有次序）
-    const v=addSel.value; if(!v) return;
-    const r=ORDER.indexOf(v); let at=levels.length;
-    for(let i=0;i<levels.length;i++){ const ri=ORDER.indexOf(levels[i]); if(ri<0||r<ri){ at=i; break; } }
-    levels.splice(at,0,v); renderChips(); fillAdd();
-  };
-  renderChips(); fillAdd();
-  body.appendChild(addSel);
+  if(fam){ const unh=document.createElement('div'); unh.className='fnote'; unh.style.cssText='margin:2px 0 4px'; unh.textContent='想解除快/深配对：把其中一个模型从可选池勾掉'; body.appendChild(unh); } // 逃生口：勾掉成员=家族即解散（thinkFamily/registryFamilies 既有语义零改）
   const tech=document.createElement('details'); tech.className='tz'; tech.style.cssText='border-top:1px solid var(--line);margin-top:8px;padding-top:6px';
   const sum=document.createElement('summary'); sum.textContent='技术细节（平时不用动）'; tech.appendChild(sum);
   const techLine=document.createElement('div'); techLine.className='fnote'; techLine.style.margin='4px 0 0'; techLine.textContent='这些档位实际怎么传给服务商——按各家接口规范自动翻译，不用您管';
@@ -2610,7 +2593,7 @@ function openCapEditor(model){
   const cancel=document.createElement('button'); cancel.className='mini'; cancel.textContent='取消';
   cancel.onclick=()=>closeCapModal();
   save.onclick=async()=>{
-    const patch={ multimodal:mm.value==='true', thinking:{levels:levels.slice()} }; // s100: 档位集真相源=thinking.levels（有序）；variant 用户面零发（桥自管）
+    const patch={ multimodal:mm.value==='true' }; // s100/P2: 档位零消费方→thinking 写通道一并关——patch 恒零 thinking（mode/variant 桥门拒收、levels 零消费停写）
     const cv=String(ctx.value==null?'':ctx.value).trim();
     if(cv!==''){ const n=parseInt(cv,10); if(!isFinite(n)||n<=0){ note('上下文要填正整数，不知道就留空'); return; } patch.context_len=n; } else if(cap.context_len!=null){ patch.context_len=null; }
     try{

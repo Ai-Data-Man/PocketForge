@@ -804,7 +804,7 @@ function activeProvider() {
 // ---- s98/llm-proxy C2: 模型能力注册表（data/model-caps.json，单一真相源） ----
 // 每池内模型一条 {context_len, context_est, multimodal, thinking, user}；thinking 结构化：
 //   none=想多深它自己定（无可调面）/ native=名单模型原生 effort 档 / variant=深度家族（effort→模型变体，
-//   levels=['low','max'] 即前端两档的值域，variant={fast,deep} 即代理翻译的映射源——不再写死）。
+//   levels=五档全集（s100/P3-b 与迁移步 FIVE 同口径；顶栏家族两档=页侧硬编码，非 levels 消费面），variant={fast,deep} 即代理翻译的映射源——不再写死）。
 // 启发式只补缺（user 改过的条目永不覆写），错了用户可改（/api/modelcaps + 前端服务商区能力编辑）：
 //   ① -flash 结尾且池内有去后缀兄弟（或反向）→ variant 家族（.endsWith 精确，flashx 不认）；
 //   ② 名单模型（o*/gpt-5*/claude/gemini-3/grok-4，同 goose 闸门同族正则）→ native；
@@ -825,7 +825,7 @@ function capsDefault(model, poolSet) { // 启发式缺省条目（规则见上�
     return {
         context_len: null, context_est: true,
         multimodal: MULTIMODAL_RE.test(model),
-        thinking: fam ? { mode: 'variant', levels: ['low', 'max'], variant: fam } : { mode: native ? 'native' : 'none', levels: native ? ['off', 'low', 'medium', 'high', 'max'] : [] }, // s100/T2: 新条目直落 v2 形状（levels=档位集真相源），存量由迁移归一
+        thinking: fam ? { mode: 'variant', levels: ['off', 'low', 'medium', 'high', 'max'], variant: fam } : { mode: native ? 'native' : 'none', levels: native ? ['off', 'low', 'medium', 'high', 'max'] : [] }, // s100/T2: 新条目直落 v2 形状（levels=档位集真相源），存量由迁移归一；s100/P3-b: variant 条目补五档=与迁移步 FIVE 同口径（旧 ['low','max'] 口径异已统一）
     };
 }
 function readModelCaps() { // 坏 JSON/缺文件→空表（由 syncModelCaps 重生成自愈；桥不炸，stateWarnings 不占位——文件本就坏了）
@@ -894,13 +894,12 @@ function validModelCapsPatch(model, patch, poolSet) {
         // s100/T2 校验门（裁决 2026-09-22-capability-config-v2 §2.3）：thinking.variant=桥自管字段（家族配对，
         // 启发式识别器/注册表/gradient/llmproxy 照旧在桥内读写）——user patch 携带即拒，用户面只有档位集（levels）。
         if ('variant' in t || t.mode === 'variant') return { ok: false, err: '家族配对由系统自动管理，不用您操心' };
-        if ('mode' in t && ['none', 'native'].indexOf(t.mode) < 0) return { ok: false, err: '思考力度的类型不对' }; // mode 兼容读写只剩 none/native（旧客户端标签）
+        if ('mode' in t) return { ok: false, err: '快慢识别由系统自动管理，不用您操心' }; // s100/P3-a: mode=user 写可拆家族且用户面无恢复入口——mode 仅桥内写，user patch 携带即拒（兼容写通道关闭）
         if ('levels' in t) {
             const lv = t.levels;
             if (!Array.isArray(lv) || lv.some(x => typeof x !== 'string' || !x)) return { ok: false, err: '档位要填成一行一行的文字（不知道就留空）' };
         }
-        cap.thinking = Object.assign({}, cap.thinking); // 只改用户真改的键：mode/levels 分别合入，variant（桥自管）原样保留
-        if ('mode' in t) cap.thinking.mode = t.mode;
+        cap.thinking = Object.assign({}, cap.thinking); // mode 门已前置拒收，user 可写的只剩 levels；variant（桥自管）原样保留
         if ('levels' in t) cap.thinking.levels = t.levels.slice(); // levels=档位集真相源（有序；空数组=无可调档语义）
     }
     cap.user = true; // 用户改过——启发式永不覆写
