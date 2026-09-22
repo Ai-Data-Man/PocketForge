@@ -795,9 +795,17 @@ function activeProvider() {
 }
 
 // ---- s98/llm-proxy: 深度家族与假名表（桥内单一真相源；别名只活在 goose 眼里，任何用户可见面翻回真名） ----
-// 家族=能力注册表（data/model-caps.json）里的 variant 条目（X-flash ↔ X 互为快/深变体）。research/37 定案：
-// glm 线参数通道 5 样本×5 臂实证死透，真实深度=模型本身两档——flash=快，完整版=深（思考量 4x/难题正确
-// 3/3 vs 2/3/单回合成本约 2.8x）。别名锚定 fast 成员名（gpt-5-forge-<fast>）：注册表重指向 deep 时别名
+// 家族=能力注册表（data/model-caps.json）里的 variant 条目（X-flash ↔ X 互为快/深变体）。**s101/W1 降级**（裁决
+// 2026-09-23 §2.4）：官方深度语义=同模型 effort 档位（GLM 官方逐字「不会切换到其他模型」，research/40 §1.D），
+// research/41 §3.D 实测官方端点真兑现 reasoning_effort（glm 233→358 / flash 78→278、非法值 400）——故「原生参数
+// 可用时一律走参数」，家族换模型机制退为「模型完全无深度参数时的兜底」；research/37 的「参数通道死透」= 9router
+// 中转 + 我方桥自伤两层实现问题，非模型能力（research/41 §0/§4）。
+// VARIANT_FAMILY_ENABLED = 家族兜底开关位置。裁决 §2.4 要求「参数链实测生效后默认关闭」；W1 只留可翻的开关位
+// （env FORGE_VARIANT_FAMILY=0 即家族整体解散、goose 见真名、参数全走透传）与默认值真源，**不翻默认档**——
+// 硬件理由：翻档会让 §8.2 家族系探针（think/think-grad/proxythink/llmproxy-xlate）语义全变更，属 W4 范围
+// （W4=家族降级开关+用户配置面+顶栏 levels 由翻译层驱动）。W4 落地=把默认值与用户面接到此处。
+const VARIANT_FAMILY_ENABLED = process.env.FORGE_VARIANT_FAMILY !== '0';
+// 别名锚定 fast 成员名（gpt-5-forge-<fast>）：注册表重指向 deep 时别名
 // 不变=钉着旧别名的存量 goose 会话不失联。形状必须命中 goose is_reasoning_model 闸门（gpt-5 开头且后续为
 // -/.，research/35 §1）——goose 以为在跟 gpt-5 系说话，放出原生 thinking_effort 五档并把 effort 带上 wire，
 // /llmproxy 反代再把它翻译回模型选择。
@@ -845,6 +853,7 @@ function syncModelCaps() { // 池变化时补缺省（只补缺失条目，存�
     return j;
 }
 function registryFamilies(act) { // 注册表→当前活跃池有效的家族表（C1 消费面唯一来源；池成员不全=家族解散不激活）
+    if (!VARIANT_FAMILY_ENABLED) return []; // s101/W1: 家族兜底总开关（位置在此，见块头注；W1 默认开=零行为变更）
     const pool = new Set(((act && act.models) || []).filter(m => typeof m === 'string'));
     if (!pool.size) return [];
     const caps = syncModelCaps().caps;
@@ -873,6 +882,44 @@ function familyOfModel(act, name) { // 任一家族身份（fast/deep/别名）�
 function gooseModelName(act, real) { // 真名→goose 侧名：家族成员=别名（goose 眼里只有别名一个条目），其余原样
     const f = real ? familyOfModel(act, real) : null;
     return (f && real !== f.alias) ? f.alias : real;
+}
+
+// ---- s101/W1: 思考参数翻译（最小内置映射；W2 建 model-presets.json 官方表后以声明覆盖） ----
+// 键族（research/40 §1.A/§1.E/§1.F）：OpenAI 兼容面=顶层 `reasoning_effort`（GLM/DeepSeek/Grok/Mistral…）；
+// Anthropic 面=顶层 `output_config.effort`（**不是** reasoning_effort——research/41 §3.D（d2）实测顶层键在该面被忽略）；
+// ponytail: 只落这两族；W2 官方表补 thinking{budget_tokens}/thinkingConfig/enable_thinking 族时在此扩写器。
+const THINK_KEY_WRITERS = {
+    reasoning_effort: (j, v) => { j.reasoning_effort = v; },
+    output_config: (j, v) => { j.output_config = Object.assign({}, j.output_config, { effort: v }); },
+};
+const THINK_DEFAULT_KEY = 'reasoning_effort'; // 我方链路恒走 OpenAI 兼容面（providers.json host + /llmproxy/v1/chat/completions）
+// 官方兼容映射（research/40 §1.F 逐字表 + §1.E 收敛表）：非原生串 → 原生档；未列=原样
+const W1_EFFORT_ALIASES = { minimal: 'low', light: 'low', medium: 'high', xhigh: 'high', ultra: 'max', none: 'off', disabled: 'off', off: 'off' };
+// 池内模型原生档位集（research/40 §1.A/§1.B/§1.C/§1.F 官方原文；W2 由 model-presets.json 取代）
+const W1_MODEL_EFFORTS = [
+    [/glm-5\.3/i, ['low', 'high', 'max']],        // 强制思考，无 off；传 disabled 官方报错 code 1210
+    [/deepseek/i, ['none', 'low', 'high', 'max']], // 唯一可关思考（none=关）
+];
+function thinkingKeysOf(model) { // 该模型认的键名：条目声明 thinking.keys 优先，未声明=官方 OpenAI 面主键
+    const cap = syncModelCaps().caps[model];
+    const t = cap && cap.thinking;
+    const declared = t && Array.isArray(t.keys) ? t.keys.filter(k => typeof k === 'string' && THINK_KEY_WRITERS[k]) : [];
+    return declared.length ? declared : [THINK_DEFAULT_KEY];
+}
+function normalizeEffort(model, effort) { // 档位归一：越界档就近收敛/停发——防上游 400（GLM 5.3 对 off/medium 报错 code 1210，research/40 §1.A）
+    if (typeof effort !== 'string' || !effort) return '';
+    const v = W1_EFFORT_ALIASES[effort] || effort; // 官方兼容映射（research/40 §1.F 逐字表：minimal/light→low、medium/xhigh→high、ultra→max、none/disabled→off）
+    const fam = W1_MODEL_EFFORTS.find(([re]) => re.test(model));
+    if (!fam) return v === 'off' ? 'none' : v; // 未收录模型：off 用各厂通行关思考词 none（OpenAI/DeepSeek 官方值），其余原样交上游校验（不猜）
+    if (fam[1].includes(v)) return v;
+    if (v === 'off') return fam[1].includes('none') ? 'none' : (fam[1].includes('low') ? 'low' : ''); // 关思考：优先官方 off 词（DeepSeek=none），不可关者（GLM）落 low
+    return ''; // 其余越界档：不发（落上游默认档）
+}
+function applySamplingGate(j, effort) { // research/43 + OpenAI 官方逐字：推理档生效（effort≠none/off）时移除采样参数
+    if (!effort || effort === 'off' || effort === 'none') return 0;
+    let n = 0;
+    for (const k of ['temperature', 'top_p', 'top_logprobs', 'logprobs']) if (k in j) { delete j[k]; n++; }
+    return n;
 }
 // s98/llm-proxy C2: /api/modelcaps 写通道的校验+合并（人话错因）。s100/T2 起 variant/家族字段=user 面拒收（桥自管），无镜像
 function validModelCapsPatch(model, patch, poolSet) {
@@ -3069,11 +3116,11 @@ function handleSkillstore(req, res, url) {
 // ---- s98/llm-proxy: 桥内 LLM 反向代理（/llmproxy/*） ----
 // goose 的 LLM 流量恒经此（spawnAcp OPENAI_HOST=http://127.0.0.1:PORT/llmproxy/v1；goose URL 拼接实测路径=
 // /llmproxy/chat/completions，openai_def.rs 剥尾 /v1 + OPENAI_BASE_PATH）。目标=providers.json 活跃档真值 host。
-// 别名请求：model=别名 → 按 effort 选真模型（off/low/medium/缺省→fast，high/max→deep——research/37 量化事实：
-// 完整版思考量 4x/难题正确 3/3 vs 2/3/单回合成本约 2.8x，参数通道 5×5 实证死透，模型本身是唯一真杠杆），
-// 剥掉 reasoning/reasoning_effort/thinking（上游 no-op，假参数不上真线），响应流里真名换回别名（goose 世界观
-// 一致）。非别名请求：字节级透传（SSE 逐块零缓冲、状态码与错误体原样——既有人话错误链不受影响）。并发安全：
-// 全程无共享可变态，每请求独立闭包。
+// 别名请求：model=别名 → 换真模型并**保留官方思考参数**（s101/W1，裁决 2026-09-23 §2.3）：effort 族参数按模型声明
+// 的 keys 写回（默认 reasoning_effort，research/40 §1.A/§1.F 官方主键）、只剥离确证 no-op 的 thinking 默认态、
+// 并按 research/43 采样参数门移除 temperature/top_p/top_logprobs（推理档生效时，部分厂商否则 400）。
+// 响应流里真名换回别名（goose 世界观一致）。非别名请求：字节级透传（SSE 逐块零缓冲、状态码与错误体原样——既有
+// 人话错误链不受影响；参数原样带上真线，故两条路径参数一致）。并发安全：全程无共享可变态，每请求独立闭包。
 function llmStreamReplacer(from, to) { // 字节流替换器（from/to 均为 JSON 引号包裹的 ASCII 模型名）：逐块直发，
     // 仅扣留可能跨块劈开的尾部前缀（≤from.length-1 字节）——UTF-8 自同步，ASCII 针不会跨多字节字符
     const fromB = Buffer.from(from, 'utf8'), toB = Buffer.from(to, 'utf8');
@@ -3130,12 +3177,18 @@ function handleLlmProxy(req, res) {
                 if (j && typeof j.model === 'string') {
                     const fam = familyOfModel(act, j.model);
                     if (fam && j.model === fam.alias) {
-                        // effort 档位映射（写死并注释：两档是 9router×glm 线的真实上限，research/37 §6）
+                        // 档位→目标模型（家族兜底路线，s101/W1 降级为次要：官方深度语义=同模型 effort，见块头注）
                         const e = typeof j.reasoning_effort === 'string' ? j.reasoning_effort : '';
                         const target = (e === 'high' || e === 'max') ? fam.deep : fam.fast; // off/low/medium/缺省→快
                         console.log('llmproxy: 深度档', (e || '未设'), '→', target, '(快侧', fam.fast + ')'); // 运营观测：只写真名（假名不出厂约束覆盖日志面）
                         try { FSS.appendFileSync(path.join(ROOT, 'data', 'logs', 'llmproxy.log'), new Date().toISOString() + ' effort=' + (e || 'none') + ' model=' + target + ' fast=' + fam.fast + String.fromCharCode(10)); } catch {}
-                        delete j.reasoning_effort; delete j.reasoning; delete j.thinking; // 上游 no-op 参数不上真线
+                        // s101/W1（裁决 §2.3）：**官方思考参数随行至上游**——此处过去 delete reasoning_effort 是自伤源
+                        // （research/41 §1.B：glm 恒走别名→effort 恒被删）。reasoning 全规范零命中=剥；thinking 仅剥默认态。
+                        delete j.reasoning;
+                        if (j.thinking && typeof j.thinking === 'object' && !Array.isArray(j.thinking) && !('clear_thinking' in j.thinking)) delete j.thinking;
+                        const eff = normalizeEffort(target, e); // 越界档（off/medium…）不发，防上游 400（research/40 §1.A code 1210）
+                        if (eff) for (const k of thinkingKeysOf(target)) THINK_KEY_WRITERS[k](j, eff);
+                        applySamplingGate(j, eff);
                         j.model = target;
                         body = Buffer.from(JSON.stringify(j), 'utf8');
                         xlate = { fam, target };
@@ -4294,7 +4347,10 @@ function llmStreamOnce({ host, key, model, maxTokens, sysP, um, onDelta }) {
                     { role: 'system', content: sysP },
                     { role: 'user', content: um }
                 ]};
-                if (useRE) bodyObj.reasoning_effort = 'none';
+                // s101/W1: 与代理链同源——键与档位由模型声明决定（thinkingKeysOf/normalizeEffort），不再硬写 reasoning_effort。
+                // 本链语义=「尽量别想」（解释/优化要快），但 GLM 5.3 不容 off（传 none 官方 400 code 1210）→ 归一后就近落 low。
+                const offEff = normalizeEffort(model, 'off');
+                if (useRE && offEff) for (const k of thinkingKeysOf(model)) THINK_KEY_WRITERS[k](bodyObj, offEff);
                 const body = JSON.stringify(bodyObj);
                 let sse = false, buf = '', full = '', over = false, finRsn = null;
                 const finish = () => {
