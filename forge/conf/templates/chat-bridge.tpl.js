@@ -895,12 +895,7 @@ function validModelCapsPatch(model, patch, poolSet) {
         // 启发式识别器/注册表/gradient/llmproxy 照旧在桥内读写）——user patch 携带即拒，用户面只有档位集（levels）。
         if ('variant' in t || t.mode === 'variant') return { ok: false, err: '家族配对由系统自动管理，不用您操心' };
         if ('mode' in t) return { ok: false, err: '快慢识别由系统自动管理，不用您操心' }; // s100/P3-a: mode=user 写可拆家族且用户面无恢复入口——mode 仅桥内写，user patch 携带即拒（兼容写通道关闭）
-        if ('levels' in t) {
-            const lv = t.levels;
-            if (!Array.isArray(lv) || lv.some(x => typeof x !== 'string' || !x)) return { ok: false, err: '档位要填成一行一行的文字（不知道就留空）' };
-        }
-        cap.thinking = Object.assign({}, cap.thinking); // mode 门已前置拒收，user 可写的只剩 levels；variant（桥自管）原样保留
-        if ('levels' in t) cap.thinking.levels = t.levels.slice(); // levels=档位集真相源（有序；空数组=无可调档语义）
+        return { ok: false, err: '快慢档位由系统自动管理，不用您操心' }; // s100/P3-4: levels 也是零消费方写入孤儿（编辑器降级只读、UI 恒不发 thinking）——user 面 thinking 整体关，合法写方（迁移/启发式缺省）走桥内不过本门
     }
     cap.user = true; // 用户改过——启发式永不覆写
     return { ok: true, cap };
