@@ -92,8 +92,12 @@ if (pgPort && fs.existsSync(pgDumpExe)) {
             console.log(`pg_dump ok: ${name} (${(fs.statSync(dump).size / 1024).toFixed(0)}KB) kept=${dumps.length}`);
         } else {
             try { fs.unlinkSync(dump); } catch {}
-            // 时序/枚举类失败=信息级（首启正常现象）；其余=警告。两者都不中断备份链（exit 0）
-            if (!err || /does not exist|not yet accepting|starting up|not open within/i.test(err)) {
+            // fix(s100/pg-skip)/验收②分流：端口 30s 未开=非瞬态（pg 没起/Skipped 族，research/39 §4.3②）
+            // →警告，不得再谎报「首启时序，正常」；psql/pg_dump 撞上的恢复期拒绝=真首启瞬态→信息级；
+            // 其余=警告。三者都不中断备份链（exit 0）
+            if (/not open within/i.test(err)) {
+                console.warn(`pg_dump skipped: ${db} PG 端口 30s 未监听（非首启瞬态；pc 面板 pg 若为 Skipped 即未起，查 data/logs/open-when-ready.log），下次备份会带上`);
+            } else if (!err || /does not exist|not yet accepting|starting up/i.test(err)) {
                 console.log(`pg_dump skipped: ${db} 未就绪（首启时序，正常），下次备份会带上`);
             } else {
                 console.warn(`pg_dump skipped: ${err}`);

@@ -13,10 +13,12 @@
 # 全部 Skipped exit=1（restart:'no' 不自愈）→备份/供给/调度缺失（rel151 实录）。两层防护：
 # ①沉降等待：收敛前轮询主 yaml 现读的 is_daemon:false 键集，全部离开 Pending/Restarting（依赖判定窗口，
 # s98/R2-P4-2 早退判据；Launching/Running/终态均放行）即收敛；独立 30s 上限（不吃 240s 预算），超时照跑
-# 收敛（进入第②层兜底）。终态判据只用 status——pc v1.122 JSON 对在飞进程 exit_code 也报 0 而非
+# 收敛（进入第②层兜底）。fix(s100/pg-skip)：pg-init 单键特判要求 Completed 终态——initdb 在飞时放行
+# converge 会被 update 硬杀 → pg 永久 Skipped（research/39）；其余键 R2 早退不动。终态判据只用 status——pc v1.122 JSON 对在飞进程 exit_code 也报 0 而非
 # null（rel152 实测：Launching exit_code=0），null 判据恒假会让等待空转直达超时。
 # ②补跑校验：收敛+healthz 200 后复查键集，Skipped/Pending/Error 者逐个 pc process start 补跑
-# （rawsql/provision/backup 均幂等脚本）；补跑的 10s 观察窗放在开窗之后，只 warn 不阻断主流程。
+# （rawsql/provision/backup 均幂等脚本）；名单含 pg（fix(s100/pg-skip)：非 Running 即补跑，
+# pc process start pg 幂等）；补跑的 10s 观察窗放在开窗之后，只 warn 不阻断主流程。
 # 就绪后：打印地址 → 首启 welcome（s50 语义保留：start 异步，等 3 秒浏览器读走文件再改名
 # welcome.shown）→ Edge --app 聊天窗（与 跟数字员工聊天.cmd 同参数同 profile）。超时只打印人话，
 # 不弹浏览器。端口 8790 与 conf/process-compose.yaml、跟数字员工聊天.cmd 同源硬编码。
@@ -137,6 +139,11 @@ if (Test-Path $regCmd) {
         # （rel152 实测）。
         if ($e.Count -eq 0) { $settled = $false; break }
         if (@('Pending', 'Restarting') -contains $e[0].status) { $settled = $false; break }
+        # fix(s100/pg-skip): pg-init 特判回终态口径——只对这一个键恢复 17d0d43 语义（要求 Completed），
+        # 其余 oneshot 键保留 R2 早退省时。initdb 在飞(Running)时放行 converge → pc project update 全表
+        # 重启 taskkill 硬杀 pg-init(exit=1) → pg depends_on 见 exit≠0 永久 Skipped 且永不复查
+        # （research/39 §3.1；单变量=fc5464a）。
+        if ($k -eq 'pg-init' -and $e[0].status -ne 'Completed') { $settled = $false; break }
             }
         }
         if ($settled) { break }
@@ -184,9 +191,16 @@ if (Test-Path $regCmd) {
     $procs = Get-PcProcs
     if ($null -ne $procs) {
         $flagged = @()
-        foreach ($k in $oneshotKeys) {
+        # fix(s100/pg-skip): 补跑名单加 pg——pc 对 Skipped 是终态永不复查（research/39 §3.1-6），第①层
+        # 30s 超时漏网时在此兜底：pg 非 Running 即 pc process start pg（幂等；17d0d43 补跑同族，
+        # 首查命中的 2s 瞬态复核见下，容收敛重启窗口的短暂误报）。
+        foreach ($k in ($oneshotKeys + @('pg'))) {
             $e = @($procs | Where-Object { $_.name -eq $k })
-            if ($e.Count -gt 0 -and @('Skipped', 'Pending', 'Error') -contains $e[0].status) { $flagged += $k }
+            if ($k -eq 'pg') {
+                # 「非 Running」判据落在 is_running：pc 对健康 daemon 的 status 恒报 Launching 非 Running
+                # （dev 栈/arm2 健康基线逐字同形，research/39）；Skipped/Pending/Error/缺失时 is_running=false
+                if ($e.Count -eq 0 -or $e[0].is_running -ne $true) { $flagged += $k }
+            } elseif ($e.Count -gt 0 -and @('Skipped', 'Pending', 'Error') -contains $e[0].status) { $flagged += $k }
         }
         if ($flagged.Count -gt 0) {
             Start-Sleep -Seconds 2
@@ -195,9 +209,11 @@ if (Test-Path $regCmd) {
         }
         foreach ($k in $flagged) {
             $e = @($procs | Where-Object { $_.name -eq $k })
-            if ($e.Count -gt 0 -and @('Skipped', 'Pending', 'Error') -notcontains $e[0].status) { continue } # 瞬态已离开，不补跑
+            if ($k -eq 'pg') {
+                if ($e.Count -gt 0 -and $e[0].is_running -eq $true) { continue } # 已在跑（幂等容错），不补跑
+            } elseif ($e.Count -gt 0 -and @('Skipped', 'Pending', 'Error') -notcontains $e[0].status) { continue } # 瞬态已离开，不补跑
             $recheckKeys += $k
-            Write-Host ('[PocketForge] 收敛后有一次性组件没起来，补跑：' + $k)
+            Write-Host ('[PocketForge] 收敛后有组件没起来，补跑：' + $k)
             try {
                 & $pcExe -p $pcPort process start $k 2>$null | Out-Null
                 $rcStart = $LASTEXITCODE # s98/R1-F3: 立即定格——随后的 Get-PcProcs 是原生调用，会把 $LASTEXITCODE 重置（冷启实录 rc 被冲成 0 自相矛盾）
@@ -246,10 +262,14 @@ if ($recheckKeys.Count -gt 0) {
     foreach ($k in $recheckKeys) {
         $e = @()
         if ($null -ne $recheck) { $e = @($recheck | Where-Object { $_.name -eq $k }) }
-        if ($e.Count -eq 0 -or $e[0].status -ne 'Completed') {
+        # fix(s100/pg-skip): pg 健康态=is_running（daemon status 恒报 Launching，见第②层注）；oneshot 看 Completed
+        $ok = $false
+        if ($k -eq 'pg') { if ($e.Count -gt 0 -and $e[0].is_running -eq $true) { $ok = $true } }
+        elseif ($e.Count -gt 0 -and $e[0].status -eq 'Completed') { $ok = $true }
+        if (-not $ok) {
             $st = '(查不到)'
             if ($e.Count -gt 0) { $st = $e[0].status }
-            Write-Host "[PocketForge] 警告：$k 补跑后 10s 观察窗内未达 Completed（当前 $st），请查 data\logs\pc.log。"
+            Write-Host "[PocketForge] 警告：$k 补跑后 10s 观察窗内未达健康态（当前 $st），请查 data\logs\pc.log。"
         }
     }
 }
