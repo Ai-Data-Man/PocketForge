@@ -560,7 +560,21 @@ const STATE_SCHEMAS = {
         },
     },
     'config/mcp-catalog.json': { latest: 1, steps: {} }, // s70 切片C: MCP 目录配置（缺失时由 readMcpCatalog 首启生成内置默认）
-    'model-caps.json': { latest: 1, steps: {} }, // s99/S2（ADR-0009 补账）: 模型能力注册表——s98 C2 落盘 _schema:1 时未登记；零迁移纯纳入 migrateJsonAt 伞下。此后字段演进=同提交 _schema+1+迁移步骤+迁移自测
+    'model-caps.json': { // s99/S2（ADR-0009 补账）: 模型能力注册表；s100/T2（裁决 §2.3）: _schema 1→2——
+        latest: 2,           // thinking.levels 归一为档位集真相源（有序）：none→留空语义 / native→五档预设 / variant→沿用现 levels（缺则补五档）
+        steps: { 2: j => {   // mode 字段保留兼容读（variant=家族标记照旧；registryFamilies/gradient/llmproxy 零改）。迁移自测=modelcaps-probe R6 三形态
+            if (!j || typeof j !== 'object' || !j.caps || typeof j.caps !== 'object') return j;
+            const FIVE = ['off', 'low', 'medium', 'high', 'max']; // 步骤跑在模块早期，用字面量（skill-sources TDZ 教训）
+            for (const cap of Object.keys(j.caps).map(k => j.caps[k])) {
+                const t = (cap && typeof cap === 'object') ? cap.thinking : null;
+                if (!t || typeof t !== 'object') continue;
+                if (t.mode === 'variant') { if (!Array.isArray(t.levels) || !t.levels.length) t.levels = FIVE.slice(); }
+                else if (t.mode === 'native') t.levels = FIVE.slice();
+                else t.levels = [];
+            }
+            return j;
+        } },
+    },
 };
 function migrateJsonAt(f, key) {
     const meta = STATE_SCHEMAS[key];
@@ -807,18 +821,19 @@ function capsDefault(model, poolSet) { // 启发式缺省条目（规则见上�
     } else if (typeof model === 'string' && poolSet.has(model + '-flash') && !poolSet.has('gpt-5-forge-' + model + '-flash')) {
         fam = { fast: model + '-flash', deep: model };
     }
+    const native = THINK_GATE_RE.test(model);
     return {
         context_len: null, context_est: true,
         multimodal: MULTIMODAL_RE.test(model),
-        thinking: fam ? { mode: 'variant', levels: ['low', 'max'], variant: fam } : { mode: THINK_GATE_RE.test(model) ? 'native' : 'none' },
+        thinking: fam ? { mode: 'variant', levels: ['low', 'max'], variant: fam } : { mode: native ? 'native' : 'none', levels: native ? ['off', 'low', 'medium', 'high', 'max'] : [] }, // s100/T2: 新条目直落 v2 形状（levels=档位集真相源），存量由迁移归一
     };
 }
 function readModelCaps() { // 坏 JSON/缺文件→空表（由 syncModelCaps 重生成自愈；桥不炸，stateWarnings 不占位——文件本就坏了）
     try {
         const j = JSON.parse(FSS.readFileSync(CAPS_FILE, 'utf8').replace(/^\uFEFF/, ''));
-        if (j && typeof j === 'object' && j.caps && typeof j.caps === 'object') return { _schema: 1, caps: j.caps };
+        if (j && typeof j === 'object' && j.caps && typeof j.caps === 'object') return { _schema: STATE_SCHEMAS['model-caps.json'].latest, caps: j.caps };
     } catch {}
-    return { _schema: 1, caps: {} };
+    return { _schema: STATE_SCHEMAS['model-caps.json'].latest, caps: {} }; // 恒 stamp latest：syncModelCaps 脏写回不降版（skill-sources f6ec76a 教训=首启 1/二启迁移空转）
 }
 function allPoolModels() { const s = new Set(); for (const p of readProviders()) for (const m of (p.models || [])) if (typeof m === 'string') s.add(m); return s; }
 function syncModelCaps() { // 池变化时补缺省（只补缺失条目，存在即不动——user 改过的天然保鲜）；有脏即落盘
@@ -859,7 +874,7 @@ function gooseModelName(act, real) { // 真名→goose 侧名：家族成员=别
     const f = real ? familyOfModel(act, real) : null;
     return (f && real !== f.alias) ? f.alias : real;
 }
-// s98/llm-proxy C2: /api/modelcaps 写通道的校验+合并（人话错因；家族写入双侧镜像，防单侧漂移）
+// s98/llm-proxy C2: /api/modelcaps 写通道的校验+合并（人话错因）。s100/T2 起 variant/家族字段=user 面拒收（桥自管），无镜像
 function validModelCapsPatch(model, patch, poolSet) {
     if (typeof model !== 'string' || !model || !poolSet.has(model)) return { ok: false, err: '这个模型不在可选池里' };
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return { ok: false, err: '参数不合法' };
@@ -876,18 +891,17 @@ function validModelCapsPatch(model, patch, poolSet) {
     if ('thinking' in patch) {
         const t = patch.thinking;
         if (!t || typeof t !== 'object' || Array.isArray(t)) return { ok: false, err: '参数不合法' };
-        if (['none', 'native', 'variant'].indexOf(t.mode) < 0) return { ok: false, err: '思考力度的类型不对' };
-        if (t.mode === 'variant') {
-            const v = t.variant || {};
-            // fast 锚缺省：已是家族的条目保原锚（在深侧编辑不换锚）；新家族以被编辑模型为快侧锚
-            let fast = typeof v.fast === 'string' && poolSet.has(v.fast) ? v.fast : null;
-            if (!fast && cap.thinking.mode === 'variant' && cap.thinking.variant && poolSet.has(cap.thinking.variant.fast)) fast = cap.thinking.variant.fast;
-            if (!fast) fast = model;
-            if (typeof v.deep !== 'string' || !poolSet.has(v.deep)) return { ok: false, err: '深档要用另一个模型——先在可选池里多勾一个。' }; // s99/qa P3-2: 拒因收口人话（原句带机制词「想深点…换成…」；与页侧 P3-1 提示句同款）
-            if (v.deep === fast) return { ok: false, err: '深档要用另一个模型——不能选它自己。' }; // s99/qa P3-2: 原句带机制词「变体/深浅」
-            const levels = (Array.isArray(t.levels) && t.levels.every(x => typeof x === 'string') && t.levels.length) ? t.levels : ['low', 'max'];
-            cap.thinking = { mode: 'variant', levels, variant: { fast, deep: v.deep } };
-        } else cap.thinking = { mode: t.mode };
+        // s100/T2 校验门（裁决 2026-09-22-capability-config-v2 §2.3）：thinking.variant=桥自管字段（家族配对，
+        // 启发式识别器/注册表/gradient/llmproxy 照旧在桥内读写）——user patch 携带即拒，用户面只有档位集（levels）。
+        if ('variant' in t || t.mode === 'variant') return { ok: false, err: '家族配对由系统自动管理，不用您操心' };
+        if ('mode' in t && ['none', 'native'].indexOf(t.mode) < 0) return { ok: false, err: '思考力度的类型不对' }; // mode 兼容读写只剩 none/native（旧客户端标签）
+        if ('levels' in t) {
+            const lv = t.levels;
+            if (!Array.isArray(lv) || lv.some(x => typeof x !== 'string' || !x)) return { ok: false, err: '档位要填成一行一行的文字（不知道就留空）' };
+        }
+        cap.thinking = Object.assign({}, cap.thinking); // 只改用户真改的键：mode/levels 分别合入，variant（桥自管）原样保留
+        if ('mode' in t) cap.thinking.mode = t.mode;
+        if ('levels' in t) cap.thinking.levels = t.levels.slice(); // levels=档位集真相源（有序；空数组=无可调档语义）
     }
     cap.user = true; // 用户改过——启发式永不覆写
     return { ok: true, cap };
@@ -3223,7 +3237,7 @@ async function handleHttp(req, res) {
     else if (url === '/api/modelcaps') {
         // s98/llm-proxy C2: 模型能力注册表读写。GET=全量（前端能力编辑器+模型选择器元数据）；
         // POST {op:'set', model, patch} —— Origin 门由 handleHttp 顶部全局门覆盖（跨站写 403），
-        // 字段校验见 validModelCapsPatch；家族写入双侧镜像。
+        // 字段校验见 validModelCapsPatch；s100/T2 起家族字段 user 面拒收（无镜像写）。
         if (req.method === 'GET') { json200(res, { ok: true, caps: syncModelCaps().caps }); }
         else if (req.method === 'POST') {
             readJsonBody(req, res, raw => {
@@ -3235,16 +3249,9 @@ async function handleHttp(req, res) {
                     if (!r.ok) return json200(res, { ok: false, err: r.err });
                     const j = syncModelCaps();
                     j.caps[b.model] = r.cap;
-                    const t = r.cap.thinking;
-                    if (t.mode === 'variant' && t.variant) { // 家族镜像：另一侧条目同步写（user 同标），防单侧漂移
-                        for (const m of [t.variant.fast, t.variant.deep]) {
-                            if (typeof m === 'string' && poolSet.has(m) && m !== b.model) {
-                                const other = JSON.parse(JSON.stringify(j.caps[m] || capsDefault(m, poolSet)));
-                                other.thinking = JSON.parse(JSON.stringify(t)); other.user = true;
-                                j.caps[m] = other;
-                            }
-                        }
-                    }
+                    // s100/T2: 旧「家族写入双侧镜像」随 variant user 写通道关闭一并移除——镜像会把我改的档位/user
+                    // 同步写到家族另一侧（不同模型的档位集被连坐、别人的条目被标 user），违反「user:true 只跟用户真改
+                    // 过的字段走」（裁决 §2.3）。家族条目此后只由桥内写（启发式识别器/迁移/池变化补缺，双侧对称）。
                     atomicWrite(CAPS_FILE, JSON.stringify(j, null, 2));
                     console.log('model-caps updated:', b.model);
                     json200(res, { ok: true, caps: j.caps });
