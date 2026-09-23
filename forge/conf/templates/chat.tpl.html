@@ -2671,6 +2671,23 @@ function openCapEditor(model){
   const save=document.createElement('button'); save.className='mini'; save.textContent='保存';
   const cancel=document.createElement('button'); cancel.className='mini'; cancel.textContent='取消';
   cancel.onclick=()=>closeCapModal();
+  // s101/W6（QA P3-1「反单向棘轮」）：有改过的项时给恢复出口——一个按钮全恢复（桥侧 reset:'official' 只动
+  // user_fields 里的字段，没改过的官方值不受影响；官方未收录的回到「猜的/不知道」，不编造）。复位后标注回「（官方）」。
+  if(uf.length){
+    const reset=document.createElement('button'); reset.className='mini'; reset.textContent='恢复官方默认';
+    reset.onclick=async()=>{
+      if(!confirm('把「'+model+'」改过的项都恢复成官方默认？（官方没收录的会变回「猜的」）')) return;
+      try{
+        const r=await fetch('/api/modelcaps',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op:'set',model,patch:{reset:'official'}})});
+        const d=await r.json();
+        if(!d||!d.ok){ note((d&&d.err)||'没恢复上，稍后再试'); return; }
+        note('「'+model+'」已恢复官方默认。');
+        closeCapModal();
+        loadProvidersUI();
+      }catch(e){ note('没恢复上：'+e.message); }
+    };
+    act.appendChild(reset);
+  }
   save.onclick=async()=>{
     const patch={};
     if(mm.value!==String(!!cap.multimodal)) patch.multimodal=(mm.value==='true');

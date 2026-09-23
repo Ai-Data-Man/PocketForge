@@ -1066,6 +1066,9 @@ function applySamplingGate(j, effort) { // research/43 + OpenAI 官方逐字：�
 // s98/llm-proxy C2: /api/modelcaps 写通道的校验+合并（人话错因）。s100/T2: variant/家族字段=user 面拒收（桥自管）；
 // s101/W3（裁决 2026-09-23 §2.2）：thinking.levels/default 与 input/context_len/max_output 字段级重开——改过即记
 // user_fields（永不覆写），未改字段继续随官方表刷新；variant/mode 仍拒（s100 语义维持，红绿对照留证）。
+// s101/W6（QA P3-1 闭环「反单向棘轮」）：patch 收 `reset:'official'`（把该条已标 user 的字段全复位）或
+// `reset:['thinking.levels',…]`（字段级）——清除对应 user_fields 条目并从官方表重取值；官方表未收录=诚实缺省
+// （null/[]/unknown，零编造），全部清空后 source 回 official/guess。复位后该字段重新随官方表刷新（syncModelCaps 字段级保鲜自然生效）。
 const CAP_INT_MAX = 10000000; // 数值上限（context_len/max_output 同门：超=人话拒，防手滑天文数字）
 function capIntOk(v) { return v !== null && typeof v === 'number' && isFinite(v) && v > 0 && v <= CAP_INT_MAX && Math.floor(v) === v; }
 function validModelCapsPatch(model, patch, poolSet) {
@@ -1074,6 +1077,30 @@ function validModelCapsPatch(model, patch, poolSet) {
     const act = activeProvider();
     const cap = JSON.parse(JSON.stringify(syncModelCaps().caps[model] || capsDefault(model, poolSet, (act && act.host) || '')));
     const uf = new Set(Array.isArray(cap.user_fields) ? cap.user_fields.filter(f => CAP_USER_FIELDS.indexOf(f) >= 0) : []);
+    // s101/W6：复位语义（「改哪项哪项转手动」的反向出口，QA P3-1）。reset:'official'=只复位该条**已标 user** 的字段
+    // （没改过的字段本就是官方值，无需动）；reset:[点路径…]=字段级。两条语义互斥且**不与其它修改混发**（避免同字段既写又复位）。
+    let resetFields = null;
+    if ('reset' in patch) {
+        if (Object.keys(patch).length > 1) return { ok: false, err: '恢复官方默认要单独操作，别和别的修改一起发' };
+        const r = patch.reset;
+        if (r === 'official') resetFields = CAP_USER_FIELDS.filter(f => uf.has(f));
+        else if (Array.isArray(r)) {
+            if (!r.length) return { ok: false, err: '要恢复哪几项？写 official 就全恢复' };
+            for (const f of r) if (typeof f !== 'string' || CAP_USER_FIELDS.indexOf(f) < 0) return { ok: false, err: '「' + String(f) + '」不是能恢复的项（可恢复：看图、上下文、最大输出、思考档位、默认档）' };
+            resetFields = CAP_USER_FIELDS.filter(f => r.indexOf(f) >= 0 && uf.has(f)); // 只复位真改过的（没改过的本就=官方值，拒绝=诚实）
+        } else return { ok: false, err: '恢复官方默认要写 official（全恢复）或一个字段名列表' };
+        if (!resetFields.length) return { ok: false, err: '这条没改过什么，不需要恢复' };
+        const fresh = capsDefault(model, poolSet, (act && act.host) || '');
+        for (const p of resetFields) { // 官方值回填（官方表未收录=诚实缺省：null/[]/unknown，零编造）
+            if (p === 'context_len') { cap.context_len = fresh.context_len; cap.context_est = fresh.context_est; }
+            else if (p === 'max_output') cap.max_output = fresh.max_output;
+            else if (p === 'thinking.levels') { cap.thinking = (cap.thinking && typeof cap.thinking === 'object') ? cap.thinking : {}; cap.thinking.levels = Array.isArray(fresh.thinking.levels) ? fresh.thinking.levels.slice() : []; cap.thinking.unknown = fresh.thinking.unknown; }
+            else if (p === 'thinking.default') { cap.thinking = (cap.thinking && typeof cap.thinking === 'object') ? cap.thinking : {}; cap.thinking.default = (fresh.thinking.default === undefined) ? null : fresh.thinking.default; }
+            else capFieldSet(cap, p, JSON.parse(JSON.stringify(capFieldGet(fresh, p)))); // input.image/pdf/video
+            uf.delete(p);
+        }
+        for (const k of ['source', 'preset_rev', 'preset_match', 'source_url', 'verified', 'official_levels']) { if (k in fresh) cap[k] = fresh[k]; else delete cap[k]; } // 来源随官方表（未收录→guess），与 syncModelCaps merge 同源
+    }
     if ('context_len' in patch) {
         const v = patch.context_len;
         if (!capIntOk(v)) return { ok: false, err: '上下文长度要填正整数（不知道就留空）' };
@@ -1126,6 +1153,11 @@ function validModelCapsPatch(model, patch, poolSet) {
                 uf.add('thinking.default');
             }
         }
+    }
+    if (resetFields) { // s101/W6：复位出口——未列字段照旧跟官方表；全清后条目回到官方/猜的态（不再是 user）
+        if (uf.size) { cap.user_fields = CAP_USER_FIELDS.filter(f => uf.has(f)); cap.user = true; cap.source = 'user'; }
+        else { delete cap.user_fields; delete cap.user; cap.source = ('preset_rev' in cap) ? 'official' : 'guess'; } // 官方表收录=official；未收录=guess（诚实）
+        return { ok: true, cap };
     }
     if (!uf.size) return { ok: false, err: '参数不合法' };
     cap.user_fields = CAP_USER_FIELDS.filter(f => uf.has(f)); // 字段级 user 标记（稳定顺序=CAP_USER_FIELDS 序）
