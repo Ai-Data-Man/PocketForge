@@ -864,6 +864,24 @@ function presetThinking(t) { // 官方 thinking → caps 形状（档位缺省�
     };
 }
 function presetMatchKey(model, host) { const p = presetLookup(model, host); return p ? JSON.stringify(p.match) : ''; }
+// ---- s101/W3（裁决 2026-09-23 §2.2）：字段级用户标记——ZCode 语义「改哪项哪项转手动，不再跟随推荐更新」 ----
+// user_fields=用户改过的字段点路径列表（顶层字段与 thinking 子字段同一机制，单一真相）；syncModelCaps 刷新时**逐字段**
+// 回填，未改字段继续随官方表更新。变体/mode 永不在列（家族配对/快慢识别=桥自管，user patch 携带即拒=s100 语义）。
+const CAP_USER_FIELDS = ['context_len', 'max_output', 'input.image', 'input.pdf', 'input.video', 'thinking.levels', 'thinking.default'];
+// input.image 与旧布尔 multimodal 同义（s99 起前端读 multimodal）：读写双向同步，用户标记归一为 input.image
+function capFieldGet(o, p) { if (p === 'input.image') { const v = o && o.input && o.input.image; return v === undefined ? (o && o.multimodal) : v; } let v = o; for (const k of p.split('.')) { if (v == null || typeof v !== 'object') return undefined; v = v[k]; } return v; }
+function capFieldSet(o, p, v) { if (p === 'input.image') { if (typeof o.input !== 'object' || !o.input) o.input = {}; o.input.image = v; o.multimodal = v; return; } const a = p.split('.'); let t = o; for (let i = 0; i < a.length - 1; i++) { if (t[a[i]] == null || typeof t[a[i]] !== 'object') t[a[i]] = {}; t = t[a[i]]; } t[a[a.length - 1]] = v; }
+function capLevelsCheck(lv) { // 档位合法性（裁决 §2.2「非空/字符串/去重/有序兜底」）：→{lv}|{err}，非法/重复人话拒
+    if (!Array.isArray(lv) || !lv.length) return { err: '思考档位至少留一档（不要就留空整条不改）' };
+    const out = [];
+    for (const v of lv) {
+        if (typeof v !== 'string' || !v.trim()) return { err: '档位名要用文字写（如 low / high / max）' };
+        const s = v.trim();
+        if (out.indexOf(s) >= 0) return { err: '档位不能重复：「' + s + '」写了两遍' };
+        out.push(s);
+    }
+    return { lv: out };
+}
 function capsDefault(model, poolSet, host) { // 缺省条目：官方表命中→official；否则诚实缺省（guess）
     let fam = null; // 家族配对=桥内私有机制（裁决 §2.4 归 W4），W2 原样保留；命中官方表时档位仍取官方值域
     if (typeof model === 'string' && model.endsWith('-flash')) {
@@ -882,6 +900,7 @@ function capsDefault(model, poolSet, host) { // 缺省条目：官方表命中�
             multimodal: !!(p.input && p.input.image),
             input: { image: !!(p.input && p.input.image), pdf: !!(p.input && p.input.pdf), video: !!(p.input && p.input.video) },
             thinking: fam ? { mode: 'variant', keys: t.keys, levels: Array.isArray(t.levels) ? t.levels : [], default: t.default, off_supported: t.off_supported, unknown: t.unknown, variant: fam } : t,
+            official_levels: Array.isArray(t.levels) ? t.levels.slice() : [], // s101/W3: 官方值域**始终**随行（用户改过 levels 后前端加档候选取官方∪常见）
             source: 'official', preset_rev: readPresets().rev, preset_match: JSON.stringify(p.match), source_url: p.source_url, verified: p.verified,
         };
     }
@@ -901,20 +920,33 @@ function readModelCaps() { // 坏 JSON/缺文件→空表（由 syncModelCaps �
     return { _schema: STATE_SCHEMAS['model-caps.json'].latest, caps: {} }; // 恒 stamp latest：syncModelCaps 脏写回不降版（skill-sources f6ec76a 教训=首启 1/二启迁移空转）
 }
 function allPoolModels() { const s = new Set(); for (const p of readProviders()) for (const m of (p.models || [])) if (typeof m === 'string') s.add(m); return s; }
-function syncModelCaps() { // 池变化时补缺省；官方条目随「表版本 / (host,model) 归属」失效刷新（user 改过的永不覆写）
-    const j = readModelCaps();
+function syncModelCaps() { // 池变化时补缺省；官方/启发式条目随「表版本/(host,model) 归属」失效刷新——**s101/W3 起按字段**：
+    const j = readModelCaps(); // user_fields 列出的字段永不覆写，未列字段照官方表刷新（ZCode「改哪项哪项转手动」语义）
     const pool = allPoolModels();
     const act = activeProvider();
     const host = (act && act.host) || '';
     const rev = readPresets().rev;
     let dirty = false;
+    const merge = (cur, fresh) => { // →{cap, changed}：用户字段回填 cur 值，未改字段随 fresh（有 user 字段时以 cur 为底——桥内私有字段如 variant 只在 cur 里，以 fresh 为底会丢）
+        let uf = Array.isArray(cur.user_fields) ? cur.user_fields.filter(f => CAP_USER_FIELDS.indexOf(f) >= 0) : null;
+        if (uf === null && cur.user) uf = CAP_USER_FIELDS.filter(p => JSON.stringify(capFieldGet(cur, p)) !== JSON.stringify(capFieldGet(fresh, p))); // 旧整条 user:true（无字段清单）→逐字段比对反推（一次）
+        uf = uf || [];
+        let out;
+        if (!uf.length) out = fresh;
+        else { out = JSON.parse(JSON.stringify(cur)); for (const p of CAP_USER_FIELDS) if (uf.indexOf(p) < 0) { const v = capFieldGet(fresh, p); if (v !== undefined) capFieldSet(out, p, JSON.parse(JSON.stringify(v))); } }
+        if (uf.indexOf('context_len') < 0) out.context_est = fresh.context_est; // 估计态随官方表（用户改过 context_len 则保持 false）
+        if (uf.indexOf('thinking.levels') < 0 && out.thinking && fresh.thinking) out.thinking.unknown = fresh.thinking.unknown;
+        for (const k of ['source', 'preset_rev', 'preset_match', 'source_url', 'verified', 'official_levels']) { if (k in fresh) out[k] = fresh[k]; else delete out[k]; }
+        if (uf.length) { out.user_fields = uf; out.user = true; out.source = 'user'; } else { delete out.user_fields; delete out.user; }
+        return { cap: out, changed: JSON.stringify(out) !== JSON.stringify(cur) };
+    };
     for (const m of pool) {
         const cur = j.caps[m];
         if (!cur) { j.caps[m] = capsDefault(m, pool, host); dirty = true; continue; }
-        if (cur.user) continue; // 用户改过=整条保鲜（W2；W3 落字段级 user 标记）
-        // 刷新判据（三态，不动桥内私有字段的存量写）：①表版本升级 ②guess 条目现今被官方收录 ③官方归属的 host 层变化
         const stale = cur.source !== 'official' ? !!(presetLookup(m, host)) : (cur.preset_rev !== rev || (presetMatchKey(m, host) !== (cur.preset_match || '')));
-        if (stale) { j.caps[m] = capsDefault(m, pool, host); dirty = true; }
+        if (!stale && !cur.user) continue; // 常态早退（每次 LLM 请求都过 syncModelCaps）：不刷不 user=零计算
+        const r = merge(cur, capsDefault(m, pool, host));
+        if (r.changed) { j.caps[m] = r.cap; dirty = true; }
     }
     if (dirty) atomicWrite(CAPS_FILE, JSON.stringify(j, null, 2));
     return j;
@@ -973,6 +1005,7 @@ function normalizeEffort(model, effort) { // 档位归一：越界档就近收�
     if (typeof effort !== 'string' || !effort) return '';
     const v = W1_EFFORT_ALIASES[effort] || effort; // 官方兼容映射（research/40 §1.F 逐字表：minimal/light→low、medium/xhigh→high、ultra→max、none/disabled→off）
     // 原生值域 s101/W2 起=官方预置表声明（caps 条目 thinking.levels；旧硬编码名单已删——单一真相源）
+    // s101/W3：用户改过的 levels 即此读点——改档位集，出站可发档位集合随之变化（消费面闭环，裁决 §2.2）
     const cap = syncModelCaps().caps[model];
     const levels = (cap && cap.thinking && Array.isArray(cap.thinking.levels)) ? cap.thinking.levels : [];
     if (!levels.length) return v === 'off' ? 'none' : v; // 无官方值域（未收录/无档位族）：off 用各厂通行关思考词 none，其余原样交上游校验（不猜）
@@ -980,37 +1013,87 @@ function normalizeEffort(model, effort) { // 档位归一：越界档就近收�
     if (v === 'off') return levels.includes('none') ? 'none' : (levels.includes('low') ? 'low' : ''); // 关思考：优先官方 off 词（DeepSeek=none），不可关者（GLM）落 low
     return ''; // 其余越界档：不发（落上游默认档）
 }
+function capsDefaultEffort(model) { // s101/W3（裁决 §2.2）：新会话首档=条目 thinking.default（用户改过即随动）；无声明/越界=空（不发帧=维持 goose 默认）
+    const cap = syncModelCaps().caps[model];
+    const t = cap && cap.thinking;
+    const d = t && typeof t.default === 'string' ? t.default : '';
+    if (!d) return '';
+    const lvs = Array.isArray(t.levels) ? t.levels : [];
+    return lvs.length && lvs.indexOf(d) < 0 ? '' : d;
+}
 function applySamplingGate(j, effort) { // research/43 + OpenAI 官方逐字：推理档生效（effort≠none/off）时移除采样参数
     if (!effort || effort === 'off' || effort === 'none') return 0;
     let n = 0;
     for (const k of ['temperature', 'top_p', 'top_logprobs', 'logprobs']) if (k in j) { delete j[k]; n++; }
     return n;
 }
-// s98/llm-proxy C2: /api/modelcaps 写通道的校验+合并（人话错因）。s100/T2 起 variant/家族字段=user 面拒收（桥自管），无镜像
+// s98/llm-proxy C2: /api/modelcaps 写通道的校验+合并（人话错因）。s100/T2: variant/家族字段=user 面拒收（桥自管）；
+// s101/W3（裁决 2026-09-23 §2.2）：thinking.levels/default 与 input/context_len/max_output 字段级重开——改过即记
+// user_fields（永不覆写），未改字段继续随官方表刷新；variant/mode 仍拒（s100 语义维持，红绿对照留证）。
+const CAP_INT_MAX = 10000000; // 数值上限（context_len/max_output 同门：超=人话拒，防手滑天文数字）
+function capIntOk(v) { return v !== null && typeof v === 'number' && isFinite(v) && v > 0 && v <= CAP_INT_MAX && Math.floor(v) === v; }
 function validModelCapsPatch(model, patch, poolSet) {
     if (typeof model !== 'string' || !model || !poolSet.has(model)) return { ok: false, err: '这个模型不在可选池里' };
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return { ok: false, err: '参数不合法' };
     const act = activeProvider();
     const cap = JSON.parse(JSON.stringify(syncModelCaps().caps[model] || capsDefault(model, poolSet, (act && act.host) || '')));
+    const uf = new Set(Array.isArray(cap.user_fields) ? cap.user_fields.filter(f => CAP_USER_FIELDS.indexOf(f) >= 0) : []);
     if ('context_len' in patch) {
         const v = patch.context_len;
-        if (v !== null && (typeof v !== 'number' || !isFinite(v) || v <= 0 || v > 10000000 || Math.floor(v) !== v)) return { ok: false, err: '上下文长度要填正整数（不知道就留空）' };
+        if (!capIntOk(v)) return { ok: false, err: '上下文长度要填正整数（不知道就留空）' };
         cap.context_len = v; cap.context_est = false; // 手填=不再是估计
+        uf.add('context_len');
     }
-    if ('multimodal' in patch) {
+    if ('max_output' in patch) {
+        const v = patch.max_output;
+        if (!capIntOk(v)) return { ok: false, err: '最大输出要填正整数（不知道就留空）' };
+        cap.max_output = v;
+        uf.add('max_output');
+    }
+    if ('multimodal' in patch) { // 旧布尔形态保留（s99 起前端读它）——与 input.image 同一份真相，标 input.image
         if (typeof patch.multimodal !== 'boolean') return { ok: false, err: '能看图只能选是/否' };
-        cap.multimodal = patch.multimodal;
+        capFieldSet(cap, 'input.image', patch.multimodal);
+        uf.add('input.image');
+    }
+    if ('input' in patch) {
+        const ip = patch.input;
+        if (!ip || typeof ip !== 'object' || Array.isArray(ip)) return { ok: false, err: '参数不合法' };
+        for (const k of ['image', 'pdf', 'video']) if (k in ip) {
+            if (typeof ip[k] !== 'boolean') return { ok: false, err: '输入类型只能选是/否' };
+            capFieldSet(cap, 'input.' + k, ip[k]);
+            uf.add('input.' + k);
+        }
     }
     if ('thinking' in patch) {
         const t = patch.thinking;
         if (!t || typeof t !== 'object' || Array.isArray(t)) return { ok: false, err: '参数不合法' };
-        // s100/T2 校验门（裁决 2026-09-22-capability-config-v2 §2.3）：thinking.variant=桥自管字段（家族配对，
-        // 启发式识别器/注册表/gradient/llmproxy 照旧在桥内读写）——user patch 携带即拒，用户面只有档位集（levels）。
+        // s100/T2 校验门：thinking.variant=桥自管字段（家族配对）——user patch 携带即拒
         if ('variant' in t || t.mode === 'variant') return { ok: false, err: '家族配对由系统自动管理，不用您操心' };
-        if ('mode' in t) return { ok: false, err: '快慢识别由系统自动管理，不用您操心' }; // s100/P3-a: mode=user 写可拆家族且用户面无恢复入口——mode 仅桥内写，user patch 携带即拒（兼容写通道关闭）
-        return { ok: false, err: '快慢档位由系统自动管理，不用您操心' }; // s100/P3-4: levels 也是零消费方写入孤儿（编辑器降级只读、UI 恒不发 thinking）——user 面 thinking 整体关；W3 重开字段级写通道（裁决 2026-09-23 §2.2），W2 维持关闭
+        if ('mode' in t) return { ok: false, err: '快慢识别由系统自动管理，不用您操心' }; // s100/P3-a: mode 仅桥内写，user patch 携带即拒
+        for (const k of Object.keys(t)) if (k !== 'levels' && k !== 'default') return { ok: false, err: '参数不合法' }; // thinking 下只收 levels/default 两字段
+        if ('levels' in t) {
+            const lc = capLevelsCheck(t.levels);
+            if (lc.err) return { ok: false, err: lc.err };
+            cap.thinking = (cap.thinking && typeof cap.thinking === 'object') ? cap.thinking : {};
+            cap.thinking.levels = lc.lv; cap.thinking.unknown = false; // 手填=不再是「官方未收录」
+            uf.add('thinking.levels');
+        }
+        if ('default' in t) {
+            const d = t.default;
+            cap.thinking = (cap.thinking && typeof cap.thinking === 'object') ? cap.thinking : {};
+            if (d === null || d === '') { cap.thinking.default = null; uf.add('thinking.default'); } // 清空默认档=允许（新会话首档回落 goose 默认）
+            else {
+                if (typeof d !== 'string' || !d.trim()) return { ok: false, err: '默认档要填一个档位名' };
+                const lvs = Array.isArray(cap.thinking.levels) ? cap.thinking.levels : [];
+                if (lvs.length && lvs.indexOf(d.trim()) < 0) return { ok: false, err: '默认档要在档位列表里（当前：' + lvs.join(' / ') + '）' };
+                cap.thinking.default = d.trim();
+                uf.add('thinking.default');
+            }
+        }
     }
-    cap.user = true; // 用户改过——官方表与启发式永不覆写
+    if (!uf.size) return { ok: false, err: '参数不合法' };
+    cap.user_fields = CAP_USER_FIELDS.filter(f => uf.has(f)); // 字段级 user 标记（稳定顺序=CAP_USER_FIELDS 序）
+    cap.user = true;   // 兼容旧读法（整条 user 仍真，但刷新判据已按 user_fields 逐字段）
     cap.source = 'user'; // s101/W2（裁决 §2.1）：来源三态标注 official|guess|user
     return { ok: true, cap };
 }
@@ -3254,6 +3337,9 @@ function handleLlmProxy(req, res) {
                         delete j.reasoning;
                         if (j.thinking && typeof j.thinking === 'object' && !Array.isArray(j.thinking) && !('clear_thinking' in j.thinking)) delete j.thinking;
                         const eff = normalizeEffort(target, e); // 越界档（off/medium…）不发，防上游 400（research/40 §1.A code 1210）
+                        // s101/W3（裁决 §2.2）：客户端原档名先剥净——normalizeEffort 是唯一闸门；用户改 narrow 了值域后，
+                        // 越界档（如 max）必须真停发（此前 eff='' 时 j.reasoning_effort 原值泄漏=假旋钮）
+                        delete j.reasoning_effort;
                         if (eff) for (const k of thinkingKeysOf(target)) THINK_KEY_WRITERS[k](j, eff);
                         applySamplingGate(j, eff);
                         j.model = target;
@@ -4550,6 +4636,9 @@ function handleClient(ws, msg) {
                             // s98/llm-proxy: 带模型不带档且是家族成员→按成员预置档（选完整版开新对话=深），有习惯则习惯优先
                             if (!msg.think) { const f = familyOfModel(activeProvider(), msg.model); if (f) msg.think = msg.model === f.deep ? 'max' : 'low'; }
                         }
+                        // s101/W3（裁决 §2.2）：新会话首档=条目 thinking.default（用户改过的默认档据此随动，消费面闭环）——
+                        // 无显式档且非家族预置时用声明默认档；无声明/越界=不发帧（维持 goose 默认，诚实）
+                        if (!msg.think) { const dm = msg.model || effectiveModel(activeProvider()); const dEff = capsDefaultEffort(dm); if (dEff) msg.think = dEff; }
                         // s98/think: 新会话带思考档（与带 model 同款语义）——goose 按会话记住并持久化；模型被遮蔽时为
                         // no-op（前端三态②已诚实呈现）。qa s98 P3-2: 沿用习惯同样过白名单（localStorage 陈旧高档位
                         // 随新会话直发=档位静默未生效+记账漂移）——不在名单不发帧不记账。
