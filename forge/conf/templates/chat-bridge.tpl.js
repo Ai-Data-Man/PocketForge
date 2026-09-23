@@ -809,11 +809,14 @@ function activeProvider() {
 // research/41 §3.D 实测官方端点真兑现 reasoning_effort（glm 233→358 / flash 78→278、非法值 400）——故「原生参数
 // 可用时一律走参数」，家族换模型机制退为「模型完全无深度参数时的兜底」；research/37 的「参数通道死透」= 9router
 // 中转 + 我方桥自伤两层实现问题，非模型能力（research/41 §0/§4）。
-// VARIANT_FAMILY_ENABLED = 家族兜底开关位置。裁决 §2.4 要求「参数链实测生效后默认关闭」；W1 只留可翻的开关位
-// （env FORGE_VARIANT_FAMILY=0 即家族整体解散、goose 见真名、参数全走透传）与默认值真源，**不翻默认档**——
-// 硬件理由：翻档会让 §8.2 家族系探针（think/think-grad/proxythink/llmproxy-xlate）语义全变更，属 W4 范围
-// （W4=家族降级开关+用户配置面+顶栏 levels 由翻译层驱动）。W4 落地=把默认值与用户面接到此处。
-const VARIANT_FAMILY_ENABLED = process.env.FORGE_VARIANT_FAMILY !== '0';
+// VARIANT_FAMILY_ENABLED = 家族兜底**降级开关**（s101/W4 翻默认档=关，裁决 §2.4）。依据：官方普遍以**同模型参数**
+// 表达深浅（research/40 §1.D GLM 官方逐字「关闭思考配置会转换为 low，不会切换到其他模型」；research/42/43 共 45
+// 模型官方规范表），research/41 §3.D 实测官方端点真兑现 reasoning_effort（glm 233→358 / flash 78→278、非法值 400）。
+// 故「官方参数可用时一律走参数」：家族换模型只在「该模型**完全无**官方深度档位（官方表未载或 levels 空）且池内
+// 有 -flash 兄弟」时兜底生成（资格判定见 capsDefault 的 fam）。百度/腾讯确有独立模型对举，但那是**两套模型名**
+// 的官方产品线，不是同模型档位机制。9router 侧 zai 格式错配=用户侧 fork 修复项（裁决附注），不阻塞本条。
+// 回滚位保留：env FORGE_VARIANT_FAMILY=1 强制开（W1-W3 老行为）；不设/其它值=关（默认）。
+const VARIANT_FAMILY_ENABLED = process.env.FORGE_VARIANT_FAMILY === '1';
 // 别名锚定 fast 成员名（gpt-5-forge-<fast>）：注册表重指向 deep 时别名
 // 不变=钉着旧别名的存量 goose 会话不失联。形状必须命中 goose is_reasoning_model 闸门（gpt-5 开头且后续为
 // -/.，research/35 §1）——goose 以为在跟 gpt-5 系说话，放出原生 thinking_effort 五档并把 effort 带上 wire，
@@ -826,7 +829,8 @@ const VARIANT_FAMILY_ENABLED = process.env.FORGE_VARIANT_FAMILY !== '0';
 // 命中→ source:'official'（context_est=false，levels=官方原生值域）。未命中→**诚实缺省**（context_len=null +
 // 「未知」，thinking.levels=[] + unknown:true，不再编造五档），名字启发式仅剩两件可猜之事（-flash 家族配对、
 // 看图候选命名族）且整条标 source:'guess'。用户改过（user:true）的条目永不覆写。
-// 家族机制（variant）是桥内私有实现，W2 原样保留（裁决 §2.4 归 W4 降级）：命中官方表时档位集仍取官方值域。
+// 家族机制（variant）是桥内私有实现，s101/W4 起**降为兜底且默认关**（VARIANT_FAMILY_ENABLED；仅官方无深度档位的
+// 模型才配对，见 capsDefault），档位集在官方命中时恒取官方值域【裁决 §2.4】。
 const CAPS_FILE = path.join(ROOT, 'data', 'model-caps.json');
 const PRESETS_FILE = path.join(ROOT, 'conf', 'model-presets.json'); // 随包只读资源（同 conf/process-compose.yaml、conf/templates/chat.tpl.html 先例：运行时直读，不走 bootstrap 物化——物化只为 bin/ 生成物与 data/ 运行时物）
 const MULTIMODAL_RE = /vision|4o|omni|\bvl\b|gemini|claude/i; // 仅用于未收录模型的名字猜测（标 source:'guess'）
@@ -883,23 +887,30 @@ function capLevelsCheck(lv) { // 档位合法性（裁决 §2.2「非空/字符�
     return { lv: out };
 }
 function capsDefault(model, poolSet, host) { // 缺省条目：官方表命中→official；否则诚实缺省（guess）
-    let fam = null; // 家族配对=桥内私有机制（裁决 §2.4 归 W4），W2 原样保留；命中官方表时档位仍取官方值域
-    if (typeof model === 'string' && model.endsWith('-flash')) {
-        const base = model.slice(0, -'-flash'.length);
-        if (base && poolSet.has(base) && !poolSet.has('gpt-5-forge-' + model)) fam = { fast: model, deep: base };
-    } else if (typeof model === 'string' && poolSet.has(model + '-flash') && !poolSet.has('gpt-5-forge-' + model + '-flash')) {
-        fam = { fast: model + '-flash', deep: model };
+    // s101/W4（裁决 §2.4）：家族（variant 换模型）降为**兜底**且默认关（VARIANT_FAMILY_ENABLED）——仅当开关开、
+    // 且该模型**官方表未声明任何深度档位**（未收录 / levels 空）时才配对 -flash 兄弟；官方有档位=一律走参数，
+    // 不再挂 variant（顶栏也据此不出现两档、不出现 gradient）。9router zai 格式问题=用户侧修复项，与资格无关。
+    let fam = null;
+    if (VARIANT_FAMILY_ENABLED) {
+        if (typeof model === 'string' && model.endsWith('-flash')) {
+            const base = model.slice(0, -'-flash'.length);
+            if (base && poolSet.has(base) && !poolSet.has('gpt-5-forge-' + model)) fam = { fast: model, deep: base };
+        } else if (typeof model === 'string' && poolSet.has(model + '-flash') && !poolSet.has('gpt-5-forge-' + model + '-flash')) {
+            fam = { fast: model + '-flash', deep: model };
+        }
     }
     const p = presetLookup(model, host);
     if (p) {
         const t = presetThinking(p.thinking || {});
         const ctx = (typeof p.context_len === 'number') ? p.context_len : null;
+        const noLevels = !(Array.isArray(t.levels) && t.levels.length > 0); // 官方声明的深度档位为空/未载=无参数可用
+        const useFam = !!(fam && noLevels); // 兜底资格：官方无档位 + 家族开关开（开关本身已在上面把关）
         return {
             context_len: ctx, context_est: ctx === null, // 官方有数字=非估计；官方未载=「未知」（不编造）
             max_output: (typeof p.max_output === 'number') ? p.max_output : null, // 官方最大输出（展示/前端口径；无官方数字=null）
             multimodal: !!(p.input && p.input.image),
             input: { image: !!(p.input && p.input.image), pdf: !!(p.input && p.input.pdf), video: !!(p.input && p.input.video) },
-            thinking: fam ? { mode: 'variant', keys: t.keys, levels: Array.isArray(t.levels) ? t.levels : [], default: t.default, off_supported: t.off_supported, unknown: t.unknown, variant: fam } : t,
+            thinking: useFam ? { mode: 'variant', keys: t.keys, levels: Array.isArray(t.levels) ? t.levels : [], default: t.default, off_supported: t.off_supported, unknown: t.unknown, variant: fam } : t,
             official_levels: Array.isArray(t.levels) ? t.levels.slice() : [], // s101/W3: 官方值域**始终**随行（用户改过 levels 后前端加档候选取官方∪常见）
             source: 'official', preset_rev: readPresets().rev, preset_match: JSON.stringify(p.match), source_url: p.source_url, verified: p.verified,
         };
@@ -1000,6 +1011,31 @@ function thinkingKeysOf(model) { // 该模型认的键名：条目声明 thinkin
     const t = cap && cap.thinking;
     const declared = t && Array.isArray(t.keys) ? t.keys.filter(k => typeof k === 'string' && THINK_KEY_WRITERS[k]) : [];
     return declared.length ? declared : [THINK_DEFAULT_KEY];
+}
+function declaredLevels(model) { // 翻译层声明的深度值域（官方表 levels；用户改过即用户值域）——空=该模型无参数档位
+    const cap = syncModelCaps().caps[model];
+    const t = cap && cap.thinking;
+    return (t && Array.isArray(t.levels)) ? t.levels : [];
+}
+// s101/W4（裁决 §2.4）：官方参数路线=家族降级后的**主路径**。真名请求（家族未配对/已关）按此在出站帧注入/归一
+// 档位——goose 对 glm 系不发 reasoning_effort（非 is_reasoning_model），顶栏档位的真消费点在这里（否则=假旋钮）。
+// 归一/剥离/采样门与别名分支完全同源（同一 normalizeEffort/applySamplingGate/thinkKeysOf），两条路线零语义分叉。
+function applyParamRoute(j, model) { // →true=改写过 body（调用方据此重序列化）
+    let changed = false;
+    if ('reasoning' in j) { delete j.reasoning; changed = true; } // 各厂官方规范零命中（research/40）
+    if (j.thinking && typeof j.thinking === 'object' && !Array.isArray(j.thinking) && !('clear_thinking' in j.thinking)) { delete j.thinking; changed = true; } // 只剥确证默认态
+    const effortIn = typeof j.reasoning_effort === 'string' ? j.reasoning_effort : '';
+    // 档位来源序：显式帧值（原样交归一）> 会话/全局习惯 > 翻译层声明的默认档（caps.thinking.default）。
+    // **仅对声明了深度值域的模型做后两级注入**——无值域者（如 hunyuan 的 on/off 开关、keys 非 reasoning_effort 族）
+    // 其 default 是开关语义不是 effort 档，注入会发错键/错值（诚实留给上游默认）。三者皆无=不发。
+    const hasLevels = declaredLevels(model).length > 0;
+    const seed = effortIn || (hasLevels ? (lastThinkOverride || capsDefaultEffort(model)) : '');
+    const eff = seed ? normalizeEffort(model, seed) : '';
+    if (eff) {
+        if (eff !== effortIn) { delete j.reasoning_effort; for (const k of thinkingKeysOf(model)) THINK_KEY_WRITERS[k](j, eff); changed = true; }
+        if (applySamplingGate(j, eff)) changed = true;
+    } else if (effortIn) { delete j.reasoning_effort; changed = true; } // 越界档真停发（W3 语义：用户改窄值域后不得泄漏原值）
+    return changed;
 }
 function normalizeEffort(model, effort) { // 档位归一：越界档就近收敛/停发——防上游 400（GLM 5.3 对 off/medium 报错 code 1210，research/40 §1.A）
     if (typeof effort !== 'string' || !effort) return '';
@@ -1259,6 +1295,11 @@ function spawnAcp() {
     return child;
 }
 acp = spawnAcp();
+// s101/W4（验收 3 物化链）：启动即物化能力注册表。改前此写盘是**副作用**——W1 家族默认开时 spawnAcp→gooseModelName
+// →registryFamilies→syncModelCaps 顺带落盘；W4 家族默认关后 registryFamilies 早退，注册表变成「首次请求才落盘」。
+// 产品面自愈无损（providers 帧/GET /api/modelcaps/llmproxy 三处都会补），但出厂首启的 data/model-caps.json 应在
+// 启动时就绪（用户/探针/排障的口径一致）。显式一行，不再依赖家族开关的副作用。
+try { syncModelCaps(); } catch (e) { console.error('model caps boot sync failed:', e && e.message); }
 
 function onAcpData(chunk) {
     acpBuf += chunk.toString('utf8');
@@ -1597,12 +1638,24 @@ function acpSetThink(sessionId, value) { // 与 set_config_option('model') 同�
     } catch (e) { return false; } // acp 已死：不记账，prompt 自身写失败错误链收口
 }
 // s98/qa P3-2: 三旁路（subscribe 沿用习惯/prompt 前对账/switch_model 对账）共用 set_think 同款白名单——
-// value ∉ 该会话缓存 values（或缓存缺失）→ 不发帧不记账，一行 debug 留痕（诚实降级：切到无该档模型时档位
+// value ∉ 该会话可接受域（或缓存缺失）→ 不发帧不记账，一行 debug 留痕（诚实降级：切到无该档模型时档位
 // 静默未生效但账面不漂移；set_think 主路径照旧人话回执，不弹错）
+// **s101/W4（裁决 §2.4）**：可接受域=goose 回包 values ∪ 该模型在官方表/用户声明里的 levels——家族降级后
+// goose 见真名且对 glm 系把档位遮蔽成 ["off"]（is_reasoning_model 名单不含 glm），顶栏值域由翻译层（caps）驱动，
+// 故这里必须认官方声明的档位；真实翻译在 /llmproxy 出站注入（见 handleLlmProxy）。无声明者域不变=诚实拒绝。
+function thinkDomain(sid) {
+    const vals = sidThinkValues.get(sid) || [];
+    let m = sidModelApplied.get(sid) || '';
+    if (!m) { const g = sidGooseModel.get(sid) || ''; m = /^gpt-5-forge-/.test(g) ? g.replace(/^gpt-5-forge-/, '') : g; } // 存量别名会话落回真名（家族已关时别名不再有家族）
+    if (!m) m = effectiveModel(activeProvider());
+    const cap = m ? syncModelCaps().caps[m] : null;
+    const lv = (cap && cap.thinking && Array.isArray(cap.thinking.levels)) ? cap.thinking.levels : [];
+    return vals.concat(lv.filter(v => vals.indexOf(v) < 0));
+}
 function thinkAllowed(sid, value) {
     if (!value) return false;
-    const vals = sidThinkValues.get(sid);
-    if (!Array.isArray(vals) || vals.indexOf(value) < 0) { console.log('think bypass skipped (not in cached values):', sid, value); return false; }
+    const vals = thinkDomain(sid);
+    if (!Array.isArray(vals) || vals.indexOf(value) < 0) { console.log('think bypass skipped (not in accepted domain):', sid, value); return false; }
     return true;
 }
 function applyModelBeforeTurn(sid, model, next) {
@@ -3321,6 +3374,7 @@ function handleLlmProxy(req, res) {
         // ② 若 goose 将来改为按 /models 校验，此路即通。翻译点在下方 modelsInject。
         const isModels = req.method === 'GET' && /\/models$/.test((req.url || '').split('?')[0]);
         let xlate = null; // {fam, target}
+        let rewrote = false; // s101/W4: 非别名路线改写 body 的旗（content-length 需随改写同步，否则上游挂起）
         if (body && req.method === 'POST') {
             try {
                 const j = JSON.parse(body.toString('utf8'));
@@ -3345,6 +3399,12 @@ function handleLlmProxy(req, res) {
                         j.model = target;
                         body = Buffer.from(JSON.stringify(j), 'utf8');
                         xlate = { fam, target };
+                    } else {
+                        // s101/W4（裁决 §2.4）：**官方参数路线=家族降级后的主路径**。真名/非家族请求在此按翻译层声明的
+                        // 档位注入/归一（goose 对 glm 系不发 reasoning_effort（非 is_reasoning_model），顶栏档位若不在此
+                        // 落 wire 即假旋钮。用户改窄值域后越界档真停发=W3 消费面闭环）。家族关=此路是唯一消费点；家族开
+                        // 时非家族成员也走此路（两条路线共用同一 normalizeEffort/applySamplingGate，零语义分叉）。
+                        if (applyParamRoute(j, j.model)) { body = Buffer.from(JSON.stringify(j), 'utf8'); rewrote = true; }
                     }
                 }
             } catch {} // 坏 JSON：原样透传（上游自己回 4xx，错误链原样）
@@ -3358,6 +3418,8 @@ function handleLlmProxy(req, res) {
         if (xlate) {
             delete headers['accept-encoding']; // 要做响应翻译，收 identity（压缩字节里换不了名）
             headers['content-length'] = String(body.length); // 重写后的长度
+        } else if (rewrote) {
+            headers['content-length'] = String(body.length); // s101/W4: 参数路线改写过（长度变了，原 CL 会让上游等满挂起）
         }
         const mod = require(upUrl.protocol === 'https:' ? 'https' : 'http');
         const up = mod.request(upUrl, { method: req.method, headers }, ur => {
@@ -5108,11 +5170,12 @@ function handleClient(ws, msg) {
         }
 
         if (msg.type === 'set_think') {
-            // s98/think: 会话内切思考档。校验=最近一次会话回包的 thinking_effort values（真相源=goose），
-            // 不在场或不合法→人话回执且零 ACP 帧（glm 遮蔽态如实拒绝，不装成功）
+            // s98/think: 会话内切思考档。校验=goose 回包 values ∪ 该模型翻译层声明的 levels（thinkDomain，s101/W4：
+            // 家族降级后 goose 对 glm 系遮蔽成 ["off"]，值域由 caps 声明驱动）——不在域或不合法→人话回执且零 ACP
+            // 帧（如实拒绝，不装成功）。set 路径 goose 无门控（research/35 §1），真翻译在本桥 /llmproxy 出站注入。
             const sid = wsSession.get(ws);
             if (!sid || (msg.sessionId != null && msg.sessionId !== sid)) return ws.send({ sys: 'think_set', ok: false, err: '这场对话已经不在了（可能刚重启过）。刷新一下页面再试。' });
-            const vals = sidThinkValues.get(sid) || [];
+            const vals = thinkDomain(sid);
             const v = typeof msg.value === 'string' ? msg.value : '';
             if (!v || vals.indexOf(v) < 0) return ws.send({ sys: 'think_set', ok: false, err: '当前模型不支持调思考力度' });
             const id = nextId++;
