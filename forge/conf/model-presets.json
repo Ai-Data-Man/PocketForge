@@ -1,0 +1,586 @@
+{
+  "rev": "2026-09-23.1",
+  "note": "官方规范预置表（s101/W2，裁决 docs/verdicts/2026-09-23-thinking-native-params-official-presets.md §2.1）。数据逐条来自 docs/research/40（GLM/DeepSeek 官方）、42（中国 8 厂 26 模型）、43（国际 5 厂 19 模型）的官方规范事实表，只搬不编。位置=conf 只读资源（先例：conf/templates/chat.tpl.html 由桥运行时 ROOT/conf 直读、conf/process-compose.yaml 启动时直读）——产品自有静态数据，随包发布、随版本覆盖，无需 bootstrap 物化（物化只为 bin/ 生成物与 data/ 运行时物服务，两者语义不同）。",
+  "schema": {
+    "match": "host_contains?（host 子串，(host,model) 二元组优先层）+ model（精确串）| model_regex（锚定正则，厂系默认层）。research/42 §7.D 硬证据：同一模型跨平台能力/默认不同，故 host 层先于 model 层。",
+    "context_len": "官方上下文窗口 token 数；无官方数字=null（不编造）",
+    "max_output": "官方最大输出 token 数；无官方数字=null",
+    "input": "官方输入模态（image/pdf/video）；官方未载=false 并在 note 标注",
+    "thinking.mode": "native=同模型官方档位 / switch=同模型官方布尔开关（无档）/ budget=预算族 / none=无任何官方思考控制键",
+    "thinking.keys": "官方原生键名逐字（写侧只实现 reasoning_effort 与 output_config 两族，其余键由写侧过滤，W3 扩写器）",
+    "thinking.levels": "官方原生档位值域（有序，逐字）；无档=[]；官方未载=null",
+    "thinking.default": "官方默认档；无档模型用 on/off 表示开关默认态；官方未载=null",
+    "thinking.off_supported": "官方是否支持关闭思考",
+    "verified": "VERIFIED-DOC=官方原文/机读 schema 直取；UNVERIFIED=文档缺失或仅间接证据"
+  },
+  "entries": [
+    {
+      "match": { "model": "glm-5.3" },
+      "context_len": 1000000, "max_output": 131072,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort", "thinking"], "levels": ["low", "high", "max"], "default": "max", "off_supported": false },
+      "source_url": "https://docs.z.ai/guides/llm/glm-5.3", "verified": "VERIFIED-DOC",
+      "note": "强制思考不可关（thinking.type 传 disabled 官方报错）；纯文本输入；默认 max_tokens 65536、上限 131072"
+    },
+    {
+      "match": { "model": "glm-5.3-flash" },
+      "context_len": 1000000, "max_output": 131072,
+      "input": { "image": true, "pdf": true, "video": true },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort", "thinking"], "levels": ["low", "high", "max"], "default": "max", "off_supported": false },
+      "source_url": "https://docs.z.ai/guides/vlm/glm-5.3-flash", "verified": "VERIFIED-DOC",
+      "note": "原生多模态（Video/Image/Text/File 含 PDF）；档位集与 glm-5.3 官方一致"
+    },
+    {
+      "match": { "model": "deepseek-v4.1-flash" },
+      "context_len": 1000000, "max_output": 393216,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort", "thinking"], "levels": ["none", "low", "high", "max"], "default": "high", "off_supported": true },
+      "source_url": "https://api-docs.deepseek.com/guides/thinking_mode", "verified": "VERIFIED-DOC",
+      "note": "官方真名 deepseek-flash（本串在 DeepSeek 官方端点不在册，在阿里百炼在册）；图片支持（JPEG/PNG/GIF/WebP）、不支持 PDF；none=关思考，兼容映射 minimal→low、medium/xhigh→high、ultra→max"
+    },
+    {
+      "match": { "model": "deepseek-flash" },
+      "context_len": 1000000, "max_output": 393216,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort", "thinking"], "levels": ["none", "low", "high", "max"], "default": "high", "off_supported": true },
+      "source_url": "https://api-docs.deepseek.com/quick_start/pricing", "verified": "VERIFIED-DOC",
+      "note": "官方在册名；CONTEXT 1M / MAX OUTPUT 384K"
+    },
+    {
+      "match": { "model": "deepseek-v4-pro" },
+      "context_len": 1000000, "max_output": 393216,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort", "thinking"], "levels": ["none", "low", "high", "max"], "default": "high", "off_supported": true },
+      "source_url": "https://api-docs.deepseek.com/quick_start/pricing", "verified": "VERIFIED-DOC",
+      "note": "Vision Not supported（Pricing 表明文）；思考参数面同 deepseek-flash"
+    },
+    {
+      "match": { "host_contains": "aliyuncs.com", "model": "glm-5.3" },
+      "context_len": 1000000, "max_output": 131072,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["enable_thinking", "reasoning_effort"], "levels": ["max", "high", "low"], "default": "max", "off_supported": false },
+      "source_url": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions", "verified": "VERIFIED-DOC",
+      "note": "阿里百炼直供口径：glm-5.3 系列始终开启思考，enable_thinking 仅支持 true，传 false 请求失败"
+    },
+    {
+      "match": { "model_regex": "^glm-5\\.(2|1|5)$" },
+      "context_len": null, "max_output": null,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort", "thinking"], "levels": ["high", "max"], "default": "high", "off_supported": true },
+      "source_url": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions", "verified": "VERIFIED-DOC",
+      "note": "厂系默认（阿里百炼口径）：glm-5.2/5.1/5 默认 high、可选 high/max；low/medium→high、xhigh→max"
+    },
+    {
+      "match": { "model_regex": "^qwen3\\.8-(max|flash)" },
+      "context_len": null, "max_output": null,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["enable_thinking", "thinking_budget", "reasoning_effort"], "levels": ["low", "medium", "xhigh"], "default": "xhigh", "off_supported": true },
+      "source_url": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions", "verified": "VERIFIED-DOC",
+      "note": "reasoning_effort 与 thinking_budget 互斥（同设报错）；档位↔预算官方换算 low=4096 / medium=16384 / xhigh=262144，均未设时预算 131072；none→enable_thinking=false"
+    },
+    {
+      "match": { "model": "qwen3.8-max" },
+      "context_len": 262144, "max_output": 65536,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["enable_thinking", "thinking_budget", "reasoning_effort"], "levels": ["low", "medium", "xhigh"], "default": "xhigh", "off_supported": true },
+      "source_url": "https://help.aliyun.com/zh/model-studio/model-qwen3-max", "verified": "VERIFIED-DOC",
+      "note": "思考模式最大输出 32768、最大思维链 81920"
+    },
+    {
+      "match": { "model": "qwen3.8-omni-flash" },
+      "context_len": null, "max_output": null,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort"], "levels": ["low", "medium", "xhigh"], "default": "xhigh", "off_supported": true },
+      "source_url": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions", "verified": "VERIFIED-DOC",
+      "note": "可直接选 low/medium/xhigh；接受 7 档兼容串，minimal→low、high/max→xhigh、none=关闭思考；模态=Omni 多模态（官方模态表未单列 PDF/视频）"
+    },
+    {
+      "match": { "model": "qwen3-max" },
+      "context_len": 262144, "max_output": 65536,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "switch", "keys": ["enable_thinking"], "levels": [], "default": "off", "off_supported": true },
+      "source_url": "https://help.aliyun.com/zh/model-studio/model-qwen3-max", "verified": "VERIFIED-DOC",
+      "note": "默认不开启思考；思考模式最大输出 32768"
+    },
+    {
+      "match": { "model": "qwen-plus" },
+      "context_len": 1000000, "max_output": 32768,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "switch", "keys": ["enable_thinking"], "levels": [], "default": "off", "off_supported": true },
+      "source_url": "https://help.aliyun.com/zh/model-studio/qwen-plus", "verified": "VERIFIED-DOC",
+      "note": "默认不开启思考"
+    },
+    {
+      "match": { "model": "qwen3-coder-plus" },
+      "context_len": 1000000, "max_output": 65536,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": null, "keys": [], "levels": null, "default": null, "off_supported": null },
+      "source_url": "https://help.aliyun.com/zh/model-studio/qwen3-coder-plus", "verified": "UNVERIFIED",
+      "note": "官方页未列思考键（research/42 §11-2 UNVERIFIED）；上下文/输出为官方逐字（思考模式最大输出 32768）"
+    },
+    {
+      "match": { "model": "qwen3-vl-plus" },
+      "context_len": 262144, "max_output": 32768,
+      "input": { "image": true, "pdf": false, "video": true },
+      "thinking": { "mode": "switch", "keys": ["enable_thinking", "thinking_budget"], "levels": [], "default": null, "off_supported": true },
+      "source_url": "https://help.aliyun.com/zh/model-studio/qwen3-vl-plus", "verified": "VERIFIED-DOC",
+      "note": "Input Text/Image/Video；默认档见模型卡（官方未在本表给）"
+    },
+    {
+      "match": { "model": "kimi-k3" },
+      "context_len": 1048576, "max_output": null,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort"], "levels": ["low", "high", "max"], "default": "max", "off_supported": false },
+      "source_url": "https://platform.kimi.com/docs/guide/use-reasoning-effort", "verified": "VERIFIED-DOC",
+      "note": "始终推理、无 thinking 键；原生支持视觉理解；切档破坏前缀缓存（默认档须固定）"
+    },
+    {
+      "match": { "model": "kimi-k2.7-code" },
+      "context_len": 262144, "max_output": null,
+      "input": { "image": true, "pdf": false, "video": true },
+      "thinking": { "mode": "native", "keys": ["thinking"], "levels": [], "default": "on", "off_supported": false },
+      "source_url": "https://platform.kimi.com/docs/guide/use-thinking-models", "verified": "VERIFIED-DOC",
+      "note": "始终开启思考，仅接受 {type:enabled,keep:all}，传其他配置报错；不支持 reasoning_effort"
+    },
+    {
+      "match": { "model": "kimi-k2.7-code-highspeed" },
+      "context_len": 262144, "max_output": null,
+      "input": { "image": true, "pdf": false, "video": true },
+      "thinking": { "mode": "native", "keys": ["thinking"], "levels": [], "default": "on", "off_supported": false },
+      "source_url": "https://platform.kimi.com/docs/guide/use-thinking-models", "verified": "VERIFIED-DOC",
+      "note": "与 kimi-k2.7-code 同一模型、思考行为完全一致"
+    },
+    {
+      "match": { "model": "kimi-k2.6" },
+      "context_len": 262144, "max_output": null,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "switch", "keys": ["thinking"], "levels": [], "default": "on", "off_supported": true },
+      "source_url": "https://platform.kimi.com/docs/guide/use-thinking-models", "verified": "VERIFIED-DOC",
+      "note": "thinking.type enabled(默认)/disabled + thinking.keep null/all；不支持 reasoning_effort；temperature 思考 1.0 / 非思考 0.6"
+    },
+    {
+      "match": { "model": "doubao-seed-2-1-pro-260915" },
+      "context_len": 1048576, "max_output": 262144,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "reasoning_effort"], "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "max"], "default": "high", "off_supported": true },
+      "source_url": "https://www.volcengine.com/docs/82379/1449737", "verified": "VERIFIED-DOC",
+      "note": "全部 7 档无条件接受（服务端映射）；minimal=关思考、none→minimal；xhigh/max→high；模态=多模态理解"
+    },
+    {
+      "match": { "model": "doubao-seed-2-1-pro-260628" },
+      "context_len": 1048576, "max_output": 262144,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "reasoning_effort"], "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "max"], "default": "high", "off_supported": true },
+      "source_url": "https://www.volcengine.com/docs/82379/1449737", "verified": "VERIFIED-DOC",
+      "note": "同 2-1-pro 组默认 high"
+    },
+    {
+      "match": { "model": "doubao-seed-2-1-turbo-260628" },
+      "context_len": null, "max_output": null,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "reasoning_effort"], "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "max"], "default": "high", "off_supported": true },
+      "source_url": "https://www.volcengine.com/docs/82379/1330310", "verified": "VERIFIED-DOC",
+      "note": "官方模型列表未单列该变体行（上下文/输出未载）"
+    },
+    {
+      "match": { "model": "doubao-seed-2-1-lite-260915" },
+      "context_len": 262144, "max_output": 262144,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "reasoning_effort"], "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "max"], "default": "high", "off_supported": true },
+      "source_url": "https://www.volcengine.com/docs/82379/1330310", "verified": "VERIFIED-DOC",
+      "note": "上下文 256k / 最大回答与思维链 256k"
+    },
+    {
+      "match": { "model_regex": "^doubao-seed-2-0-[a-z-]+-\\d+$" },
+      "context_len": 262144, "max_output": 131072,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "reasoning_effort"], "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "max"], "default": "medium", "off_supported": true },
+      "source_url": "https://www.volcengine.com/docs/82379/1330310", "verified": "VERIFIED-DOC",
+      "note": "2-0 组（pro/mini/lite/code-preview，含 260215/260428）默认 medium；上下文 256k、最大输入 224k、最大回答与思维链 128k"
+    },
+    {
+      "match": { "model": "doubao-seed-character-260628" },
+      "context_len": null, "max_output": null,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "reasoning_effort"], "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "max"], "default": "medium", "off_supported": true },
+      "source_url": "https://www.volcengine.com/docs/82379/1330310", "verified": "VERIFIED-DOC",
+      "note": "官方深度思考支持清单在册（medium 组）；模态/上下文未单列"
+    },
+    {
+      "match": { "model": "doubao-seed-evolving" },
+      "context_len": 1048576, "max_output": 393216,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "reasoning_effort"], "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "max"], "default": "high", "off_supported": true },
+      "source_url": "https://www.volcengine.com/docs/82379/1330310", "verified": "VERIFIED-DOC",
+      "note": "能力标签无「多模态理解」（保守 false）；最大回答 384k / 思维链 128k"
+    },
+    {
+      "match": { "model": "glm-5-3-flash-260828" },
+      "context_len": 262144, "max_output": 262144,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "reasoning_effort"], "levels": ["low", "high", "max"], "default": "max", "off_supported": false },
+      "source_url": "https://www.volcengine.com/docs/82379/1330310", "verified": "VERIFIED-DOC",
+      "note": "方舟托管：始终启用思考、不再支持禁用；7 档经映射收敛到 low/high/max（none/minimal/low→low、medium/high→high、xhigh/max→max）"
+    },
+    {
+      "match": { "model": "glm-5-2-260617" },
+      "context_len": null, "max_output": null,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "reasoning_effort"], "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "max"], "default": "high", "off_supported": true },
+      "source_url": "https://www.volcengine.com/docs/82379/1449737", "verified": "VERIFIED-DOC",
+      "note": "方舟托管：none/minimal→关闭思考、low/medium→high、xhigh→max"
+    },
+    {
+      "match": { "model": "deepseek-v4-1-flash-260910" },
+      "context_len": 1000000, "max_output": 393216,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "reasoning_effort"], "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "max"], "default": "high", "off_supported": true },
+      "source_url": "https://www.volcengine.com/docs/82379/1449737", "verified": "VERIFIED-DOC",
+      "note": "方舟托管：none→关闭、minimal→low、medium/xhigh→high、ultra→max；上下文 1024k / 最大回答 384k"
+    },
+    {
+      "match": { "model_regex": "^deepseek-v4-(pro|flash)-ga-\\d+$" },
+      "context_len": 1000000, "max_output": 393216,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "reasoning_effort"], "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "max"], "default": "high", "off_supported": true },
+      "source_url": "https://www.volcengine.com/docs/82379/1449737", "verified": "VERIFIED-DOC",
+      "note": "方舟托管：none/minimal→关闭思考、medium→low、xhigh→high；1024k / 384k"
+    },
+    {
+      "match": { "model": "deepseek-v4-pro-260425" },
+      "context_len": null, "max_output": null,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "reasoning_effort"], "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "max"], "default": "high", "off_supported": true },
+      "source_url": "https://www.volcengine.com/docs/82379/1449737", "verified": "VERIFIED-DOC",
+      "note": "方舟托管：minimal→关闭思考"
+    },
+    {
+      "match": { "model": "hunyuan-a13b" },
+      "context_len": 229376, "max_output": 32768,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "switch", "keys": ["EnableThinking"], "levels": [], "default": "on", "off_supported": true },
+      "source_url": "https://cloud.tencent.com/document/product/1729/105701", "verified": "VERIFIED-DOC",
+      "note": "官方默认慢思考；EnableThinking 仅对本模型生效；快慢切换也可用 query 前缀 /no_think；最大输入 224k"
+    },
+    {
+      "match": { "model": "hunyuan-t1" },
+      "context_len": null, "max_output": null,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "none", "keys": [], "levels": [], "default": "on", "off_supported": false },
+      "source_url": "https://cloud.tencent.com/document/product/1729/104753", "verified": "VERIFIED-DOC",
+      "note": "无任何官方思考键（始终思考）；官方深度语义靠换模型（t1=深度推理 vs turbos=快思考基座）"
+    },
+    {
+      "match": { "model": "hunyuan-t1-vision-20250916" },
+      "context_len": 28672, "max_output": 20480,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "none", "keys": [], "levels": [], "default": "on", "off_supported": false },
+      "source_url": "https://cloud.tencent.com/document/product/1729/104753", "verified": "VERIFIED-DOC",
+      "note": "视觉深度思考模型；最大输入 28k / 最大输出 20k"
+    },
+    {
+      "match": { "model": "hunyuan-turbos" },
+      "context_len": null, "max_output": null,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "none", "keys": [], "levels": [], "default": "off", "off_supported": null },
+      "source_url": "https://cloud.tencent.com/document/product/1729/104753", "verified": "VERIFIED-DOC",
+      "note": "无思考参数（快思考基座，不思考）"
+    },
+    {
+      "match": { "host_contains": "baidubce.com", "model": "deepseek-v4-pro" },
+      "context_len": 1000000, "max_output": 393216,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "reasoning_effort"], "levels": ["high", "max"], "default": "high", "off_supported": true },
+      "source_url": "https://cloud.baidu.com/doc/qianfan-docs/s/Wm95lyynv", "verified": "VERIFIED-DOC",
+      "note": "千帆口径：reasoning_effort 仅 high/max，低档映射 high、xhigh→max；复杂 Agent 类请求自动 max"
+    },
+    {
+      "match": { "model": "deepseek-v4-flash", "host_contains": "baidubce.com" },
+      "context_len": 1000000, "max_output": 393216,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "reasoning_effort"], "levels": ["high", "max"], "default": "high", "off_supported": true },
+      "source_url": "https://cloud.baidu.com/doc/qianfan-docs/s/Wm95lyynv", "verified": "VERIFIED-DOC",
+      "note": "千帆口径同 deepseek-v4-pro"
+    },
+    {
+      "match": { "model": "deepseek-v3.2-think" },
+      "context_len": 147456, "max_output": 65536,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "switch", "keys": ["thinking", "thinking_budget", "thinking_strategy"], "levels": [], "default": "on", "off_supported": true },
+      "source_url": "https://cloud.baidu.com/doc/qianfan-api/s/3m7of64lb", "verified": "VERIFIED-DOC",
+      "note": "千帆：thinking_budget min 100；thinking_strategy 仅 chain_of_draft；上下文 144k / 思维链 32k"
+    },
+    {
+      "match": { "model": "ernie-5.0" },
+      "context_len": 131072, "max_output": 65536,
+      "input": { "image": true, "pdf": false, "video": true },
+      "thinking": { "mode": "switch", "keys": ["thinking", "enable_thinking"], "levels": [], "default": "off", "off_supported": true },
+      "source_url": "https://cloud.baidu.com/doc/qianfan-api/s/3m7of64lb", "verified": "VERIFIED-DOC",
+      "note": "原生全模态（文本/图像/音频/视频）；thinking.type 默认 disabled、enable_thinking 默认 false；reasoning_effort 仅 DeepSeek 系支持，本模型不支持 effort"
+    },
+    {
+      "match": { "model": "ernie-5.0-thinking-preview" },
+      "context_len": 131072, "max_output": 65536,
+      "input": { "image": true, "pdf": false, "video": true },
+      "thinking": { "mode": "switch", "keys": ["enable_thinking", "thinking_budget"], "levels": [], "default": "on", "off_supported": true },
+      "source_url": "https://cloud.baidu.com/doc/qianfan-docs/s/Wm95lyynv", "verified": "VERIFIED-DOC",
+      "note": "enable_thinking 官方默认为 true，可设 false 关闭；思维链 60k"
+    },
+    {
+      "match": { "model_regex": "^ernie-5\\.0-thinking-(latest|exp)$" },
+      "context_len": 131072, "max_output": 65536,
+      "input": { "image": true, "pdf": false, "video": true },
+      "thinking": { "mode": "switch", "keys": ["enable_thinking", "thinking_budget"], "levels": [], "default": "on", "off_supported": true },
+      "source_url": "https://cloud.baidu.com/doc/qianfan-docs/s/Wm95lyynv", "verified": "VERIFIED-DOC",
+      "note": "与 ernie-5.0-thinking-preview 同表同数字（128k/119k/[1,65536]，思维链 60k）"
+    },
+    {
+      "match": { "model": "ernie-5.1" },
+      "context_len": 131072, "max_output": 65536,
+      "input": { "image": true, "pdf": false, "video": true },
+      "thinking": { "mode": "switch", "keys": ["thinking_budget"], "levels": [], "default": null, "off_supported": null },
+      "source_url": "https://cloud.baidu.com/doc/qianfan-api/s/3m7of64lb", "verified": "UNVERIFIED",
+      "note": "仅出现在 thinking_budget 支持清单，未出现在 thinking/enable_thinking/reasoning_effort 清单——思考默认态 UNVERIFIED（min 100）"
+    },
+    {
+      "match": { "model": "ernie-x1.1" },
+      "context_len": 65536, "max_output": 65536,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "none", "keys": [], "levels": [], "default": "on", "off_supported": false },
+      "source_url": "https://cloud.baidu.com/doc/qianfan-docs/s/Wm95lyynv", "verified": "VERIFIED-DOC",
+      "note": "即将下线（research/42 §9 标注勿预置，此处只留官方数字供识别）；独立深度思考模型线、思维链 64k"
+    },
+    {
+      "match": { "model": "ernie-4.5-turbo-128k" },
+      "context_len": 131072, "max_output": 16384,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": null, "keys": [], "levels": null, "default": null, "off_supported": null },
+      "source_url": "https://cloud.baidu.com/doc/qianfan/s/rmh4stp0j", "verified": "UNVERIFIED",
+      "note": "官方旗舰表有上下文/输出数字；思考键未在支持清单出现"
+    },
+    {
+      "match": { "model": "MiniMax-M3" },
+      "context_len": 1000000, "max_output": 524288,
+      "input": { "image": true, "pdf": false, "video": true },
+      "thinking": { "mode": "switch", "keys": ["thinking"], "levels": [], "default": null, "off_supported": true },
+      "source_url": "https://platform.minimaxi.com/docs/api-reference/text-chat-openai", "verified": "VERIFIED-DOC",
+      "note": "thinking.type adaptive/disabled；默认按协议相反（OpenAI=adaptive 开 / Anthropic=disabled 关）→ 默认档必须显式发送；max_completion_tokens 推荐 131072、上限 524288；reasoning_split 只是输出格式开关"
+    },
+    {
+      "match": { "model_regex": "^MiniMax-M2(\\.\\d+)?(-highspeed)?$" },
+      "context_len": 204800, "max_output": 204800,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "switch", "keys": ["thinking"], "levels": [], "default": "on", "off_supported": false },
+      "source_url": "https://platform.minimaxi.com/docs/api-reference/text-chat-openai", "verified": "VERIFIED-DOC",
+      "note": "M2.x thinking 无法关闭（传 disabled 仍保持开启）；推荐 max_completion_tokens 65536、上限 204800"
+    },
+    {
+      "match": { "model": "step-5-preview" },
+      "context_len": 1048576, "max_output": 65536,
+      "input": { "image": true, "pdf": false, "video": true },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort", "output_config"], "levels": ["low", "medium", "high"], "default": "medium", "off_supported": false },
+      "source_url": "https://platform.stepfun.com/docs/zh/guides/models/step-5-preview", "verified": "VERIFIED-DOC",
+      "note": "Messages 面键=output_config.effort；官方无关闭语义（仅档位）"
+    },
+    {
+      "match": { "model": "step-3.7-flash" },
+      "context_len": 262144, "max_output": null,
+      "input": { "image": true, "pdf": false, "video": true },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort", "output_config"], "levels": ["low", "medium", "high"], "default": "medium", "off_supported": false },
+      "source_url": "https://platform.stepfun.com/docs/zh/guides/models/step-3.7-flash", "verified": "VERIFIED-DOC",
+      "note": "三档推理强度，默认推荐 medium"
+    },
+    {
+      "match": { "model": "step-3.5-flash" },
+      "context_len": null, "max_output": null,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort"], "levels": ["low", "high"], "default": null, "off_supported": null },
+      "source_url": "https://platform.stepfun.com/docs/zh/guides/models/step-3.7-flash", "verified": "VERIFIED-DOC",
+      "note": "Agent 优化版：支持 reasoning_effort（low/high）两档；默认档官方未载"
+    },
+    {
+      "match": { "host_contains": "aliyuncs.com", "model": "stepfun/step-3.7-flash" },
+      "context_len": 262144, "max_output": null,
+      "input": { "image": true, "pdf": false, "video": true },
+      "thinking": { "mode": "switch", "keys": ["enable_thinking", "reasoning_effort"], "levels": ["low", "medium", "high"], "default": "off", "off_supported": true },
+      "source_url": "https://help.aliyun.com/zh/model-studio/stepfun", "verified": "VERIFIED-DOC",
+      "note": "百炼直供版：默认关闭思考，需 enable_thinking=true 开启；开启后 reasoning_effort 控制深度——(host,model) 二元组的硬证据（同模型跨平台默认相反）"
+    },
+    {
+      "match": { "model": "gpt-6-astra" },
+      "context_len": 1050000, "max_output": 128000,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort", "reasoning"], "levels": ["low", "medium", "high", "xhigh", "max"], "default": "medium", "off_supported": false },
+      "source_url": "https://platform.openai.com/docs/guides/reasoning", "verified": "VERIFIED-DOC",
+      "note": "不支持 none（传 none 返回 HTTP 400）；max input 922000"
+    },
+    {
+      "match": { "model_regex": "^gpt-6-sol$|^gpt-5\\.6(-sol|-terra|-luna)?$" },
+      "context_len": 1050000, "max_output": 128000,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort", "reasoning"], "levels": ["none", "low", "medium", "high", "xhigh", "max"], "default": "medium", "off_supported": true },
+      "source_url": "https://platform.openai.com/docs/guides/reasoning", "verified": "VERIFIED-DOC",
+      "note": "GPT-5.6/GPT-6 另有 reasoning.mode standard/pro 与 reasoning.context；Chat 面 function calling 仅 reasoning_effort=none 时可用"
+    },
+    {
+      "match": { "model": "gpt-5.5" },
+      "context_len": 1050000, "max_output": 128000,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort", "reasoning"], "levels": ["none", "low", "medium", "high", "xhigh"], "default": "medium", "off_supported": true },
+      "source_url": "https://platform.openai.com/docs/guides/reasoning", "verified": "VERIFIED-DOC",
+      "note": "官方模型页逐字子集"
+    },
+    {
+      "match": { "model_regex": "^gpt-5\\.[24]$" },
+      "context_len": 1050000, "max_output": 128000,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort", "reasoning"], "levels": ["none", "low", "medium", "high", "xhigh"], "default": "none", "off_supported": true },
+      "source_url": "https://platform.openai.com/docs/guides/reasoning", "verified": "VERIFIED-DOC",
+      "note": "默认 none（官方模型页逐字）"
+    },
+    {
+      "match": { "model_regex": "^gpt-5\\.[23]-codex$" },
+      "context_len": 400000, "max_output": 128000,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort", "reasoning"], "levels": ["low", "medium", "high", "xhigh"], "default": null, "off_supported": true },
+      "source_url": "https://platform.openai.com/docs/guides/reasoning", "verified": "VERIFIED-DOC",
+      "note": "codex 线 400k / max input 272000；默认档官方未载"
+    },
+    {
+      "match": { "model_regex": "^gpt-5(\\.1)?-codex(-max)?$" },
+      "context_len": 400000, "max_output": 128000,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort", "reasoning"], "levels": null, "default": null, "off_supported": true },
+      "source_url": "https://platform.openai.com/docs/guides/reasoning", "verified": "UNVERIFIED",
+      "note": "官方只说 Responses-only，模型页未列 effort 子集（research/43 §5-1 UNVERIFIED）"
+    },
+    {
+      "match": { "model": "claude-opus-5-5" },
+      "context_len": 1000000, "max_output": 128000,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "output_config"], "levels": ["low", "medium", "high", "xhigh", "max"], "default": "medium", "off_supported": false },
+      "source_url": "https://platform.claude.com/docs/en/build-with-claude/effort", "verified": "VERIFIED-DOC",
+      "note": "thinking.type=adaptive（enabled/disabled 均 400）；强制思考不可关"
+    },
+    {
+      "match": { "model": "claude-sonnet-5" },
+      "context_len": 1000000, "max_output": 128000,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "output_config"], "levels": ["low", "medium", "high", "xhigh", "max"], "default": "high", "off_supported": true },
+      "source_url": "https://platform.claude.com/docs/en/build-with-claude/effort", "verified": "VERIFIED-DOC",
+      "note": "adaptive 默开、可 disabled；temperature/top_p/top_k 非默认值会 400"
+    },
+    {
+      "match": { "model": "claude-fable-5-1" },
+      "context_len": 1000000, "max_output": 128000,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "output_config"], "levels": ["low", "medium", "high", "xhigh", "max"], "default": "high", "off_supported": false },
+      "source_url": "https://platform.claude.com/docs/en/build-with-claude/effort", "verified": "VERIFIED-DOC",
+      "note": "始终思考（拒 disabled）"
+    },
+    {
+      "match": { "model": "claude-haiku-4-5" },
+      "context_len": 200000, "max_output": 64000,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "budget", "keys": ["thinking"], "levels": [], "default": null, "off_supported": true },
+      "source_url": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking", "verified": "VERIFIED-DOC",
+      "note": "唯一预算族：thinking.type=enabled + budget_tokens（≥1024 且 < max_tokens）；无 effort；默认关"
+    },
+    {
+      "match": { "model": "claude-opus-5" },
+      "context_len": null, "max_output": null,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "output_config"], "levels": ["low", "medium", "high", "xhigh", "max"], "default": "high", "off_supported": true },
+      "source_url": "https://platform.claude.com/docs/en/build-with-claude/effort", "verified": "VERIFIED-DOC",
+      "note": "默开但可关；effort 为 xhigh/max 时拒 disabled（400）"
+    },
+    {
+      "match": { "model_regex": "^claude-opus-4\\.[78]$" },
+      "context_len": null, "max_output": null,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "output_config"], "levels": ["low", "medium", "high", "xhigh", "max"], "default": "high", "off_supported": true },
+      "source_url": "https://platform.claude.com/docs/en/build-with-claude/effort", "verified": "VERIFIED-DOC",
+      "note": "默关（Off 清单）；支持 max 与 xhigh"
+    },
+    {
+      "match": { "model": "claude-opus-4-6" },
+      "context_len": null, "max_output": null,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "output_config"], "levels": ["low", "medium", "high", "max"], "default": "high", "off_supported": true },
+      "source_url": "https://platform.claude.com/docs/en/build-with-claude/effort", "verified": "VERIFIED-DOC",
+      "note": "支持 max；官方明示不是每个支持 max 的模型都支持 xhigh"
+    },
+    {
+      "match": { "model": "claude-sonnet-4-6" },
+      "context_len": null, "max_output": null,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["thinking", "output_config"], "levels": ["low", "medium", "high", "max"], "default": "high", "off_supported": true },
+      "source_url": "https://platform.claude.com/docs/en/build-with-claude/effort", "verified": "VERIFIED-DOC",
+      "note": "支持 max、不支持 xhigh；extended thinking（budget_tokens）在该代已弃用"
+    },
+    {
+      "match": { "model": "claude-opus-4-5" },
+      "context_len": null, "max_output": null,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "budget", "keys": ["thinking", "output_config"], "levels": [], "default": null, "off_supported": true },
+      "source_url": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking", "verified": "VERIFIED-DOC",
+      "note": "Legacy：thinking.enabled + budget_tokens（4.5 及更早唯一形态）；4.5 另支持 effort 组合"
+    },
+    {
+      "match": { "model": "claude-sonnet-4-5" },
+      "context_len": null, "max_output": null,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "budget", "keys": ["thinking"], "levels": [], "default": null, "off_supported": true },
+      "source_url": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking", "verified": "VERIFIED-DOC",
+      "note": "Legacy 预算族，默关"
+    },
+    {
+      "match": { "model": "gemini-3.8-flash" },
+      "context_len": 1048576, "max_output": 65536,
+      "input": { "image": true, "pdf": true, "video": true },
+      "thinking": { "mode": "native", "keys": ["thinkingConfig"], "levels": ["low", "medium", "high"], "default": "medium", "off_supported": false },
+      "source_url": "https://ai.google.dev/gemini-api/docs/thinking", "verified": "VERIFIED-DOC",
+      "note": "thinkingLevel；minimal 对本模型报错；不可关思考（3 系）"
+    },
+    {
+      "match": { "model": "gemini-3.1-pro-preview" },
+      "context_len": 1048576, "max_output": 65536,
+      "input": { "image": true, "pdf": true, "video": true },
+      "thinking": { "mode": "native", "keys": ["thinkingConfig"], "levels": ["low", "medium", "high"], "default": "high", "off_supported": false },
+      "source_url": "https://ai.google.dev/gemini-api/docs/thinking", "verified": "VERIFIED-DOC",
+      "note": "默认 high；minimal 不支持；不可关思考"
+    },
+    {
+      "match": { "model": "gemini-2.5-pro" },
+      "context_len": 1048576, "max_output": 65536,
+      "input": { "image": true, "pdf": true, "video": true },
+      "thinking": { "mode": "budget", "keys": ["thinkingConfig"], "levels": [], "default": "dynamic", "off_supported": false },
+      "source_url": "https://ai.google.dev/gemini-api/docs/thinking", "verified": "VERIFIED-DOC",
+      "note": "thinkingBudget 128–32768；-1=动态（默认）；N/A 不能关"
+    },
+    {
+      "match": { "model": "gemini-2.5-flash" },
+      "context_len": 1048576, "max_output": 65536,
+      "input": { "image": true, "pdf": false, "video": true },
+      "thinking": { "mode": "budget", "keys": ["thinkingConfig"], "levels": [], "default": "dynamic", "off_supported": true },
+      "source_url": "https://ai.google.dev/gemini-api/docs/thinking", "verified": "VERIFIED-DOC",
+      "note": "thinkingBudget 0–24576；0=关、-1=动态；官方模态页无 PDF"
+    },
+    {
+      "match": { "model_regex": "^grok-4\\.[567]$" },
+      "context_len": 500000, "max_output": null,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort"], "levels": ["low", "medium", "high", "xhigh"], "default": "high", "off_supported": false },
+      "source_url": "https://docs.x.ai/developers/models/grok-4.7", "verified": "VERIFIED-DOC",
+      "note": "不可关思考；official：grok-4.5 不支持 xhigh，传 xhigh 视为 high"
+    },
+    {
+      "match": { "model_regex": "^mistral-(medium-3-5|small-latest)$" },
+      "context_len": null, "max_output": null,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort"], "levels": ["high", "none"], "default": null, "off_supported": true },
+      "source_url": "https://docs.mistral.ai/capabilities/reasoning/", "verified": "VERIFIED-DOC",
+      "note": "仅两档（high/none）；默认值与模态官方未载（research/43 §5-8）；magistral 系已弃用"
+    }
+  ]
+}

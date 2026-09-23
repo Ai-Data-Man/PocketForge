@@ -1138,6 +1138,11 @@ function renderModelLabel(){
   }catch{}
 }
 let providerList=[]; let curProvName=null; let modelCaps={}; // s98/llm-proxy C2: 模型能力注册表镜像（providers 帧随行；编辑经 /api/modelcaps 落桥侧单一真相源）
+// s101/W2（裁决 2026-09-23 §2.1）：来源三态标注——official=官方规范表预置（带 source_url，认错了您改）/user=你改的/guess=名字猜的
+function capsSrcOf(c){ if(!c) return 'guess'; return c.source==='official'?'official':(c.user||c.source==='user')?'user':'guess'; }
+function capsSrcLabel(c){ const s=capsSrcOf(c); return s==='official'?'（官方）':s==='user'?'（你改的）':'（猜的）'; }
+function capsSrcWord(c){ const s=capsSrcOf(c); return s==='official'?'按官方规范填的':s==='user'?'您改过的':'按名字猜的'; }
+function capsCtxText(c){ if(!c) return ''; if(c.context_len) return '上下文约'+(c.context_len>=1000?(c.context_len/1000)+'k':c.context_len)+(c.context_est?'（估计）':''); return c.context_est?'上下文未知':''; }
 function poolModels(){
   // 可选池 = 各家勾选的 models，标 (家·模型)
   const out=[];
@@ -1155,10 +1160,10 @@ function buildModelItems(filter){
   for(const o of shown){
     const el=document.createElement('div'); el.className='mi'+((cur&&cur.currentValue)===o.value&&o.activeProvider?' cur':'');
     el.textContent=o.provider+' · '+o.value;
-    const c=modelCaps[o.value]; // s98/llm-proxy C2: 能力元数据随行（能看图/上下文约值；估计值标「约」）
+    const c=modelCaps[o.value]; // s98/llm-proxy C2: 能力元数据随行（能看图/上下文；s101/W2: 官方表命中=真值，未收录=「上下文未知」）
     const bits=[];
-    if(c){ if(c.multimodal) bits.push('能看图'); if(c.context_len) bits.push('上下文约'+(c.context_len>=1000?(c.context_len/1000)+'k':c.context_len)+(c.context_est?'（估计）':'')); }
-    el.title=o.provider+' · '+o.value+((c&&!c.user)?'（猜的）':'')+(bits.length?' — '+bits.join('，'):''); // s69 P3-7: 截断的长模型名悬停可看全；s99/S2 §3.5: 未改过的条目=按名字猜的（与 context_est「（估计）」同构），改过（user）不标
+    if(c){ if(c.multimodal) bits.push('能看图'); const cx=capsCtxText(c); if(cx) bits.push(cx); }
+    el.title=o.provider+' · '+o.value+capsSrcLabel(c)+(bits.length?' — '+bits.join('，'):''); // s69 P3-7: 截断的长模型名悬停可看全；s101/W2: 三态来源标注（官方/你改的/猜的）
     el.onclick=()=>{ switchModel(o.value); $('model-pick').classList.remove('open'); };
     box.appendChild(el);
   }
@@ -2528,7 +2533,7 @@ function renderModelPool(pr){
           note('已从可选池移除 '+m); }
       }
     };
-    lab.appendChild(cb); lab.appendChild(document.createTextNode(' '+m+((modelCaps[m]&&!modelCaps[m].user)?'（猜的）':''))); // s99/S2 §3.5: 池行来源标注——按名字自动认、没改过的标「（猜的）」，改过（user）不标
+    lab.appendChild(cb); lab.appendChild(document.createTextNode(' '+m+capsSrcLabel(modelCaps[m]))); // s99/S2 §3.5 → s101/W2: 池行来源三态标注（（官方）/（你改的）/（猜的））
     const capBtn=document.createElement('button'); capBtn.className='mini'; capBtn.textContent='配置'; capBtn.title='改这个模型的配置：能不能看图、上下文多大（认错了可以改）'; // s100/T1: 「能力」更名「配置」（裁决 §2.1）；s100/QA P2-1: 档位零消费方→标题撤「思考档位」（真可改的只剩看图/上下文两字段）
     capBtn.onclick=(e)=>{ e.preventDefault(); e.stopPropagation(); openCapEditor(m); }; // s98/llm-proxy C2: 配置编辑入口（s100/T1 起=独立弹窗）
     lab.appendChild(capBtn);
@@ -2552,21 +2557,23 @@ function openCapEditor(model){
   const cap=modelCaps[model]||{};
   const t=cap.thinking||{};
   const head=document.createElement('div'); head.textContent='「'+model+'」会什么'; head.style.cssText='font-weight:600;margin-bottom:2px';
-  const headSub=document.createElement('div'); headSub.className='fnote'; headSub.textContent='看图和上下文按名字自动认的，认错了您改；改过就记住您的。'; headSub.style.marginBottom='6px';
+  const headSub=document.createElement('div'); headSub.className='fnote'; headSub.textContent='看图和上下文是'+capsSrcWord(cap)+'，认错了您改；改过就记住您的。'; headSub.style.marginBottom='6px';
   body.appendChild(head); body.appendChild(headSub);
   const mm=document.createElement('select');
   for(const [v,n] of [['true','能看图'],['false','不能看图']]){ const o=document.createElement('option'); o.value=v; o.textContent=n; mm.appendChild(o); }
   mm.value=String(!!cap.multimodal);
   const mmRow=document.createElement('div'); mmRow.style.cssText='display:flex;align-items:center;gap:8px;margin:5px 0';
   const mmLab=document.createElement('span'); mmLab.textContent='能不能看图：'; mmLab.style.minWidth='76px';
-  mmRow.appendChild(mmLab); mmRow.appendChild(mm); mmRow.appendChild(document.createTextNode('（贴照片时用得上）'));
+  mmRow.appendChild(mmLab); mmRow.appendChild(mm); mmRow.appendChild(document.createTextNode('（贴照片时用得上）'+capsSrcLabel(cap)));
   body.appendChild(mmRow);
   const ctxRow=document.createElement('div'); ctxRow.style.cssText='display:flex;align-items:center;gap:8px;margin:5px 0';
   const ctxLab=document.createElement('span'); ctxLab.textContent='上下文大约多少字：';
-  const ctx=document.createElement('input'); ctx.type='number'; ctx.min='1000'; ctx.step='1000'; ctx.placeholder='不知道就留空，按估计'; ctx.value=(cap.context_len!=null)?cap.context_len:'';
+  const ctx=document.createElement('input'); ctx.type='number'; ctx.min='1000'; ctx.step='1000'; ctx.placeholder='不知道就留空'; ctx.value=(cap.context_len!=null)?cap.context_len:'';
   ctx.style.cssText='flex:1;padding:5px 8px;border:1px solid var(--line);border-radius:6px';
   ctxRow.appendChild(ctxLab); ctxRow.appendChild(ctx);
-  if(cap.context_est){ const est=document.createElement('span'); est.className='fnote'; est.textContent='（估计）'; ctxRow.appendChild(est); } // 数字信息行+「（估计）」标注（context_est 时；ZCode contextWindow 同位）
+  // s101/W2（裁决 §2.1）：官方表命中→真值（不标估计）；未收录→「未知」（context_est 且无真值时），零编造
+  if(cap.context_est){ const est=document.createElement('span'); est.className='fnote'; est.textContent=cap.context_len!=null?'（估计）':'（未知）'; ctxRow.appendChild(est); }
+  ctxRow.appendChild(document.createTextNode(capsSrcLabel(cap)));
   body.appendChild(ctxRow);
   const lvRow=document.createElement('div'); lvRow.style.margin='5px 0 2px';
   const lvLab=document.createElement('span'); lvLab.textContent='顶栏快慢：';
@@ -2577,9 +2584,11 @@ function openCapEditor(model){
   const actPr=providerList.find(p=>p&&p.active)||null; // 成员在池判据=活跃池（registryFamilies 同面=顶栏 gradient 同源；无活跃档退回全池）
   const pool=new Set(); for(const p of (actPr?[actPr]:providerList)) for(const mn of ((p&&p.models)||[])) pool.add(mn);
   const fam=!!(t.variant&&typeof t.variant==='object'&&pool.has(t.variant.fast)&&pool.has(t.variant.deep));
+  // s101/W2（裁决 §2.2）：档位值域取官方真值（t.levels，非我们的五档常数）——官方未收录=诚实「不确定」话术
+  const lvl=Array.isArray(t.levels)?t.levels:[];
   lvVal.textContent=fam?'快一点 / 想深点（更准，稍慢）——系统按模型自动配对的'
-    :(t.mode==='native'?'跟这个模型自带的快慢档走——开一个对话，顶栏就能看到'
-    :'这个模型想多深它自己定，顶栏没有快慢选择');
+    :(t.unknown||t.mode==null?'官方还没收录这个模型的思考档位，不确定——开个对话看顶栏':(lvl.length?'官方档位：'+lvl.map(v=>THINK_LABELS[v]||v).join(' / ')
+    :(t.mode==='switch'?'这个模型只有开/关两态，没有深浅档':(t.mode==='budget'?'这个模型按预算调深浅，不是固定档':(t.mode==='native'?'跟这个模型自带的快慢档走——开一个对话，顶栏就能看到':'这个模型想多深它自己定，顶栏没有快慢选择')))));
   lvRow.appendChild(lvLab); lvRow.appendChild(lvVal);
   body.appendChild(lvRow);
   if(fam){ const unh=document.createElement('div'); unh.className='fnote'; unh.style.cssText='margin:2px 0 4px'; unh.textContent='想解除快/深配对：把其中一个模型从可选池勾掉'; body.appendChild(unh); } // 逃生口：勾掉成员=家族即解散（thinkFamily/registryFamilies 既有语义零改）

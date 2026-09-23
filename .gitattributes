@@ -1,6 +1,7 @@
 # autocrlf=true 下 checkout 会把模板 smudge 成 CRLF，打死探针的 \n 锚点（s78c 实锤）
 *.tpl.js text eol=lf
 *.tpl.html text eol=lf
+forge/conf/model-presets.json text eol=lf
 chat.tpl.html text eol=lf
 tools/e2e/*.js text eol=lf
 tools/e2e/*.sh text eol=lf
