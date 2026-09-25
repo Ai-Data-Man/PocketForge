@@ -1017,6 +1017,24 @@ const THINK_KEY_WRITERS = {
     EnableThinking: (j, v) => { j.EnableThinking = v !== 'none' && v !== 'off'; }, // 腾讯 hunyuan 布尔同构（research/42 §4）
 };
 const THINK_DEFAULT_KEY = 'reasoning_effort'; // 我方链路恒走 OpenAI 兼容面（providers.json host + /llmproxy/v1/chat/completions）
+// s102/qa-rework P2-1（QA 复审 4e 真红）：布尔门关思考象限——thinking.keys 含 enable_thinking/EnableThinking 且
+// off_supported=true（qwen3.8 系深混排三键、kimi-k3 阿里二元组等）。官方规范 none→enable_thinking=False
+// （research/42 §1.B 逐字），「关思考」意图命中该象限=只发布尔 false 键、**不发 reasoning_effort**（发任何档
+// 都是显式开思考；深混排族 thinking_budget 本就未实现不发）。修前被 levels 值域门就近收敛 low=语义反向。
+function thinkOffViaGate(model) {
+    const cap = syncModelCaps().caps[model];
+    const t = cap && cap.thinking;
+    if (!t || t.off_supported !== true) return false;
+    const ks = Array.isArray(t.keys) ? t.keys : [];
+    return ks.indexOf('enable_thinking') >= 0 || ks.indexOf('EnableThinking') >= 0;
+}
+function writeThinkKeys(j, model, keys, eff) { // 统一写侧（三消费点同源）：关思考命中布尔门象限→只落布尔 false
+    if ((eff === 'off' || eff === 'none') && thinkOffViaGate(model)) {
+        for (const k of keys) if (k === 'enable_thinking' || k === 'EnableThinking') THINK_KEY_WRITERS[k](j, eff);
+        return;
+    }
+    for (const k of keys) THINK_KEY_WRITERS[k](j, eff);
+}
 // 官方兼容映射（research/40 §1.F 逐字表 + §1.E 收敛表）：非原生串 → 原生档；未列=原样
 const W1_EFFORT_ALIASES = { minimal: 'low', light: 'low', medium: 'high', xhigh: 'high', ultra: 'max', none: 'off', disabled: 'off', off: 'off' };
 function thinkingKeysOf(model) { // 该模型认的键名：条目声明 thinking.keys 优先，未声明=官方 OpenAI 面主键
@@ -1060,13 +1078,16 @@ function applyParamRoute(j, model) { // →true=改写过 body（调用方据此
     const gateKey = keys.some(k => k === 'enable_thinking' || k === 'EnableThinking');
     const stripIn = !!effortIn && keys.indexOf('reasoning_effort') < 0;
     if (eff) {
-        if (eff !== effortIn || gateKey || stripIn) { delete j.reasoning_effort; for (const k of keys) THINK_KEY_WRITERS[k](j, eff); changed = true; }
+        if (eff !== effortIn || gateKey || stripIn) { delete j.reasoning_effort; writeThinkKeys(j, model, keys, eff); changed = true; }
         if (applySamplingGate(j, eff)) changed = true;
     } else if (effortIn) { delete j.reasoning_effort; changed = true; } // 越界档真停发（W3 语义：用户改窄值域后不得泄漏原值）
     return changed;
 }
 function normalizeEffort(model, effort) { // 档位归一：越界档就近收敛/停发——防上游 400（GLM 5.3 对 off/medium 报错 code 1210，research/40 §1.A）
     if (typeof effort !== 'string' || !effort) return '';
+    // s102/qa-rework 微修 a（QA P4-2）：大小写变体终试——'None'（关思考意图）不再因大小写停发漂移成上游默认档，
+    // 'High' 等域内值变体按小写语义归一。递归至多一层（toLowerCase 幂等）；UI 值域恒小写，仅 API 直打可触发。
+    if (effort !== effort.toLowerCase()) return normalizeEffort(model, effort.toLowerCase());
     // 原生值域 s101/W2 起=官方预置表声明（caps 条目 thinking.levels；旧硬编码名单已删——单一真相源）
     // s101/W3：用户改过的 levels 即此读点——改档位集，出站可发档位集合随之变化（消费面闭环，裁决 §2.2）
     const cap = syncModelCaps().caps[model];
@@ -1078,7 +1099,14 @@ function normalizeEffort(model, effort) { // 档位归一：越界档就近收�
     const v = W1_EFFORT_ALIASES[effort] || effort; // 官方兼容映射（research/40 §1.F 逐字表：minimal/light→low、medium/xhigh→high、ultra→max、none/disabled→off）
     if (!levels.length) return v === 'off' ? 'none' : v; // 无官方值域（未收录/无档位族）：off 用各厂通行关思考词 none，其余原样交上游校验（不猜）
     if (levels.includes(v)) return v;
-    if (v === 'off') return levels.includes('none') ? 'none' : (levels.includes('low') ? 'low' : ''); // 关思考：优先官方 off 词（DeepSeek=none），不可关者（GLM）落 low
+    // s102/qa-rework P2-1：关思考优先官方 off 词（DeepSeek=none）→ 布尔门象限（keys 含 enable_thinking/EnableThinking
+    // 且 off_supported=true）返回 'off' 交写侧落 enable_thinking=False（research/42 §1.B），不被 levels 值域门就近
+    // 收敛 low；不可关者（GLM，off=false）仍落 low。
+    if (v === 'off') {
+        if (levels.includes('none')) return 'none';
+        if (thinkOffViaGate(model)) return 'off';
+        return levels.includes('low') ? 'low' : '';
+    }
     return ''; // 其余越界档：不发（落上游默认档）
 }
 function capsDefaultEffort(model) { // s101/W3（裁决 §2.2）：新会话首档=条目 thinking.default（用户改过即随动）；无声明/越界=空（不发帧=维持 goose 默认）
@@ -1195,7 +1223,13 @@ function validModelCapsPatch(model, patch, poolSet) {
         else { delete cap.user_fields; delete cap.user; cap.source = ('preset_rev' in cap) ? 'official' : 'guess'; } // 官方表收录=official；未收录=guess（诚实）
         return { ok: true, cap };
     }
-    if (!uf.size) return { ok: false, err: '参数不合法' };
+    // s102/qa-rework P3-1（QA 复审 4d 真红）：拒收门从顶层键级下沉到叶子字段级——payload 未携带任何可写子字段
+    // （{thinking:{}}/{input:{}} 与 patch:{} 同为零写操作）统一拒，user 条目凭存量 user_fields 落 ok:true 的旁路
+    // 封死；文案沿用同族「参数不合法」。放在各字段块之后：携带子字段但值非法者已在上方块返回专属人话错因。
+    if (!('context_len' in patch) && !('max_output' in patch) && !('multimodal' in patch)
+        && !(patch.input && typeof patch.input === 'object' && !Array.isArray(patch.input) && ['image', 'pdf', 'video'].some(k => k in patch.input))
+        && !(patch.thinking && typeof patch.thinking === 'object' && !Array.isArray(patch.thinking) && ['levels', 'default'].some(k => k in patch.thinking))
+    ) return { ok: false, err: '参数不合法' };
     cap.user_fields = CAP_USER_FIELDS.filter(f => uf.has(f)); // 字段级 user 标记（稳定顺序=CAP_USER_FIELDS 序）
     cap.user = true;   // 兼容旧读法（整条 user 仍真，但刷新判据已按 user_fields 逐字段）
     cap.source = 'user'; // s101/W2（裁决 §2.1）：来源三态标注 official|guess|user
@@ -3462,7 +3496,7 @@ function handleLlmProxy(req, res) {
                         // s101/W3（裁决 §2.2）：客户端原档名先剥净——normalizeEffort 是唯一闸门；用户改 narrow 了值域后，
                         // 越界档（如 max）必须真停发（此前 eff='' 时 j.reasoning_effort 原值泄漏=假旋钮）
                         delete j.reasoning_effort;
-                        if (eff) for (const k of thinkingKeysOf(target)) THINK_KEY_WRITERS[k](j, eff);
+                        if (eff) writeThinkKeys(j, target, thinkingKeysOf(target), eff); // s102/qa-rework P2-1：统一写侧（布尔门关思考只落 false 键）
                         applySamplingGate(j, eff);
                         j.model = target;
                         body = Buffer.from(JSON.stringify(j), 'utf8');
@@ -4633,7 +4667,7 @@ function llmStreamOnce({ host, key, model, maxTokens, sysP, um, onDelta }) {
                 // s101/W1: 与代理链同源——键与档位由模型声明决定（thinkingKeysOf/normalizeEffort），不再硬写 reasoning_effort。
                 // 本链语义=「尽量别想」（解释/优化要快），但 GLM 5.3 不容 off（传 none 官方 400 code 1210）→ 归一后就近落 low。
                 const offEff = normalizeEffort(model, 'off');
-                if (useRE && offEff) for (const k of thinkingKeysOf(model)) THINK_KEY_WRITERS[k](bodyObj, offEff);
+                if (useRE && offEff) writeThinkKeys(bodyObj, model, thinkingKeysOf(model), offEff); // s102/qa-rework P2-1：统一写侧（布尔门族「尽量别想」=enable_thinking=false 才是真关）
                 const body = JSON.stringify(bodyObj);
                 let sse = false, buf = '', full = '', over = false, finRsn = null;
                 const finish = () => {

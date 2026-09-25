@@ -198,7 +198,8 @@ if (Test-Path $regCmd) {
         # goose-scheduler 化身闩在 pre-Ready 的 faucet 上遇 converge taskkill 即 Skipped 终态
         # （rel151=17d0d43 与 iat18 两实录；机制/幂等性与 pg 同族，research/39 §4.2 + tmp/s102-sched-rca.md）；
         # nats/faucet/chat-bridge 无 depends_on，对该机制结构性免疫不收。维护判据：新增 daemon 带
-        # depends_on 必须同时进本组。
+        # depends_on 必须同时进本组；反之删 yaml 里的 daemon 键需同步删组（残留键=「未受理」+2s 复核+10s
+        # 观察窗三重补跑噪音，qa s102 P4-5 建议）。
         $daemonPatch = @('pg', 'goose-scheduler')
         foreach ($k in ($oneshotKeys + $daemonPatch)) {
             $e = @($procs | Where-Object { $_.name -eq $k })

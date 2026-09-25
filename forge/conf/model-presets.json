@@ -1,5 +1,5 @@
 {
-  "rev": "2026-09-25.2",
+  "rev": "2026-09-25.3",
   "note": "官方规范预置表（s101/W2，裁决 docs/verdicts/2026-09-23-thinking-native-params-official-presets.md §2.1）。数据逐条来自 docs/research/40（GLM/DeepSeek 官方）、42（中国 8 厂 26 模型）、43（国际 5 厂 19 模型）的官方规范事实表，只搬不编。位置=conf 只读资源（先例：conf/templates/chat.tpl.html 由桥运行时 ROOT/conf 直读、conf/process-compose.yaml 启动时直读）——产品自有静态数据，随包发布、随版本覆盖，无需 bootstrap 物化（物化只为 bin/ 生成物与 data/ 运行时物服务，两者语义不同）。",
   "schema": {
     "match": "host_contains?（host 子串，(host,model) 二元组优先层）+ model（精确串）| model_regex（锚定正则，厂系默认层）。research/42 §7.D 硬证据：同一模型跨平台能力/默认不同，故 host 层先于 model 层。",
@@ -76,7 +76,7 @@
       "input": { "image": false, "pdf": false, "video": false },
       "thinking": { "mode": "native", "keys": ["enable_thinking", "thinking_budget", "reasoning_effort"], "levels": ["low", "medium", "xhigh"], "default": "xhigh", "off_supported": true },
       "source_url": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions", "verified": "VERIFIED-DOC",
-      "note": "reasoning_effort 与 thinking_budget 互斥（同设报错）；档位↔预算官方换算 low=4096 / medium=16384 / xhigh=262144，均未设时预算 131072；none→enable_thinking=false"
+      "note": "reasoning_effort 与 thinking_budget 互斥（同设报错）；档位↔预算官方换算 low=4096 / medium=16384 / xhigh=262144，均未设时预算 131072；none→enable_thinking=false；底稿 §1.A 适用清单与 §1.B 映射存在张力、取 §1.B 侧"
     },
     {
       "match": { "model": "qwen3.8-max" },
@@ -84,7 +84,7 @@
       "input": { "image": false, "pdf": false, "video": false },
       "thinking": { "mode": "native", "keys": ["enable_thinking", "thinking_budget", "reasoning_effort"], "levels": ["low", "medium", "xhigh"], "default": "xhigh", "off_supported": true },
       "source_url": "https://help.aliyun.com/zh/model-studio/model-qwen3-max", "verified": "VERIFIED-DOC",
-      "note": "思考模式最大输出 32768、最大思维链 81920"
+      "note": "思考模式最大输出 32768、最大思维链 81920；底稿 §1.A 适用清单与 §1.B 映射存在张力、取 §1.B 侧"
     },
     {
       "match": { "model": "qwen3.8-omni-flash" },
@@ -100,7 +100,7 @@
       "input": { "image": false, "pdf": false, "video": false },
       "thinking": { "mode": "native", "keys": ["enable_thinking", "thinking_budget", "reasoning_effort"], "levels": ["low", "medium", "xhigh"], "default": "xhigh", "off_supported": true },
       "source_url": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions", "verified": "VERIFIED-DOC",
-      "note": "3.8 族成员（research/42 §1.B 行逐字含本模型）：默认 xhigh、可选 xhigh/medium/low、max/high→xhigh、minimal→low、none→enable_thinking=false；reasoning_effort 与 thinking_budget 互斥同设报错（换算 low=4096/medium=16384/xhigh=262144）；上下文/输出/模态底稿无本模型行（宁 null）"
+      "note": "3.8 族成员（research/42 §1.B 行逐字含本模型）：默认 xhigh、可选 xhigh/medium/low、max/high→xhigh、minimal→low、none→enable_thinking=false；reasoning_effort 与 thinking_budget 互斥同设报错（换算 low=4096/medium=16384/xhigh=262144）；上下文/输出/模态底稿无本模型行（宁 null）；底稿 §1.A 适用清单与 §1.B 映射存在张力、取 §1.B 侧"
     },
     {
       "match": { "model": "qwen3.8-27b" },
@@ -108,7 +108,7 @@
       "input": { "image": false, "pdf": false, "video": false },
       "thinking": { "mode": "native", "keys": ["enable_thinking", "thinking_budget", "reasoning_effort"], "levels": ["low", "medium", "xhigh"], "default": "xhigh", "off_supported": true },
       "source_url": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions", "verified": "VERIFIED-DOC",
-      "note": "3.8 族成员（research/42 §1.B 行逐字含本模型）：默认 xhigh、可选 xhigh/medium/low、max/high→xhigh、minimal→low、none→enable_thinking=false；reasoning_effort 与 thinking_budget 互斥同设报错（换算 low=4096/medium=16384/xhigh=262144）；上下文/输出/模态底稿无本模型行（宁 null）"
+      "note": "3.8 族成员（research/42 §1.B 行逐字含本模型）：默认 xhigh、可选 xhigh/medium/low、max/high→xhigh、minimal→low、none→enable_thinking=false；reasoning_effort 与 thinking_budget 互斥同设报错（换算 low=4096/medium=16384/xhigh=262144）；上下文/输出/模态底稿无本模型行（宁 null）；底稿 §1.A 适用清单与 §1.B 映射存在张力、取 §1.B 侧"
     },
     {
       "match": { "model": "qwen3-max" },
