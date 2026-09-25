@@ -229,7 +229,8 @@ if (require.main === module) {
         ck('R1e 前端 401 文本无健康帧 → 既有 Key 分支保持', g.n === 1 && g.text.includes('这家服务商的 Key 没配上或不对'));
     }
 
-    // 10) s95/F-3: 回合中断终态收口——桥发中断错误帧 / ws.onclose 之后，未收尾的工具卡必须落到失败态（修前永久 in_progress）
+    // 10) s95/F-3: 回合中断终态收口——桥发中断错误帧 / ws.onclose 之后，未收尾的工具卡必须收口（修前永久 in_progress）
+    //     s103/S9 随迁：断线≠失败——收口态从「失败」翻红改中性「连接断了，这一步的结果不确定」+ _status=unknown（桥/栈重启场景未失败，不许撒谎）
     {
         const r10 = runFrames([gitCall, gitLive, gitDone, failDone]); // call_00=completed / call_01=failed（对照：已收尾卡不许动）
         const gz = r10.cards.get('call_00_git'), fz = r10.cards.get('call_01_fail');
@@ -241,11 +242,11 @@ if (require.main === module) {
         const sz = r10.cards.get('call_20_stuck'), sSt = sz.querySelector('.st');
         ck('F3a 在飞工具卡 = 非终态（前置对照，否则本组无判别力）', sSt.textContent === 'in_progress' && !sSt.className.includes('err'));
         r10.zombieToolcards();
-        ck('F3b 未收尾工具卡置失败态（人话「失败」+ .st err，修前永久 in_progress）', sSt.textContent === '失败' && sSt.className === 'st err' && sz._status === 'failed');
+        ck('F3b 未收尾工具卡置中性收口态（s103/S9：人话「连接断了，这一步的结果不确定」+不翻红无「失败」字）', sSt.textContent === '连接断了，这一步的结果不确定' && sSt.className === 'st' && sz._status === 'unknown');
         ck('F3c 已完成的卡零触碰（对照）', gSt.className === gBefore.cls && gSt.textContent === gBefore.txt && gz._status === 'completed');
         ck('F3d 已失败的卡零触碰（幂等/对照）', fSt.className === fBefore.cls && fSt.textContent === fBefore.txt && fz._status === 'failed');
         r10.zombieToolcards();
-        ck('F3e 二次调用幂等（不重复改写/不崩）', sSt.textContent === '失败' && sSt.className === 'st err');
+        ck('F3e 二次调用幂等（不重复改写/不崩，中性态同样幂等）', sSt.textContent === '连接断了，这一步的结果不确定' && sSt.className === 'st');
         ck('F3f 模板两处接线在场：错误帧分支 + 断线重连分支（静态钉，撤线即红）', /if\(m\.sys==='error'\)\{[\s\S]{0,600}?zombieToolcards\(\);/.test(html) && /if\(busy\)\{ setBusy\(false\); endStream\(\); zombieToolcards\(\); \}/.test(html));
     }
 

@@ -1597,11 +1597,11 @@ txt.onkeydown=e=>{
 stopBtn.onclick=()=>{ wssend({type:'cancel'}); setBusy(false); zombiePermcards();
   addInfo('⏹ 已让它停下，进行到一半的步骤会就地结束；想继续就再说一句。'); // s78 P2-3a：停止动作即时交代（Nielsen #1 动作后状态确认）
   if(pendingQueue.length){ rollbackQueue('你刚让它停了，排队没发出去的话已放回，想发再点一次发送。'); } }; // s78 P2-3c：用户停止≠自动续发——排队话放回输入框，控制权留给人
-function zombieToolcards(){ // s95/F-3：回合中断的终态兜底——桥报「断了」或断线重连时，还没收尾的工具卡置失败态（否则永久停在「干活中」，用户看不出发生过什么）。已收尾的卡不动
+function zombieToolcards(){ // s95/F-3：回合中断的终态兜底——桥报「断了」或断线重连时，还没收尾的工具卡不能永久停在「干活中」（用户看不出发生过什么）。已收尾的卡不动；s103/S9: 断线≠失败——桥/栈重启场景下并未失败，翻红「失败」是撒谎，改中性收口
   for(const c of toolCards.values()){
     if(c._status==='completed'||c._status==='failed') continue;
-    c._status='failed';
-    const st=c.querySelector('.st'); if(st){ st.className='st err'; st.textContent='失败'; }
+    c._status='unknown';
+    const st=c.querySelector('.st'); if(st){ st.className='st'; st.textContent='连接断了，这一步的结果不确定'; }
   }
 }
 function zombiePermcards(){ // s78 P2-3b：回合已死的审批卡视觉收口——置灰禁点+撤掉待触发的超时兜底定时器；不发协议帧（回合已死，点了也不算数）

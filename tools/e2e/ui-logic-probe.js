@@ -381,6 +381,7 @@ const thinkDraftShowSrc = grabSoft(/function thinkDraftShow\(on\)\{[\s\S]+?\n\}/
 const thinkDiscardSrc = grabSoft(/function thinkDiscard\(\)\{[\s\S]+?\n\}/, 'thinkDiscard');
 const peekOnclickSrc = grabSoft(/\$\('think-peek'\)\.onclick=[^\n]+/, 'think-peek onclick');
 const THINK_BUF_MAXSrc = grabSoft(/const THINK_BUF_MAX=\d+;/, 'THINK_BUF_MAX');
+const zombieToolcardsSrc = grabSoft(/function zombieToolcards\(\)\{[\s\S]+?\n\}/, 'zombieToolcards');
 function grabSoft(re, label) { const m = html.match(re); if (!m) { console.error('SOFT-NOT-FOUND: ' + label + '（修前红形态：HEAD 无此函数）'); return ''; } return m[0]; }
 function mkTEl(id) { return { id, textContent: '', style: { display: '' }, onclick: null, scrollTop: 0, scrollHeight: 0 }; }
 function buildBusy(sel) {
@@ -497,6 +498,23 @@ CUR = 'busy';
     ck('回合重开面板为空（stop 后 setBusy(true) 重置）', had && b.buf() === '' && peek().style.display === 'none' && draft().style.display === 'none');
     b.api.setBusy(false);
     ck('收忙同弃置（setBusy(false) 出口）', had && b.buf() === '' && draft().style.display === 'none');
+}
+// —— busy S9（s103/S9 断线中性收口）：zombieToolcards「失败」翻红→中性态，不撒谎；已收尾的卡不动 ——
+{
+    if (!zombieToolcardsSrc) { SEC = 'busy S9'; ck('zombieToolcards 存在（s95 起既有函数）', false); }
+    else {
+        const mkCard = status => {
+            const st = { className: 'st', textContent: status === 'in_progress' ? '干活中' : (status === 'completed' ? '完成' : '失败') };
+            return { _status: status, querySelector: sel => sel === '.st' ? st : null };
+        };
+        const inprog = mkCard('in_progress'), done = mkCard('completed'), failed = mkCard('failed');
+        const z = new Function('toolCards', `${zombieToolcardsSrc} return zombieToolcards;`)(new Map([['t1', inprog], ['t2', done], ['t3', failed]]));
+        z();
+        SEC = 'busy S9';
+        ck('断线收口=中性态「连接断了，这一步的结果不确定」：不翻红不出现「失败」', inprog.querySelector('.st').textContent === '连接断了，这一步的结果不确定' && !inprog.querySelector('.st').className.includes('err') && !inprog.querySelector('.st').textContent.includes('失败'), JSON.stringify(inprog.querySelector('.st')));
+        ck('进行中卡 _status→unknown（结果未知，explain 喂料同真值）', inprog._status === 'unknown');
+        ck('已收尾的卡不动（completed/failed 既有语义保持）', done._status === 'completed' && done.querySelector('.st').textContent === '完成' && failed._status === 'failed' && failed.querySelector('.st').textContent === '失败');
+    }
 }
 CUR = 'kbd';
 
