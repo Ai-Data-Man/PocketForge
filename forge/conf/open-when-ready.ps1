@@ -204,9 +204,11 @@ if (Test-Path $regCmd) {
         foreach ($k in ($oneshotKeys + $daemonPatch)) {
             $e = @($procs | Where-Object { $_.name -eq $k })
             if ($daemonPatch -contains $k) {
-                # 「非 Running」判据落在 is_running：pc 对健康 daemon 的 status 恒报 Launching 非 Running
-                # （dev 栈/arm2 健康基线逐字同形，research/39）；Skipped/Pending/Error/缺失时 is_running=false
-                if ($e.Count -eq 0 -or $e[0].is_running -ne $true) { $flagged += $k }
+                # 旗标只收终态集（Skipped/Error/缺失）——Pending=依赖等待自愈中，不是终态：三臂 N1 实录
+                # converge 重启窗内 daemon 仍 Pending（等 faucet 再 Ready ~5-10s）被「非 is_running 即旗标」
+                # 误打补跑噪音（restarts 恒 0 无害，tmp/s102-sched-arms/report.md 🟡）；健康 daemon 的
+                # status 恒 Launching + is_running=true，Skipped/Error/缺失才真没人管（research/39）。
+                if ($e.Count -eq 0 -or @('Skipped', 'Error') -contains $e[0].status) { $flagged += $k }
             } elseif ($e.Count -gt 0 -and @('Skipped', 'Pending', 'Error') -contains $e[0].status) { $flagged += $k }
         }
         if ($flagged.Count -gt 0) {
