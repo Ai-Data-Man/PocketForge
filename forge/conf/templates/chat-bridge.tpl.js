@@ -134,6 +134,10 @@ function readJson(f, dft) { try { return JSON.parse(FSS.readFileSync(f, 'utf8').
 //   读侧兼容：statsRestore/statsBump 跨天/pgUsageBackfill 对新键均有旧文件默认补齐，缺键不炸。
 const STATS_DIR = path.join(ROOT, 'data', 'stats');
 const S26_ERR_RE = /Ran into this error|Server error|rate limit|timed? out|ECONN|fetch failed|could not connect|network error/i; // 与前端 endStream(s26) 同款上游故障正则
+// s103/S8（裁决 2026-09-25 §3.3-②）：错误报告头冠正则——goose/服务商上游故障以「正文整体即错误报告」随正常 turn 结束返回
+// （活测实录 tmp/s103-e3-s8/arms-red2.log：SSE 错误体被 goose 包成 "Ran into this error: … Rate limit exceeded …" 整轮文本；
+// 中途断流=残正文裸收零包装）。成功回合正文提及 rate limit/timed out 不再判定（F5② 误报根）；401 走 reject 路（同实录）不在此门。
+const S26_ERR_WRAP_RE = /^\s*(Ran into this error|Network error|Server error)/i;
 const stats = { date: '', sessionsCreated: 0, messages: 0, errors: 0, errorsByType: { upstream: 0, websocket: 0, other: 0, upstreamByKind: { unauthorized: 0, rate: 0, timeout: 0, server: 0 } }, permissionCards: { shown: 0, approved: 0, denied: 0, timeout: 0, allow_always: 0, allow_once: 0, reject_once: 0, reject_always: 0 }, artifactsGenerated: 0, retryAfterError: 0, switchModel: { ok: 0, fail: 0 }, rescues: { triggered: 0, guardHit: 0 }, healthEvents: { recovered: 0, degraded: 0 }, upgradeEvents: { start: 0, ok: 0, fail: 0, lastSeen: '' }, assetsCount: { last: 0, max: 0 }, providerTests: { ok: 0, fail: 0 }, updated: '' };
 function classifyUpstream(txt) { // s50e: 上游错误细分（401=Key 没配好，429=限流，超时，其余=服务端）；取第一个命中
     const s = String(txt || '');
@@ -1506,7 +1510,7 @@ function onAcpData(chunk) {
                     const txt = turnText.get(sid) || '';
                     turnText.delete(sid);
                     busySids.delete(sid); // 主线5：防御性收口（ACP 模式 goose 从不发 stop，见 sendTurn 注释；发了也不许漏登记）
-                    if (S26_ERR_RE.test(txt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(txt)); }
+                    if (S26_ERR_WRAP_RE.test(txt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(txt)); } // s103/S8: 判定面随 resolve 路收窄到错误报告头冠（成功 stop 零计数）
                 }
             } catch {}
             // s98/llm-proxy: config_option_update 通知同过跨界翻译点（goose 会话档/模型变化时主动推的 configOptions
@@ -1599,11 +1603,12 @@ function sendTurn(ws, sid, text, allowRescue) {
     busySids.add(sid); // 主线5：turn 在飞登记（resolve/reject/write 失败三路都收）
     waiting.set(id, { ws, resolve: () => {
         busySids.delete(sid);
-        // s50e 修复：goose 上游故障以 agent_message_chunk 文本随正常 turn 结束返回（session/prompt 正常 resolve，非 reject），
-        // 故在 turn 结束处对当轮累计文本跑 s26 正则（:349 的 stop 通知分支 goose ACP 模式从不发，为死代码）
+        // s50e 修复：goose 上游故障以 agent_message_chunk 文本随正常 turn 结束返回（session/prompt 正常 resolve，非 reject）
+        // s103/S8（裁决 §3.3-②）：成功 stop 的回合不再进 upstream 计数、不触发健康复检——判定面收窄到错误报告头冠
+        // S26_ERR_WRAP_RE（正文提及关键词的成功回复=误报根，fp-probe 实证 upstream+1+60s 复检回执）；上游真实状态码/错误体由 llmproxy 全请求行（S4）承载
         const txt = turnText.get(sid) || '';
         turnText.delete(sid);
-        if (S26_ERR_RE.test(txt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(txt)); healthFailDebounce(ws); sidErrAt.set(sid, Date.now()); if (sidErrAt.size > 500) sidErrAt.delete(sidErrAt.keys().next().value); } // s99/t3-D: 错误标记（与 errorsByType 同源同路；上限同 sidBorn 先例）
+        if (S26_ERR_WRAP_RE.test(txt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(txt)); healthFailDebounce(ws); sidErrAt.set(sid, Date.now()); if (sidErrAt.size > 500) sidErrAt.delete(sidErrAt.keys().next().value); } // s99/t3-D 错误标记同门随窄（成功回合非错误）
         ws.send({ agent: { method: 'stop', params: { sessionId: sid, reason: 'end' } } });
     }, reject: (e) => {
         busySids.delete(sid);

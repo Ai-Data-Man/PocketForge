@@ -27,4 +27,15 @@ C.strictEqual(classifyUpstream('fetch failed: ECONNREFUSED'), 'server', 'ECONN �
 // 4) 误报防线：正常回复不命中
 C.ok(!S26_ERR_RE.test('今天天气不错，我们聊聊网络吧'), '正常中文回复不误报');
 C.ok(!S26_ERR_RE.test('Let me show you how the network topology looks'), '含 network 的正常英文不误报');
-console.log('assert-s50e-neterr: 9/9 PASS');
+// 5) s103/S8 判定面收窄：错误报告头冠正则（成功 stop 回合摘出 upstream 计数/复检/💡卡的判别门）
+const wrapM = src.match(/const S26_ERR_WRAP_RE = (\/.+\/i);/);
+C.ok(wrapM, 'S26_ERR_WRAP_RE 定义存在（s103/S8）');
+if (wrapM) {
+    const W = eval(wrapM[1]);
+    C.ok(W.test('Ran into this error: Server error: Rate limit exceeded, please retry.'), 'goose 头冠整轮错误文本命中（SSE 错误体臂保持）');
+    C.ok(W.test('Network error: connection reset by peer.'), 'Network error 头冠命中');
+    C.ok(!W.test('好的，我们来聊聊。先说 rate limit：服务商限流时请求会被暂时拒绝。再说 timed out 也是常见现象。'), 'fp 复刻文本（关键词随文、无头冠）不命中——成功回合零判定');
+    C.ok(!W.test('正常回答正文。另外提一句 Ran into this error 不在开头。'), '头冠必须居首：正文中部提及不判');
+    C.ok(W.test('\n  Ran into this error: after leading blanks'), '前导空白容（\s* 门，桥/前端同款）');
+}
+console.log('assert-s50e-neterr: 9/9+5/5 PASS');

@@ -203,14 +203,17 @@ if (require.main === module) {
 
     // 9) research/26 R1/R3: endStream 错误卡读健康帧三档——stale-model=换模型出路（等也不会好）；down+key=Key 口径；
     //    down=补时间预期（R3）；无帧/ok=原链不动。提取前端 endStream 原文跑，健康帧=healthSync 维护的 lastHealthFrame 桩注入
+    //    s103/S8 随迁：endStream 增 abn 参（成功回合=默认 normal 路，错误报告头冠门控；断线=true 路保持原关键词判定）。
+    //    提取正则容忍 (abn) 缺席——修前模板（旧签名）也能提取=修前红可跑（S8a 对旧代码 FAIL 实证判别力）。
     {
-        const mES = html.match(/function endStream\(\)\{ if\(streamEl\)\{[\s\S]*?\n\} \}/);
+        const mES = html.match(/function endStream\((?:abn)?\)\{ if\(streamEl\)\{[\s\S]*?\n\} \}/);
         if (!mES) die('NOT FOUND: endStream（模板结构漂移，先改探针）');
         const mkES = new Function('streamEl', 'mdRender', 'msgButtons', 'chat', 'lastOrig', 'providerList', 'lastHealthFrame', 'document', 'wssend', 'addInfo', 'pendingRetry', 'busy', 'txt', 'submit', mES[0] + '\nreturn endStream;');
-        const runES = (streamText, hf) => {
+        const runES = (streamText, hf, abn) => {
             const streamEl = el('div'); streamEl.dataset = {}; streamEl.textContent = streamText;
             const chat = el('div');
-            mkES(streamEl, t => t, () => el('div'), chat, '帮我做个表', [], hf, { createElement: t => el(t) }, () => {}, () => {}, null, false, { value: '' }, () => {})();
+            const fn = mkES(streamEl, t => t, () => el('div'), chat, '帮我做个表', [], hf, { createElement: t => el(t) }, () => {}, () => {}, null, false, { value: '' }, () => {});
+            fn(abn);
             const info = (chat.children || []).filter(c => (c.className || '').split(/\s+/).includes('info'));
             return { text: (info[0] || {}).textContent || '', n: info.length };
         };
@@ -227,6 +230,15 @@ if (require.main === module) {
         ck('R1d 前端健康 ok → 原链不动（ok 态不劫持错误文本）', e2.n === 1 && e2.text.includes('等一两分钟') && !e2.text.includes('一般几分钟内恢复'));
         const g = runES('Ran into this error: 401 Unauthorized: api key invalid', null);
         ck('R1e 前端 401 文本无健康帧 → 既有 Key 分支保持', g.n === 1 && g.text.includes('这家服务商的 Key 没配上或不对'));
+        // s103/S8（裁决 2026-09-25 §3.3-②）：💡卡判定面收窄断言——成功回合零卡/错误头冠仍卡/断线路径保持
+        const fp = runES('好的，我们来聊聊。先说 rate limit：服务商限流时请求会被暂时拒绝。再说 timed out：请求超时也是常见现象。这两个词就介绍到这里。', null);
+        ck('S8a fp 复刻：成功回复含 rate limit/timed out → 零💡卡（修前红锚：旧关键词判定即 FAIL）', fp.n === 0, 'n=' + fp.n);
+        const sse = runES('Ran into this error: Server error: The server had an error while processing your request. Rate limit exceeded, please retry. Sorry about that!.\n\nPlease retry if you think this is a transient or recoverable error.', { state: 'down' });
+        ck('S8b SSE 错误体（goose 头冠整轮文本）→ 💡卡仍画（真错误臂人话卡保持，arms 实录同形文本）', sse.n === 1 && sse.text.includes('看起来是大模型服务商那边暂时不通'), JSON.stringify(sse.text).slice(0, 60));
+        const brk = runES('先说 rate limit：服务商限流时请求会被暂时拒绝。', null, true);
+        ck('S8c 断线收尾（abn=true）保持原关键词判定（网络断臂不动）', brk.n === 1, 'n=' + brk.n);
+        const mid = runES('正常回答正文开头。另外补一句 Network error 这个词不在开头。', null);
+        ck('S8d 头冠必须居首：正文中部提及错误词不判（收窄判别力）', mid.n === 0, 'n=' + mid.n);
     }
 
     // 10) s95/F-3: 回合中断终态收口——桥发中断错误帧 / ws.onclose 之后，未收尾的工具卡必须收口（修前永久 in_progress）
@@ -247,7 +259,7 @@ if (require.main === module) {
         ck('F3d 已失败的卡零触碰（幂等/对照）', fSt.className === fBefore.cls && fSt.textContent === fBefore.txt && fz._status === 'failed');
         r10.zombieToolcards();
         ck('F3e 二次调用幂等（不重复改写/不崩，中性态同样幂等）', sSt.textContent === '连接断了，这一步的结果不确定' && sSt.className === 'st');
-        ck('F3f 模板两处接线在场：错误帧分支 + 断线重连分支（静态钉，撤线即红）', /if\(m\.sys==='error'\)\{[\s\S]{0,600}?zombieToolcards\(\);/.test(html) && /if\(busy\)\{ setBusy\(false\); endStream\(\); zombieToolcards\(\); \}/.test(html));
+        ck('F3f 模板两处接线在场：错误帧分支 + 断线重连分支（静态钉，撤线即红；s103/S8 随迁：断线收尾传 endStream(true)=异常路径保持关键词判定）', /if\(m\.sys==='error'\)\{[\s\S]{0,600}?zombieToolcards\(\);/.test(html) && /if\(busy\)\{ setBusy\(false\); endStream\(true\); zombieToolcards\(\); \}/.test(html));
     }
 
     console.log('toolcard-frames-probe PASS=' + pass + ' FAIL=' + fail);

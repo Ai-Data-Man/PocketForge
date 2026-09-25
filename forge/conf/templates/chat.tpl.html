@@ -746,7 +746,7 @@ function connect(){
     // s94-b2 F-11: 断线即收口忙碌态——turn 的 stop 帧只会发给发起时的那个（已死）ws 对象，重连的新连接永远
     // 等不到它；不收口则「小 forge 正在干活」跨回合/跨会话永久挂着（ia2 实录第二形态）。数据无损（服务端
     // 落库），收口=诚实态：可重发可切会话，做完的回合重开即回放。
-    if(busy){ setBusy(false); endStream(); zombieToolcards(); } // s95/F-3: 断线同样收口未完成的工具卡（桥被重启杀就是这一路）
+    if(busy){ setBusy(false); endStream(true); zombieToolcards(); } // s95/F-3: 断线同样收口未完成的工具卡（桥被重启杀就是这一路）；s103/S8: endStream(true)=异常收尾路径，💡卡保持原关键词判定（网络断臂不动）
   };
   ws.onmessage=e=>{
     const m=JSON.parse(e.data);
@@ -1336,7 +1336,7 @@ function demoteLiveUser(){ // 主线5（research/21 §6-3）：直播轮 goose �
   const us=chat.querySelectorAll('.msg.user'); const last=us[us.length-1];
   if(last&&!last.dataset.gmid){ const b=last.querySelector('.msgbtn[data-act="rollback"]'); if(b&&!b.disabled){ b.disabled=true; b.title='这条消息还没入档——重新打开这个对话后，就能撤回它了。'; } }
 }
-function endStream(){ if(streamEl){
+function endStream(abn){ if(streamEl){
   streamEl.dataset.live='0';
   const txtRaw = streamEl.textContent; // 改名避免遮蔽全局输入框 txt（s50e 重发闭包要读 txt.value）
   streamEl.innerHTML = mdRender(txtRaw);
@@ -1344,7 +1344,10 @@ function endStream(){ if(streamEl){
   // s25: 大白话报错转译——上游/服务商故障时给小白一句能懂的提示；s50e: 401=Key 没配好，指引去设置；其余给「换备用线路」一键
   // research/26 R1: 错误卡先读最近健康帧（告警条同源）——stale-model=换模型出路（等也不会好）；down+key=Key 口径；down=不通+时间预期（R3）；
   // 无态/ok=原链不动。同因同回合与告警条并存互指：条在=条是常驻锚，卡给出路（裁决 S3「文案互指去重」错误卡侧落地）
-  if(/Ran into this error|Server error|rate limit|timed? out|ECONN|fetch failed|could not connect|network error/i.test(txtRaw)){
+  // s103/S8（裁决 2026-09-25 §3.3-②）：💡卡判定面收窄——成功回合（stop 收尾/回放/工具卡过渡）只在「错误报告头冠」整轮文本时
+  // 画卡（SSE 错误体被 goose 包成 "Ran into this error: …" 整轮返回，人话卡保持）；正文提及 rate limit/timed out 的成功回复零卡
+  // （F5② 误报根）。abn=异常收尾（断线路径 endStream(true)）保持原关键词判定（网络断臂不动）。
+  if(abn? /Ran into this error|Server error|rate limit|timed? out|ECONN|fetch failed|could not connect|network error/i.test(txtRaw) : /^\s*(Ran into this error|Network error|Server error)/i.test(txtRaw)){
     const orig=lastOrig||txtRaw; // s50e: 重发原文（提示词注入前的用户输入；原 dataset.orig 写在 addMsg 之后恒为死代码，改用模块级 lastOrig）
     const el=document.createElement('div'); el.className='msg agent info';
     const hst=lastHealthFrame&&lastHealthFrame.state; // healthSync 维护，ok 态也会更新——无帧/ok 走原链
