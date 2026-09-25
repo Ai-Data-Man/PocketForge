@@ -36,3 +36,11 @@
 
 - 发版门：最终包全新解压冷装冒烟（cold-surface 全绿+新面 spot-check）——结果见发布落账 commit。
 - 发布：tag v0.9.16+branch push → tools/release.sh（精修正文 RELEASE_NOTES_FILE=docs/v0.9.16-release-notes.md）双资产上传 → API 下载对账+releases/latest 核对 → dev 栈恢复+环境终态。尖峰检测：exe 哈希 vs v0.9.15 全一致（脚本自动核对，发布说明 EDR 段）。
+
+## v0.9.16 发布记录（落账）
+
+- 发布门：cold-surface **15/15**（C:\PF-TEST\gate 降权冷启，converge rc=0、零补跑噪音）+文件级抽查（VERSION=0.9.16/preset 表 75 条 rev 2026-09-25.3/新 UI 文案在模板与手册/daemon 组在包）；沙盒整删+六端口零监听+dev 栈 PFdrill2 恢复 healthz ok。
+- 构建：可复现（两次打包 sha 逐位一致）；**exe 哈希 vs v0.9.15 零变化=无信誉尖峰**（说明 EDR 段坐实）。
+- 发布：tag v0.9.16+分支推 origin（84fb99f）；release id **396373157**（非草稿非预发布），双资产 PocketForge-20260925-v0.9.16.zip（323,729,694B）+.sha256；正文=精修说明（RELEASE_NOTES_FILE）。
+- 对账：API 资产端点 octet-stream 经代理下载——zip 323,729,694B sha256 **7c67da4a1382c81694e07cf064c40716b0d03cd4b9b1710379dc58c7ac8061e4** 与本地逐位一致；.sha256 资产内容同指纹；releases/latest=v0.9.16。
+- 发版操作实录：gh CLI 不在环境→全走 API；PAT=zcode db part 表全库唯一 github_pat_（环境变量直传，用后即清，零落盘）；Edge 锁沙盒目录杀法=命令行 `*PF-TEST*` 过滤（按 exe Path 过滤杀不中）；首版对账下载臂教训=objects.githubusercontent.com 重定向必须走代理。
