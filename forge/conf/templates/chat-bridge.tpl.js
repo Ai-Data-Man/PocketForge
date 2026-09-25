@@ -1133,6 +1133,10 @@ function validModelCapsPatch(model, patch, poolSet) {
         }
         for (const k of ['source', 'preset_rev', 'preset_match', 'source_url', 'verified', 'official_levels']) { if (k in fresh) cap[k] = fresh[k]; else delete cap[k]; } // 来源随官方表（未收录→guess），与 syncModelCaps merge 同源
     }
+    // s102/QA P4-1：空 patch（没带任何可写字段）统一拒——此前已是 user 的条目凭存量 user_fields 落到 ok:true
+    // （幂等重写同一份 user_fields）；与非 user 条目的空 patch 拒因（下方 !uf.size 门）同文案。reset 载荷豁免
+    // （其合法性由上方 reset 块自校：单发/字段白名单/没改过即拒）。
+    if (!('reset' in patch) && !('context_len' in patch) && !('max_output' in patch) && !('multimodal' in patch) && !('input' in patch) && !('thinking' in patch)) return { ok: false, err: '参数不合法' };
     if ('context_len' in patch) {
         const v = patch.context_len;
         if (!capIntOk(v)) return { ok: false, err: '上下文长度要填正整数（不知道就留空）' };
