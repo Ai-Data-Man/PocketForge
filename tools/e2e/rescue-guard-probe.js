@@ -2,9 +2,12 @@
 // 注入 mock（waiting/nextId/turnText/acp/statsBump/healthCache）后逐场景断言。零网络、零进程副作用。
 // 覆盖：null/字符串/空对象 reject 载荷（null 守卫）、救援去重、ws.alive 门、首轮门、非 NF 失败三档人话（s76 遗留⑦：未归类/unauthorized/S26 命中）
 //       + 错误卡读健康态三档（research/26 R1：stale-model/down+key/down）+ 非 ok 健康态失败复检钩（s78f P3-4）
-//       + S26_ERR_RE 对 goose 五型错误文案穿透断言（research/26 R4；s78f：型1+型2 逐型锁）。
+//       + S26_ERR_RE 对 goose 五型错误文案穿透断言（research/26 R4；s78f：型1+型2 逐型锁）
+//       + S18 救援守卫随 sid 重生清除（research/46 修①/S10：churn 号段复用的新会话不继承上一世救援记录，D4 死局消除）
+//       + S19 switch_model doSet 死绑定自愈接线静态钉（research/46 修②/S10：SESSION_NF→spawnSetNew 代开重绑+单次守卫）。
+// 红绿：PF_TPL 指向改前模板必红（S18b 守卫继承死局复现 / S19 三钉缺分支）——s103/S10 随迁既有格式。
 const fs = require('fs');
-const src = fs.readFileSync(__dirname + '/../../forge/conf/templates/chat-bridge.tpl.js', 'utf8');
+const src = fs.readFileSync(process.env.PF_TPL || __dirname + '/../../forge/conf/templates/chat-bridge.tpl.js', 'utf8');
 const start = src.indexOf('const SESSION_NF_RE');
 const end = src.indexOf('async function init()');
 if (start < 0 || end < 0 || end <= start) { console.log('FAIL: extraction anchors not found'); process.exit(1); }
@@ -42,7 +45,7 @@ function makeEnv(s26re, classify, health) { // s76c: 可注入 S26 正则/归类
     const factory = new Function('waiting', '__nid', 'turnText', 'sidErrAt', 'S26_ERR_RE', 'classifyUpstream', 'statsBump', 'acp', 'console', 'ROOT', 'wsSession', 'sessionClients', 'busySids', 'healthFailDebounce', 'bindWs', 'healthCache',
         // s95/F-3: 提取块新增 abortInflightTurns（它读的 busySids/turnText/sessionClients 已是本工厂的入参，零额外声明）
         // s99/t3-D: 提取块新增 sidErrAt 错误标记（同 busySids 手法：真 Map 直传）
-        thinkSrc + '\n' + block.replace(/nextId\+\+/g, '__nid()') + '\nreturn { sendTurn, rescueSession, abortInflightTurns, bindWs, noteThinkOptions, acpSetThink };');
+        thinkSrc + '\n' + block.replace(/nextId\+\+/g, '__nid()') + '\nreturn { sendTurn, rescueSession, abortInflightTurns, bindWs, noteThinkOptions, acpSetThink, noteSessionBorn };');
     // s78: 桥端 bindWs 提升为共享助手（提取块外）——桩内以 wsSession/sessionClients 复刻同语义
     const bindWs = (ws, sid) => { env.wsSession.set(ws, sid); if (!env.sessionClients.has(sid)) env.sessionClients.set(sid, new Set()); env.sessionClients.get(sid).add(ws); };
     const api = factory(env.waiting, () => env.nextId++, env.turnText, env.sidErrAt, env.S26_ERR_RE, env.classifyUpstream, k => env.statsBump(k), env.acp, env.console, 'C:/PF-ROOT', env.wsSession, env.sessionClients, env.busySids, () => env.healthCalls++, bindWs, env.healthCache);
@@ -244,6 +247,26 @@ const NF = { message: 'resource_not_found', data: 'Session not found: SID' };
     ck('S17f 无订阅者的在飞回合不崩、仍计入作废数', crashed17 === null && n17b === 1 && env2.busySids.size === 0);
     ck('S17g 桥模板 acp exit 分支已接线补发终态帧（静态钉：接线被撤即红）', /child\.on\('exit', c => \{[\s\S]{0,700}?abortInflightTurns\(TURN_BROKEN_TEXT\)/.test(src));
     ck('S17h 终态帧形状=既有错误卡通道 {sys,text}（零新协议）', JSON.stringify(Object.keys(wsA.sends[0]).sort()) === '["sys","text"]' && typeof wsA.sends[0].text === 'string' && wsA.sends[0].sys === 'error');
+}
+// S18（research/46 修①/S10）：救援守卫随 sid 重生清除——churn 号段回退让救援新会话复用刚死的 sid 字符串，
+// noteSessionBorn 出生即清 rescuedSids；prompt 再撞 NF 仍走救援而非「通道已失效」死局（D4）。红对照：改前模板
+// （noteSessionBorn 不清守卫）→ 第二次 NF 命中继承的守卫 → 人话死端 + 零新 session/new
+{
+    const { env, api } = makeEnv(); const wsA = mkWs();
+    api.sendTurn(wsA, 'R1', 'hi', true);
+    env.waiting.get(env.acp.stdin.writes[0].id).reject({ ...NF, data: 'Session not found: R1' });
+    ck('S18a 首次 NF 触发救援（session/new ×1）', newsCount(env) === 1);
+    env.waiting.get(env.acp.stdin.writes[1].id).resolve({ sessionId: 'R1', modes: [1], configOptions: {} }); // 救援会话复用同号 R1（重生）
+    api.sendTurn(wsA, 'R1', 'hi again', true);
+    env.waiting.get(env.acp.stdin.writes[env.acp.stdin.writes.length - 1].id).reject({ ...NF, data: 'Session not found: R1' });
+    ck('S18b 重生后守卫不继承：再撞 NF 仍救援（session/new ×2）且零「通道已失效」死局文案', newsCount(env) === 2 && !errsOf(wsA).some(t => t.indexOf('通道已失效') >= 0));
+}
+// S19（research/46 修②/S10）：switch_model doSet 死绑定自愈接线静态钉——SESSION_NF 命中走 spawnSetNew（既有
+// 「无活动会话」代开路径原样抽出共用）代开重绑；单次守卫=只有死绑定首绑带 heal 旗标，代开会话上的 doSet 不带（防二段自愈循环）
+{
+    ck('S19a doSet SESSION_NF 自愈分支在场（error 整帧形态→spawnSetNew）', /healNf && res && res\.error && SESSION_NF_RE\.test/.test(src));
+    ck('S19b 死绑定首绑 dispatch 带 heal 旗标（doSet(sid, true) else spawnSetNew）', /if \(sid\) \{ doSet\(sid, true\); \} else spawnSetNew\(\);/.test(src));
+    ck('S19c 代开会话 doSet 不带 heal 旗标（单次守卫）', /doSet\(res\.sessionId\);\n/.test(src) && !/doSet\(res\.sessionId, true\)/.test(src));
 }
 console.log('rescue-guard-probe: PASS=' + pass + ' FAIL=' + fail);
 process.exit(fail ? 1 : 0);

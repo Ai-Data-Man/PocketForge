@@ -1568,6 +1568,7 @@ function noteSessionBorn(sid) {
     if (!sid) return;
     sidBorn.set(sid, Date.now());
     if (sidBorn.size > 500) sidBorn.delete(sidBorn.keys().next().value);
+    rescuedSids.delete(sid); // research/46 修①(S10)：号段复用让 sid「重生」——出生即清上一世救援记录，防 D4 守卫继承死局（原注释前提「sid 跨桥生命周期不重复」被 churn 推翻，见 :1588 注释）
 }
 function acpCloseSession(sid) {
     if (closePending.has(sid)) return;
@@ -5322,7 +5323,7 @@ function handleClient(ws, msg) {
                     if ((lastSpawnEnv || '').split('\0')[1] === fam.alias) return spawnFamNew();
                     return hotRestartProvider('切换').then(spawnFamNew).catch(e => { noteSwitch(false, fromModel, msg.model, '切换失败: ' + e.message); ws.send({ sys: 'error', text: '切换失败: ' + e.message }); }); // s99/t3-B + s103/S5
                 }
-                const doSet = (sessionId) => { // 非家族目标：真名直写（家族已在上方两路分流——别名过不了 goose 目录校验）
+                const doSet = (sessionId, healNf) => { // 非家族目标：真名直写（家族已在上方两路分流——别名过不了 goose 目录校验）
                     const id = nextId++;
                     acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/set_config_option', params: { sessionId, configId: 'model', value: gooseModelName(target, msg.model) } }) + '\n');
                     waiting.set(id, { ws, resolve: (res) => {
@@ -5335,13 +5336,12 @@ function handleClient(ws, msg) {
                             ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, configOptions: res.configOptions }); // s98/think: 前端据此刷新思考力度三态（会话内切模型不走 session/new→subscribed）
                             noteSwitch(true, fromModel, msg.model); // s99/t3-B: 真名 set_config_option 成功
                         }
+                        else if (healNf && res && res.error && SESSION_NF_RE.test(String(res.error.message || '') + ' ' + String(res.error.data || ''))) return spawnSetNew(); // research/46 修②(S10)：死绑定自愈——sid 复用出生即死，error 整帧（无 configOptions）撞 SESSION_NF 时丢弃死绑定走代开重绑（healNf 单次，代开会话不再二段自愈——同 rescue 单次守卫语义）
                         else { noteSwitch(false, fromModel, msg.model, '切换失败，试试重开对话'); ws.send({ sys: 'error', text: '切换失败，试试重开对话' }); } // s99/t3-B
                     }});
                 };
-                const sid = wsSession.get(ws);
-                if (sid) { doSet(sid); }
-                else {
-                    // 无活动会话（桥重启丢状态/新窗口）：自动开新会话再切，用户无感
+                // 无活动会话（桥重启丢状态/新窗口）与修②死绑定共用：自动开新会话再切，用户无感（模式同 rescueSession，零新协议零新 WS 消息）
+                const spawnSetNew = () => {
                     const nid = nextId++;
                     wsPendingNew.set(ws, nid); // s78 P1-A 代际守卫同款：此 session/new 与页面加载在飞的 subscribe(null) 互相接管
                     waiting.set(nid, { ws, resolve: (res) => {
@@ -5360,7 +5360,9 @@ function handleClient(ws, msg) {
                     }});
                     flushPendingCloses(); // s80g: 新会话可能复用 pending 中的 sid——close 先落笔保今日复用语义
                     acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: nid, method: 'session/new', params: { cwd: ROOT, mcpServers: [] } }) + '\n');
-                }
+                };
+                const sid = wsSession.get(ws);
+                if (sid) { doSet(sid, true); } else spawnSetNew();
             } else {
                 for (const pr of list) pr.active = pr.name === target.name;
                 writeProviders(list);
