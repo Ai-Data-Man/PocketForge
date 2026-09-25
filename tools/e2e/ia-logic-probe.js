@@ -317,6 +317,18 @@ sandbox.installedAllV = [];
     sandbox2.schedChip = 'paused';
     sandbox2.schedPaint();
     ck('E6 chip 非全且结果空=「没有暂停的定时任务。」+翻页器清空', /没有暂停的定时任务。/.test(els2['sched-list'].innerHTML) && els2['sched-pager']._children.length === 0);
+
+    // ---- S 组（s103/S2 思考草稿面板 IA 检查单 R1/R2/R4，裁决 2026-09-25 §3.1）----
+    // R1：草稿面板属输入区忙碌域（#typing 容器内），不进聊天消息域（#chat 内零新增）；R2：无界内容=32KB 尾窗机制内建；
+    // R4：母句（从哪来/怎么变/变了什么三问可答）作为面板说明原文在场。
+    {
+        const iTyping = html.indexOf('id="typing"'), iInput = html.indexOf('id="inputbar"'), iDraft = html.indexOf('id="think-draft"'), iChat = html.indexOf('id="chat"');
+        const chatBlock = html.slice(iChat, iTyping); // #chat 与 #typing 之间即聊天消息域
+        ck('S1(R1) 草稿面板在 #typing 忙碌域内（非 #chat 消息域；域内零草稿 DOM）', iTyping >= 0 && iDraft > iTyping && iDraft < iInput && !chatBlock.includes('think-draft') && !chatBlock.includes('think-buf'));
+        ck('S2(R4) 母句原文在场（从哪来/怎么变/变了什么三问可答，作面板说明）', /这是它干活前边想边说的草稿——从哪来：模型自己边想边写的（原文可能是英文）；怎么变：想到哪更到哪，只露最后一段，想完开口说话就自动收起；变了什么：收起后不留在对话里，对话只留正式回答。/.test(html));
+        ck('S3(R2) 32KB 尾窗机制内建（THINK_BUF_MAX=32768，出生即建非触发式）', /const THINK_BUF_MAX=32768;/.test(html));
+        ck('S4(R1) 默认折叠：peek/面板初始均 display:none（HTML 内联初始态）', /<button type="button" id="think-peek" style="display:none">/.test(html) && /<div id="think-draft" style="display:none">/.test(html));
+    }
     console.log('==============================');
     console.log('ia-logic-probe: PASS=' + pass + ' FAIL=' + fail);
     process.exit(fail ? 1 : 0);

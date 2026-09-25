@@ -376,25 +376,37 @@ const busyPhraseSrc = grabSoft(/function busyPhrase\(\)\{[\s\S]+?\n\}/, 'busyPhr
 const busyPaintSrc = grabSoft(/function busyPaint\(\)\{[^\n]+\}/, 'busyPaint');
 const noteTurnPhaseSrc = grabSoft(/function noteTurnPhase\(ph\)\{[^\n]+\}/, 'noteTurnPhase');
 const THINK_LABELSSrc = grabSoft(/const THINK_LABELS=\{[^\n]+\}/, 'THINK_LABELS');
+const thoughtFeedSrc = grabSoft(/function thoughtFeed\(u\)\{[\s\S]+?\n\}/, 'thoughtFeed');
+const thinkDraftShowSrc = grabSoft(/function thinkDraftShow\(on\)\{[\s\S]+?\n\}/, 'thinkDraftShow');
+const thinkDiscardSrc = grabSoft(/function thinkDiscard\(\)\{[\s\S]+?\n\}/, 'thinkDiscard');
+const peekOnclickSrc = grabSoft(/\$\('think-peek'\)\.onclick=[^\n]+/, 'think-peek onclick');
+const THINK_BUF_MAXSrc = grabSoft(/const THINK_BUF_MAX=\d+;/, 'THINK_BUF_MAX');
 function grabSoft(re, label) { const m = html.match(re); if (!m) { console.error('SOFT-NOT-FOUND: ' + label + '（修前红形态：HEAD 无此函数）'); return ''; } return m[0]; }
-function mkTEl(id) { return { id, textContent: '', style: { display: '' }, onclick: null }; }
+function mkTEl(id) { return { id, textContent: '', style: { display: '' }, onclick: null, scrollTop: 0, scrollHeight: 0 }; }
 function buildBusy(sel) {
-    if (!setBusySrc || !curThinkLabelSrc || !busyPhraseSrc || !busyPaintSrc || !noteTurnPhaseSrc || !THINK_LABELSSrc) return { api: { setBusy() {}, noteTurnPhase() {}, busyPaint() {} }, els: {}, typing: { style: {} }, tick() {}, text: () => '' }; // 修前红：任一新函数缺失=整组行为断言红（no-op 桩走过不炸）
-    const els = { 'typing-text': mkTEl('typing-text'), 'typing': mkTEl('typing'), 'think': sel };
+    const s1ok = setBusySrc && curThinkLabelSrc && busyPhraseSrc && busyPaintSrc && noteTurnPhaseSrc && THINK_LABELSSrc;
+    const s2ok = thoughtFeedSrc && thinkDraftShowSrc && thinkDiscardSrc && peekOnclickSrc && THINK_BUF_MAXSrc;
+    if (!s1ok) return { api: { setBusy() {}, noteTurnPhase() {}, busyPaint() {}, thoughtFeed() {}, thinkDiscard() {}, thinkDraftShow() {} }, els: {}, typing: { style: {} }, tick() {}, text: () => '', buf: () => '', chatAdds: () => 1 }; // 修前红：任一新函数缺失=整组行为断言红（no-op 桩走过不炸）
+    const els = { 'typing-text': mkTEl('typing-text'), 'typing': mkTEl('typing'), 'think': sel, 'think-peek': mkTEl('think-peek'), 'think-draft': mkTEl('think-draft'), 'think-buf': mkTEl('think-buf') };
+    els['think-peek'].style.display = 'none'; els['think-draft'].style.display = 'none'; // 初始折叠（同 HTML 内联）
     const typing = els['typing'], send = { disabled: false }, stopBtn = { style: {} };
-    let fakeNow = 1000000, live = [];
-    const api = new Function('$', 'typing', 'send', 'stopBtn', 'document', 'notifyDone', 'stopNotify', 'setInterval', 'clearInterval', 'Date', `
-        let busyPhase='', busyT0=0, busyTick=null;
+    let fakeNow = 1000000, live = [], chatAdds = 0;
+    const chat = { appendChild: () => { chatAdds++; } };
+    const s2body = s2ok ? `${THINK_BUF_MAXSrc}\n        ${thoughtFeedSrc}\n        ${thinkDraftShowSrc}\n        ${thinkDiscardSrc}\n        ${peekOnclickSrc}`
+        : 'const THINK_BUF_MAX=32768;\n        function thoughtFeed(u){}\n        function thinkDraftShow(on){}\n        function thinkDiscard(){}'; // S2 缺席=S2 断言红（no-op 桩走过不炸）
+    const api = new Function('$', 'typing', 'send', 'stopBtn', 'document', 'notifyDone', 'stopNotify', 'setInterval', 'clearInterval', 'Date', 'chat', `
+        let busyPhase='', busyT0=0, busyTick=null, thinkBuf='', thinkDraftOn=false;
         ${THINK_LABELSSrc}
         ${curThinkLabelSrc}
         ${busyPhraseSrc}
         ${busyPaintSrc}
         ${noteTurnPhaseSrc}
+        ${s2body}
         ${setBusySrc}
-        return { setBusy, noteTurnPhase, busyPaint };
+        return { setBusy, noteTurnPhase, busyPaint, thoughtFeed, thinkDraftShow, thinkDiscard, buf: () => thinkBuf };
     `)(id => { if (!els[id]) throw new Error('no stub #' + id); return els[id]; }, typing, send, stopBtn, { hidden: false }, () => {}, () => {},
-        fn => { live.push(fn); return 1; }, () => { live.length = 0; }, { now: () => fakeNow });
-    return { api, els, typing, tick: () => { fakeNow += 1100; live.forEach(f => f()); }, text: () => els['typing-text'].textContent };
+        fn => { live.push(fn); return 1; }, () => { live.length = 0; }, { now: () => fakeNow }, chat);
+    return { api, els, typing, tick: () => { fakeNow += 1100; live.forEach(f => f()); }, text: () => els['typing-text'].textContent, buf: () => api.buf(), chatAdds: () => chatAdds };
 }
 CUR = 'busy';
 {
@@ -452,6 +464,39 @@ CUR = 'busy';
         am('hi', 'agent');
         ck('写答案阶段忙碌条在场：addMsg 不再藏 typing（显隐唯一出口=setBusy）', typingStub.style.display === 'block');
     }
+}
+// —— busy S2（s103/S2 思考草稿折叠面板）：有帧才出现/默认折叠/尾随滚动/32KB 尾窗/首 message_chunk 收起弃置/不插聊天流 ——
+{
+    const mkSel = o => Object.assign({ value: '', disabled: false, style: { display: '' } }, o);
+    const tframe = t => ({ sessionUpdate: 'agent_thought_chunk', content: { text: t } }); // 页内分发形态：onAgentEvent 先取 p.params.update 再进分支
+    const b = buildBusy(mkSel({ value: 'max' }));
+    SEC = 'busy S2';
+    b.api.setBusy(true);
+    const peek = () => b.els['think-peek'], draft = () => b.els['think-draft'], buf = () => b.els['think-buf'];
+    const click = () => { const h = peek().onclick; if (typeof h === 'function') h(); }; // S2 缺席=onclick 未接线，安全跳过让断言红
+    ck('默认折叠+无帧不出现：开忙 peek 隐藏', peek().style.display === 'none');
+    b.api.thoughtFeed(tframe('先想第一段。'));
+    ck('首 thought 帧后 peek 出现、面板仍折叠（仅 glm 系有帧时出现）', peek().style.display === '' && draft().style.display === 'none' && b.text() === '它正在尽全力想 · 已 0 秒');
+    ck('喂帧零新增聊天流节点（R1：草稿不插聊天消息域）', b.chatAdds() === 0 && b.buf().length > 0);
+    click();
+    ck('点开：面板显示+缓冲绘制+toggle 翻「收起思考草稿 ▴」', draft().style.display === 'flex' && buf().textContent === b.buf() && peek().textContent === '收起思考草稿 ▴');
+    b.api.thoughtFeed(tframe('又想了一段，接着写。'));
+    ck('展开态尾随：缓冲增长+滚到尾', buf().textContent === b.buf() && b.buf().endsWith('又想了一段，接着写。') && buf().scrollTop === buf().scrollHeight);
+    click();
+    ck('再点收起：面板藏+toggle 回「看看它在想什么 ▸」', draft().style.display === 'none' && peek().textContent === '看看它在想什么 ▸');
+    b.api.thoughtFeed(tframe('X'.repeat(512) + '|TAIL-END|'));
+    for (let i = 0; i < 79; i++) b.api.thoughtFeed(tframe('Y'.repeat(512)));
+    click(); // 展开重绘（折叠期只更缓冲不动 DOM）
+    ck('32KB 显示缓冲上限：灌 40KB+ 后缓冲/DOM ≤32768 且保尾弃头', b.buf().length <= 32768 && buf().textContent === b.buf() && buf().textContent.length <= 32768 && b.buf().endsWith('Y'.repeat(512)) && !b.buf().includes('|TAIL-END|'), 'buf=' + b.buf().length);
+    const had = draft().style.display === 'flex' && peek().style.display === '' && b.buf().length > 0; // S2 在场性前置（S1 代码上恒 false → 收口族断言红）
+    click(); // 收起，进入收口语境
+    b.api.thoughtFeed(tframe('开口前最后一段。'));
+    b.api.thinkDiscard(); b.api.noteTurnPhase('write'); // 首 message_chunk 分支语义
+    ck('首 message_chunk：面板收起+内容弃置+peek 隐藏', had && draft().style.display === 'none' && b.buf() === '' && buf().textContent === '' && peek().style.display === 'none' && b.text() === '它在写答案 · 已 0 秒');
+    b.api.setBusy(false); b.api.setBusy(true);
+    ck('回合重开面板为空（stop 后 setBusy(true) 重置）', had && b.buf() === '' && peek().style.display === 'none' && draft().style.display === 'none');
+    b.api.setBusy(false);
+    ck('收忙同弃置（setBusy(false) 出口）', had && b.buf() === '' && draft().style.display === 'none');
 }
 CUR = 'kbd';
 

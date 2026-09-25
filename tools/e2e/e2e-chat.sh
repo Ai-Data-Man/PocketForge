@@ -221,8 +221,8 @@ ck "backup chain: pg restored Ready after state-B" $PR
 rm -f "$FORGE/data/pg-dumps/"pg-1999-*.sql
 
 # ---------- 14) UI 逻辑桩测（s69 转正自 tmp p210-211-kbd-check + p22-close-path-check；详见 tools/e2e/ui-logic-probe.js） ----------
-# kbd 34 ck + 模态关闭路径 10 ck + 提示词面板/Tab 菜单 11 ck（用户五主线批2 e12：插入不发送/name 兜底/点外收起 isConnected 守卫/Tab 唤起与 IME 守卫）+ 忙碌条 busy ck（s103/S1：阶段/秒计时/档位人话/deepseek 诚实降级/分支接线），秒级无桥无网络；提取锚点=稳定标记正则（模板漂移显式 NOT FOUND，不误报）
-rc=0; node "$ROOT/tools/e2e/ui-logic-probe.js" > /tmp/ui-logic-probe.log 2>&1 || rc=$?; ck "ui-logic probe 70 ck (kbd 35 + close-path 10 + prompts 11 + busy 14)" $rc
+# kbd 34 ck + 模态关闭路径 10 ck + 提示词面板/Tab 菜单 11 ck（用户五主线批2 e12：插入不发送/name 兜底/点外收起 isConnected 守卫/Tab 唤起与 IME 守卫）+ 忙碌条 busy ck（s103/S1：阶段/秒计时/档位人话/deepseek 诚实降级/分支接线；s103/S2：草稿面板折叠/尾随/32KB 尾窗/收口弃置），秒级无桥无网络；提取锚点=稳定标记正则（模板漂移显式 NOT FOUND，不误报）
+rc=0; node "$ROOT/tools/e2e/ui-logic-probe.js" > /tmp/ui-logic-probe.log 2>&1 || rc=$?; ck "ui-logic probe 80 ck (kbd 35 + close-path 10 + prompts 11 + busy 24)" $rc
 grep -E "^ui-logic-probe" /tmp/ui-logic-probe.log || true
 rm -f /tmp/ui-logic-probe.log
 

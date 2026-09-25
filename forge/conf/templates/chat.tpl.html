@@ -198,6 +198,11 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 @keyframes tdot{0%,60%,100%{transform:translateY(0);opacity:.35}30%{transform:translateY(-4px);opacity:1}}
 /* s61 遗留：系统设置减少动态效果时停掉三点跳动，保留静态提示文本 */
 @media (prefers-reduced-motion: reduce){.typing .tdots i{animation:none}*{transition:none!important;animation:none!important}}
+/* s103/S2: 思考草稿折叠面板（忙碌域内，R1 不进聊天消息域；默认折叠；32KB 尾窗见 THINK_BUF_MAX） */
+.think-peek{margin-left:10px;background:none;border:none;padding:0;color:var(--acc);font-size:.78rem;cursor:pointer;text-decoration:underline}
+#think-draft{margin-top:6px;max-width:640px;max-height:38vh;display:flex;flex-direction:column;border:1px solid var(--acc-line);border-radius:8px;background:var(--panel-2)}
+#think-draft .td-note{padding:5px 10px;color:var(--mut);font-size:.7rem;border-bottom:1px solid var(--acc-line)}
+#think-buf{margin:0;padding:8px 10px;overflow:auto;white-space:pre-wrap;word-break:break-word;color:var(--mut-2);font-size:.72rem}
 /* s33: 开场快捷任务 chips */
 .quickwrap{display:flex;flex-wrap:wrap;gap:8px;padding:4px 16px 8px;align-self:flex-start}
 .quickchip{padding:8px 14px;border:1.5px solid var(--acc);border-radius:18px;background:var(--acc-soft);color:var(--acc);font-size:.8rem;cursor:pointer;transition:all .12s}
@@ -366,7 +371,7 @@ details.tz[open]>summary::before{content:'▾ '}
     <button class="icobtn" id="rside-toggle" title="工作区文件">📁</button>
   </div>
   <div id="chat"></div>
-  <div class="typing" id="typing" role="status" style="display:none"><span id="typing-text">小 forge 正在干活</span><span class="tdots"><i></i><i></i><i></i></span></div><!-- s103/S1: 文案进独立 span（忙碌条三要素=阶段+秒计时+当前档人话，随帧刷新） -->
+  <div class="typing" id="typing" role="status" style="display:none"><span id="typing-text">小 forge 正在干活</span><span class="tdots"><i></i><i></i><i></i></span><button type="button" id="think-peek" style="display:none">看看它在想什么 ▸</button><!-- s103/S2: 思考草稿折叠入口（仅有 thought 帧时出现） --><div id="think-draft" style="display:none"><div class="td-note">这是它干活前边想边说的草稿——从哪来：模型自己边想边写的（原文可能是英文）；怎么变：想到哪更到哪，只露最后一段，想完开口说话就自动收起；变了什么：收起后不留在对话里，对话只留正式回答。</div><pre id="think-buf"></pre></div></div><!-- s103/S1: 文案进独立 span（忙碌条三要素=阶段+秒计时+当前档人话，随帧刷新）；S2: 草稿面板属忙碌域，不插聊天流（R1） -->
   <div id="inputbar">
     <input id="txt" placeholder="想让我做什么？@ 引用文件或数据表，Tab=常用话术" autocomplete="off" aria-label="聊天输入框">
     <button id="prompts-btn" title="我的提示词：存住常用话术，一点就用" aria-label="打开我的提示词">📖</button>
@@ -1236,10 +1241,37 @@ function busyPhrase(){ // 深档形态（裁决原文例）：它正在尽全力
 }
 function busyPaint(){ $('typing-text').textContent=busyPhrase(); }
 function noteTurnPhase(ph){ if(busyPhase===ph) return; busyPhase=ph; busyPaint(); }
+// s103/S2（裁决 §3.1 次级供给）：思考草稿折叠面板——仅 glm 系有帧时出现，默认折叠，展开看缓冲尾部+尾随滚动；
+// 32KB 显示缓冲尾窗（R2 同族：防 8-12min 深档会话无界 DOM）；回合结束（stop/首 message_chunk）即弃，不进聊天流不落库不翻译
+const THINK_BUF_MAX=32768;
+let thinkBuf='', thinkDraftOn=false;
+function thoughtFeed(u){ // thought 帧→在想阶段+草稿缓冲（面板开着才重绘+滚尾，折叠态零 DOM 开销）
+  noteTurnPhase('think');
+  const t=u.content&&u.content.text;
+  if(typeof t==='string'&&t){
+    thinkBuf+=t;
+    if(thinkBuf.length>THINK_BUF_MAX) thinkBuf=thinkBuf.slice(-THINK_BUF_MAX);
+    if(thinkDraftOn){ const pre=$('think-buf'); pre.textContent=thinkBuf; pre.scrollTop=pre.scrollHeight; }
+  }
+  const pk=$('think-peek'); if(pk.style.display==='none') pk.style.display='';
+}
+function thinkDraftShow(on){
+  thinkDraftOn=on;
+  $('think-peek').textContent=on?'收起思考草稿 ▴':'看看它在想什么 ▸';
+  $('think-draft').style.display=on?'flex':'none';
+  if(on){ const pre=$('think-buf'); pre.textContent=thinkBuf; pre.scrollTop=pre.scrollHeight; }
+}
+function thinkDiscard(){ // 收起+弃置（母句承诺：收起后不留在对话里，对话只留正式回答）
+  thinkBuf=''; thinkDraftOn=false;
+  $('think-peek').style.display='none';
+  $('think-draft').style.display='none';
+  $('think-buf').textContent='';
+}
+$('think-peek').onclick=()=>thinkDraftShow(!thinkDraftOn);
 function setBusy(b){ busy=b; typing.style.display=b?'block':'none'; send.disabled=b; stopBtn.style.display=b?'inline-block':'none';
-  // s103/S1: 开忙即起秒表（通用阶段起步——无帧不造「它在想」），收忙停表
+  // s103/S1: 开忙即起秒表（通用阶段起步——无帧不造「它在想」），收忙停表；S2: 收忙同弃草稿
   if(b){ busyPhase=''; busyT0=Date.now(); busyPaint(); clearInterval(busyTick); busyTick=setInterval(busyPaint,1000); }
-  else{ clearInterval(busyTick); busyTick=null; busyT0=0; }
+  else{ clearInterval(busyTick); busyTick=null; busyT0=0; thinkDiscard(); }
   // s21: 小白「干完了」提醒——后台标签页时标题闪烁，回来即停
   if(!b){ if(document.hidden){ notifyDone(); } else { stopNotify(); } } else { stopNotify(); } }
 let notifyTimer=null;
@@ -1451,9 +1483,9 @@ function toolCard(upd){
 function onAgentEvent(p){
   if(p.method==='session/update'){
     const u=p.params.update;
-    if(u.sessionUpdate==='agent_message_chunk'){ noteTurnPhase('write'); addMsg(u.content.text,'agent'); } // s103/S1: 阶段翻「在写答案」（忙碌条不再藏——写答案期也在场，显隐唯一出口=setBusy）
+    if(u.sessionUpdate==='agent_message_chunk'){ thinkDiscard(); noteTurnPhase('write'); addMsg(u.content.text,'agent'); } // s103/S1: 阶段翻「在写答案」（忙碌条不再藏——写答案期也在场，显隐唯一出口=setBusy）；S2: 首个正文帧=想完了，草稿收起弃置
     else if(u.sessionUpdate==='user_message_chunk'){ const el=addMsg(u.content.text,'user'); const gm=(u.messageId||(u._meta&&u._meta.goose&&u._meta.goose.messageId)); if(gm) el.dataset.gmid=gm; } // 主线5：回放帧双冗余 id（research/21 §6 顶级 messageId 与 _meta.goose.messageId 同值），存元素上供撤回定位
-    else if(u.sessionUpdate==='agent_thought_chunk'){ noteTurnPhase('think'); } // s103/S1: 思考帧喂忙碌条「在想」阶段（原 keep silent 整族丢弃=黑箱主缺口）；deepseek 无此帧=通用阶段（诚实降级）
+    else if(u.sessionUpdate==='agent_thought_chunk'){ thoughtFeed(u); } // s103/S1+S2: 思考帧喂忙碌条「在想」阶段+草稿缓冲（原 keep silent 整族丢弃=黑箱主缺口）；deepseek 无此帧=通用阶段（诚实降级）
     else if(u.sessionUpdate==='tool_call'||u.sessionUpdate==='tool_call_update'){ noteTurnPhase('work'); toolCard(u); } // s103/S1: 阶段翻「在动手」——决定调工具前的规划期从此可见
     else if(u.sessionUpdate==='plan'){ /* future */ }
     else if(u.sessionUpdate==='available_commands_update'){}
