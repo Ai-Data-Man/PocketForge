@@ -3017,6 +3017,23 @@ async function buildReport() {
     } catch {}
     const pcTail = reportTail(path.join(ROOT, 'data', 'logs', 'pc.log'), 300, /healthz/);
     const bakTail = reportTail(path.join(ROOT, 'data', 'logs', 'backup.log'), 30, null);
+    // s103/S6（裁决 §3.4-G4/G5）：补读两域日志尾部——llmproxy 行含 model/effort/状态码（「刚才那次请求发生了什么」），events 行含操作留痕
+    const llmTail = reportTail(path.join(ROOT, 'data', 'logs', 'llmproxy.log'), 30, null);
+    const evTail = reportTail(path.join(ROOT, 'data', 'logs', 'events.log'), 50, null);
+    // s103/S6（G5/G11）：pc 环形缓冲补读——pc.log 受冲刷时机限制（research/45 实证 8h 无新行），环形缓冲有它没有的近期行
+    const ring = await appsAppLogs({ procs: ['chat-bridge'] }); // appsAppLogs 现成复用（pc process logs 通道；pc 不在/进程不在→人话未取到）
+    const ringTail = (ring && ring.ok && Array.isArray(ring.lines)) ? ring.lines.slice(-50) : null;
+    // s103/S6（G14）：usage_ledger 近 7 天聚合——只聚合数字（请求数/模型分布），绝不读会话正文
+    let usageLine = '未取到';
+    try {
+        const { DatabaseSync } = require('node:sqlite');
+        const db = new DatabaseSync(path.join(ROOT, 'conf', 'goose', 'data', 'sessions', 'sessions.db'));
+        const cutoff = Math.floor(Date.now() / 1000) - 7 * 86400;
+        const tot = db.prepare('SELECT count(*) c FROM usage_ledger WHERE created_timestamp >= ?').get(cutoff).c;
+        const dist = db.prepare('SELECT model, count(*) c FROM usage_ledger WHERE created_timestamp >= ? GROUP BY model ORDER BY c DESC').all(cutoff);
+        db.close();
+        usageLine = tot + ' 次' + (dist.length ? '｜模型分布：' + dist.map(r => (r.model || '未知') + '×' + r.c).join('、') : '');
+    } catch {}
     const alive = v => v === null ? '未探测' : (v ? '存活' : '未响应');
     // s64: 头部短行采集（A1-A6，全只读）
     const diskFree = reportDiskFree();
@@ -3067,14 +3084,26 @@ async function buildReport() {
         if (n < statsRaw.length) s += '（已截断）\n\n';
         return s;
     };
+    // s103/S6（G4/G5）：固定帽节（30/50/50 行），不入截断减半循环（同 head/tail 段例外口径——帽小有界）
+    const secLlm = llmTail.length
+        ? '## 模型接口请求日志（llmproxy.log 尾部 ' + llmTail.length + ' 行）\n\n```\n' + llmTail.join('\n') + '\n```\n\n'
+        : '## 模型接口请求日志（llmproxy.log 尾部无）\n\n无\n\n';
+    const secEv = evTail.length
+        ? '## 操作与运维事件（events.log 尾部 ' + evTail.length + ' 行）\n\n```\n' + evTail.join('\n') + '\n```\n\n'
+        : '## 操作与运维事件（events.log 尾部无）\n\n无\n\n';
+    const secRing = ringTail && ringTail.length
+        ? '## 进程实时日志（chat-bridge 环形缓冲尾部 ' + ringTail.length + ' 行，重启即失忆）\n\n```\n' + ringTail.join('\n') + '\n```\n\n'
+        : '## 进程实时日志（chat-bridge 环形缓冲暂不可读）\n\n未取到\n\n';
     const tailMd = '## 模型接口配置（key 已脱敏）\n\n```json\n' + JSON.stringify(provs, null, 2) + '\n```\n\n' +
         '## 会话概况（只含元数据，不含聊天内容）\n\n' + sessLine + '\n\n' +
+        '近 7 天模型用量（usage_ledger 聚合，只计数字不读内容）：' + usageLine + '\n\n' +
         '---\n\n## 请补充说明（填好再发出去）\n\n1. 什么时候出的问题：\n2. 当时做了什么操作：\n3. 期望的结果是什么：\n\n' +
         '## GitHub issue 模板（复制即贴）\n\n标题：问题：\n\n正文：\n- 环境：（把本报告「环境」一节粘贴在这里）\n- 复现步骤：\n  1.\n  2.\n- 实际结果：\n- 期望结果：\n';
     // s64 C: 体积硬顶（写盘前）——按节截断 pc.log→backup.log→统计 JSON；毛病/快速判断/环境与结构化短行绝不截
     // 例外（qa P3-1）：head/tail 段（providers JSON/status.json 原文/会话概况行）自身超限时写盘可超 REPORT_MAX_BYTES——依赖上游字段有界（qa 沙箱实证 473KB 角落，产品路径不可达），不做运行时钳制
+    // s103/S6：secLlm/secEv/secRing 为固定帽节不参减半（帽小有界，同上例外口径）
     let nLog = pcTail.length, nBak = bakTail.length, nStats = statsRaw.length;
-    const render = () => head + secLog(nLog) + secBak(nBak) + secStats(nStats) + tailMd;
+    const render = () => head + secLog(nLog) + secBak(nBak) + secLlm + secEv + secRing + secStats(nStats) + tailMd;
     while (Buffer.byteLength(render()) > REPORT_MAX_BYTES) {
         if (nLog > 0) nLog = Math.floor(nLog / 2);
         else if (nBak > 0) nBak = Math.floor(nBak / 2);
