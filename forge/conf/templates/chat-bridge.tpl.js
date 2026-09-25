@@ -274,26 +274,30 @@ function rotateLog(file) { // 超限滚一档：.2→.3、.1→.2、主→.1（�
         try { FSS.renameSync(file, file + '.1'); } catch {}
     } catch {}
 }
-function sanErr(s) { // s103/qa-rework P2-1: err 字段落盘前统一脱敏——恶意/故障中继错误体可回显 key 形态（Bearer/api_key=/token=/Authorization:），
-    // 命中片段替换 <已脱敏>（保留其余错误文本可读）；Bearer 先于 Authorization 替换，防 Authorization:\s*\S+ 半吃 Bearer 留残段
-    return String(s || '')
-        .replace(/Bearer\s+\S+|api_key[=:]\s*\S+|token[=:]\s*\S+/gi, '<已脱敏>')
+function sanErr(s, key) { // s103/seal NEW-1: 值域脱敏——err 组装点传入该请求真实 key（test_model/list_models 回落链
+    // 最终使用值 / llmproxy 转发凭据原值），≥8 字符才生效（空/短串跳过防误杀可读性），key 出现即整体替换：
+    // 裸值回显（恶意中继原样回显、无任何形态标记）与未来未知形态结构性闭合。s103/qa-rework P2-1 形态黑名单
+    // 保持在前（Bearer 先于 Authorization 防半吃残段）；NEW-2 补 x-api-key:/api-key:/apiKey[=:]（Anthropic 式
+    // 翻译头回显；x-api-key 列于 api-key 前同理防半吃）。split/join=纯字面替换，key 含正则元字符/替换模式符不炸不漏
+    const t = String(s || '')
+        .replace(/Bearer\s+\S+|x-api-key:\s*\S+|api-key:\s*\S+|api_key[=:]\s*\S+|apiKey[=:]\s*\S+|token[=:]\s*\S+/gi, '<已脱敏>')
         .replace(/Authorization:\s*\S+/gi, '<已脱敏>');
+    return (key && String(key).length >= 8) ? t.split(String(key)).join('<已脱敏>') : t;
 }
-function logLine(file, fields) { // 单行 JSON 直写（ts 自动补；失败静默——日志通道绝不反噬请求主路径）
+function logLine(file, fields, key) { // 单行 JSON 直写（ts 自动补；失败静默——日志通道绝不反噬请求主路径）
     try {
         FSS.mkdirSync(LOGS_DIR, { recursive: true });
         rotateLog(file);
         const o = { ts: new Date().toISOString() };
-        for (const k in fields) o[k] = k === 'err' ? sanErr(fields[k]) : fields[k]; // s103/qa-rework P2-1: err=上游错误原文唯一承载字段（test_model 摘要/llmproxy 嗅探/switch 文案），两日志写入侧同口脱敏
+        for (const k in fields) o[k] = k === 'err' ? sanErr(fields[k], key) : fields[k]; // s103/qa-rework P2-1: err=上游错误原文唯一承载字段，两日志写入侧同口脱敏；s103/seal NEW-1: key=该请求真实 key（值域脱敏，见 sanErr）
         FSS.appendFileSync(file, JSON.stringify(o) + '\n');
     } catch {}
 }
 function sanHost(h) { // host 脱敏（reportSanitize 同口径的域字段版）：只留 scheme+域名+port；key 永不落（根本不入本层）
     try { const u = new URL(String(h || '')); return u.protocol + '//' + u.host; } catch { return ''; }
 }
-function evJson(fields) { logLine(path.join(LOGS_DIR, 'events.log'), fields); } // 运维事件域写入器（S5 各事件行同走此口）
-function llmProxyLine(fields) { logLine(path.join(LOGS_DIR, 'llmproxy.log'), fields); } // LLM 请求域写入器（S4 全请求行）
+function evJson(fields, key) { logLine(path.join(LOGS_DIR, 'events.log'), fields, key); } // 运维事件域写入器（S5 各事件行同走此口）
+function llmProxyLine(fields, key) { logLine(path.join(LOGS_DIR, 'llmproxy.log'), fields, key); } // LLM 请求域写入器（S4 全请求行）
 function noteSwitch(ok, from, to, err) { // s103/S5-G7: 切换留痕——与 switchModel.ok/fail 计数同点耦合（计数必带行，永不漂移）
     statsBump(ok ? 'switchModel.ok' : 'switchModel.fail');
     evJson({ ev: 'switch_model', from: from || '', to: to || '', ok: !!ok, err: String(err || '').slice(0, 120) });
@@ -2829,7 +2833,8 @@ const REPORT_MAX_BYTES = 256 * 1024; // s64 C: 报告体积硬顶（写盘前截
 function reportSanitize(text) {
     // S2: 黑名单扩充——sk-/ghp_/gho_/github_pat_/AIza…/glpat-/xox[bap]-/GH_TOKEN，命中整行 <已脱敏>
     // s103/qa-rework P2-1: 补非 sk- 形态——Bearer/api_key=/token=/Authorization:（写入侧 sanErr 已挡源头，此层兜修复前老行与其他入口）
-    return String(text).split('\n').map(l => (/\bsk-[A-Za-z0-9][A-Za-z0-9_\-]{3,}|ghp_|gho_|github_pat_|AIza[\w\-]{10,}|glpat\-|xox[bap]\-|GH_TOKEN|Bearer\s+\S+|api_key[=:]\s*\S+|token[=:]\s*\S+|Authorization:\s*\S+/i.test(l) ? '<已脱敏>' : l)).join('\n');
+    // s103/seal NEW-2: 补 x-api-key:/api-key:/apiKey[=:]（与写侧 sanErr 同款三形态，两层同口径）
+    return String(text).split('\n').map(l => (/\bsk-[A-Za-z0-9][A-Za-z0-9_\-]{3,}|ghp_|gho_|github_pat_|AIza[\w\-]{10,}|glpat\-|xox[bap]\-|GH_TOKEN|Bearer\s+\S+|x-api-key:\s*\S+|api-key:\s*\S+|api_key[=:]\s*\S+|apiKey[=:]\s*\S+|token[=:]\s*\S+|Authorization:\s*\S+/i.test(l) ? '<已脱敏>' : l)).join('\n');
 }
 function reportTail(file, want, skipRe) { // 从尾往前取 want 行，跳过 skipRe 命中行（healthz 噪音），攒够即止
     try {
@@ -3564,8 +3569,9 @@ function handleLlmProxy(req, res) {
         if (aborted) return;
         const llmDone = (status, err) => { // s103/S4: 每请求恰一行（先到先记，断开/错误也留痕）：ts/path/model/effort/首字节ms/总ms/状态码/错误体前120字节
             if (llmDone.logged) return; llmDone.logged = true;
+            const llmKey = String(req.headers.authorization || '').replace(/^Bearer\s+/i, ''); // s103/seal NEW-1: 本请求转发凭据原值（上游收到什么就替什么；goose 正常流量=活跃档 key）
             // s103/qa-rework P3-2: 补 path 字段——/chat/completions vs /models 一眼可辨（goose 自发目录刷新/健康探测行不再稀释聊天归因）
-            llmProxyLine({ path: (req.url || '').split('?')[0], model: logModel, effort: logEff, firstMs: tFirst ? tFirst - t0 : null, totalMs: Date.now() - t0, status, err: String(err || '').slice(0, 120) });
+            llmProxyLine({ path: (req.url || '').split('?')[0], model: logModel, effort: logEff, firstMs: tFirst ? tFirst - t0 : null, totalMs: Date.now() - t0, status, err: String(err || '').slice(0, 120) }, llmKey);
         };
         const act = activeProvider();
         const host = ((act && act.host) || secrets.FORGE_AGENT_HOST || '').replace(/\/$/, '');
@@ -5166,16 +5172,16 @@ function handleClient(ws, msg) {
                 let b = '';
                 res.on('data', c => b += c);
                 res.on('end', () => {
-                    if (res.statusCode !== 200) { evJson({ ev: 'list_models', host: sanHost(host), http: res.statusCode, count: 0, ms: Date.now() - t0, ok: false, err: '拉取失败：服务商回了 HTTP ' + res.statusCode }); return ws.send({ sys: 'error', text: '拉取失败：服务商回了 HTTP ' + res.statusCode }); } // s94 F-2: 非 200 原样报码，401 不再伪装成 0 个模型
+                    if (res.statusCode !== 200) { evJson({ ev: 'list_models', host: sanHost(host), http: res.statusCode, count: 0, ms: Date.now() - t0, ok: false, err: '拉取失败：服务商回了 HTTP ' + res.statusCode }, key); return ws.send({ sys: 'error', text: '拉取失败：服务商回了 HTTP ' + res.statusCode }); } // s94 F-2: 非 200 原样报码，401 不再伪装成 0 个模型
                     try {
                         const j = JSON.parse(b);
                         const arr = j.data || j.models;
                         if (!Array.isArray(arr)) throw 0; // 仅 200 且能解析出 data/models 数组才发 models 帧
                         evJson({ ev: 'list_models', host: sanHost(host), http: res.statusCode, count: arr.length, ms: Date.now() - t0, ok: true, err: '' }); // s103/S3-G3
                         ws.send({ sys: 'models', models: arr.map(m => m.id || m.name || String(m)) });
-                    } catch { evJson({ ev: 'list_models', host: sanHost(host), http: res.statusCode, count: 0, ms: Date.now() - t0, ok: false, err: ('models 响应解析失败 (HTTP ' + res.statusCode + ')').slice(0, 120) }); ws.send({ sys: 'error', text: 'models 响应解析失败 (HTTP ' + res.statusCode + ')' }); }
+                    } catch { evJson({ ev: 'list_models', host: sanHost(host), http: res.statusCode, count: 0, ms: Date.now() - t0, ok: false, err: ('models 响应解析失败 (HTTP ' + res.statusCode + ')').slice(0, 120) }, key); ws.send({ sys: 'error', text: 'models 响应解析失败 (HTTP ' + res.statusCode + ')' }); }
                 });
-            }).on('error', e => { evJson({ ev: 'list_models', host: sanHost(host), http: 0, count: 0, ms: Date.now() - t0, ok: false, err: String(e.message || '').slice(0, 120) }); ws.send({ sys: 'error', text: '连接失败: ' + e.message }); });
+            }).on('error', e => { evJson({ ev: 'list_models', host: sanHost(host), http: 0, count: 0, ms: Date.now() - t0, ok: false, err: String(e.message || '').slice(0, 120) }, key); ws.send({ sys: 'error', text: '连接失败: ' + e.message }); });
             return;
         }
 
@@ -5198,12 +5204,12 @@ function handleClient(ws, msg) {
                     try { const clean = b.replace(/data:\s*\[DONE\][\s\S]*$/, '').trim(); const j = JSON.parse(clean); const c = j.choices && j.choices[0]; const m = c && c.message; txt = (m && (m.content || m.reasoning_content)) || (c && c.text) || ('HTTP ' + res.statusCode + ' OK'); } catch { txt = b.slice(0, 80); }
                     const ok = res.statusCode === 200;
                     statsBump('providerTests.' + (ok ? 'ok' : 'fail')); // s103/S3-G2: 测试成败计数（裁决负面清单 9——只新增键）
-                    evJson({ ev: 'test_model', host: sanHost(host), model, http: res.statusCode, ms: Date.now() - t0, ok, err: ok ? '' : String(txt).slice(0, 120) }); // s103/S3-G2
+                    evJson({ ev: 'test_model', host: sanHost(host), model, http: res.statusCode, ms: Date.now() - t0, ok, err: ok ? '' : String(txt).slice(0, 120) }, key); // s103/S3-G2；s103/seal NEW-1: key=回落链最终使用值（值域脱敏）
                     ws.send({ sys: 'test_result', ok, http: res.statusCode, reply: String(txt).slice(0, 60), model });
                 });
             });
-            req.on('error', e => { statsBump('providerTests.fail'); evJson({ ev: 'test_model', host: sanHost(host), model, http: 0, ms: Date.now() - t0, ok: false, err: String(e.message || '').slice(0, 120) }); ws.send({ sys: 'test_result', ok: false, http: 0, reply: e.message.slice(0, 80), model }); });
-            req.on('timeout', () => { req.destroy(); statsBump('providerTests.fail'); evJson({ ev: 'test_model', host: sanHost(host), model, http: 0, ms: Date.now() - t0, ok: false, err: '30s 超时' }); ws.send({ sys: 'test_result', ok: false, http: 0, reply: '30s 超时', model }); });
+            req.on('error', e => { statsBump('providerTests.fail'); evJson({ ev: 'test_model', host: sanHost(host), model, http: 0, ms: Date.now() - t0, ok: false, err: String(e.message || '').slice(0, 120) }, key); ws.send({ sys: 'test_result', ok: false, http: 0, reply: e.message.slice(0, 80), model }); });
+            req.on('timeout', () => { req.destroy(); statsBump('providerTests.fail'); evJson({ ev: 'test_model', host: sanHost(host), model, http: 0, ms: Date.now() - t0, ok: false, err: '30s 超时' }, key); ws.send({ sys: 'test_result', ok: false, http: 0, reply: '30s 超时', model }); });
             req.write(body); req.end();
             return;
         }
