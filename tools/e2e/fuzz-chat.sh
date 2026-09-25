@@ -553,7 +553,8 @@ sys.exit(0 if ok_resp and ok_alive else 1)
 PYEOF
 ck "readJsonBody CL-lie pipeline garbage rejected, bridge alive (fuzz-v2)" $?
 # 面1 健康探测（22732d1/e9f04ee/166607a）：/models 畸形响应四态判定 + 入站畸形帧（探针自建沙盒）
-node "$(dirname "$0")/health-probe-fuzz.js" >/dev/null 2>&1; ck "health-probe /models malformed 4-state fuzz, 24 asserts (fuzz-v2)" $?
+# s103/S7 随迁：超时 8s→15s（9s 判 ok）+ ok→down 连续 2 次失败确认去抖（24→27 asserts）
+node "$(dirname "$0")/health-probe-fuzz.js" >/dev/null 2>&1; ck "health-probe /models malformed 4-state fuzz + s103/S7 debounce (15s window + 2-strike down), 27 asserts" $?
 # 面2 代际守卫（6d94f3a P1-A/P2-B）：20 客户端乱序轰炸 + 毁线窗（探针自建沙盒，种子化可复现）
 node "$(dirname "$0")/ws-genesis-fuzz.js" >/dev/null 2>&1; ck "ws genesis-guard 20-client bombardment fuzz, 9 asserts (fuzz-v2)" $?
 # 面5 SSE 重试阶梯（6d94f3a P2-A/367b57a C3）：mock 畸形流——重试不失控不双发（探针自建沙盒）

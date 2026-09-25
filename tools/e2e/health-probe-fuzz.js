@@ -2,8 +2,9 @@
 // 沙盒自建（pfr21 同款）：假 provider /models 按 mode 播控 + 命中台账；桥 WS 触发 providers save 失效重探
 // （save 无副字段=纯失效+重探，零换档零重启）。广播只在态变化时全员发 → 每例先翻基线态再进被测态（ok 态例以
 // down 为基线，其余以 ok 为基线）。入站面：health 探测无客户端入站消息面——畸形 sys/providers 帧只钉「不崩」。
-// 覆盖：非 JSON/真相非数组 data/5000 条超长列表/重复 id/含 \0 换行模型名（列表侧+锚侧）/302 自环（不跟随）/9s 慢响应
-// （8s 超时判 down）/6s 慢响应（不误判）/空体/418/401/403/j.models 备用形状/畸形态下后续探测自愈。
+// 覆盖：非 JSON/真相非数组 data/5000 条超长列表/重复 id/含 \0 换行模型名（列表侧+锚侧）/302 自环（不跟随）/16s 慢响应
+// （15s 超时判失败，去抖需连续 2 次才 down）/9s+6s 慢响应（15s 窗内判 ok 不误判，s103/S7 超时 8s→15s）/空体/418/401/403/
+// j.models 备用形状/畸形态下后续探测自愈/ok→down 连续 2 次失败确认去抖+恢复 ok 即时（s103/S7）
 const { spawn } = require('child_process');
 const http = require('http');
 const crypto = require('crypto');
@@ -38,8 +39,9 @@ function modelsBody(m) {
         case 'forbidden403': return { body: '{"error":"no"}', code: 403 };
         case 'teapot418': return { body: 'teapot', code: 418 };
         case 'redirect': return { body: '', code: 302, loc: '/models' }; // 自环 Location：http.get 不跟随 → 应恰 1 次命中判 down
-        case 'slow6': return { body: JSON.stringify({ data: [{ id: 'fake-model' }] }), code: 200, delay: 6000 }; // 8s 内 → ok 不误判
-        case 'slow9': return { body: JSON.stringify({ data: [{ id: 'fake-model' }] }), code: 200, delay: 9000 }; // 超时 → down
+        case 'slow6': return { body: JSON.stringify({ data: [{ id: 'fake-model' }] }), code: 200, delay: 6000 }; // 15s 窗内 → ok 不误判
+        case 'slow9': return { body: JSON.stringify({ data: [{ id: 'fake-model' }] }), code: 200, delay: 9000 }; // s103/S7: 15s 窗内 → ok（旧 8s 超时曾误判 down）
+        case 'slow16': return { body: JSON.stringify({ data: [{ id: 'fake-model' }] }), code: 200, delay: 16000 }; // 超 15s 窗 → 单次失败（是否 down 由去抖定）
         default: return { body: JSON.stringify({ data: [{ id: 'fake-model' }] }), code: 200 };
     }
 }
@@ -123,20 +125,28 @@ const saveTrigger = c => c.send({ type: 'providers', save: true }); // 无副字
 const expectFrame = async (c, state, kind, tag, ms) => { const f = await c.waitUntil(m => m.sys === 'health' && m.state === state && (kind ? m.kind === kind : m.kind === undefined), ms || 25000, 'health ' + tag); return f; };
 // 广播只在态变化时发（态不变仅 reply 触发方，save 失效重探无 reply）→ 被测态若与当前态相同须先翻到相异态再进被测态。
 let curState = null; // {state, kind} 最近一次确认帧
+async function trig(C, n) { // s103/S7: n=1 单发；n=2 去抖双发（间隔 1.2s——第二发落在首探在飞窗=pend 补探，或首探已毕=独立二探，两形态同语义）
+    C.send({ type: 'providers', save: true });
+    for (let i = 1; i < (n || 1); i++) { await new Promise(r => setTimeout(r, 1200)); C.send({ type: 'providers', save: true }); }
+}
 async function probeCase(C, m, state, kind, tag, extra) {
     const want = JSON.stringify({ state, kind: kind || null });
     if (JSON.stringify(curState) === want) {
         const base = (state === 'ok') ? 'teapot418' : 'ok';
-        await setMode(base); saveTrigger(C);
-        await expectFrame(C, base === 'ok' ? 'ok' : 'down', null, 'baseline-' + tag);
+        await setMode(base);
+        await trig(C, base === 'ok' ? 1 : 2); // s103/S7: 翻到 down 基线同样需连续 2 次失败确认；翻回 ok 即时
+        await expectFrame(C, base === 'ok' ? 'ok' : 'down', null, 'baseline-' + tag, 55000);
+        curState = { state: base === 'ok' ? 'ok' : 'down', kind: null }; // s103/S7: 基线态入账——后续 n 按真实基线算 2 连击
     }
-    await setMode(m); const t0 = Date.now(); saveTrigger(C);
-    const f = await expectFrame(C, state, kind, tag, extra && extra.ms);
+    await setMode(m); const t0 = Date.now();
+    const n = (state !== 'ok' && curState && curState.state === 'ok') ? 2 : 1; // s103/S7: ok→非 ok=连续 2 次失败确认；非 ok 间换态/恢复 ok 单次即收
+    await trig(C, n);
+    const f = await expectFrame(C, state, kind, tag, (extra && extra.ms) || (n === 2 ? 55000 : 25000));
     curState = { state, kind: kind || null };
     ck(tag + '（state=' + f.state + (f.kind ? '+key' : '') + '）', true);
     const el = Date.now() - t0;
     if (extra && extra.maxMs) ck(tag + '（耗时 ' + el + 'ms 有界）', el < extra.maxMs, 'elapsed=' + el);
-    if (extra && extra.hits === 1) { const h = await getHits(); ck(tag + '（/models 恰 1 次命中，零跟随零循环）', h === 1, 'hits=' + h); }
+    if (extra && extra.hits) { const h = await getHits(); ck(tag + '（/models 每探恰 ' + extra.hits / (n || 1) + ' 次命中，零跟随零循环）', h === extra.hits, 'hits=' + h); } // s103/S7: hits=预期总命中（2 连击=2 探×1 GET）
 }
 
 const PROV_FILE = () => path.join(ROOT, 'data', 'providers.json');
@@ -175,9 +185,26 @@ let bridge = null, prov = null, C = null;
     await probeCase(C, 'unauth401', 'down', 'key', 'F12 401 判 down+key');
     await probeCase(C, 'forbidden403', 'down', 'key', 'F13 403 判 down+key');
     await probeCase(C, 'okmodels', 'ok', null, 'F14 j.models 备用形状判 ok');
-    await probeCase(C, 'redirect', 'down', null, 'F15 302 自环判 down（不跟随）', { hits: 1 });
-    await probeCase(C, 'slow9', 'down', null, 'F16 9s 慢响应按 8s 超时判 down', { ms: 30000, maxMs: 20000 });
-    await probeCase(C, 'slow6', 'ok', null, 'F17 6s 慢响应（8s 内）判 ok 不误判', { ms: 30000, maxMs: 15000 });
+    await probeCase(C, 'redirect', 'down', null, 'F15 302 自环判 down（不跟随）', { hits: 2 }); // s103/S7 随迁：2 连击=2 探各恰 1 次 GET（每人零跟随零循环）
+    await probeCase(C, 'slow9', 'ok', null, 'F16 9s 慢响应在 15s 窗内判 ok 不误判（s103/S7 超时 8s→15s，慢≠不可用）', { ms: 30000, maxMs: 20000 });
+    await probeCase(C, 'slow6', 'ok', null, 'F17 6s 慢响应（15s 窗内）判 ok 不误判', { ms: 30000, maxMs: 15000 });
+    // ===== s103/S7 去抖（裁决 2026-09-25 §3.3-①）：ok→down 需连续 2 次失败确认，单次失败不翻态不广播；恢复 ok 即时 =====
+    {
+        await setMode('slow16'); // 16s > 15s 窗：探测超时=单次失败
+        await trig(C, 1);
+        let leaked = null;
+        try { leaked = await C.waitUntil(m => m.sys === 'health' && m.state !== 'ok', 22000, 'single-fail window'); } catch {}
+        ck('D1 单次 >15s 慢探测失败不翻 down 不广播（22s 观察窗零非 ok 帧——慢/抖动不闪断）', leaked === null, 'leaked=' + JSON.stringify(leaked));
+        await trig(C, 1); // 第二次连续失败
+        const f = await expectFrame(C, 'down', null, 'D2 second-confirm', 30000);
+        curState = { state: 'down', kind: null };
+        ck('D2 连续第 2 次失败才确认 down（去抖=2 连击）', f.state === 'down');
+        await setMode('slow9'); // 9s 慢但活——恢复也要「成功」才算
+        await trig(C, 1);
+        const f2 = await expectFrame(C, 'ok', null, 'D3 recover', 30000);
+        curState = { state: 'ok', kind: null };
+        ck('D3 恢复 ok 单次即时收（成功即收，无恢复去抖；9s 慢但可用）', f2.state === 'ok');
+    }
     // 锚侧控制字符：providers 池首含 \0/换行 → 精确匹配不崩不错判
     writeProv([{ name: 'fake', host: 'http://127.0.0.1:' + PROV_PORT, key: 'sk-fake22', models: [WEIRD_TARGET], active: true }]);
     await probeCase(C, 'nulmodel', 'ok', null, 'F18 锚模型含 \\0/换行且列表精确命中判 ok');
@@ -195,17 +222,23 @@ let bridge = null, prov = null, C = null;
     await new Promise(r => setTimeout(r, 1500));
     ck('F20 providers 保存垃圾形态不崩（add/update/remove 类型混淆）', await healthz());
     // 自愈：脏档落盘后恢复干净档 + save 失效重探 → ok 帧照常到达
+    // s103/S7 随迁：恢复=ok 单次即时广播的前提是缓存确在非 ok——先 2 连击确认 down（垃圾档时代的 stale 单发被去抖
+    // 拦下+穿插 ok 探测清零，缓存本就停在 ok，直接 heal 无态变无广播——与修前语义差异所在），再 heal。
+    await setMode('teapot418'); await trig(C, 2);
+    await expectFrame(C, 'down', null, 'heal-baseline-down', 55000);
+    curState = { state: 'down', kind: null };
     await setMode('ok');
     writeProv([{ name: 'fake', host: 'http://127.0.0.1:' + PROV_PORT, key: 'sk-fake22', models: ['fake-model'], active: true }]);
     saveTrigger(C);
     const f21 = await C.waitUntil(m => m.sys === 'health' && m.state === 'ok', 25000, 'heal ok');
-    ck('F21 脏档后恢复+重探自愈：ok 帧到达（畸形态不留死档）', f21.state === 'ok');
+    ck('F21 脏档后恢复+重探自愈：ok 帧到达（畸形态不留死档；s103/S7 恢复即时收）', f21.state === 'ok');
 
     try { C.socket.destroy(); } catch {}
 })().catch(e => {
     console.error('PROBE ERROR:', e.message);
     ck('探针自身未异常', false, e.stack && e.stack.split('\n')[0]);
 }).finally(() => {
+    if (fail) { try { const el = fs.readFileSync(path.join(ROOT, 'data', 'logs', 'events.log'), 'utf8').trim().split('\n'); console.log('--- events tail (fail debug):'); for (const l of el.slice(-14)) console.log(l); } catch { console.log('--- events tail: none'); } console.log('--- curState at fail:', JSON.stringify(curState)); }
     if (bridge) { try { spawn('taskkill', ['/pid', String(bridge.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }); } catch {} }
     setTimeout(() => { try { prov && prov.close(); } catch {} try { fs.rmSync(ROOT, { recursive: true, force: true }); } catch {} }, 1500);
     console.log('health-probe-fuzz: PASS=' + pass + ' FAIL=' + fail);

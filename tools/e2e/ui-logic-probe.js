@@ -13,10 +13,10 @@
 const fs = require('fs');
 const html = fs.readFileSync(__dirname + '/../../forge/conf/templates/chat.tpl.html', 'utf8');
 function grab(re, label) { const m = html.match(re); if (!m) { console.error('NOT FOUND: ' + label); process.exit(1); } return m[0]; }
-let pass = 0, fail = 0, KP = 0, KF = 0, CP = 0, CF = 0, PP = 0, PF = 0, BP = 0, BF = 0, CUR = 'kbd';
+let pass = 0, fail = 0, KP = 0, KF = 0, CP = 0, CF = 0, PP = 0, PF = 0, BP = 0, BF = 0, HP = 0, HF = 0, CUR = 'kbd';
 function ck(name, cond) {
-    if (cond) { console.log('PASS [' + SEC + '] ' + name); pass++; if (CUR === 'kbd') KP++; else if (CUR === 'close-path') CP++; else if (CUR === 'busy') BP++; else PP++; }
-    else { console.log('FAIL [' + SEC + '] ' + name); fail++; if (CUR === 'kbd') KF++; else if (CUR === 'close-path') CF++; else if (CUR === 'busy') BF++; else PF++; }
+    if (cond) { console.log('PASS [' + SEC + '] ' + name); pass++; if (CUR === 'kbd') KP++; else if (CUR === 'close-path') CP++; else if (CUR === 'busy') BP++; else if (CUR === 'health') HP++; else PP++; }
+    else { console.log('FAIL [' + SEC + '] ' + name); fail++; if (CUR === 'kbd') KF++; else if (CUR === 'close-path') CF++; else if (CUR === 'busy') BF++; else if (CUR === 'health') HF++; else PF++; }
 }
 let SEC = '';
 
@@ -516,11 +516,64 @@ CUR = 'busy';
         ck('已收尾的卡不动（completed/failed 既有语义保持）', done._status === 'completed' && done.querySelector('.st').textContent === '完成' && failed._status === 'failed' && failed.querySelector('.st').textContent === '失败');
     }
 }
+// —— health S7（s103/S7 健康条出聊天流）：healthSync 从模板原文提取，DOM 桩钉「条永不进 #chat」+ 文案三档/互斥/幂等 ——
+// 修前红锚：修前 healthSync 用 chat.insertBefore(el, chat.firstChild) + class 'msg agent info' → S7a/S7b FAIL@HEAD
+{
+    CUR = 'health';
+    const hsSrc = grab(/function healthSync\(m\)\{[\s\S]*?\n\}/, 'healthSync');
+    const mkHBar = () => {
+        const el = { tag: 'div', id: '', className: '', children: [], style: { cssText: '' }, removed: false, onclick: null, _parent: null, textContent: '' };
+        el.appendChild = c => { el.children.push(c); return c; };
+        el.querySelector = sel => {
+            if (sel === 'button') return el.children.find(c => c.tag === 'button') || null;
+            if (sel === '.px') return el.children.find(c => c.className === 'px') || null;
+            return null;
+        };
+        el.remove = () => { el.removed = true; };
+        Object.defineProperty(el, 'firstChild', { get: () => el.children[0] || null });
+        return el;
+    };
+    const chat = { id: 'chat', inserts: 0, insertBefore() { chat.inserts++; } }; // 聊天流容器：任何插入都计（S7 后必须恒 0）
+    const main = { id: 'main', inserts: [], insertBefore(el, ref) { main.inserts.push({ el, ref }); el._parent = main; } };
+    chat.parentNode = main;
+    const reg = new Map(); // id 注册表（$ 查找；真实页由 DOM 树承担）
+    const doc = { createElement: t => { const e = mkHBar(); e.tag = t; return e; } };
+    const run = new Function('providerList', '$', 'chat', 'document',
+        'let lastHealthFrame=null; ' + hsSrc + ' return { healthSync: m => { healthSync(m); return lastHealthFrame; } };');
+    const $ = id => reg.get(id) || null;
+    const api = run([{ name: 'fake', hasKey: true }], $, chat, doc);
+    const spawnBar = () => { for (const ins of main.inserts) if (ins.el.id === 'health-bar') reg.set('health-bar', ins.el); return reg.get('health-bar') || null; };
+    api.healthSync({ sys: 'health', state: 'down' });
+    const bar = spawnBar();
+    SEC = 'health S7';
+    ck('S7a down 帧建条且聊天流零插入（条不进 #chat——修前红锚：chat.insertBefore 路径即 FAIL）', chat.inserts === 0 && !!bar, 'chat.inserts=' + chat.inserts);
+    ck('S7b 条挂 #main、位于 #chat 之前（顶部提醒条承载，零新第三处）', !!bar && bar._parent === main && !!main.inserts[0] && main.inserts[0].ref === chat && main.inserts[0].el === bar);
+    ck('S7c down 文案人话+按钮「检查线路」', !!bar && bar.children[0].textContent.startsWith('现在联系不上大模型服务商') && bar.querySelector('button').textContent === '检查线路');
+    api.healthSync({ sys: 'health', state: 'down', kind: 'key' });
+    ck('S7d down+key → Key 口径+按钮「去设置」', bar.querySelector('button').textContent === '去设置' && bar.children[0].textContent.startsWith('这家服务商的 Key 没配上或不对'));
+    api.healthSync({ sys: 'health', state: 'stale-model' });
+    ck('S7e stale-model → 下线口径+按钮「更新模型」', bar.querySelector('button').textContent === '更新模型' && bar.children[0].textContent.startsWith('你正在用的模型已被服务商下线'));
+    const nMain0 = main.inserts.length;
+    api.healthSync({ sys: 'health', state: 'down' });
+    ck('S7f 重复 down 帧幂等（同条复用，不重复建）', main.inserts.length === nMain0 && reg.get('health-bar') === bar);
+    api.healthSync({ sys: 'health', state: 'ok' });
+    ck('S7g ok 帧即撤条（恢复即消）', bar.removed === true);
+    main.inserts.length = 0; reg.delete('health-bar');
+    api.healthSync({ sys: 'health', state: 'ok', proxy: true });
+    spawnBar();
+    const pxBar = reg.get('health-bar');
+    ck('S7h ok+proxy 远端旗仍保留条（s94 F-4c 代理-only 形态不回归）', !!pxBar && !!pxBar.querySelector('.px') && pxBar.querySelector('.px').textContent.includes('网络代理'));
+    const apiNoKey = run([{ name: 'fake', hasKey: false }], $, chat, doc);
+    main.inserts.length = 0; reg.delete('health-bar');
+    apiNoKey.healthSync({ sys: 'health', state: 'down' });
+    ck('S7i 无 Key 互斥不建条（key-guide 独占态保持）', spawnBar() === null && reg.get('health-bar') === undefined);
+}
 CUR = 'kbd';
 
 console.log('ui-logic-probe kbd: PASS=' + KP + ' FAIL=' + KF);
 console.log('ui-logic-probe close-path: PASS=' + CP + ' FAIL=' + CF);
 console.log('ui-logic-probe prompts: PASS=' + PP + ' FAIL=' + PF);
 console.log('ui-logic-probe busy: PASS=' + BP + ' FAIL=' + BF);
+console.log('ui-logic-probe health: PASS=' + HP + ' FAIL=' + HF);
 console.log('ui-logic-probe: PASS=' + pass + ' FAIL=' + fail);
 process.exit(fail ? 1 : 0);

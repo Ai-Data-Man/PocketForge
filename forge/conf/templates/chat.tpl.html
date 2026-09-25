@@ -2460,7 +2460,8 @@ function keyGuideSync(list){
   el.appendChild(t); el.appendChild(b);
   chat.insertBefore(el, chat.firstChild);
 }
-// 裁决 2026-09-12-provider-health-probe S3: 服务商健康告警条——key-guide 同款载体（聊天区顶部、客观状态判定、零持久化、恢复即消、ok 态零视觉）。
+// 裁决 2026-09-12-provider-health-probe S3: 服务商健康告警条——key-guide 同款载体（客观状态判定、零持久化、恢复即消、ok 态零视觉）。
+// s103/S7: 条改挂 #main 顶部（#chat 之外的提醒条，不再插聊天流）；互斥与文案照旧。
 // 互斥：所有档案都没 Key（=未配置，key-guide 独占态）时健康条不出现（桥侧同态不探）；文案照裁决 §S3 逐字。
 let lastHealthFrame=null;
 function healthSync(m){
@@ -2473,12 +2474,14 @@ function healthSync(m){
   if(!bad&&!(m&&m.proxy&&hasKey)){ const b=$('health-bar'); if(b) b.remove(); return; }
   let el=$('health-bar');
   if(!el){
-    el=document.createElement('div'); el.id='health-bar'; el.className='msg agent info';
-    el.style.cssText='display:flex;align-items:center;gap:10px;flex-wrap:wrap';
+    // s103/S7（裁决 §3.3-①）：健康类瞬时态永久退出聊天流（聊天流只留对话实体，F5① 教训）——
+    // 同一条提醒条改挂 #main（#topbar 与 #chat 之间），不再是 .msg 聊天消息；承载不变（条+侧栏连接点，零新第三处）
+    el=document.createElement('div'); el.id='health-bar';
+    el.style.cssText='display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--acc-softer);border-bottom:1px solid var(--acc-line);color:var(--tx-2);font-size:.85rem;padding:8px 24px';
     el.appendChild(document.createElement('span'));
     const b=document.createElement('button'); b.className='msgbtn';
     el.appendChild(b);
-    chat.insertBefore(el, chat.firstChild);
+    chat.parentNode.insertBefore(el, chat);
   }
   const t=el.firstChild, b=el.querySelector('button');
   if(bad){

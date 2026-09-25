@@ -1273,10 +1273,13 @@ function validModelCapsPatch(model, patch, poolSet) {
 // ---- 裁决 2026-09-12-provider-health-probe S1/S2: provider 直连健康探测 ----
 // 单次 GET {host}/models（零 token）；只读信号——不写 upstream 计数、不触发任何自动动作（s50e 边界原样有效）。
 // 状态机：down / down+key(401/403) / stale-model(200 且当前模型名∉活列表，事故二形态) / ok；未配置不探（key-guide 独占，s51d）。
+// s103/S7（裁决 2026-09-25 §3.3-①）：超时 15s + ok→非ok 连续 2 次失败确认（去抖）——慢≠不可用，单次失败不闪断。
 const HEALTH_TTL = 30 * 60 * 1000; // 内存缓存 TTL；零持久化（重启即重探）；providers save/activate/跨档 switch 后失效
+const HEALTH_PROBE_TIMEOUT = 15000; // s103/S7: 8s→15s——/models 实测 1.6-9.1s 横跨旧 8s 线（research/44 F5①），慢≠不可用
 const healthCache = { at: 0, state: null, kind: null, proxy: false };
 let lastModelOverride = ''; // qa s78b P3-2: 最近一次用户选定模型（switch_model / subscribe 带 model 时更新）——同档 set_config_option 不改 models[0]，探测锚池首会漂移
 let healthBusy = false, healthFailT = null, healthPend = false;
+let healthFailStreak = 0; // s103/S7: down 去抖——ok 态下单次探测失败不翻 down，连续 2 次非 ok 才确认（单次失败/慢探测不闪断）
 function effectiveModel(act) { // qa s78c P3-1 单一真相源：生效模型读法唯一——spawnAcp env / healthTargets 探测锚 / env0Model 广播三处同源，防双源漂移（「探 A 用 B」）；override∉活跃池=自愈回落池首→secrets 链（面板换档/改池由 providers 块显式清除）
     const pool = (act && act.models) || [];
     return (lastModelOverride && pool.includes(lastModelOverride) ? lastModelOverride : pool[0]) || secrets.GOOSE_MODEL_NAME || '';
@@ -1313,7 +1316,7 @@ async function probeProviderHealth(reply) { // qa s78b P1-1: reply=触发方 ws�
             const done = (state, kind) => { if (!settled) { settled = true; resolve({ state, kind: kind || null }); } };
             try {
                 const u = new URL(t.host + '/models'); // 照 list_models 按协议切 http/https
-                const rq = require(u.protocol === 'https:' ? 'https' : 'http').get(u, { headers: { Authorization: 'Bearer ' + t.key }, timeout: 8000 }, res => {
+                const rq = require(u.protocol === 'https:' ? 'https' : 'http').get(u, { headers: { Authorization: 'Bearer ' + t.key }, timeout: HEALTH_PROBE_TIMEOUT }, res => {
                     let b = '';
                     res.on('data', c => b += c);
                     res.on('end', () => {
@@ -1328,12 +1331,21 @@ async function probeProviderHealth(reply) { // qa s78b P1-1: reply=触发方 ws�
                     res.on('error', () => done('down'));
                 });
                 rq.on('error', () => done('down'));
-                rq.on('timeout', () => { rq.destroy(); done('down'); }); // 8s 超时按 down（比 test_model 30s 更紧，快速判死快速恢复）
+                rq.on('timeout', () => { rq.destroy(); done('down'); }); // s103/S7: 超时按单次失败计（15s 窗，慢≠不可用）——是否翻 down 由收敛点去抖定（连续 2 次才确认）
             } catch { done('down'); } // 坏 host（URL 解析失败）同 down
         });
         const [r, pr] = await Promise.all([probe, reportSysProxy()]); // ProxyEnable 注册表只读并行（s64 A1 复用；事故一形态诚实提示，不装作能探代理路径）
+        // s103/S7（裁决 §3.3-① 去抖）：ok→非ok 的可见翻转需连续 2 次失败确认——单次失败/慢探测不闪断（F5①：
+        // /models 1.6-9.1s 抖动撞 8s 线即闪现）。恢复 ok 即时收；非 ok 间换态（down↔stale/kind 变化）与
+        // null→非ok（首探/无态，去抖无「健康前态」可保护）照旧直收——去抖只保护「健康→故障」这一次翻转
+        let accept = true;
+        if (r.state !== 'ok' && healthCache.state === 'ok') {
+            healthFailStreak++;
+            if (healthFailStreak < 2) accept = false;
+            else healthFailStreak = 0;
+        } else healthFailStreak = 0;
         const prev = healthFrame();
-        healthCache.state = r.state; healthCache.kind = r.kind;
+        if (accept) { healthCache.state = r.state; healthCache.kind = r.kind; }
         let probeHn = ''; try { probeHn = new URL(t.host).hostname; } catch {}
         healthCache.proxy = !!(pr && pr.enabled) && hostIsRemote(probeHn); // s94 F-4c: 代理旗只对远端服务商亮（本机服务商不经代理）
         healthCache.at = Date.now();
@@ -1341,8 +1353,11 @@ async function probeProviderHealth(reply) { // qa s78b P1-1: reply=触发方 ws�
         // s99/t3-F: 健康 state 迁移事件——只计 ok↔非ok 跨越（recovered=非ok→ok / degraded=ok→非ok）；
         // 非 ok 之间的换态（down↔stale-model、kind 变化）与态不变的周期重探不计（迁移事件非轮询值；
         // prev=null=首探无前态，不伪计）。判据=research/23 模型链韧性；挂点唯一：探测收敛点即广播点。
+        // s103/S7: 去抖后的真态迁移才计——被去抖拦下的单次失败（accept=false）不动缓存，prev==now 不计不播。
         if (prev && now && prev.state !== now.state && (prev.state === 'ok' || now.state === 'ok')) statsBump('healthEvents.' + (now.state === 'ok' ? 'recovered' : 'degraded'));
-        evJson({ ev: 'health_probe', host: sanHost(t.host), state: r.state, kind: r.kind || '', ms: Date.now() - tProbe0 }); // s103/S5-G9: 收敛点一行（state/kind/耗时；态变计数保持不动）
+        const evLine = { ev: 'health_probe', host: sanHost(t.host), state: r.state, kind: r.kind || '', ms: Date.now() - tProbe0 }; // s103/S5-G9: 收敛点一行（state/kind/耗时；态变计数保持不动）
+        if (!accept) evLine.pend = healthFailStreak; // s103/S7: 去抖未确认的失败——连续失败计数如实入行（pend=1=单次失败未翻态；行记原始探测结果，缓存态未变）
+        evJson(evLine);
         if (JSON.stringify(prev) !== JSON.stringify(now)) for (const ws of allClients) ws.send(now); // 态变化才广播（s77 delete 广播同款）；now 恒非空——state=null 唯一路径在上方未配置分支已提前 return
         else if (reply && reply.alive && now) reply.send(now); // qa s78b P1-1: 态不变也必答触发方——隔夜首开（TTL 必过期）链路持续坏时告警条不再缺失（裁决 §6 主指标）
     } finally { healthBusy = false; if (healthPend) { healthPend = false; probeProviderHealth(); } } // pend 补探不带 reply（QA 裁定）
