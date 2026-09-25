@@ -994,14 +994,27 @@ function gooseModelName(act, real) { // 真名→goose 侧名：家族成员=别
     return (f && real !== f.alias) ? f.alias : real;
 }
 
-// ---- s101/W1: 思考参数翻译（键族最小内置映射；档位值域自 s101/W2 起读官方预置表声明） ----
+// ---- s101/W1: 思考参数翻译（键族内置映射；档位值域自 s101/W2 起读官方预置表声明） ----
 // 键族（research/40 §1.A/§1.E/§1.F）：OpenAI 兼容面=顶层 `reasoning_effort`（GLM/DeepSeek/Grok/Mistral…）；
-// Anthropic 面=顶层 `output_config.effort`（**不是** reasoning_effort——research/41 §3.D（d2）实测顶层键在该面被忽略）；
-// ponytail: 只落这两族；W3 扩写器补 thinking{budget_tokens}/thinkingConfig/enable_thinking 族（那些族的模型
-// 现今 keys 过滤后落空=不发参数，宁可不动也不发可能报错的键）。
+// Anthropic 面=顶层 `output_config.effort`（**不是** reasoning_effort——research/41 §3.D（d2）实测顶层键在该面被忽略）。
+// s102/W3 扩写器新增布尔族：`enable_thinking`（research/42 §1.A 百炼机读表：curl/HTTP 直接放请求体顶层；
+// 官方兼容映射 none→enable_thinking=False，§1.B）与腾讯 `EnableThinking`（research/42 §4：Boolean、未传默认开启，
+// 仅 hunyuan-a13b 生效）。
+// s102/W3 未实现键族（诚实降级维持，禁发明形状；各族回落语义见 thinkingKeysOf）：
+//  - thinking 族未实现：值形态跨厂分裂——GLM=enabled 强制（5.3 传 disabled 报错）、Kimi-K2.6=enabled|disabled、
+//    K2.7 仅收 {type:enabled,keep:all} 传其他配置报错、MiniMax-M3=adaptive|disabled、豆包另含 auto
+//    （research/40 §1.A；research/42 §2.A/§3.A/§6.A）——表 keys 不含子形态，统一 writer 必对某厂 400。
+//  - thinking_budget 族未实现：缺官方值形态依据——档位↔预算官方换算仅阿里 qwen3.8 一族
+//    （low=4096/medium=16384/xhigh=262144）且与 reasoning_effort 互斥同设报错（research/42 §1.B），该族已走
+//    reasoning_effort；百度侧仅 min100 无档位换算表（research/42 §5.A）。
+//  - reasoning 族未实现：官方形态=OpenAI Responses API 对象（research/43 §1-①）；我方链路恒走 Chat Completions
+//    面，该面官方键=reasoning_effort（gpt 条目已声明同发，被优先选中）。
+//  - thinking_strategy 族未实现：策略键（short_think/chain_of_draft）非深度档，档位串无官方换算（research/42 §5.A）。
 const THINK_KEY_WRITERS = {
     reasoning_effort: (j, v) => { j.reasoning_effort = v; },
     output_config: (j, v) => { j.output_config = Object.assign({}, j.output_config, { effort: v }); },
+    enable_thinking: (j, v) => { j.enable_thinking = v !== 'none' && v !== 'off'; }, // 布尔开关：none/off=关，其余=开（research/42 §1.A/§1.B）
+    EnableThinking: (j, v) => { j.EnableThinking = v !== 'none' && v !== 'off'; }, // 腾讯 hunyuan 布尔同构（research/42 §4）
 };
 const THINK_DEFAULT_KEY = 'reasoning_effort'; // 我方链路恒走 OpenAI 兼容面（providers.json host + /llmproxy/v1/chat/completions）
 // 官方兼容映射（research/40 §1.F 逐字表 + §1.E 收敛表）：非原生串 → 原生档；未列=原样
@@ -1010,7 +1023,15 @@ function thinkingKeysOf(model) { // 该模型认的键名：条目声明 thinkin
     const cap = syncModelCaps().caps[model];
     const t = cap && cap.thinking;
     const declared = t && Array.isArray(t.keys) ? t.keys.filter(k => typeof k === 'string' && THINK_KEY_WRITERS[k]) : [];
-    return declared.length ? declared : [THINK_DEFAULT_KEY];
+    if (declared.length) return declared;
+    // s102/W3 回落语义（逐族二选一写明）：
+    // ① 表声明了键但写侧全未实现 → **落空=不发**——此前回落 reasoning_effort 会给「官方声明不支持该键」的模型
+    //    错发（Kimi-K2 系/MiniMax/ernie-5.1/deepseek-v3.2-think 等，research/42 §2.A），宁可不发也不发错键。
+    // ② 例外=Gemini thinkingConfig 族 → **安全回落** reasoning_effort：OpenAI 兼容面官方文档化键就是
+    //    reasoning_effort（官方映射表 reasoning_effort→thinkingLevel/thinkingBudget，research/43 §3-⑦）。
+    // ③ 表未声明任何键（官方未收录/官方无思考键）→ 维持 W1 默认键（OpenAI 兼容面主键）。
+    const raw = t && Array.isArray(t.keys) ? t.keys.filter(k => typeof k === 'string') : [];
+    return raw.length ? (raw.indexOf('thinkingConfig') >= 0 ? [THINK_DEFAULT_KEY] : []) : [THINK_DEFAULT_KEY];
 }
 function declaredLevels(model) { // 翻译层声明的深度值域（官方表 levels；用户改过即用户值域）——空=该模型无参数档位
     const cap = syncModelCaps().caps[model];
@@ -1031,19 +1052,30 @@ function applyParamRoute(j, model) { // →true=改写过 body（调用方据此
     const hasLevels = declaredLevels(model).length > 0;
     const seed = effortIn || (hasLevels ? (lastThinkOverride || capsDefaultEffort(model)) : '');
     const eff = seed ? normalizeEffort(model, seed) : '';
+    // s102/W3：三类必写：①归一改值；②模型声明布尔门键（enable_thinking/EnableThinking）——goose 帧只带
+    // reasoning_effort，布尔键客户端永不自带，官方语义=不显式开就不思考（如百炼直供 step-3.7-flash 默认关，
+    // research/42 §8）；③帧自带 effort 键但模型键族不含（K2 系/混元/ernie-5.1 等官方声明不支持该键）→ 必剥，
+    // 域内值也不透传（透传=发官方不支持键）。
+    const keys = thinkingKeysOf(model);
+    const gateKey = keys.some(k => k === 'enable_thinking' || k === 'EnableThinking');
+    const stripIn = !!effortIn && keys.indexOf('reasoning_effort') < 0;
     if (eff) {
-        if (eff !== effortIn) { delete j.reasoning_effort; for (const k of thinkingKeysOf(model)) THINK_KEY_WRITERS[k](j, eff); changed = true; }
+        if (eff !== effortIn || gateKey || stripIn) { delete j.reasoning_effort; for (const k of keys) THINK_KEY_WRITERS[k](j, eff); changed = true; }
         if (applySamplingGate(j, eff)) changed = true;
     } else if (effortIn) { delete j.reasoning_effort; changed = true; } // 越界档真停发（W3 语义：用户改窄值域后不得泄漏原值）
     return changed;
 }
 function normalizeEffort(model, effort) { // 档位归一：越界档就近收敛/停发——防上游 400（GLM 5.3 对 off/medium 报错 code 1210，research/40 §1.A）
     if (typeof effort !== 'string' || !effort) return '';
-    const v = W1_EFFORT_ALIASES[effort] || effort; // 官方兼容映射（research/40 §1.F 逐字表：minimal/light→low、medium/xhigh→high、ultra→max、none/disabled→off）
     // 原生值域 s101/W2 起=官方预置表声明（caps 条目 thinking.levels；旧硬编码名单已删——单一真相源）
     // s101/W3：用户改过的 levels 即此读点——改档位集，出站可发档位集合随之变化（消费面闭环，裁决 §2.2）
     const cap = syncModelCaps().caps[model];
     const levels = (cap && cap.thinking && Array.isArray(cap.thinking.levels)) ? cap.thinking.levels : [];
+    // s102/W3：**模型原生域内值优先**——下方换算表是 GLM/DeepSeek 系官方映射（research/40 §1.E/§1.F），先套会吞掉
+    // 别家自己的原生档（qwen3.8 的 medium/xhigh、gemini 的 medium：xhigh→high 换算后 ∉ 该模型值域=整档蒸发，
+    // s102 红臂 W1b/W4 实证）。域内原样发=官方逐字最忠实；换算表只兜「域外兼容串」。
+    if (levels.length && levels.indexOf(effort) >= 0) return effort;
+    const v = W1_EFFORT_ALIASES[effort] || effort; // 官方兼容映射（research/40 §1.F 逐字表：minimal/light→low、medium/xhigh→high、ultra→max、none/disabled→off）
     if (!levels.length) return v === 'off' ? 'none' : v; // 无官方值域（未收录/无档位族）：off 用各厂通行关思考词 none，其余原样交上游校验（不猜）
     if (levels.includes(v)) return v;
     if (v === 'off') return levels.includes('none') ? 'none' : (levels.includes('low') ? 'low' : ''); // 关思考：优先官方 off 词（DeepSeek=none），不可关者（GLM）落 low
