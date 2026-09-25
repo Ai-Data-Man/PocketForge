@@ -1,5 +1,5 @@
 {
-  "rev": "2026-09-23.1",
+  "rev": "2026-09-25.1",
   "note": "官方规范预置表（s101/W2，裁决 docs/verdicts/2026-09-23-thinking-native-params-official-presets.md §2.1）。数据逐条来自 docs/research/40（GLM/DeepSeek 官方）、42（中国 8 厂 26 模型）、43（国际 5 厂 19 模型）的官方规范事实表，只搬不编。位置=conf 只读资源（先例：conf/templates/chat.tpl.html 由桥运行时 ROOT/conf 直读、conf/process-compose.yaml 启动时直读）——产品自有静态数据，随包发布、随版本覆盖，无需 bootstrap 物化（物化只为 bin/ 生成物与 data/ 运行时物服务，两者语义不同）。",
   "schema": {
     "match": "host_contains?（host 子串，(host,model) 二元组优先层）+ model（精确串）| model_regex（锚定正则，厂系默认层）。research/42 §7.D 硬证据：同一模型跨平台能力/默认不同，故 host 层先于 model 层。",
@@ -63,12 +63,12 @@
       "note": "阿里百炼直供口径：glm-5.3 系列始终开启思考，enable_thinking 仅支持 true，传 false 请求失败"
     },
     {
-      "match": { "model_regex": "^glm-5\\.(2|1|5)$" },
+      "match": { "model_regex": "^glm-5(\\.2|\\.1)?$" },
       "context_len": null, "max_output": null,
       "input": { "image": false, "pdf": false, "video": false },
       "thinking": { "mode": "native", "keys": ["reasoning_effort", "thinking"], "levels": ["high", "max"], "default": "high", "off_supported": true },
       "source_url": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions", "verified": "VERIFIED-DOC",
-      "note": "厂系默认（阿里百炼口径）：glm-5.2/5.1/5 默认 high、可选 high/max；low/medium→high、xhigh→max"
+      "note": "厂系默认（阿里百炼口径）：glm-5.2/5.1/5 默认 high、可选 high/max；low/medium→high、xhigh→max（s102 审计 P2-①：正则原 ^glm-5\\.(2|1|5)$ 误盖不存在的 glm-5.5、漏在册 glm-5）"
     },
     {
       "match": { "model_regex": "^qwen3\\.8-(max|flash)" },
@@ -498,25 +498,25 @@
       "match": { "model_regex": "^claude-opus-4\\.[78]$" },
       "context_len": null, "max_output": null,
       "input": { "image": true, "pdf": false, "video": false },
-      "thinking": { "mode": "native", "keys": ["thinking", "output_config"], "levels": ["low", "medium", "high", "xhigh", "max"], "default": "high", "off_supported": true },
+      "thinking": { "mode": "native", "keys": ["thinking", "output_config"], "levels": ["low", "medium", "high", "xhigh", "max"], "default": null, "off_supported": true },
       "source_url": "https://platform.claude.com/docs/en/build-with-claude/effort", "verified": "VERIFIED-DOC",
-      "note": "默关（Off 清单）；支持 max 与 xhigh"
+      "note": "默关（research/43 §1.B-⑥ Off 清单：Opus 4.8/4.7）；支持 max 与 xhigh（s102 审计 P2-②：default 原 high 与默关矛盾，置 null=不注入开档）"
     },
     {
       "match": { "model": "claude-opus-4-6" },
       "context_len": null, "max_output": null,
       "input": { "image": true, "pdf": false, "video": false },
-      "thinking": { "mode": "native", "keys": ["thinking", "output_config"], "levels": ["low", "medium", "high", "max"], "default": "high", "off_supported": true },
+      "thinking": { "mode": "native", "keys": ["thinking", "output_config"], "levels": ["low", "medium", "high", "max"], "default": null, "off_supported": true },
       "source_url": "https://platform.claude.com/docs/en/build-with-claude/effort", "verified": "VERIFIED-DOC",
-      "note": "支持 max；官方明示不是每个支持 max 的模型都支持 xhigh"
+      "note": "默关（research/43 §1.B-⑥ Off 清单：Opus 4.6，s102 审计 P2-② 同批）；支持 max；官方明示不是每个支持 max 的模型都支持 xhigh"
     },
     {
       "match": { "model": "claude-sonnet-4-6" },
       "context_len": null, "max_output": null,
       "input": { "image": true, "pdf": false, "video": false },
-      "thinking": { "mode": "native", "keys": ["thinking", "output_config"], "levels": ["low", "medium", "high", "max"], "default": "high", "off_supported": true },
+      "thinking": { "mode": "native", "keys": ["thinking", "output_config"], "levels": ["low", "medium", "high", "max"], "default": null, "off_supported": true },
       "source_url": "https://platform.claude.com/docs/en/build-with-claude/effort", "verified": "VERIFIED-DOC",
-      "note": "支持 max、不支持 xhigh；extended thinking（budget_tokens）在该代已弃用"
+      "note": "默关（research/43 §1.B-⑥ Off 清单：Sonnet 4.6，s102 审计 P2-② 同批）；支持 max、不支持 xhigh；extended thinking（budget_tokens）在该代已弃用"
     },
     {
       "match": { "model": "claude-opus-4-5" },
