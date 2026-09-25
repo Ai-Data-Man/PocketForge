@@ -1,13 +1,13 @@
 {
-  "rev": "2026-09-25.1",
+  "rev": "2026-09-25.2",
   "note": "官方规范预置表（s101/W2，裁决 docs/verdicts/2026-09-23-thinking-native-params-official-presets.md §2.1）。数据逐条来自 docs/research/40（GLM/DeepSeek 官方）、42（中国 8 厂 26 模型）、43（国际 5 厂 19 模型）的官方规范事实表，只搬不编。位置=conf 只读资源（先例：conf/templates/chat.tpl.html 由桥运行时 ROOT/conf 直读、conf/process-compose.yaml 启动时直读）——产品自有静态数据，随包发布、随版本覆盖，无需 bootstrap 物化（物化只为 bin/ 生成物与 data/ 运行时物服务，两者语义不同）。",
   "schema": {
     "match": "host_contains?（host 子串，(host,model) 二元组优先层）+ model（精确串）| model_regex（锚定正则，厂系默认层）。research/42 §7.D 硬证据：同一模型跨平台能力/默认不同，故 host 层先于 model 层。",
     "context_len": "官方上下文窗口 token 数；无官方数字=null（不编造）",
     "max_output": "官方最大输出 token 数；无官方数字=null",
     "input": "官方输入模态（image/pdf/video）；官方未载=false 并在 note 标注",
-    "thinking.mode": "native=同模型官方档位 / switch=同模型官方布尔开关（无档）/ budget=预算族 / none=无任何官方思考控制键",
-    "thinking.keys": "官方原生键名逐字（写侧只实现 reasoning_effort 与 output_config 两族，其余键由写侧过滤，W3 扩写器）",
+    "thinking.mode": "native=同模型官方档位 / switch=同模型官方布尔开关（可另带档位，如百炼直供 stepfun 开关+档混排）/ budget=预算族 / none=无任何官方思考控制键 / null=官方未载（诚实缺省，presetThinking 兜 none）",
+    "thinking.keys": "官方原生键名逐字（写侧已实现四族：reasoning_effort / output_config / enable_thinking / EnableThinking；未实现族 thinking / thinking_budget / reasoning / thinkingConfig / thinking_strategy 由写侧过滤或安全回落，各族理由见 chat-bridge.tpl.js THINK_KEY_WRITERS 上方注释）",
     "thinking.levels": "官方原生档位值域（有序，逐字）；无档=[]；官方未载=null",
     "thinking.default": "官方默认档；无档模型用 on/off 表示开关默认态；官方未载=null",
     "thinking.off_supported": "官方是否支持关闭思考",
@@ -52,7 +52,7 @@
       "input": { "image": false, "pdf": false, "video": false },
       "thinking": { "mode": "native", "keys": ["reasoning_effort", "thinking"], "levels": ["none", "low", "high", "max"], "default": "high", "off_supported": true },
       "source_url": "https://api-docs.deepseek.com/quick_start/pricing", "verified": "VERIFIED-DOC",
-      "note": "Vision Not supported（Pricing 表明文）；思考参数面同 deepseek-flash"
+      "note": "Vision Not supported（Pricing 表明文）；思考参数面同 deepseek-flash；数字取自 deepseek-flash 行口径（底稿无 v4-pro 独立数字行）"
     },
     {
       "match": { "host_contains": "aliyuncs.com", "model": "glm-5.3" },
@@ -60,7 +60,7 @@
       "input": { "image": false, "pdf": false, "video": false },
       "thinking": { "mode": "native", "keys": ["enable_thinking", "reasoning_effort"], "levels": ["max", "high", "low"], "default": "max", "off_supported": false },
       "source_url": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions", "verified": "VERIFIED-DOC",
-      "note": "阿里百炼直供口径：glm-5.3 系列始终开启思考，enable_thinking 仅支持 true，传 false 请求失败"
+      "note": "阿里百炼直供口径：glm-5.3 系列始终开启思考，enable_thinking 仅支持 true，传 false 请求失败；数字取自 z.ai 口径（research/40，research/42 无阿里侧 GLM 数字）"
     },
     {
       "match": { "model_regex": "^glm-5(\\.2|\\.1)?$" },
@@ -95,6 +95,22 @@
       "note": "可直接选 low/medium/xhigh；接受 7 档兼容串，minimal→low、high/max→xhigh、none=关闭思考；模态=Omni 多模态（官方模态表未单列 PDF/视频）"
     },
     {
+      "match": { "model": "qwen3.8-2.4t-a95b" },
+      "context_len": null, "max_output": null,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["enable_thinking", "thinking_budget", "reasoning_effort"], "levels": ["low", "medium", "xhigh"], "default": "xhigh", "off_supported": true },
+      "source_url": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions", "verified": "VERIFIED-DOC",
+      "note": "3.8 族成员（research/42 §1.B 行逐字含本模型）：默认 xhigh、可选 xhigh/medium/low、max/high→xhigh、minimal→low、none→enable_thinking=false；reasoning_effort 与 thinking_budget 互斥同设报错（换算 low=4096/medium=16384/xhigh=262144）；上下文/输出/模态底稿无本模型行（宁 null）"
+    },
+    {
+      "match": { "model": "qwen3.8-27b" },
+      "context_len": null, "max_output": null,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["enable_thinking", "thinking_budget", "reasoning_effort"], "levels": ["low", "medium", "xhigh"], "default": "xhigh", "off_supported": true },
+      "source_url": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions", "verified": "VERIFIED-DOC",
+      "note": "3.8 族成员（research/42 §1.B 行逐字含本模型）：默认 xhigh、可选 xhigh/medium/low、max/high→xhigh、minimal→low、none→enable_thinking=false；reasoning_effort 与 thinking_budget 互斥同设报错（换算 low=4096/medium=16384/xhigh=262144）；上下文/输出/模态底稿无本模型行（宁 null）"
+    },
+    {
       "match": { "model": "qwen3-max" },
       "context_len": 262144, "max_output": 65536,
       "input": { "image": false, "pdf": false, "video": false },
@@ -125,6 +141,14 @@
       "thinking": { "mode": "switch", "keys": ["enable_thinking", "thinking_budget"], "levels": [], "default": null, "off_supported": true },
       "source_url": "https://help.aliyun.com/zh/model-studio/qwen3-vl-plus", "verified": "VERIFIED-DOC",
       "note": "Input Text/Image/Video；默认档见模型卡（官方未在本表给）"
+    },
+    {
+      "match": { "host_contains": "aliyuncs.com", "model": "kimi-k3" },
+      "context_len": null, "max_output": null,
+      "input": { "image": false, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["enable_thinking", "reasoning_effort"], "levels": ["max", "high", "low"], "default": "max", "off_supported": true },
+      "source_url": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions", "verified": "VERIFIED-DOC",
+      "note": "阿里百炼直供口径（research/42 §1.B）：kimi-k3 支持传 enable_thinking=false 关闭思考；effort max/high/low 默认 max；tier1 二元组优先于下方月之暗面 kimi-k3 条目（off 语义相反）；上下文/输出/模态底稿无阿里侧行（宁 null）"
     },
     {
       "match": { "model": "kimi-k3" },
@@ -235,8 +259,8 @@
       "context_len": 1000000, "max_output": 393216,
       "input": { "image": true, "pdf": false, "video": false },
       "thinking": { "mode": "native", "keys": ["thinking", "reasoning_effort"], "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "max"], "default": "high", "off_supported": true },
-      "source_url": "https://www.volcengine.com/docs/82379/1449737", "verified": "VERIFIED-DOC",
-      "note": "方舟托管：none→关闭、minimal→low、medium/xhigh→high、ultra→max；上下文 1024k / 最大回答 384k"
+      "source_url": "https://www.volcengine.com/docs/82379/1449737", "verified": "UNVERIFIED",
+      "note": "方舟托管：none→关闭、minimal→low、medium/xhigh→high、ultra→max；上下文 1024k / 最大回答 384k——数字无 research/42 §3.D 底稿行（按 260813/260731 同值推定，s102 审计 P3）"
     },
     {
       "match": { "model_regex": "^deepseek-v4-(pro|flash)-ga-\\d+$" },
@@ -260,7 +284,7 @@
       "input": { "image": false, "pdf": false, "video": false },
       "thinking": { "mode": "switch", "keys": ["EnableThinking"], "levels": [], "default": "on", "off_supported": true },
       "source_url": "https://cloud.tencent.com/document/product/1729/105701", "verified": "VERIFIED-DOC",
-      "note": "官方默认慢思考；EnableThinking 仅对本模型生效；快慢切换也可用 query 前缀 /no_think；最大输入 224k"
+      "note": "官方默认慢思考；EnableThinking 仅对本模型生效；快慢切换也可用 query 前缀 /no_think；最大输入 224k——229376 为最大输入口径"
     },
     {
       "match": { "model": "hunyuan-t1" },
@@ -300,7 +324,7 @@
       "input": { "image": true, "pdf": false, "video": false },
       "thinking": { "mode": "native", "keys": ["thinking", "reasoning_effort"], "levels": ["high", "max"], "default": "high", "off_supported": true },
       "source_url": "https://cloud.baidu.com/doc/qianfan-docs/s/Wm95lyynv", "verified": "VERIFIED-DOC",
-      "note": "千帆口径同 deepseek-v4-pro"
+      "note": "千帆口径同 deepseek-v4-pro；数字取自 deepseek-flash/V4-Pro 行口径（千帆底稿无 v4-flash 独立行）"
     },
     {
       "match": { "model": "deepseek-v3.2-think" },
@@ -439,20 +463,28 @@
       "note": "默认 none（官方模型页逐字）"
     },
     {
+      "match": { "model": "gpt-5.1" },
+      "context_len": 400000, "max_output": 128000,
+      "input": { "image": true, "pdf": false, "video": false },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort", "reasoning"], "levels": null, "default": null, "off_supported": null },
+      "source_url": "https://platform.openai.com/docs/guides/reasoning", "verified": "UNVERIFIED",
+      "note": "非 codex 线：400k / 128k 逐字（research/43 §1.A-⑤）；模型页未列 effort 子集（§1.A-② 无行→档位/默认/可关性宁 null，同 qwen3-coder-plus 先例）"
+    },
+    {
       "match": { "model_regex": "^gpt-5\\.[23]-codex$" },
       "context_len": 400000, "max_output": 128000,
       "input": { "image": true, "pdf": false, "video": false },
-      "thinking": { "mode": "native", "keys": ["reasoning_effort", "reasoning"], "levels": ["low", "medium", "high", "xhigh"], "default": null, "off_supported": true },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort", "reasoning"], "levels": ["low", "medium", "high", "xhigh"], "default": null, "off_supported": false },
       "source_url": "https://platform.openai.com/docs/guides/reasoning", "verified": "VERIFIED-DOC",
-      "note": "codex 线 400k / max input 272000；默认档官方未载"
+      "note": "codex 线 400k / max input 272000；默认档官方未载；官方 codex 子集无 none 档、未言可关（s102 审计 P3：off 断言无据改 false）"
     },
     {
       "match": { "model_regex": "^gpt-5(\\.1)?-codex(-max)?$" },
       "context_len": 400000, "max_output": 128000,
       "input": { "image": true, "pdf": false, "video": false },
-      "thinking": { "mode": "native", "keys": ["reasoning_effort", "reasoning"], "levels": null, "default": null, "off_supported": true },
+      "thinking": { "mode": "native", "keys": ["reasoning_effort", "reasoning"], "levels": null, "default": null, "off_supported": false },
       "source_url": "https://platform.openai.com/docs/guides/reasoning", "verified": "UNVERIFIED",
-      "note": "官方只说 Responses-only，模型页未列 effort 子集（research/43 §5-1 UNVERIFIED）"
+      "note": "官方只说 Responses-only，模型页未列 effort 子集（research/43 §5-1 UNVERIFIED）；官方 codex 子集无 none 档、未言可关（s102 审计 P3：off 断言无据改 false）"
     },
     {
       "match": { "model": "claude-opus-5-5" },
@@ -524,7 +556,7 @@
       "input": { "image": true, "pdf": false, "video": false },
       "thinking": { "mode": "budget", "keys": ["thinking", "output_config"], "levels": [], "default": null, "off_supported": true },
       "source_url": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking", "verified": "VERIFIED-DOC",
-      "note": "Legacy：thinking.enabled + budget_tokens（4.5 及更早唯一形态）；4.5 另支持 effort 组合"
+      "note": "Legacy：thinking.enabled + budget_tokens（4.5 及更早唯一形态）（s102 审计 P3：原注「4.5 另支持 effort 组合」已删——research/43 §1.B-② 兼容清单无 Opus 4.5）"
     },
     {
       "match": { "model": "claude-sonnet-4-5" },
