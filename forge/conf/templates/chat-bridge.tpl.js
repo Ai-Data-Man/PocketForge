@@ -284,6 +284,10 @@ function sanHost(h) { // host 脱敏（reportSanitize 同口径的域字段版�
 }
 function evJson(fields) { logLine(path.join(LOGS_DIR, 'events.log'), fields); } // 运维事件域写入器（S5 各事件行同走此口）
 function llmProxyLine(fields) { logLine(path.join(LOGS_DIR, 'llmproxy.log'), fields); } // LLM 请求域写入器（S4 全请求行）
+function noteSwitch(ok, from, to, err) { // s103/S5-G7: 切换留痕——与 switchModel.ok/fail 计数同点耦合（计数必带行，永不漂移）
+    statsBump(ok ? 'switchModel.ok' : 'switchModel.fail');
+    evJson({ ev: 'switch_model', from: from || '', to: to || '', ok: !!ok, err: String(err || '').slice(0, 120) });
+}
 
 // ---- 桥状态存储层（裁决 2026-09-06-pg-forge-backend §4）：桥内唯一 PG 触点 ----
 // 模式机 off→connecting→pg|file：pg=写 forge_bridge+文件镜像双写（回落无缝）；file=纯文件（与切片前逐位一致，永久支持态）；
@@ -1301,6 +1305,7 @@ async function probeProviderHealth(reply) { // qa s78b P1-1: reply=触发方 ws�
     if (healthBusy) { healthPend = true; return; } // 在飞合并：忙期来电记一笔，收尾补探——save 失效不被在飞旧探吞掉（修复后最长 30min 不刷新的竞态）
     healthBusy = true;
     try {
+        const tProbe0 = Date.now(); // s103/S5-G9: 探测耗时计时（含并行代理查询，收敛点一行）
         const t = await healthTargets();
         if (!t.host || !t.model) { healthCache.state = null; healthCache.kind = null; healthCache.at = Date.now(); return; } // 未配置不探
         const probe = new Promise(resolve => {
@@ -1337,6 +1342,7 @@ async function probeProviderHealth(reply) { // qa s78b P1-1: reply=触发方 ws�
         // 非 ok 之间的换态（down↔stale-model、kind 变化）与态不变的周期重探不计（迁移事件非轮询值；
         // prev=null=首探无前态，不伪计）。判据=research/23 模型链韧性；挂点唯一：探测收敛点即广播点。
         if (prev && now && prev.state !== now.state && (prev.state === 'ok' || now.state === 'ok')) statsBump('healthEvents.' + (now.state === 'ok' ? 'recovered' : 'degraded'));
+        evJson({ ev: 'health_probe', host: sanHost(t.host), state: r.state, kind: r.kind || '', ms: Date.now() - tProbe0 }); // s103/S5-G9: 收敛点一行（state/kind/耗时；态变计数保持不动）
         if (JSON.stringify(prev) !== JSON.stringify(now)) for (const ws of allClients) ws.send(now); // 态变化才广播（s77 delete 广播同款）；now 恒非空——state=null 唯一路径在上方未配置分支已提前 return
         else if (reply && reply.alive && now) reply.send(now); // qa s78b P1-1: 态不变也必答触发方——隔夜首开（TTL 必过期）链路持续坏时告警条不再缺失（裁决 §6 主指标）
     } finally { healthBusy = false; if (healthPend) { healthPend = false; probeProviderHealth(); } } // pend 补探不带 reply（QA 裁定）
@@ -1672,7 +1678,8 @@ let acpCaps = null;
 init().catch(e => { console.error('init failed', e); process.exit(1); });
 
 // ---- 热重启：切换 provider 档案后重建 acp 子进程（保留会话 DB，客户端 reconnect 后 session/load 恢复） ----
-async function hotRestartProvider() {
+async function hotRestartProvider(src) { // src=触发源（'保存'/'切换'，s103/S5-G8——写 events.log 不写 console，裁决 §3.4-G8）
+    evJson({ ev: 'hot_restart', trigger: src || '' });
     const oldChild = acp;
     try { oldChild.removeAllListeners('exit'); oldChild.kill(); } catch {}
     // M6(审查s15): 清 waiting 前先 reject 在途请求，否则前端 spinner 永挂
@@ -5172,6 +5179,11 @@ function handleClient(ws, msg) {
                     }
                 }
                 writeProviders(list);
+                // s103/S5-G6: 变更留痕（动作/服务商名；key 永不落——msg.add/update 里的 key 字段不取）
+                if (msg.activate !== undefined) evJson({ ev: 'providers', action: 'activate', name: String(msg.activate || '') });
+                if (msg.add) evJson({ ev: 'providers', action: 'add', name: String((msg.add && msg.add.name) || '') });
+                if (msg.remove) evJson({ ev: 'providers', action: 'remove', name: String(msg.remove || '') });
+                if (msg.update) evJson({ ev: 'providers', action: 'update', name: String((msg.update && msg.update.name) || '') });
                 healthCache.at = 0; probeProviderHealth(); // §S1 缓存失效：save/activate/改模型即后台重探（换档对齐；面板修复→告警条即消的 GUI 闭环）
             }
             const act = list.find(p => p.active);
@@ -5190,7 +5202,7 @@ function handleClient(ws, msg) {
                 // s98/llm-proxy: 模型项与 spawnAcp 同读法（gooseModelName）；host 项同用 GOOSE_LLM_HOST 常量
                 // （goose env 的 host 已恒为桥反代，真实服务商 host 不再入指纹——同家族换成员/改 host 均不白重启）。
                 const sig2 = ((act2 && act2.name) || 'secrets.env') + '\0' + gooseModelName(act2, effectiveModel(act2)) + '\0' + GOOSE_LLM_HOST + '\0' + ((act2 && act2.key) || secrets.FORGE_AGENT_API_KEY || process.env.OPENAI_API_KEY);
-                if (sig2 !== lastSpawnEnv) hotRestartProvider().catch(e => console.error('hot restart failed', e));
+                if (sig2 !== lastSpawnEnv) hotRestartProvider('保存').catch(e => console.error('hot restart failed', e));
             }
             return;
         }
@@ -5199,7 +5211,8 @@ function handleClient(ws, msg) {
             // {model} — 可选池内切换：同供应商走 set_config_option，跨供应商热重启 acp
             const list = readProviders();
             const target = list.find(p => (p.models || []).includes(msg.model));
-            if (!target) { statsBump('switchModel.fail'); return ws.send({ sys: 'error', text: '该模型不在可选池：' + msg.model }); } // s99/t3-B: 不在池=换线未成（用户视角同败）
+            const fromModel = effectiveModel(list.find(p => p.active) || null); // s103/S5-G7: from=切换前生效模型（lastModelOverride 覆写前取，effectiveModel 单源同读法）
+            if (!target) { noteSwitch(false, fromModel, msg.model, '该模型不在可选池：' + msg.model); return ws.send({ sys: 'error', text: '该模型不在可选池：' + msg.model }); } // s99/t3-B: 不在池=换线未成（用户视角同败）
             lastModelOverride = msg.model; // qa s78b P3-2 / s78c P3-1: 生效模型记录，effectiveModel 单源消费（同档 set_config_option / 跨档 spawn env / 探测锚三处同读；∉池自愈回落池首，面板换档清除）
             if (target.active) {
                 healthCache.at = 0; probeProviderHealth(); // qa s78b P3-2: 同档切换=换生效模型，同 §S1 失效语义（顶栏切健康兄弟模型→条即消，不等 30min TTL）
@@ -5224,7 +5237,7 @@ function handleClient(ws, msg) {
                     const co = sidGooseCo.get(curSid) || [];
                     const mo2 = co.find(c => c && c.id === 'model'); if (mo2) mo2.currentValue = msg.model;
                     const th2 = co.find(c => c && c.id === 'thinking_effort'); if (th2 && applied) th2.currentValue = v;
-                    statsBump('switchModel.ok'); // s99/t3-B: 家族内快↔深切换成功
+                    noteSwitch(true, fromModel, msg.model); // s99/t3-B: 家族内快↔深切换成功
                     ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, configOptions: co });
                     return;
                 }
@@ -5238,7 +5251,7 @@ function handleClient(ws, msg) {
                             if (res && res.sessionId) noteSessionBorn(res.sessionId);
                             if (staleNewSession(ws, nid, res)) return;
                             wsPendingNew.delete(ws);
-                            if (!res || !res.sessionId) { statsBump('switchModel.fail'); return ws.send({ sys: 'error', text: '开新对话失败，稍后再试' }); } // s99/t3-B
+                            if (!res || !res.sessionId) { noteSwitch(false, fromModel, msg.model, '开新对话失败'); return ws.send({ sys: 'error', text: '开新对话失败，稍后再试' }); } // s99/t3-B
                             statsBump('sessionsCreated');
                             wsFirstPrompt.set(ws, true);
                             bindWs(ws, res.sessionId);
@@ -5251,14 +5264,14 @@ function handleClient(ws, msg) {
                             lastThinkOverride = v;
                             if (thinkAllowed(res.sessionId, v) && acpSetThink(res.sessionId, v)) sidThinkApplied.set(res.sessionId, v);
                             ws.send({ sys: 'subscribed', sessionId: res.sessionId, newSession: true, modes: res.modes || [], configOptions: co });
-                            statsBump('switchModel.ok'); // s99/t3-B: 进家族（含热重启+新会话）成功——restarts 情况不分，成功即 ok
+                            noteSwitch(true, fromModel, msg.model); // s99/t3-B: 进家族（含热重启+新会话）成功——restarts 情况不分，成功即 ok
                             ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, restarted: true, configOptions: co });
                         }});
                         flushPendingCloses();
                         acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: nid, method: 'session/new', params: { cwd: ROOT, mcpServers: [] } }) + '\n');
                     };
                     if ((lastSpawnEnv || '').split('\0')[1] === fam.alias) return spawnFamNew();
-                    return hotRestartProvider().then(spawnFamNew).catch(e => { statsBump('switchModel.fail'); ws.send({ sys: 'error', text: '切换失败: ' + e.message }); }); // s99/t3-B
+                    return hotRestartProvider('切换').then(spawnFamNew).catch(e => { noteSwitch(false, fromModel, msg.model, '切换失败: ' + e.message); ws.send({ sys: 'error', text: '切换失败: ' + e.message }); }); // s99/t3-B + s103/S5
                 }
                 const doSet = (sessionId) => { // 非家族目标：真名直写（家族已在上方两路分流——别名过不了 goose 目录校验）
                     const id = nextId++;
@@ -5271,9 +5284,9 @@ function handleClient(ws, msg) {
                             noteThinkOptions(sessionId, res.configOptions); // s98/think: 切模型后档位列表可能变（goose 名单制）——回包即刷缓存
                             if (lastThinkOverride && sidThinkApplied.get(sessionId) !== lastThinkOverride && thinkAllowed(sessionId, lastThinkOverride) && acpSetThink(sessionId, lastThinkOverride)) sidThinkApplied.set(sessionId, lastThinkOverride); // s98/think: 同点位并联（goose INHERITED 继承链之外再对账一次；qa s98 P3-2: 过白名单才发）
                             ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, configOptions: res.configOptions }); // s98/think: 前端据此刷新思考力度三态（会话内切模型不走 session/new→subscribed）
-                            statsBump('switchModel.ok'); // s99/t3-B: 真名 set_config_option 成功
+                            noteSwitch(true, fromModel, msg.model); // s99/t3-B: 真名 set_config_option 成功
                         }
-                        else { statsBump('switchModel.fail'); ws.send({ sys: 'error', text: '切换失败，试试重开对话' }); } // s99/t3-B
+                        else { noteSwitch(false, fromModel, msg.model, '切换失败，试试重开对话'); ws.send({ sys: 'error', text: '切换失败，试试重开对话' }); } // s99/t3-B
                     }});
                 };
                 const sid = wsSession.get(ws);
@@ -5294,7 +5307,7 @@ function handleClient(ws, msg) {
                             ws.send({ sys: 'subscribed', sessionId: res.sessionId, modes: res.modes || [], configOptions: res.configOptions || [] });
                             noteThinkOptions(res.sessionId, res.configOptions); // s98/think: 会话建立即入缓存
                             doSet(res.sessionId);
-                        } else { statsBump('switchModel.fail'); ws.send({ sys: 'error', text: '开新对话失败，稍后再试' }); } // s99/t3-B: 无会话分支的代开失败
+                        } else { noteSwitch(false, fromModel, msg.model, '开新对话失败'); ws.send({ sys: 'error', text: '开新对话失败，稍后再试' }); } // s99/t3-B: 无会话分支的代开失败
                     }});
                     flushPendingCloses(); // s80g: 新会话可能复用 pending 中的 sid——close 先落笔保今日复用语义
                     acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: nid, method: 'session/new', params: { cwd: ROOT, mcpServers: [] } }) + '\n');
@@ -5304,12 +5317,12 @@ function handleClient(ws, msg) {
                 writeProviders(list);
                 healthCache.at = 0; probeProviderHealth(); // 跨档 switch=换档，同 §S1 失效语义
                 ws.send({ sys: 'provider_switching', to: target.name, model: msg.model });
-                hotRestartProvider().then(() => {
+                hotRestartProvider('切换').then(() => {
                     // qa2/P4-a: restarted 回执补 configOptions（ff6ef43 无会话分支同款——回包档位随行，前端思考力度
                     // 控件刷新窗口闭合：重开会话前 select 不 stale）。真相源取法：有绑定 sid 走 session/load（幂等
                     // evicted-restore，用户重开对话时的同一通道提前走）；无绑定/回包无键=照旧不带（下次开盒由回包重算）。
                     const osid = wsSession.get(ws);
-                    const plain = () => { statsBump('switchModel.ok'); ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, restarted: true }); } // s99/t3-B: 跨档换线成功（无绑定 sid / load 回包无键两收口；load reject 走此路=切换本体已成功，仅档位回执缺席）
+                    const plain = () => { noteSwitch(true, fromModel, msg.model); ws.send({ sys: 'model_switched', model: msg.model, provider: target.name, restarted: true }); } // s99/t3-B: 跨档换线成功（无绑定 sid / load 回包无键两收口；load reject 走此路=切换本体已成功，仅档位回执缺席）
                     if (!osid) return plain();
                     const rid = nextId++;
                     waiting.set(rid, { ws, resolve: (res) => {
@@ -5317,11 +5330,11 @@ function handleClient(ws, msg) {
                         if (co) { noteGooseModel(osid, co); xlateConfigOptions(co); } // s98/llm-proxy: xlate 前抓 goose 侧原始模型名（load 按 DB 回放旧模型的真相）+ 翻真名+gradient（跨界翻译点）
                         const frame = { sys: 'model_switched', model: msg.model, provider: target.name, restarted: true };
                         if (co) { frame.configOptions = co; noteThinkOptions(osid, co); }
-                        statsBump('switchModel.ok'); // s99/t3-B: 跨档换线成功（带档位回执）
+                        noteSwitch(true, fromModel, msg.model); // s99/t3-B: 跨档换线成功（带档位回执）
                         ws.send(frame);
                     }, reject: () => plain() });
                     acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: rid, method: 'session/load', params: { sessionId: osid } }) + '\n');
-                }).catch(e => { statsBump('switchModel.fail'); ws.send({ sys: 'error', text: '切换供应商失败: ' + e.message }); }); // s99/t3-B
+                }).catch(e => { noteSwitch(false, fromModel, msg.model, '切换供应商失败: ' + e.message); ws.send({ sys: 'error', text: '切换供应商失败: ' + e.message }); }); // s99/t3-B
             }
             return;
         }
@@ -5331,10 +5344,12 @@ function handleClient(ws, msg) {
             // 家族降级后 goose 对 glm 系遮蔽成 ["off"]，值域由 caps 声明驱动）——不在域或不合法→人话回执且零 ACP
             // 帧（如实拒绝，不装成功）。set 路径 goose 无门控（research/35 §1），真翻译在本桥 /llmproxy 出站注入。
             const sid = wsSession.get(ws);
-            if (!sid || (msg.sessionId != null && msg.sessionId !== sid)) return ws.send({ sys: 'think_set', ok: false, err: '这场对话已经不在了（可能刚重启过）。刷新一下页面再试。' });
+            const wantV = typeof msg.value === 'string' ? msg.value : ''; // s103/S5-G7: to=请求档（含被拒值，from=会话当前已应用档）
+            const fromV = (sid && sidThinkApplied.get(sid)) || '';
+            if (!sid || (msg.sessionId != null && msg.sessionId !== sid)) { evJson({ ev: 'set_think', from: fromV, to: wantV, ok: false, err: '这场对话已经不在了' }); return ws.send({ sys: 'think_set', ok: false, err: '这场对话已经不在了（可能刚重启过）。刷新一下页面再试。' }); }
             const vals = thinkDomain(sid);
             const v = typeof msg.value === 'string' ? msg.value : '';
-            if (!v || vals.indexOf(v) < 0) return ws.send({ sys: 'think_set', ok: false, err: '当前模型不支持调思考力度' });
+            if (!v || vals.indexOf(v) < 0) { evJson({ ev: 'set_think', from: fromV, to: v, ok: false, err: '当前模型不支持调思考力度' }); return ws.send({ sys: 'think_set', ok: false, err: '当前模型不支持调思考力度' }); }
             const id = nextId++;
             waiting.set(id, { ws, resolve: (res) => {
                 if (res && res.configOptions) {
@@ -5343,12 +5358,13 @@ function handleClient(ws, msg) {
                     noteThinkOptions(sid, res.configOptions);
                     sidThinkApplied.set(sid, v);
                     lastThinkOverride = v; // 主控裁：会话内切换即记习惯（新会话 subscribe 随行）
+                    evJson({ ev: 'set_think', from: fromV, to: v, ok: true, err: '' }); // s103/S5-G7
                     ws.send({ sys: 'think_set', ok: true, value: v, configOptions: res.configOptions });
-                } else ws.send({ sys: 'think_set', ok: false, err: '切换没做成，稍后再试。' });
+                } else { evJson({ ev: 'set_think', from: fromV, to: v, ok: false, err: '切换没做成，稍后再试' }); ws.send({ sys: 'think_set', ok: false, err: '切换没做成，稍后再试。' }); }
             }});
             try {
                 acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/set_config_option', params: { sessionId: sid, configId: 'thinking_effort', value: v } }) + '\n');
-            } catch (e) { waiting.delete(id); ws.send({ sys: 'think_set', ok: false, err: '切换没做成，稍后再试。' }); }
+            } catch (e) { waiting.delete(id); evJson({ ev: 'set_think', from: fromV, to: v, ok: false, err: '切换没做成，稍后再试' }); ws.send({ sys: 'think_set', ok: false, err: '切换没做成，稍后再试。' }); }
             return;
         }
 
