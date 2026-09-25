@@ -13,10 +13,10 @@
 const fs = require('fs');
 const html = fs.readFileSync(__dirname + '/../../forge/conf/templates/chat.tpl.html', 'utf8');
 function grab(re, label) { const m = html.match(re); if (!m) { console.error('NOT FOUND: ' + label); process.exit(1); } return m[0]; }
-let pass = 0, fail = 0, KP = 0, KF = 0, CP = 0, CF = 0, PP = 0, PF = 0, CUR = 'kbd';
+let pass = 0, fail = 0, KP = 0, KF = 0, CP = 0, CF = 0, PP = 0, PF = 0, BP = 0, BF = 0, CUR = 'kbd';
 function ck(name, cond) {
-    if (cond) { console.log('PASS [' + SEC + '] ' + name); pass++; if (CUR === 'kbd') KP++; else if (CUR === 'close-path') CP++; else PP++; }
-    else { console.log('FAIL [' + SEC + '] ' + name); fail++; if (CUR === 'kbd') KF++; else if (CUR === 'close-path') CF++; else PF++; }
+    if (cond) { console.log('PASS [' + SEC + '] ' + name); pass++; if (CUR === 'kbd') KP++; else if (CUR === 'close-path') CP++; else if (CUR === 'busy') BP++; else PP++; }
+    else { console.log('FAIL [' + SEC + '] ' + name); fail++; if (CUR === 'kbd') KF++; else if (CUR === 'close-path') CF++; else if (CUR === 'busy') BF++; else PF++; }
 }
 let SEC = '';
 
@@ -366,8 +366,98 @@ const outsideClickArrow = grab(/e=>\{ const t=e\.target; const pop=\$\('prompts-
     ck('outside-click handler runs clean on stub DOM', !threw);
 }
 
+// ================================ busy S1（s103/S1 忙碌条三要素，裁决 2026-09-25 §3.1） ================================
+// 阶段（想/动手/写答案）由既有帧推导 + 秒计时 + 当前档人话（THINK_LABELS 单一真相源）；
+// deepseek 系无 thought 帧 = 只有计时+通用阶段（诚实降级，不造「它在想」假象）。
+// 行为断言=提取函数沙盒执行；分支接线=源码锚点（模板漂移显式 NOT FOUND，不误报）。
+const setBusySrc = grabSoft(/function setBusy\(b\)\{[\s\S]+?\n\}/, 'setBusy');
+const curThinkLabelSrc = grabSoft(/function curThinkLabel\(\)\{[\s\S]+?\n\}/, 'curThinkLabel');
+const busyPhraseSrc = grabSoft(/function busyPhrase\(\)\{[\s\S]+?\n\}/, 'busyPhrase');
+const busyPaintSrc = grabSoft(/function busyPaint\(\)\{[^\n]+\}/, 'busyPaint');
+const noteTurnPhaseSrc = grabSoft(/function noteTurnPhase\(ph\)\{[^\n]+\}/, 'noteTurnPhase');
+const THINK_LABELSSrc = grabSoft(/const THINK_LABELS=\{[^\n]+\}/, 'THINK_LABELS');
+function grabSoft(re, label) { const m = html.match(re); if (!m) { console.error('SOFT-NOT-FOUND: ' + label + '（修前红形态：HEAD 无此函数）'); return ''; } return m[0]; }
+function mkTEl(id) { return { id, textContent: '', style: { display: '' }, onclick: null }; }
+function buildBusy(sel) {
+    if (!setBusySrc || !curThinkLabelSrc || !busyPhraseSrc || !busyPaintSrc || !noteTurnPhaseSrc || !THINK_LABELSSrc) return { api: { setBusy() {}, noteTurnPhase() {}, busyPaint() {} }, els: {}, typing: { style: {} }, tick() {}, text: () => '' }; // 修前红：任一新函数缺失=整组行为断言红（no-op 桩走过不炸）
+    const els = { 'typing-text': mkTEl('typing-text'), 'typing': mkTEl('typing'), 'think': sel };
+    const typing = els['typing'], send = { disabled: false }, stopBtn = { style: {} };
+    let fakeNow = 1000000, live = [];
+    const api = new Function('$', 'typing', 'send', 'stopBtn', 'document', 'notifyDone', 'stopNotify', 'setInterval', 'clearInterval', 'Date', `
+        let busyPhase='', busyT0=0, busyTick=null;
+        ${THINK_LABELSSrc}
+        ${curThinkLabelSrc}
+        ${busyPhraseSrc}
+        ${busyPaintSrc}
+        ${noteTurnPhaseSrc}
+        ${setBusySrc}
+        return { setBusy, noteTurnPhase, busyPaint };
+    `)(id => { if (!els[id]) throw new Error('no stub #' + id); return els[id]; }, typing, send, stopBtn, { hidden: false }, () => {}, () => {},
+        fn => { live.push(fn); return 1; }, () => { live.length = 0; }, { now: () => fakeNow });
+    return { api, els, typing, tick: () => { fakeNow += 1100; live.forEach(f => f()); }, text: () => els['typing-text'].textContent };
+}
+CUR = 'busy';
+{
+    const mkSel = o => Object.assign({ value: '', disabled: false, style: { display: '' } }, o);
+    {
+        const b = buildBusy(mkSel({}));
+        SEC = 'busy S1';
+        b.api.setBusy(true);
+        ck('开忙即显通用阶段+计时（小 forge 正在干活 · 已 0 秒）+起 1s 表', b.text() === '小 forge 正在干活 · 已 0 秒' && b.typing.style.display === 'block');
+        b.tick();
+        ck('秒数递增（+1.1s 后 已 1 秒）', b.text() === '小 forge 正在干活 · 已 1 秒', b.text());
+    }
+    {
+        const b = buildBusy(mkSel({ value: 'max' }));
+        b.api.setBusy(true); b.api.noteTurnPhase('think');
+        ck('思考期档位人话（max→它正在尽全力想 · 已 N 秒，THINK_LABELS 单源）', b.text() === '它正在尽全力想 · 已 0 秒', b.text());
+    }
+    {
+        const b = buildBusy(mkSel({ value: 'low' }));
+        b.api.setBusy(true); b.api.noteTurnPhase('think');
+        ck('非动短语标签括注（low→它在想（快一点），不出「它正在快一点」病句）', b.text() === '它在想（快一点） · 已 0 秒', b.text());
+    }
+    {
+        const b = buildBusy(mkSel({ value: 'max', disabled: true }));
+        b.api.setBusy(true); b.api.noteTurnPhase('think');
+        const b2 = buildBusy(mkSel({ value: 'max', style: { display: 'none' } }));
+        b2.api.setBusy(true); b2.api.noteTurnPhase('think');
+        ck('态③/态④无档位真值→诚实无标签（它在想 · 已 N 秒）', b.text() === '它在想 · 已 0 秒' && b2.text() === '它在想 · 已 0 秒', b.text() + ' | ' + b2.text());
+    }
+    {
+        const b = buildBusy(mkSel({}));
+        b.api.setBusy(true); b.api.noteTurnPhase('work');
+        ck('tool_call 帧→在动手', b.text() === '它在动手 · 已 0 秒', b.text());
+        b.api.noteTurnPhase('write');
+        ck('message_chunk 帧→在写答案', b.text() === '它在写答案 · 已 0 秒', b.text());
+    }
+    {
+        const b = buildBusy(mkSel({}));
+        b.api.setBusy(true); b.tick(); b.tick(); b.tick();
+        ck('deepseek 诚实降级：整轮无 thought 帧=恒通用阶段+计时，零「想」字假象', b.text() === '小 forge 正在干活 · 已 3 秒' && !b.text().includes('想'), b.text());
+        b.api.setBusy(false);
+        ck('收忙停表+藏条（typing display:none）', b.typing.style.display === 'none');
+        const before = b.text(); b.tick();
+        ck('停表后不再走秒', b.text() === before && before.includes('秒'));
+    }
+    SEC = 'busy S1 wiring';
+    ck('thought 分支喂「在想」阶段（:1432 keep silent 已退役）', /agent_thought_chunk'\)\{ (?:thoughtFeed\(u\);|noteTurnPhase\('think'\);)/.test(html) && !/agent_thought_chunk'\)\{ \/\* keep silent \*\//.test(html));
+    ck('message_chunk 分支先翻「在写答案」（thinkDiscard 为 S2 预留位）', /agent_message_chunk'\)\{ (?:thinkDiscard\(\); )?noteTurnPhase\('write'\); addMsg\(/.test(html));
+    ck('tool 分支翻「在动手」', /tool_call_update'\)\{ noteTurnPhase\('work'\); toolCard\(u\); \}/.test(html));
+    const addMsgSrcS1 = grab(/function addMsg\(text,who\)\{[\s\S]+?\n\}/, 'addMsg');
+    {
+        const typingStub = mkTEl('typing'); const chatEl = { appendChild: () => {}, scrollTop: 0, scrollHeight: 0 };
+        const am = new Function('typing', 'chat', 'streamEl', 'document', 'nearBottom', 'mdRender', 'msgButtons', 'demoteLiveUser', `${addMsgSrcS1} return addMsg;`)(typingStub, chatEl, null, { createElement: () => ({ dataset: {}, appendChild() {}, classList: { add() {} } }) , querySelectorAll: () => [] }, () => true, () => '', () => null, () => {});
+        typingStub.style.display = 'block';
+        am('hi', 'agent');
+        ck('写答案阶段忙碌条在场：addMsg 不再藏 typing（显隐唯一出口=setBusy）', typingStub.style.display === 'block');
+    }
+}
+CUR = 'kbd';
+
 console.log('ui-logic-probe kbd: PASS=' + KP + ' FAIL=' + KF);
 console.log('ui-logic-probe close-path: PASS=' + CP + ' FAIL=' + CF);
 console.log('ui-logic-probe prompts: PASS=' + PP + ' FAIL=' + PF);
+console.log('ui-logic-probe busy: PASS=' + BP + ' FAIL=' + BF);
 console.log('ui-logic-probe: PASS=' + pass + ' FAIL=' + fail);
 process.exit(fail ? 1 : 0);

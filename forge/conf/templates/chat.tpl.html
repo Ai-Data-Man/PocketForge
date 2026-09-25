@@ -366,7 +366,7 @@ details.tz[open]>summary::before{content:'▾ '}
     <button class="icobtn" id="rside-toggle" title="工作区文件">📁</button>
   </div>
   <div id="chat"></div>
-  <div class="typing" id="typing" role="status" style="display:none">小 forge 正在干活<span class="tdots"><i></i><i></i><i></i></span></div>
+  <div class="typing" id="typing" role="status" style="display:none"><span id="typing-text">小 forge 正在干活</span><span class="tdots"><i></i><i></i><i></i></span></div><!-- s103/S1: 文案进独立 span（忙碌条三要素=阶段+秒计时+当前档人话，随帧刷新） -->
   <div id="inputbar">
     <input id="txt" placeholder="想让我做什么？@ 引用文件或数据表，Tab=常用话术" autocomplete="off" aria-label="聊天输入框">
     <button id="prompts-btn" title="我的提示词：存住常用话术，一点就用" aria-label="打开我的提示词">📖</button>
@@ -1215,7 +1215,31 @@ $('model-pick').addEventListener('keydown',e=>{
   if(e.target.id==='model-search'||e.target.closest('.mi')) return;
   e.preventDefault(); e.currentTarget.click();
 });
+// s103/S1（裁决 2026-09-25 §3.1）：忙碌条三要素状态机——阶段由既有帧推导（thought 流动=在想 / tool_call=在动手 /
+// message_chunk=在写答案）+秒计时；思考期显示当前思考档人话。档位只读顶栏旋钮当前值（renderThinkCtl 解析链
+// thinkEcho→条目默认→回包→习惯，与桥出站同源=W3 单一真相），标签复用 THINK_LABELS，不造第二套；态③禁用/态④隐藏
+// =无档位真值，诚实不显示。deepseek 系中继无 reasoning 帧：全程只有计时+通用阶段，不造「它在想」假象（两族同一套代码）。
+let busyPhase='', busyT0=0, busyTick=null;
+function curThinkLabel(){ // 只读旋钮当前档（R3：状态条只读，改档入口仍在顶栏）
+  const sel=$('think');
+  if(!sel||sel.disabled||sel.style.display==='none') return '';
+  const v=sel.value;
+  return (v&&v!=='off'&&v!=='none')?(THINK_LABELS[v]||v):'';
+}
+function busyPhrase(){ // 深档形态（裁决原文例）：它正在尽全力想 · 已 90 秒；标签不是动短语时括注（它在想（快一点））
+  const sec=busyT0?Math.max(0,Math.floor((Date.now()-busyT0)/1000)):0;
+  let s='小 forge 正在干活';
+  if(busyPhase==='think'){ const lab=curThinkLabel(); s=lab?(lab.indexOf('想')>=0?'它正在'+lab:'它在想（'+lab+'）'):'它在想'; }
+  else if(busyPhase==='work'){ s='它在动手'; }
+  else if(busyPhase==='write'){ s='它在写答案'; }
+  return s+' · 已 '+sec+' 秒';
+}
+function busyPaint(){ $('typing-text').textContent=busyPhrase(); }
+function noteTurnPhase(ph){ if(busyPhase===ph) return; busyPhase=ph; busyPaint(); }
 function setBusy(b){ busy=b; typing.style.display=b?'block':'none'; send.disabled=b; stopBtn.style.display=b?'inline-block':'none';
+  // s103/S1: 开忙即起秒表（通用阶段起步——无帧不造「它在想」），收忙停表
+  if(b){ busyPhase=''; busyT0=Date.now(); busyPaint(); clearInterval(busyTick); busyTick=setInterval(busyPaint,1000); }
+  else{ clearInterval(busyTick); busyTick=null; busyT0=0; }
   // s21: 小白「干完了」提醒——后台标签页时标题闪烁，回来即停
   if(!b){ if(document.hidden){ notifyDone(); } else { stopNotify(); } } else { stopNotify(); } }
 let notifyTimer=null;
@@ -1265,7 +1289,7 @@ function flushTable2(out, bufRef){
 }
 function addMsg(text,who){
   const stick=nearBottom(); // s69 P2-7: 先测距再追加，新增大块内容不影响判定
-  typing.style.display='none';
+  // s103/S1: 不再在此藏 #typing——写答案阶段忙碌条在场（阶段+计时），显隐唯一出口=setBusy
   let el=null;
   if(who==='agent'&&streamEl&&streamEl.dataset.live==='1'){ streamEl.textContent+=text; }
   else{
@@ -1427,10 +1451,10 @@ function toolCard(upd){
 function onAgentEvent(p){
   if(p.method==='session/update'){
     const u=p.params.update;
-    if(u.sessionUpdate==='agent_message_chunk'){ typing.style.display='none'; addMsg(u.content.text,'agent'); }
+    if(u.sessionUpdate==='agent_message_chunk'){ noteTurnPhase('write'); addMsg(u.content.text,'agent'); } // s103/S1: 阶段翻「在写答案」（忙碌条不再藏——写答案期也在场，显隐唯一出口=setBusy）
     else if(u.sessionUpdate==='user_message_chunk'){ const el=addMsg(u.content.text,'user'); const gm=(u.messageId||(u._meta&&u._meta.goose&&u._meta.goose.messageId)); if(gm) el.dataset.gmid=gm; } // 主线5：回放帧双冗余 id（research/21 §6 顶级 messageId 与 _meta.goose.messageId 同值），存元素上供撤回定位
-    else if(u.sessionUpdate==='agent_thought_chunk'){ /* keep silent */ }
-    else if(u.sessionUpdate==='tool_call'||u.sessionUpdate==='tool_call_update'){ toolCard(u); }
+    else if(u.sessionUpdate==='agent_thought_chunk'){ noteTurnPhase('think'); } // s103/S1: 思考帧喂忙碌条「在想」阶段（原 keep silent 整族丢弃=黑箱主缺口）；deepseek 无此帧=通用阶段（诚实降级）
+    else if(u.sessionUpdate==='tool_call'||u.sessionUpdate==='tool_call_update'){ noteTurnPhase('work'); toolCard(u); } // s103/S1: 阶段翻「在动手」——决定调工具前的规划期从此可见
     else if(u.sessionUpdate==='plan'){ /* future */ }
     else if(u.sessionUpdate==='available_commands_update'){}
     return;
