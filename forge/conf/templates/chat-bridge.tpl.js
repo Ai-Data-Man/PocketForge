@@ -274,12 +274,18 @@ function rotateLog(file) { // 超限滚一档：.2→.3、.1→.2、主→.1（�
         try { FSS.renameSync(file, file + '.1'); } catch {}
     } catch {}
 }
+function sanErr(s) { // s103/qa-rework P2-1: err 字段落盘前统一脱敏——恶意/故障中继错误体可回显 key 形态（Bearer/api_key=/token=/Authorization:），
+    // 命中片段替换 <已脱敏>（保留其余错误文本可读）；Bearer 先于 Authorization 替换，防 Authorization:\s*\S+ 半吃 Bearer 留残段
+    return String(s || '')
+        .replace(/Bearer\s+\S+|api_key[=:]\s*\S+|token[=:]\s*\S+/gi, '<已脱敏>')
+        .replace(/Authorization:\s*\S+/gi, '<已脱敏>');
+}
 function logLine(file, fields) { // 单行 JSON 直写（ts 自动补；失败静默——日志通道绝不反噬请求主路径）
     try {
         FSS.mkdirSync(LOGS_DIR, { recursive: true });
         rotateLog(file);
         const o = { ts: new Date().toISOString() };
-        for (const k in fields) o[k] = fields[k];
+        for (const k in fields) o[k] = k === 'err' ? sanErr(fields[k]) : fields[k]; // s103/qa-rework P2-1: err=上游错误原文唯一承载字段（test_model 摘要/llmproxy 嗅探/switch 文案），两日志写入侧同口脱敏
         FSS.appendFileSync(file, JSON.stringify(o) + '\n');
     } catch {}
 }
@@ -2822,7 +2828,8 @@ const REPORTS_DIR = path.join(ROOT, 'data', 'reports');
 const REPORT_MAX_BYTES = 256 * 1024; // s64 C: 报告体积硬顶（写盘前截断预算）＝reportTail 定位读预算，单一常量两处引用
 function reportSanitize(text) {
     // S2: 黑名单扩充——sk-/ghp_/gho_/github_pat_/AIza…/glpat-/xox[bap]-/GH_TOKEN，命中整行 <已脱敏>
-    return String(text).split('\n').map(l => (/\bsk-[A-Za-z0-9][A-Za-z0-9_\-]{3,}|ghp_|gho_|github_pat_|AIza[\w\-]{10,}|glpat\-|xox[bap]\-|GH_TOKEN/i.test(l) ? '<已脱敏>' : l)).join('\n');
+    // s103/qa-rework P2-1: 补非 sk- 形态——Bearer/api_key=/token=/Authorization:（写入侧 sanErr 已挡源头，此层兜修复前老行与其他入口）
+    return String(text).split('\n').map(l => (/\bsk-[A-Za-z0-9][A-Za-z0-9_\-]{3,}|ghp_|gho_|github_pat_|AIza[\w\-]{10,}|glpat\-|xox[bap]\-|GH_TOKEN|Bearer\s+\S+|api_key[=:]\s*\S+|token[=:]\s*\S+|Authorization:\s*\S+/i.test(l) ? '<已脱敏>' : l)).join('\n');
 }
 function reportTail(file, want, skipRe) { // 从尾往前取 want 行，跳过 skipRe 命中行（healthz 噪音），攒够即止
     try {
