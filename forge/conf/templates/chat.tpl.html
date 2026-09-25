@@ -2548,7 +2548,7 @@ function renderModelPool(pr){
       }
     };
     lab.appendChild(cb); lab.appendChild(document.createTextNode(' '+m+capsSrcLabel(modelCaps[m]))); // s99/S2 §3.5 → s101/W2: 池行来源三态标注（（官方）/（你改的）/（猜的））
-    const capBtn=document.createElement('button'); capBtn.className='mini'; capBtn.textContent='配置'; capBtn.title='改这个模型的配置：能不能看图、上下文多大（认错了可以改）'; // s100/T1: 「能力」更名「配置」（裁决 §2.1）；s100/QA P2-1: 档位零消费方→标题撤「思考档位」（真可改的只剩看图/上下文两字段）
+    const capBtn=document.createElement('button'); capBtn.className='mini'; capBtn.textContent='配置'; capBtn.title='改这个模型的配置：能不能看图、上下文多大、思考分几档（认错了可以改）'; // s100/T1: 「能力」更名「配置」（裁决 §2.1）；s100/QA P2-1 曾撤「思考档位」（当时档位零消费方）；s101/W3 重开档位编辑+消费面→title 补「思考分几档」
     capBtn.onclick=(e)=>{ e.preventDefault(); e.stopPropagation(); openCapEditor(m); }; // s98/llm-proxy C2: 配置编辑入口（s100/T1 起=独立弹窗）
     lab.appendChild(capBtn);
     rows.appendChild(lab);
