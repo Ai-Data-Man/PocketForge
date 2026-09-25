@@ -3562,9 +3562,10 @@ function handleLlmProxy(req, res) {
     req.on('error', () => { aborted = true; });
     req.on('end', () => {
         if (aborted) return;
-        const llmDone = (status, err) => { // s103/S4: 每请求恰一行（先到先记，断开/错误也留痕）：ts/model/effort/首字节ms/总ms/状态码/错误体前120字节
+        const llmDone = (status, err) => { // s103/S4: 每请求恰一行（先到先记，断开/错误也留痕）：ts/path/model/effort/首字节ms/总ms/状态码/错误体前120字节
             if (llmDone.logged) return; llmDone.logged = true;
-            llmProxyLine({ model: logModel, effort: logEff, firstMs: tFirst ? tFirst - t0 : null, totalMs: Date.now() - t0, status, err: String(err || '').slice(0, 120) });
+            // s103/qa-rework P3-2: 补 path 字段——/chat/completions vs /models 一眼可辨（goose 自发目录刷新/健康探测行不再稀释聊天归因）
+            llmProxyLine({ path: (req.url || '').split('?')[0], model: logModel, effort: logEff, firstMs: tFirst ? tFirst - t0 : null, totalMs: Date.now() - t0, status, err: String(err || '').slice(0, 120) });
         };
         const act = activeProvider();
         const host = ((act && act.host) || secrets.FORGE_AGENT_HOST || '').replace(/\/$/, '');
