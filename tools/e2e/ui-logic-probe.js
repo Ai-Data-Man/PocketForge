@@ -367,8 +367,9 @@ const outsideClickArrow = grab(/e=>\{ const t=e\.target; const pop=\$\('prompts-
 }
 
 // ================================ busy S1（s103/S1 忙碌条三要素，裁决 2026-09-25 §3.1） ================================
-// 阶段（想/动手/写答案）由既有帧推导 + 秒计时 + 当前档人话（THINK_LABELS 单一真相源）；
-// deepseek 系无 thought 帧 = 只有计时+通用阶段（诚实降级，不造「它在想」假象）。
+// 阶段（想/动手/写答案）：开忙=想（qa-rework P2-2 修订——想=等模型响应窗口，统一显示不依赖 thought 帧）、
+// tool_call=动手、message_chunk=写答案 + 秒计时 + 当前档人话（THINK_LABELS 单一真相源）；
+// deepseek 系无 thought 帧=无草稿面板（假象边界=内容不造假）。
 // 行为断言=提取函数沙盒执行；分支接线=源码锚点（模板漂移显式 NOT FOUND，不误报）。
 const setBusySrc = grabSoft(/function setBusy\(b\)\{[\s\S]+?\n\}/, 'setBusy');
 const curThinkLabelSrc = grabSoft(/function curThinkLabel\(\)\{[\s\S]+?\n\}/, 'curThinkLabel');
@@ -416,9 +417,9 @@ CUR = 'busy';
         const b = buildBusy(mkSel({}));
         SEC = 'busy S1';
         b.api.setBusy(true);
-        ck('开忙即显通用阶段+计时（小 forge 正在干活 · 已 0 秒）+起 1s 表', b.text() === '小 forge 正在干活 · 已 0 秒' && b.typing.style.display === 'block');
+        ck('开忙即「想」阶段+计时（qa-rework P2-2：响应窗口统一显示，无档位真值=无标签 它在想 · 已 0 秒）+起 1s 表', b.text() === '它在想 · 已 0 秒' && b.typing.style.display === 'block');
         b.tick();
-        ck('秒数递增（+1.1s 后 已 1 秒）', b.text() === '小 forge 正在干活 · 已 1 秒', b.text());
+        ck('秒数递增（+1.1s 后 已 1 秒）', b.text() === '它在想 · 已 1 秒', b.text());
     }
     {
         const b = buildBusy(mkSel({ value: 'max' }));
@@ -447,7 +448,7 @@ CUR = 'busy';
     {
         const b = buildBusy(mkSel({}));
         b.api.setBusy(true); b.tick(); b.tick(); b.tick();
-        ck('deepseek 诚实降级：整轮无 thought 帧=恒通用阶段+计时，零「想」字假象', b.text() === '小 forge 正在干活 · 已 3 秒' && !b.text().includes('想'), b.text());
+        ck('deepseek 无 thought 帧=「想」阶段+计时保持（qa-rework P2-2：阶段=响应窗口，假象边界在面板内容不在阶段）', b.text() === '它在想 · 已 3 秒', b.text());
         b.api.setBusy(false);
         ck('收忙停表+藏条（typing display:none）', b.typing.style.display === 'none');
         const before = b.text(); b.tick();

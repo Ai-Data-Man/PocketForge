@@ -1223,7 +1223,8 @@ $('model-pick').addEventListener('keydown',e=>{
 // s103/S1（裁决 2026-09-25 §3.1）：忙碌条三要素状态机——阶段由既有帧推导（thought 流动=在想 / tool_call=在动手 /
 // message_chunk=在写答案）+秒计时；思考期显示当前思考档人话。档位只读顶栏旋钮当前值（renderThinkCtl 解析链
 // thinkEcho→条目默认→回包→习惯，与桥出站同源=W3 单一真相），标签复用 THINK_LABELS，不造第二套；态③禁用/态④隐藏
-// =无档位真值，诚实不显示。deepseek 系中继无 reasoning 帧：全程只有计时+通用阶段，不造「它在想」假象（两族同一套代码）。
+// =无档位真值，诚实不显示。s103/qa-rework P2-2（主控修订裁决 3.1）：「想」=等模型响应窗口（prompt 发出→首个 tool_call/
+// 正文帧，effort 真上 wire=模型确实在 reasoning）——开忙即想，对所有模型统一显示；假象边界=内容（无 thought 帧=S2 面板不出现）。
 let busyPhase='', busyT0=0, busyTick=null;
 function curThinkLabel(){ // 只读旋钮当前档（R3：状态条只读，改档入口仍在顶栏）
   const sel=$('think');
@@ -1269,8 +1270,8 @@ function thinkDiscard(){ // 收起+弃置（母句承诺：收起后不留在对
 }
 $('think-peek').onclick=()=>thinkDraftShow(!thinkDraftOn);
 function setBusy(b){ busy=b; typing.style.display=b?'block':'none'; send.disabled=b; stopBtn.style.display=b?'inline-block':'none';
-  // s103/S1: 开忙即起秒表（通用阶段起步——无帧不造「它在想」），收忙停表；S2: 收忙同弃草稿
-  if(b){ busyPhase=''; busyT0=Date.now(); busyPaint(); clearInterval(busyTick); busyTick=setInterval(busyPaint,1000); }
+  // s103/qa-rework P2-2: 开忙即「想」阶段（prompt 已发=等模型响应窗口=在想，统一显示不依赖 thought 帧）；收忙停表；S2: 收忙同弃草稿
+  if(b){ busyPhase='think'; busyT0=Date.now(); busyPaint(); clearInterval(busyTick); busyTick=setInterval(busyPaint,1000); }
   else{ clearInterval(busyTick); busyTick=null; busyT0=0; thinkDiscard(); }
   // s21: 小白「干完了」提醒——后台标签页时标题闪烁，回来即停
   if(!b){ if(document.hidden){ notifyDone(); } else { stopNotify(); } } else { stopNotify(); } }
@@ -1488,7 +1489,7 @@ function onAgentEvent(p){
     const u=p.params.update;
     if(u.sessionUpdate==='agent_message_chunk'){ thinkDiscard(); noteTurnPhase('write'); addMsg(u.content.text,'agent'); } // s103/S1: 阶段翻「在写答案」（忙碌条不再藏——写答案期也在场，显隐唯一出口=setBusy）；S2: 首个正文帧=想完了，草稿收起弃置
     else if(u.sessionUpdate==='user_message_chunk'){ const el=addMsg(u.content.text,'user'); const gm=(u.messageId||(u._meta&&u._meta.goose&&u._meta.goose.messageId)); if(gm) el.dataset.gmid=gm; } // 主线5：回放帧双冗余 id（research/21 §6 顶级 messageId 与 _meta.goose.messageId 同值），存元素上供撤回定位
-    else if(u.sessionUpdate==='agent_thought_chunk'){ thoughtFeed(u); } // s103/S1+S2: 思考帧喂忙碌条「在想」阶段+草稿缓冲（原 keep silent 整族丢弃=黑箱主缺口）；deepseek 无此帧=通用阶段（诚实降级）
+    else if(u.sessionUpdate==='agent_thought_chunk'){ thoughtFeed(u); } // s103/S1+S2: 思考帧喂草稿缓冲（阶段已在开忙置「想」，帧到=内容可见）；deepseek 无此帧=面板不出现（内容不造假，qa-rework P2-2 修订口径）
     else if(u.sessionUpdate==='tool_call'||u.sessionUpdate==='tool_call_update'){ noteTurnPhase('work'); toolCard(u); } // s103/S1: 阶段翻「在动手」——决定调工具前的规划期从此可见
     else if(u.sessionUpdate==='plan'){ /* future */ }
     else if(u.sessionUpdate==='available_commands_update'){}
