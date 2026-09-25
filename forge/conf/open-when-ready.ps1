@@ -194,9 +194,15 @@ if (Test-Path $regCmd) {
         # fix(s100/pg-skip): 补跑名单加 pg——pc 对 Skipped 是终态永不复查（research/39 §3.1-6），第①层
         # 30s 超时漏网时在此兜底：pg 非 Running 即 pc process start pg（幂等；17d0d43 补跑同族，
         # 首查命中的 2s 瞬态复核见下，容收敛重启窗口的短暂误报）。
-        foreach ($k in ($oneshotKeys + @('pg'))) {
+        # fix(s102/sched-skip): daemon 补跑组=带 depends_on 的 daemon 全体（{pg, goose-scheduler}）——
+        # goose-scheduler 化身闩在 pre-Ready 的 faucet 上遇 converge taskkill 即 Skipped 终态
+        # （rel151=17d0d43 与 iat18 两实录；机制/幂等性与 pg 同族，research/39 §4.2 + tmp/s102-sched-rca.md）；
+        # nats/faucet/chat-bridge 无 depends_on，对该机制结构性免疫不收。维护判据：新增 daemon 带
+        # depends_on 必须同时进本组。
+        $daemonPatch = @('pg', 'goose-scheduler')
+        foreach ($k in ($oneshotKeys + $daemonPatch)) {
             $e = @($procs | Where-Object { $_.name -eq $k })
-            if ($k -eq 'pg') {
+            if ($daemonPatch -contains $k) {
                 # 「非 Running」判据落在 is_running：pc 对健康 daemon 的 status 恒报 Launching 非 Running
                 # （dev 栈/arm2 健康基线逐字同形，research/39）；Skipped/Pending/Error/缺失时 is_running=false
                 if ($e.Count -eq 0 -or $e[0].is_running -ne $true) { $flagged += $k }
@@ -209,7 +215,7 @@ if (Test-Path $regCmd) {
         }
         foreach ($k in $flagged) {
             $e = @($procs | Where-Object { $_.name -eq $k })
-            if ($k -eq 'pg') {
+            if ($daemonPatch -contains $k) {
                 if ($e.Count -gt 0 -and $e[0].is_running -eq $true) { continue } # 已在跑（幂等容错），不补跑
             } elseif ($e.Count -gt 0 -and @('Skipped', 'Pending', 'Error') -notcontains $e[0].status) { continue } # 瞬态已离开，不补跑
             $recheckKeys += $k
@@ -262,9 +268,9 @@ if ($recheckKeys.Count -gt 0) {
     foreach ($k in $recheckKeys) {
         $e = @()
         if ($null -ne $recheck) { $e = @($recheck | Where-Object { $_.name -eq $k }) }
-        # fix(s100/pg-skip): pg 健康态=is_running（daemon status 恒报 Launching，见第②层注）；oneshot 看 Completed
+        # fix(s100/pg-skip): daemon 补跑组健康态=is_running（daemon status 恒报 Launching，见第②层注）；oneshot 看 Completed
         $ok = $false
-        if ($k -eq 'pg') { if ($e.Count -gt 0 -and $e[0].is_running -eq $true) { $ok = $true } }
+        if ($daemonPatch -contains $k) { if ($e.Count -gt 0 -and $e[0].is_running -eq $true) { $ok = $true } }
         elseif ($e.Count -gt 0 -and $e[0].status -eq 'Completed') { $ok = $true }
         if (-not $ok) {
             $st = '(查不到)'

@@ -132,3 +132,14 @@ pg-init +2s（armdelay）：initdb 照样在 update 落点处被杀（开跑 ~4.
 - `C:\PF-TEST` 整删后为空；PF-TEST 下零进程（Path 前缀扫描 CLEAN）；沙盒端口 18790/14222/18222/8100/5433/8091 零监听。
 - dev 栈零触碰：5432/8099/4222/8222/8790 监听 PID 与实验前一致（25544/18300/11764/11764/13972），healthz `ok`，`pg Launching ready=Ready restarts=0`。
 - 产品树零修改：改动只发生在已删沙盒副本；仓库新增仅本报告；`tmp/rca39/`（脚本+证据）与 `tmp/pc-src/`（上游源码）在 tmp 暂存区。
+
+## 9. s102 附记：goose-scheduler 同族敞口定案与收口（2026-09-25）
+
+§4.2 附带行（goose-scheduler 同族风险）由 s102 取证定案并工程收口（完整报告 `tmp/s102-sched-rca.md`，暂存区不入库）：
+
+1. **机制（源码级细化）**：healthy 型 depends_on 挂起是**一次性闩锁**——goose-scheduler 化身闩在已 Ready 的 faucet 上立即 waitOk（research/39 三臂全 Launching 的机理，非侥幸）；闩在 **pre-Ready 且随后被 converge taskkill** 的 faucet 实例上才 waitFailed→wontRun→Skipped 终态。实录两次：rel151（17d0d43 提交信息）与 iat18（`tmp/s98-iat18-findings.md:20`）。
+2. **最小正确集=带 depends_on 的 daemon 全体**={pg, goose-scheduler}：nats/faucet/chat-bridge 无 depends_on，waitIfNeeded 空循环结构性免疫（不是取舍，是排除）。维护判据：**新增 daemon 带 depends_on 必须同时进第②层 daemon 补跑组**。
+3. **修法**（已落 `open-when-ready.ps1`，fix(s102/sched-skip)）：第②层 `$daemonPatch=@('pg','goose-scheduler')`，三处 `$k -eq 'pg'` 收敛 `-contains`（首查/2s 复核/10s 观察窗同源）；第①层零动（传递性缺口两处——30s 沉降超时照跑+R2 把 Skipped 当已沉降——后果均由第②层兜住，动它=为罕见角付冷启延迟税）。
+4. **幂等性**：pc v1.122 `StartProcess` 对已 Running 只拒不杀（project_runner.go:707-711，VERIFIED-DOC）；对 Skipped 重走 waitIfNeeded 此时 faucet 已 healthy→正常 spawn。goose-scheduler 直接活体证据 UNVERIFIED（产品路径常驻更强的 `pc process restart goose-scheduler`，chat-bridge.js:3134）。
+5. **UNVERIFIED 显式留存**：①iat18 精确交错重构链（faucet 首化身早死→挂起三件 Skip→沉降放行→converge 杀 pre-Ready 次化身→闩死）与全部幸存证据自洽但原沙盒已删；②healthy 闩锁族终态/自愈概率 split（推 map 序 ~50/50，n=0）；③`pc process start goose-scheduler` 对 Skipped 实例直接活体（待 G1 臂）；④第①层 R2 判据把 Skipped 当已沉降缺口（代码事实 VERIFIED-DOC，iat18 走此路径系推断）。
+6. **验证配方**（三臂沙盒，等 dev 栈空闲窗口执行）：R1 红（HEAD 包+faucet readiness 探针延迟 60s 旋钮，3 冷启 ≥1/3 终态 Skipped）/G1 绿（修后包+同旋钮，3/3 is_running=true+控制台补跑行）/N1 无回归（修后包无旋钮 2 冷启零噪音）；沙盒原生端口需先 pc down dev 栈、验后 PFdrill2 惯例恢复（僵尸态先 /End 再 /Run）。配方细节见 tmp/s102-sched-rca.md §Q4。
