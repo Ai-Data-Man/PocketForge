@@ -283,6 +283,7 @@ function sanHost(h) { // host 脱敏（reportSanitize 同口径的域字段版�
     try { const u = new URL(String(h || '')); return u.protocol + '//' + u.host; } catch { return ''; }
 }
 function evJson(fields) { logLine(path.join(LOGS_DIR, 'events.log'), fields); } // 运维事件域写入器（S5 各事件行同走此口）
+function llmProxyLine(fields) { logLine(path.join(LOGS_DIR, 'llmproxy.log'), fields); } // LLM 请求域写入器（S4 全请求行）
 
 // ---- 桥状态存储层（裁决 2026-09-06-pg-forge-backend §4）：桥内唯一 PG 触点 ----
 // 模式机 off→connecting→pg|file：pg=写 forge_bridge+文件镜像双写（回落无缝）；file=纯文件（与切片前逐位一致，永久支持态）；
@@ -1087,7 +1088,7 @@ function declaredLevels(model) { // 翻译层声明的深度值域（官方表 l
 // s101/W4（裁决 §2.4）：官方参数路线=家族降级后的**主路径**。真名请求（家族未配对/已关）按此在出站帧注入/归一
 // 档位——goose 对 glm 系不发 reasoning_effort（非 is_reasoning_model），顶栏档位的真消费点在这里（否则=假旋钮）。
 // 归一/剥离/采样门与别名分支完全同源（同一 normalizeEffort/applySamplingGate/thinkKeysOf），两条路线零语义分叉。
-function applyParamRoute(j, model) { // →true=改写过 body（调用方据此重序列化）
+function applyParamRoute(j, model, out) { // →true=改写过 body（调用方据此重序列化）；out.eff 带走实发档（''=停发，s103/S4 行内归因钥匙）
     let changed = false;
     if ('reasoning' in j) { delete j.reasoning; changed = true; } // 各厂官方规范零命中（research/40）
     if (j.thinking && typeof j.thinking === 'object' && !Array.isArray(j.thinking) && !('clear_thinking' in j.thinking)) { delete j.thinking; changed = true; } // 只剥确证默认态
@@ -1098,6 +1099,7 @@ function applyParamRoute(j, model) { // →true=改写过 body（调用方据此
     const hasLevels = declaredLevels(model).length > 0;
     const seed = effortIn || (hasLevels ? (lastThinkOverride || capsDefaultEffort(model)) : '');
     const eff = seed ? normalizeEffort(model, seed) : '';
+    if (out) out.eff = eff; // s103/S4: 实发档外带（日志行内归因，与写侧同一真相源）
     // s102/W3：三类必写：①归一改值；②模型声明布尔门键（enable_thinking/EnableThinking）——goose 帧只带
     // reasoning_effort，布尔键客户端永不自带，官方语义=不显式开就不思考（如百炼直供 step-3.7-flash 默认关，
     // research/42 §8）；③帧自带 effort 键但模型键族不含（K2 系/混元/ernie-5.1 等官方声明不支持该键）→ 必剥，
@@ -3488,15 +3490,21 @@ function llmStreamReplacer(from, to) { // 字节流替换器（from/to 均为 JS
 }
 const HOP_BY_HOP = ['connection', 'keep-alive', 'transfer-encoding', 'upgrade', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer'];
 function handleLlmProxy(req, res) {
+    const t0 = Date.now(); // s103/S4: 总时计时（请求进→响应 end）
+    let tFirst = 0, upStatus = 0, logModel = '', logEff = ''; // 首响应头时刻/上游状态/出站 model+effort（行内归因）
     const chunks = [];
     let postBytes = 0, aborted = false;
     req.on('data', c => { postBytes += c.length; if (postBytes > POST_MAX_BYTES) { aborted = true; req.destroy(); return; } chunks.push(c); }); // 同 s50c 预算
     req.on('error', () => { aborted = true; });
     req.on('end', () => {
         if (aborted) return;
+        const llmDone = (status, err) => { // s103/S4: 每请求恰一行（先到先记，断开/错误也留痕）：ts/model/effort/首字节ms/总ms/状态码/错误体前120字节
+            if (llmDone.logged) return; llmDone.logged = true;
+            llmProxyLine({ model: logModel, effort: logEff, firstMs: tFirst ? tFirst - t0 : null, totalMs: Date.now() - t0, status, err: String(err || '').slice(0, 120) });
+        };
         const act = activeProvider();
         const host = ((act && act.host) || secrets.FORGE_AGENT_HOST || '').replace(/\/$/, '');
-        if (!host) { res.writeHead(502, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { message: 'no active provider (providers.json)' } })); return; }
+        if (!host) { res.writeHead(502, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { message: 'no active provider (providers.json)' } })); llmDone(502, 'no active provider (providers.json)'); return; }
         let body = chunks.length ? Buffer.concat(chunks) : null;
         // s98/llm-proxy: 上游 /models 清单注入别名。后续实测修正：goose 的 set_config_option 校验用自带静态目录、
         // 从不请求 /models——本注入对 goose 目录校验无作用（别名仍必拒，switch_model 已按 sidGooseModel 分流绕开）。
@@ -3515,7 +3523,6 @@ function handleLlmProxy(req, res) {
                         const e = typeof j.reasoning_effort === 'string' ? j.reasoning_effort : '';
                         const target = (e === 'high' || e === 'max') ? fam.deep : fam.fast; // off/low/medium/缺省→快
                         console.log('llmproxy: 深度档', (e || '未设'), '→', target, '(快侧', fam.fast + ')'); // 运营观测：只写真名（假名不出厂约束覆盖日志面）
-                        try { FSS.appendFileSync(path.join(ROOT, 'data', 'logs', 'llmproxy.log'), new Date().toISOString() + ' effort=' + (e || 'none') + ' model=' + target + ' fast=' + fam.fast + String.fromCharCode(10)); } catch {}
                         // s101/W1（裁决 §2.3）：**官方思考参数随行至上游**——此处过去 delete reasoning_effort 是自伤源
                         // （research/41 §1.B：glm 恒走别名→effort 恒被删）。reasoning 全规范零命中=剥；thinking 仅剥默认态。
                         delete j.reasoning;
@@ -3527,6 +3534,7 @@ function handleLlmProxy(req, res) {
                         if (eff) writeThinkKeys(j, target, thinkingKeysOf(target), eff); // s102/qa-rework P2-1：统一写侧（布尔门关思考只落 false 键）
                         applySamplingGate(j, eff);
                         j.model = target;
+                        logModel = target; logEff = eff || ''; // s103/S4: 行内归因（旧式 effort= 半行 appendFileSync 已由收尾统一行取代）
                         body = Buffer.from(JSON.stringify(j), 'utf8');
                         xlate = { fam, target };
                     } else {
@@ -3534,14 +3542,16 @@ function handleLlmProxy(req, res) {
                         // 档位注入/归一（goose 对 glm 系不发 reasoning_effort（非 is_reasoning_model），顶栏档位若不在此
                         // 落 wire 即假旋钮。用户改窄值域后越界档真停发=W3 消费面闭环）。家族关=此路是唯一消费点；家族开
                         // 时非家族成员也走此路（两条路线共用同一 normalizeEffort/applySamplingGate，零语义分叉）。
-                        if (applyParamRoute(j, j.model)) { body = Buffer.from(JSON.stringify(j), 'utf8'); rewrote = true; }
+                        const po = {}; // s103/S4: applyParamRoute 外带实发档（行内归因钥匙）
+                        if (applyParamRoute(j, j.model, po)) { body = Buffer.from(JSON.stringify(j), 'utf8'); rewrote = true; }
+                        logModel = j.model; logEff = po.eff || ''; // s103/S4: 非别名主路径不再静默（research/45 G1）
                     }
                 }
             } catch {} // 坏 JSON：原样透传（上游自己回 4xx，错误链原样）
         }
         let upUrl;
         try { upUrl = new URL(host + (req.url || '').slice('/llmproxy'.length)); }
-        catch (e) { res.writeHead(502, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { message: 'bad upstream host: ' + host } })); return; }
+        catch (e) { res.writeHead(502, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { message: 'bad upstream host: ' + host } })); llmDone(502, 'bad upstream host: ' + host); return; }
         const headers = { ...req.headers };
         delete headers.host; // 让 Node 按目标 URL 自设
         for (const h of HOP_BY_HOP) delete headers[h];
@@ -3553,20 +3563,27 @@ function handleLlmProxy(req, res) {
         }
         const mod = require(upUrl.protocol === 'https:' ? 'https' : 'http');
         const up = mod.request(upUrl, { method: req.method, headers }, ur => {
+            tFirst = Date.now(); upStatus = ur.statusCode; // s103/S4: 首字节=上游响应头到达时刻
             const rh = { ...ur.headers };
             for (const h of HOP_BY_HOP) delete rh[h];
             if (xlate) delete rh['content-length']; // 换名后长度不定，走 chunked
             if (isModels) delete rh['content-length']; // 注入别名后长度变，走 chunked
-            try { res.writeHead(ur.statusCode, rh); } catch { ur.destroy(); return; }
+            // s103/S4: 错误体嗅探（≥400 才留，成功流零开销；压缩体对读者无用→记标注不吃字节）
+            const enc = String(ur.headers['content-encoding'] || '');
+            const sniffable = ur.statusCode >= 400 && (!enc || enc === 'identity');
+            let errB = Buffer.alloc(0);
+            const sniff = c => { if (sniffable && errB.length < 120) errB = Buffer.concat([errB, c]).subarray(0, 120); };
+            const sniffErr = () => sniffable ? errB.toString('utf8') : (ur.statusCode >= 400 ? '(body ' + (enc || 'encoded') + ')' : '');
+            try { res.writeHead(ur.statusCode, rh); } catch { llmDone(ur.statusCode, 'client write failed'); ur.destroy(); return; }
             if (xlate) {
                 const rep = llmStreamReplacer('"' + xlate.target + '"', '"' + xlate.fam.alias + '"'); // 真名→别名（同一翻译点）
-                ur.on('data', c => { const out = rep.push(c); if (out.length) res.write(out); });
-                ur.on('end', () => { const out = rep.flush(); try { res.end(out.length ? out : undefined); } catch {} });
-                ur.on('error', () => { try { res.end(); } catch {} });
+                ur.on('data', c => { sniff(c); const out = rep.push(c); if (out.length) res.write(out); });
+                ur.on('end', () => { const out = rep.flush(); try { res.end(out.length ? out : undefined); } catch {} llmDone(ur.statusCode, sniffErr()); });
+                ur.on('error', () => { try { res.end(); } catch {} llmDone(ur.statusCode, 'upstream stream error'); });
             } else if (isModels) {
                 // s98/llm-proxy: /models 注入别名（缓冲整个清单——它小、非流式；失败则原样透传不阻断）
                 const bufs = [];
-                ur.on('data', c => bufs.push(c));
+                ur.on('data', c => { sniff(c); bufs.push(c); });
                 ur.on('end', () => {
                     let out = Buffer.concat(bufs);
                     try {
@@ -3580,17 +3597,21 @@ function handleLlmProxy(req, res) {
                         }
                     } catch {} // 上游清单形状异常：原样透传
                     try { res.end(out); } catch {}
+                    llmDone(ur.statusCode, sniffErr()); // s103/S4: GET /models 也是拉取域流量，同款一行
                 });
-                ur.on('error', () => { try { res.end(); } catch {} });
+                ur.on('error', () => { try { res.end(); } catch {} llmDone(ur.statusCode, 'upstream stream error'); });
             } else {
+                ur.on('data', sniff); // s103/S4: 与 pipe 并挂的只听不写嗅探（非 ≥400 时零拷贝零开销）
                 ur.pipe(res); // 非别名：字节级零缓冲透传
-                ur.on('error', () => { try { res.end(); } catch {} });
+                ur.on('end', () => llmDone(ur.statusCode, sniffErr()));
+                ur.on('error', () => { try { res.end(); } catch {} llmDone(ur.statusCode, 'upstream stream error'); });
             }
         });
         up.on('error', e => { // 连接层失败（上游不可达）——人话错误体；HTTP 层错误状态由上方原样透传
             try { res.writeHead(502, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { message: 'upstream unreachable: ' + (e && e.message || e) } })); } catch {}
+            llmDone(502, 'upstream unreachable: ' + (e && e.message || e)); // s103/S4: 连接层失败也一行
         });
-        res.on('close', () => { if (!res.writableEnded) { try { up.destroy(); } catch {} } }); // 客户端半途断开（goose 超时/取消）→ 掐上游，不留孤儿流
+        res.on('close', () => { if (!res.writableEnded) { try { up.destroy(); } catch {} llmDone(upStatus, 'client aborted'); } }); // 客户端半途断开（goose 超时/取消）→ 掐上游，不留孤儿流；s103/S4: 断开留行（正常收尾已记则跳过）
         if (body) up.write(body);
         up.end();
     });
