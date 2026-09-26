@@ -34,3 +34,11 @@
 - 终态基线（§8.2 全 15 套）：e2e 62+fuzz 225+ui 92+ia 38+sem 38+think-grad 27+capeditor 141+modelcaps 43+w2-preset 15+proxythink 30+xlate 10+w1-effort 14+rescue-guard 46+toolcard 55+health-fuzz 27。
 - backlog（带触发器，详见 STATE 顶行留档）：③救援补钉模型（D5 跑错模型，单独裁决）/④goose 发号避死集/G10+G12+G13 事件行/首档策略重开/S26 正则最终形态/S9 unknown 卡状态行/S7 down 盲窗手册留档/thought 帧通路恢复（goose 上游项）。
 - 环境：dev 栈 healthz 200；C:\PF-TEST 空；sessions.db 无 s103 残留；events.log/llmproxy.log 攻击行手术清档完毕。
+
+## v0.9.17 发布记录（尾段，用户令「再出个包」）
+
+- 发版材料：5fadd3e（VERSION 0.9.17+docs/v0.9.17-release-notes.md 面向使用者七条+技术明细）。
+- 发布门（出厂包全新解压冷装，AGENTS §8）：C:\PF-TEST\gate 降权冷启（GBK wrapper+runas trustlevel 复刻 e2e.sh 先例）→ **cold-surface 15/15** + 新面抽查全过（忙碌条页面锚/使用说明引导句/sanErr+events.log 写入器/📮 报告四节实测【llmproxy 行全字段+502 诚实+usage_ledger 聚合】/converge rc=0 零补跑）。
+- 构建：可复现（两次打包 sha 逐位一致 **ed6ae68f…**，323,744,558B/25,306 文件）；**exe 哈希 vs v0.9.16 零变化=无信誉尖峰**。
+- 发布：tag v0.9.17+分支已推；release id **397041585** 双资产；**API 下载对账 sha256 逐位一致**+latest=v0.9.17。
+- 发版操作实录三条教训：①release.sh 的 python urllib 大资产上传经代理会卡死（连接断后挂起零进展）——杀链改 `curl -x` 显式代理直传一次成（release.sh 后续可改 curl 通道）；②API 资产 id 必须先查 releases/tags 响应再下载（猜 id=404）；③停 dev 栈正确序=先 `schtasks /End /TN PFdrill2` 再 `pc down`（任务承载进程会重拉栈，直接 down 端口不清）；沙盒清理=按命令行匹配 PF-TEST 全杀进程族再整删。PAT 取用与清除纪律保持（zcode db part 表 data 列 github_pat_ 正则，环境变量直传，用后即删）。
