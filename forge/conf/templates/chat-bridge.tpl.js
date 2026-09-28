@@ -1111,11 +1111,14 @@ function applyParamRoute(j, model, out) { // →true=改写过 body（调用方�
     if ('reasoning' in j) { delete j.reasoning; changed = true; } // 各厂官方规范零命中（research/40）
     if (j.thinking && typeof j.thinking === 'object' && !Array.isArray(j.thinking) && !('clear_thinking' in j.thinking)) { delete j.thinking; changed = true; } // 只剥确证默认态
     const effortIn = typeof j.reasoning_effort === 'string' ? j.reasoning_effort : '';
-    // 档位来源序：显式帧值（原样交归一）> 会话/全局习惯 > 翻译层声明的默认档（caps.thinking.default）。
-    // **仅对声明了深度值域的模型做后两级注入**——无值域者（如 hunyuan 的 on/off 开关、keys 非 reasoning_effort 族）
-    // 其 default 是开关语义不是 effort 档，注入会发错键/错值（诚实留给上游默认）。三者皆无=不发。
+    // 档位来源序：显式帧值（原样交归一）> 会话/全局习惯（lastThinkOverride——s104/V1 起只含用户真选过的档）>
+    // 用户改过的默认档（userDefaultEffort：caps.thinking.default 且 user_fields 含 'thinking.default'）。
+    // s104/V1（裁决 2026-09-29 §2）：官方默认档不再上 wire——官方端点由厂商文档背书（再发=冗余），中继端点
+    // 无人担保且实证是掐流放大器（research/47 F2/F3）；用户改 default=显式偏离上游默认，不发则编辑器成谎言。
+    // **仅对声明了深度值域的模型做后三级注入**——无值域者（如 hunyuan 的 on/off 开关、keys 非 reasoning_effort 族）
+    // 其 default 是开关语义不是 effort 档，注入会发错键/错值（诚实留给上游默认）。四者皆无=不发。
     const hasLevels = declaredLevels(model).length > 0;
-    const seed = effortIn || (hasLevels ? (lastThinkOverride || capsDefaultEffort(model)) : '');
+    const seed = effortIn || (hasLevels ? (lastThinkOverride || userDefaultEffort(model)) : '');
     const eff = seed ? normalizeEffort(model, seed) : '';
     if (out) out.eff = eff; // s103/S4: 实发档外带（日志行内归因，与写侧同一真相源）
     // s102/W3：三类必写：①归一改值；②模型声明布尔门键（enable_thinking/EnableThinking）——goose 帧只带
@@ -1164,6 +1167,13 @@ function capsDefaultEffort(model) { // s101/W3（裁决 §2.2）：新会话首�
     if (!d) return '';
     const lvs = Array.isArray(t.levels) ? t.levels : [];
     return lvs.length && lvs.indexOf(d) < 0 ? '' : d;
+}
+function userDefaultEffort(model) { // s104/V1（裁决 2026-09-29 §2）：wire 只放用户真选过的档——官方默认档（未标 user 的
+    // thinking.default）不上 wire；用户改过 default（user_fields 含 'thinking.default'，s100/W3 单一真相）=显式
+    // 意图偏离上游默认，才作 applyParamRoute 种子。显示面预选仍读 capsDefaultEffort（文档作用，不是 wire 作用）。
+    const cap = syncModelCaps().caps[model];
+    if (!cap || !Array.isArray(cap.user_fields) || cap.user_fields.indexOf('thinking.default') < 0) return '';
+    return capsDefaultEffort(model);
 }
 function applySamplingGate(j, effort) { // research/43 + OpenAI 官方逐字：推理档生效（effort≠none/off）时移除采样参数
     if (!effort || effort === 'off' || effort === 'none') return 0;
@@ -4907,6 +4917,12 @@ function handleClient(ws, msg) {
                         xlateConfigOptions(res.configOptions); // s98/llm-proxy: 翻真名+gradient（跨界翻译点）
                         ws.send({ sys: 'subscribed', sessionId: res.sessionId, newSession: true, modes: res.modes || [], configOptions: res.configOptions || [] });
                         // s26: 新对话沿用顶栏当前模型——session/new 默认回落 env 首模型（STATE 开放问题#4）
+                        // s104/V1（裁决 2026-09-29 §2）：显式/填充分账——thinkExplicit 在下方两处桥填充（家族预置/
+                        // 官方默认档）取值之前快照。客户端显式带来的 msg.think（前端 localStorage 习惯）照旧全链
+                        // （记账+白名单+acpSetThink）；桥填充的默认档只留 msg.think 回显（下游读点不变），不写
+                        // lastThinkOverride、不发 ACP 帧——wire 只放用户真选过的档，跨模型污染（research/47 F3：
+                        // 池首 deepseek 默认 high 种子全局 override→glm 轮注入→中继掐流）随之根除。
+                        const thinkExplicit = !!msg.think;
                         if (msg.model) {
                             lastModelOverride = msg.model; // qa s78b P3-2: 新会话显式带模型（顶栏当前模型）=生效模型，探测目标随行
                             // s98/llm-proxy（QA P3-1 对齐）：会话若已钉在别名上（env 钉的），**不再写 model**——别名按 goose
@@ -4921,13 +4937,17 @@ function handleClient(ws, msg) {
                             if (!msg.think) { const f = familyOfModel(activeProvider(), msg.model); if (f) msg.think = msg.model === f.deep ? 'max' : 'low'; }
                         }
                         // s101/W3（裁决 §2.2）：新会话首档=条目 thinking.default（用户改过的默认档据此随动，消费面闭环）——
-                        // 无显式档且非家族预置时用声明默认档；无声明/越界=不发帧（维持 goose 默认，诚实）
+                        // 无显式档且非家族预置时用声明默认档；无声明/越界=不发帧（维持 goose 默认，诚实）。
+                        // s104/V1：此填充降级为**显示预选**（msg.think 照旧填，回包/下游读点不变），不再记账/发帧——
+                        // 用户改过的 default 上 wire 走 applyParamRoute 种子（userDefaultEffort），不在这里。
                         if (!msg.think) { const dm = msg.model || effectiveModel(activeProvider()); const dEff = capsDefaultEffort(dm); if (dEff) msg.think = dEff; }
                         // s98/think: 新会话带思考档（与带 model 同款语义）——goose 按会话记住并持久化；模型被遮蔽时为
                         // no-op（前端三态②已诚实呈现）。qa s98 P3-2: 沿用习惯同样过白名单（localStorage 陈旧高档位
                         // 随新会话直发=档位静默未生效+记账漂移）——不在名单不发帧不记账。
+                        // s104/V1: 仅客户端显式档走全链；桥填充的默认档（thinkExplicit=false）跳过——lastThinkOverride
+                        // 从此只含真选择（set_think/switch_model 家族梯度/显式 subscribe）。
                         noteThinkOptions(res.sessionId, res.configOptions);
-                        if (msg.think) { lastThinkOverride = msg.think; if (thinkAllowed(res.sessionId, msg.think) && acpSetThink(res.sessionId, msg.think)) sidThinkApplied.set(res.sessionId, msg.think); }
+                        if (msg.think && thinkExplicit) { lastThinkOverride = msg.think; if (thinkAllowed(res.sessionId, msg.think) && acpSetThink(res.sessionId, msg.think)) sidThinkApplied.set(res.sessionId, msg.think); }
                     } else {
                         // B1: session/new 失败——resolve 收到的是整条 error 帧；无此分支前端等不到 subscribed，pendingQueue 永久搁浅
                         const why = (res && res.error && (res.error.message || res.error)) || '原因未知';
