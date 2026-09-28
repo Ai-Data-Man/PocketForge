@@ -1576,6 +1576,7 @@ function submit(forced){
   const t=fromBox?txt.value.trim():String(forced).trim(); if(!t)return;
   if(!sessionId){ if(fromBox){ pendingQueue.push(t); txt.value=''; addInfo('对话马上就开好，这条先记下了，开好会自动发出去（不用再点一次）。'); } return; } // #3: 入队等 subscribed 补发（forced 值本就来自队列，不再入队）
   if(busy){ if(fromBox){ pendingQueue.push(t); txt.value=''; addInfo('它还在忙，这条已记下，等它干完手头的就自动发出去（不用再点一次）。'); } return; } // s78 P2-3c：忙碌补发入队+占位交代（对齐 #3 会话开设文案模式；stop 事件 flushPendingQueue 自动补发，用户点停止则 rollbackQueue 放回）
+  if(!lastKnownModel && !((configOptions.find(c=>c&&c.id==='model')||{}).currentValue) && !poolModels().length){ if(fromBox) addInfo('还没给它选模型：点右下角 ⚙️ 设置 → 大模型连接，勾上要用的模型再发。这条先留在输入框。'); return; } // s104/R2-F4: 池空（半配置/升级继承）发消息=上游 400 Missing model 被 💡 误报成「服务商不通+换个模型」死循环误导（升级装实录）；前置守卫人话引导，消息留框不上墙
   // ponytail: 工作区路径随提示词注入（agent 不看 UI）；若将来提示词很长可改为桥接侧 system 注入
   // s44: 工作区须知——妻子说"记住这个项目的规矩"，agent 写进须知.md，之后每次任务自动带上
   // s50: hint 拆两段——位置段仅当消息未含 data/artifacts/（原条件语义）；须知/版本规矩段只要有工作区就带上，否则 @ 引用/报表卡消息会静默丢掉这两条（s28e 起的缺口）

@@ -56,7 +56,7 @@ function clean() { for (const d of [D1, D2]) { try { fs.rmSync(d, { recursive: t
         ck('C2 F-9 @ 菜单排除 forge_meta/forge_table_info（只排两张建账表，防误伤用户自建 forge_ 表）', /if\(t\.name==='forge_meta'\|\|t\.name==='forge_table_info'\) continue;/.test(html));
         ck('C3 F-4c 代理人话文案在位 + proxy-only 形态（探测 ok 仍提示）', html.includes('电脑上开着网络代理，可能拦住它连服务商') && /!\(m&&m\.proxy&&hasKey\)/.test(html));
         ck('C4 F-4c 桥侧代理旗远端收窄锚', /healthCache\.proxy = !!\(pr && pr\.enabled\) && hostIsRemote\(probeHn\)/.test(bridge));
-        ck('C5 F-1 save-cfg 未建档守卫（先「添加」建档再保存）', /先点上方「添加」把「'\+name\+'」建档，再保存。/.test(html) && /if\(!providerList\.some\(x=>x\.name===name\)\) return note/.test(html));
+        ck('C5 s104/R2-F3 save-cfg 未建档=自动建档（旧守卫改兜底；勾选直读 DOM；桥 add 幂等）', html.includes('已新建并保存「') && /add:\{name,host,key,models\}/.test(html) && /#model-pool input\[type=checkbox\]/.test(html)); // 期望随迁：R2-F3 前断「先点上方添加」守卫（s94 F-1），后半保存静默陷阱冷装实录后改自动建档
         ck('C6 F-1 添加后保留 Key 与拉取勾选面', /keepFetchPoolNextRender=true;/.test(html) && /if\(k\) cfgKeyTouched=true;/.test(html) && /renderFetchPool\(\); \}/.test(html));
     } finally { clean(); }
     console.log('skill-desc-fallback-probe: PASS=' + pass + ' FAIL=' + fail);
