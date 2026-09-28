@@ -35,6 +35,11 @@ function extractZombieToolcards(src) { // s95/F-3: 回合中断终态收口（�
     if (!m) die('NOT FOUND: zombieToolcards（模板结构漂移，先改探针）');
     return m[0];
 }
+function extractMkExpBtn(src) { // s104/V5: 解释按钮工厂（toolCard 收口分支与 zombieToolcards unknown 卡共用）
+    const m = src.match(/function mkExpBtn\(card,id\)\{[\s\S]*?\n\}/);
+    if (!m) die('NOT FOUND: mkExpBtn（模板结构漂移，先改探针）');
+    return m[0];
+}
 
 // ---- 最小 DOM 桩 ----
 function el(tag) {
@@ -82,10 +87,11 @@ function runFrames(frames) {
         setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {}
     };
     const make = new Function('document', 'nearBottom', 'toolCards', 'chat', 'endStream', 'wssend', 'lastKnownModel', 'showExpPop', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
-        extractMaskKeys(html) + '\n' + extractToolCard(html) + '\nreturn toolCard;');
+        extractMaskKeys(html) + '\n' + extractMkExpBtn(html) + '\n' + extractToolCard(html) + '\nreturn toolCard;');
     const toolCard = make(ctx.document, ctx.nearBottom, ctx.toolCards, ctx.chat, ctx.endStream, ctx.wssend, ctx.lastKnownModel, ctx.showExpPop, ctx.setTimeout, ctx.clearTimeout, ctx.setInterval, ctx.clearInterval);
-    const makeZ = new Function('toolCards', extractZombieToolcards(html) + '\nreturn zombieToolcards;');
-    const zombieToolcards = makeZ(ctx.toolCards);
+    const makeZ = new Function('document', 'toolCards', 'wssend', 'lastKnownModel', 'showExpPop', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
+        extractMkExpBtn(html) + '\n' + extractZombieToolcards(html) + '\nreturn zombieToolcards;'); // s104/V5: zombie 也挂解释按钮
+    const zombieToolcards = makeZ(ctx.document, ctx.toolCards, ctx.wssend, ctx.lastKnownModel, ctx.showExpPop, ctx.setTimeout, ctx.clearTimeout, ctx.setInterval, ctx.clearInterval);
     for (const u of frames) toolCard(u);
     return { cards: ctx.toolCards, sent, chat, zombieToolcards, toolCard };
 }
@@ -260,6 +266,22 @@ if (require.main === module) {
         r10.zombieToolcards();
         ck('F3e 二次调用幂等（不重复改写/不崩，中性态同样幂等）', sSt.textContent === '连接断了，这一步的结果不确定' && sSt.className === 'st');
         ck('F3f 模板两处接线在场：错误帧分支 + 断线重连分支（静态钉，撤线即红；s103/S8 随迁：断线收尾传 endStream(true)=异常路径保持关键词判定）', /if\(m\.sys==='error'\)\{[\s\S]{0,600}?zombieToolcards\(\);/.test(html) && /if\(busy\)\{ setBusy\(false\); endStream\(true\); zombieToolcards\(\); \}/.test(html));
+        // s104/V5: unknown 卡也给「这是干啥？」解释入口——zombie 收口后按钮在场，喂料 status=unknown（改前=无按钮）
+        const zSum = sz.querySelector('summary');
+        const zBtn = zSum && (zSum.children || []).find(c => (c.className || '').includes('expbtn'));
+        ck('V5a zombie unknown 卡挂上解释按钮（s104/V5，改前无）', !!zBtn && zBtn.textContent === '这是干啥？');
+        const sentBeforeZ = r10.sent.length;
+        if (zBtn) zBtn.onclick({ stopPropagation() {} });
+        ck('V5b zombie unknown 卡点解释→载荷 status=unknown（喂料带诚实状态）', r10.sent.length === sentBeforeZ + 1 && r10.sent[r10.sent.length - 1].status === 'unknown' && r10.sent[r10.sent.length - 1].type === 'explain_tool');
+        // V5c 帧路 unknown（toolCard 直收 status:'unknown' 收口帧）同样有入口
+        const unk = { sessionUpdate: 'tool_call_update', toolCallId: 'call_21_unk', status: 'unknown', title: 'shell · 帧路未知' };
+        r10.toolCard(unk);
+        const uz = r10.cards.get('call_21_unk');
+        const uSum = uz && uz.querySelector('summary');
+        const uBtn = uSum && (uSum.children || []).find(c => (c.className || '').includes('expbtn'));
+        ck('V5c 帧路 unknown 收口帧也挂解释按钮（:1461 条件含 unknown）', !!uBtn);
+        // V5d 桥侧 explain 词表：unknown→「结果不确定（连接断了，没等到收尾）」（静态钉，改前 stt 空）
+        ck('V5d 桥侧 stt 词表含 unknown 人话（解释者不空猜）', bridgeSrc.includes("msg.status === 'unknown' ? '结果不确定（连接断了，没等到收尾）'"));
     }
 
     console.log('toolcard-frames-probe PASS=' + pass + ' FAIL=' + fail);

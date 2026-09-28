@@ -509,7 +509,7 @@ CUR = 'busy';
             return { _status: status, querySelector: sel => sel === '.st' ? st : null };
         };
         const inprog = mkCard('in_progress'), done = mkCard('completed'), failed = mkCard('failed');
-        const z = new Function('toolCards', `${zombieToolcardsSrc} return zombieToolcards;`)(new Map([['t1', inprog], ['t2', done], ['t3', failed]]));
+        const z = new Function('toolCards', 'mkExpBtn', `${zombieToolcardsSrc} return zombieToolcards;`)(new Map([['t1', inprog], ['t2', done], ['t3', failed]]), () => {}); // s104/V5 随迁: zombie 现也挂解释按钮(按钮真身断言在 toolcard-frames-probe V5a/V5b),本节仍只钉状态翻转
         z();
         SEC = 'busy S9';
         ck('断线收口=中性态「连接断了，这一步的结果不确定」：不翻红不出现「失败」', inprog.querySelector('.st').textContent === '连接断了，这一步的结果不确定' && !inprog.querySelector('.st').className.includes('err') && !inprog.querySelector('.st').textContent.includes('失败'), JSON.stringify(inprog.querySelector('.st')));

@@ -5099,7 +5099,7 @@ function handleClient(ws, msg) {
             const o0 = String(msg.output || '').slice(-600); // qa F1: 尾截与前端同向（裁决 batch2 §5.2.2），>600 直发载荷不再取头而谎称「只含最后600字」
             // r19 喂料扩容：rawInput 原文（R2）、status+exit_code（R3）、toolName（R5）——缓存键须含全部字段，否则旧键碰撞喂不出新料
             const i0 = String(msg.rawInput || '').slice(0, 1200);
-            const stt = msg.status === 'failed' ? '失败' : msg.status === 'completed' ? '成功' : '';
+            const stt = msg.status === 'failed' ? '失败' : msg.status === 'completed' ? '成功' : msg.status === 'unknown' ? '结果不确定（连接断了，没等到收尾）' : ''; // s104/V5: unknown（s103/S9 断线中性收口）——解释者拿诚实状态行，不再空猜
             const ec = (typeof msg.exitCode === 'number' && isFinite(msg.exitCode)) ? msg.exitCode : '';
             const ck = crypto.createHash('sha1').update([model, t0, o0, i0, stt, ec, String(msg.toolName || '')].join('\u0000')).digest('hex'); // qa P3-2: \0 分隔防跨字段拼接碰撞（\n join 时 (x,A\nB)=(x\nA,B) 同键）；s78 P3-A: 键补 model——换模型后不吃旧模型的解释（optimizeCache 同款）
             if (explainCache.has(ck)) { const t = explainCache.get(ck); explainCache.delete(ck); explainCache.set(ck, t); return reply(t); }
