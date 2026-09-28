@@ -1,5 +1,12 @@
 # 用户侧修复清单：9router 思考参数透传（s101，2026-09-23）
 
+> **🔴 新缺陷待修（2026-09-29 发现，s104/research/47 定案）：v0.5.81 fork 在「思考键×system」联合条件下掐掉 reasoning 流。** 差分铁证（全部 VERIFIED-RUN 09-29，直发 20 发）：
+> - goose 精确载荷（33.6KB，含 system+18 工具）× `reasoning_effort:high` → **0 推理块（4/4 稳定）**；同载荷无键 → 推理恒在场（4/4）；删 system+high → 在场。
+> - `thinking:{type:enabled}`+system → 同样被掐（2/2）——**与键形态/值无关，只要带思考键+system 就掐**；effort=max 不稳定（flash 3/4 有流、glm-5.3 0/2）。
+> - 影响面：PocketForge 前端「看看它在想什么」思考草稿面板全黑（goose 解析侧已证零门控，帧死在中继）。PocketForge 侧已做防御性换轨（s104 裁决 V1：官方默认档不再上 wire，新会话净线即有流），但用户调过思考档后仍会触发掐流。
+> - 复现矩阵：`forge/tmp/s104-r1-thought/stability-matrix.md` 四臂 10 行可直接跑；完整证据 39 件同目录。排查建议：查 v0.5.81 新增的 zai/effort 透传路径在「请求含思考键」时对响应流的处理（疑点=透传键触发后把 SSE 的 `delta.reasoning_content` 段整体丢掉；`<think>` 开标签走 content、推理走 reasoning_content 的混合线形态也在档）。
+> - 修好后复核触发器：healthy 键+system 应有流（PocketForge s104 裁决 §6 已留档）。
+
 > **✅ 已修复（2026-09-23，fork commit `3ed55d53`，部署于 v0.5.81 fork）**：选项 1+2 组合落地——`applyFormat` 新增 `zai-claude` case（claude 线写 `output_config:{effort}`，不再发顶层 `reasoning_effort`）+ `glm-5.3-flash` 精确能力条目补 `thinkingEffortSupported:true`。mock 链 wire 验证三档映射正确、opencode-go OpenAI 线无回归；生产端到端交错四臂（low/max/low/max）output tokens 40/99/28/85 恒定单调分离（判据同 §验证法：档位驱动真实思考量差异）。PocketForge 侧无需任何改动，直接生效。
 
 > 背景：docs/research/41 实测证明——**官方端点上思考参数真生效**（glm-5.3 `reasoning_tokens` 233→358、glm-5.3-flash 78→278、Anthropic 面 `output_config.effort` 104→546、非法值 HTTP 400 code 1210），但我方 PocketForge 经 9router 调用 glm 时参数**在 9router 层被丢弃**。我方自伤（桥 `:3138` 无条件删 `reasoning_effort`）已在 W1（58b3c0e）修复，端到端仍无效的剩余原因全在 9router 侧。
