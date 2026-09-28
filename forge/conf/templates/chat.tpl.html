@@ -2801,8 +2801,13 @@ $('save-cfg').onclick=()=>{
   const newName=$('prov-name').value.trim();
   if(newName&&newName!==curProvName){ name=newName; }
   if(!name) return note('先在上方选一家（或填新名称）');
-  if(!providerList.some(x=>x.name===name)) return note('先点上方「添加」把「'+name+'」建档，再保存。'); // s94 F-1: 桥侧 update-only 不建新档——未建档就保存=静默 no-op 还清掉名称栏
   const key=$('cfg-key').value.trim();
+  if(!providerList.some(x=>x.name===name)){ // s104/R2-F3: 未建档≠拒绝——add 的 providers 应答帧偶发未消费（providerList 空窗）时，勾选自存(onchange cur null 静默)与旧守卫全哑，配置半保存（key 不生效/无热重启）致后续全 401（官方包冷装实录）；改自动建档：勾选直读 DOM 不依赖内存镜像，桥侧 add 幂等（存在即合并、key 空沿用）
+    const models=Array.from(document.querySelectorAll('#model-pool input[type=checkbox]')).filter(c=>c.checked).map(c=>c.parentElement.textContent.trim());
+    wssend({type:'providers',save:true,add:{name,host,key,models}});
+    curProvName=name; $('prov-name').value=''; cfgKeyTouched=false;
+    note('已新建并保存「'+name+'」。'); setTimeout(loadProvidersUI,300); return;
+  }
   const ex=providerList.find(x=>x.name===curProvName);
   const models=(ex&&ex.models)||[];
   wssend({type:'providers',save:true,update:{name,host,key:key||((ex&&ex.hasKey&&ex.key)||''),models}});
