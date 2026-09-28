@@ -5428,6 +5428,13 @@ function handleClient(ws, msg) {
             // s98/think: 会话内切思考档。校验=goose 回包 values ∪ 该模型翻译层声明的 levels（thinkDomain，s101/W4：
             // 家族降级后 goose 对 glm 系遮蔽成 ["off"]，值域由 caps 声明驱动）——不在域或不合法→人话回执且零 ACP
             // 帧（如实拒绝，不装成功）。set 路径 goose 无门控（research/35 §1），真翻译在本桥 /llmproxy 出站注入。
+            // s104/V2 空转留证（裁决 2026-09-29 §V2 前置红证，tmp/s104-v2-red/）：goose 1.50 对 glm 真名会话 set
+            // thinking_effort low/high/max 回**正常 result**（带 configOptions）非 error 帧，值遮蔽不落（currentValue
+            // 恒 'off'、options 恒 ['off']；gpt-5-codex 对照值即落）——research/47 F5「名字门拒」不成立于 error 形态，
+            // 臂L2 观察到的拒绝实为探针发错字段（think 而非 value）撞本函数空值门；活体「切换没做成」族=S10 死 sid
+            // 复用（-32002 Session not found）。故「goose error 回包→桥本地记账兜底」无标的：唯一 error 形态=会话不在
+            // 了族（裁决明示不兜底、照旧人话回执），健康栈上 glm 旋钮本就走下方成功链（masked-accept→ok 回执→wire
+            // 真翻译在 applyParamRoute）。已知交互不瞒（裁决 §V2）：故障中继上调档→键上 wire→思考流被掐（F2）。
             const sid = wsSession.get(ws);
             const wantV = typeof msg.value === 'string' ? msg.value : ''; // s103/S5-G7: to=请求档（含被拒值，from=会话当前已应用档）
             const fromV = (sid && sidThinkApplied.get(sid)) || '';
