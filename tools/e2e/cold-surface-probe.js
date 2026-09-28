@@ -172,6 +172,20 @@ function parseUserBlock(raw) {
             if (ids.includes(id)) throw new Error(id + ' surfaced');
     });
 
+    // ---------- ⑦s103 新面锚（发布门「新面抽查」固化：忙碌条三要素容器 + S2 思考草稿折叠面板 + 使用说明引导句） ----------
+    ck('S7: page has busy-bar + think-draft anchors (typing-text/think-peek/think-draft/think-buf)', () => {
+        for (const id of ['typing-text', 'think-peek', 'think-draft', 'think-buf'])
+            if (!page.includes('id="' + id + '"')) throw new Error('missing #' + id);
+    });
+    ck('S7: think-draft 母句 + peek 按钮文案 present', () => {
+        if (!page.includes('边想边说的草稿')) throw new Error('td-note 母句 missing');
+        if (!page.includes('看看它在想什么')) throw new Error('peek button label missing');
+    });
+    ck('S7: 使用说明 §33 忙碌条引导句（等得久→看档位→调浅）present', () => {
+        const man = readText('使用说明.md');
+        if (!man.includes('把「思考力度」调浅一档')) throw new Error('guidance sentence missing');
+    });
+
     console.log('==============================');
     console.log('cold-surface-probe [' + PF_ROOT + ' bridge:' + BRIDGE_PORT + ' pc:' + PC_PORT + ']: PASS=' + pass + ' FAIL=' + fail);
     process.exit(fail ? 1 : 0);
