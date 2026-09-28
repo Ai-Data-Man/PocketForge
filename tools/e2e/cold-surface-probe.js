@@ -79,7 +79,17 @@ function parseUserBlock(raw) {
     ck('cold: healthz 200 ok (' + (Date.now() - t0) + 'ms)', () => {
         if (hz.code !== 200 || !/ok/.test(hz.body)) throw new Error('code=' + hz.code + ' body=' + hz.body.slice(0, 80));
     });
-    const procs = JSON.parse((await get(PC_PORT, '/processes')).body).data;
+    // s104/R1: 首启时序窗内置等待——healthz 先于 initdb 完成（research/39 家族），紧跑探针必踩 pg-init Running/pg Pending 假红（s104 冷装实录 16/18）
+    const settleOk = async () => {
+        for (let i = 0; i < 10; i++) {
+            const ps = JSON.parse((await get(PC_PORT, '/processes')).body).data || [];
+            const ini = ps.find(p => p.name === 'pg-init'), pg = ps.find(p => p.name === 'pg');
+            if (ini && ini.status === 'Completed' && ini.exit_code === 0 && pg && pg.is_running) return ps;
+            await new Promise(r => setTimeout(r, 4000));
+        }
+        return null;
+    };
+    const procs = (await settleOk()) || JSON.parse((await get(PC_PORT, '/processes')).body).data;
     const byName = n => procs.find(p => p.name === n);
     ck('cold: pg-init Completed exit=0 restarts=0', () => {
         const p = byName('pg-init');

@@ -800,7 +800,7 @@ function connect(){
       return;
     }
     if(m.sys==='provider_switching'){ addInfo('正在切换到「'+m.to+'」…大约 5 秒，稍等提示。'); return; }
-    if(m.sys==='provider_switched'){ addInfo('✅ 已切到 '+m.provider+'（默认模型 '+m.model+'）。'); loadSessions(); if(pendingRetry){ subscribe(null); return; } return; } // s51c: 重发挂到 subscribed（新会话 ready 后才发，见上方消费点）
+    if(m.sys==='provider_switched'){ lastKnownModel=m.model; $('model-cur').textContent=m.provider+' · '+m.model; thinkEcho=''; renderThinkCtl(); addInfo('✅ 已切到 '+m.provider+'（默认模型 '+m.model+'）。'); loadSessions(); if(pendingRetry){ subscribe(null); return; } return; } // s104/R1-F2: 切档帧手里有模型名却只弹 toast 不喂标签——顶栏停在「未设置」直到下次会话动作（model_set :786 同款补齐）；s51c: 重发挂到 subscribed（新会话 ready 后才发，见上方消费点）
     if(m.sys==='session_deleted'){ clearTimeout(delRefreshT); delRefreshT=null; loadSessions(); return; } // #4: 删除回执（桥已发 session_deleted）驱动列表刷新，替代盲等 800ms
   if(m.sys==='sessions_deleted'){ // r4/S2b: 批量删除汇总回执（桥回执后断连一次，重连由既有自动重连兜）
     ssOrg.on=false; ssOrg.sel.clear();
@@ -981,6 +981,7 @@ const QUICK_PROMPTS=[
   {label:'📊 帮我做张报表', report:true},
 ];
 function addQuickPrompts(){
+  const old=document.querySelector('.quickwrap'); if(old) old.remove(); // s104/R1-F1: 幂等——subscribe(null) 首加与 keyGuideSync 配好后(:2457)再加重复成两套（冷装实测 10 个 chip，恰是刚配好被注视的时刻）；重渲染会自愈但首配窗口丢人
   const wrap=document.createElement('div'); wrap.className='quickwrap';
   for(const q of QUICK_PROMPTS){
     const b=document.createElement('button'); b.className='quickchip'; b.textContent=q.label;
