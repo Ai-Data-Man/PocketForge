@@ -110,3 +110,12 @@
 - glm 净线活体格（live glm + 无键）未实测（3 轮预算封顶），属臂G×臂D2 拼接推断；下次任何活体窗口可 1 轮补钉。
 - L3 的 24 帧由 deepseek 产出（subscribe 带模型对目录外名字静默失败→救援跑池首）——顺带再证 research/46 E5「救援轮跑错模型」在现行栈仍在（backlog 已有，非本次范围）。
 - 桥内两处注释需随本次更正：spawnAcp 头注的 wire 路径（/llmproxy/chat/completions→实为 /llmproxy/v1/chat/completions）；「goose 对 glm 系不发/不解析 reasoning」的后半句（发=真，解析=伪）。
+
+## 6. 附注：F5 勘误（2026-09-29 工程批红证，s104/V2）
+
+臂L 的「set_think=max 被 goose 名字门拒」**机制不成立**，两处更正：
+
+1. goose 1.50 对 glm 真名 `session/set_config_option(thinking_effort)` 回**正常 result 帧（masked-accept）**：请求被收下、回包 currentValue 恒 `"off"`、options 恒 `["off"]`（读面遮蔽，与 research/35 §1 的 configOptions 遮蔽同族）；对照 gpt-5-codex 同法值即落；死 sid 才回 -32002 error。ACP 直钉证据：`tmp/s104-v2-red/v2-acp-pin-result.json`（改前真栈）。
+2. 臂L2 当时看到的「拒」实为探针自身缺陷（发错字段 `think`≠`value` 撞空值门），非 goose 行为。
+
+推论：活体里「切换没做成，稍后再试」的失败家族=S10 死 sid 复用（backlog ④），不是名字门。裁决 F5 行按此读法更正；V2 兜底因此空转（无 error 标的可兜），红证留档 `tmp/s104-v2-red/`。
