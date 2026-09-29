@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const ROOT = 'C:\\ZCodeWorks\\PocketForge\\forge';
+const ROOT = path.resolve(__dirname, '..', '..', 'forge'); // s105/r2fix: 硬编码 dev 树根改按套件位置推导——纯沙盒跑（tools 同根 forge）不再打错树（dev 栈停用期沙盒栈自起先例）
 const UPD = path.join(ROOT, 'data', 'updates');
 const BDIR = path.join(ROOT, 'data', 'backups');
 const Z1 = 'PocketForge-preupgradetest-0.0.1.zip', Z2 = 'PocketForge-preupgradetest-0.0.2.zip', Z3 = 'PocketForge-preupgradetest-0.0.3.zip';

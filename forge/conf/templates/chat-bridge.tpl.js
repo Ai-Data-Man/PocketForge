@@ -150,22 +150,27 @@ function classifyUpstream(txt) { // s50e: 上游错误细分（401=Key 没配好
 // "The user has declined to run this tool. DO NOT attempt…"（v1.50 二进制+活体帧实录 tmp/s78e-decline-shape.js：
 // tool_call_update.status=failed + content 文本块数组）。只改写转发给前端的帧（goose 自持会话史不动，
 // 对 agent 零影响）；前端 explain_tool 喂料读 card._out，同步吃人话版
-const DECLINE_RE = /the user has declined to run this tool/i;
+const DECLINE_RE = /the user has declined to run this tool\.?(?:\s*do not attempt to call this tool again\.?(?:\s*if there are no alternative methods to proceed,\s*clearly explain the situation and stop\.?)?)?/i;
 // s78f QA P2-2 双保险：①status 门——decline 回填实录恒 status=failed，success/pending 帧里引用原句（grep 源码/读日志/changelog
 // 的真实工具输出）不属拒绝回填，整帧不动；②句内子串替换——只换 DECLINE_RE 命中的原句子串，原句前后的真实数据（命中计数/后续
 // 日志行）保留，不再整字段覆写。回放帧（session/load）同路经此门。
+// s105/R2-F1：DECLINE_RE 扩到整段机器指令尾（goose v1.50/1.51 拒绝回填全句=首句+". DO NOT attempt…STOP."，旧只换首句
+// →英文指令尾+"。."句号重叠漏进工具卡面与 explain 喂料）；尾句可选匹配——工具真实输出里只引首句时仍只换首句，前后真实数据保留。
 function humanizeDecline(msg) {
     try {
         const upd = msg.params && msg.params.update;
         if (!upd || (upd.sessionUpdate !== 'tool_call' && upd.sessionUpdate !== 'tool_call_update')) return;
         if (upd.status !== undefined && upd.status !== 'failed') return;
+        const tcId = upd.toolCallId || (upd.toolCallUpdate && upd.toolCallUpdate.toolCallId) || ''; // s105/R2-F1: 超时归因键（acp_reply 判超时写入 permDecline）
         for (const tu of [upd, upd.toolCallUpdate]) { // 实测形态=upd.content 直挂；嵌套 toolCallUpdate 形态兜底（同前端 toolCard 双形态）
             if (!tu || !Array.isArray(tu.content)) continue;
-            for (const b of tu.content) if (b && b.content && typeof b.content.text === 'string' && DECLINE_RE.test(b.content.text)) b.content.text = b.content.text.replace(DECLINE_RE, '这一步没得到您的同意，没有执行。');
+            // s105/R2-F1: 超时卡说超时（对齐 F1b 卡面「等太久没人选」）、拒绝/无记录卡保持原句——修前超时也被写成「没得到您的同意」两面矛盾
+            for (const b of tu.content) if (b && b.content && typeof b.content.text === 'string' && DECLINE_RE.test(b.content.text)) b.content.text = b.content.text.replace(DECLINE_RE, permDecline.get(tcId) === 'timeout' ? '这一步等太久没人选，自动跳过了，没有执行。' : '这一步没得到您的同意，没有执行。');
         }
     } catch {}
 }
-const permKinds = new Map(); // request_permission callId -> {m: optionId->kind, t: shown 时间戳}，供 acp_reply 分类+超时判定
+const permKinds = new Map(); // request_permission callId -> {m: optionId->kind, t: shown 时间戳, tcId, ttl}，供 acp_reply 分类+超时判定+R2-F1/P4 归因
+const permDecline = new Map(); // toolCallId -> 'timeout'（s105/R2-F1: 权限卡超时收口的拒绝回填归因；acp_reply 判超时写入，humanizeDecline 消费——明确拒绝/无记录走默认句）
 const turnText = new Map();  // sessionId -> 当轮 agent 文本累计（s26 流内报错检测用）
 const sidErrAt = new Map();  // s99/t3-D: sessionId -> 最近一次回合错误时间戳（retryAfterError 判据；sendTurn 错误三路+acp 死中断写入，prompt 路径读——与 errorsByType 同源，不另造分类）
 const busySids = new Set();  // sessionId -> 有在飞 prompt/流式未收尾（主线5 rollback_rewrite 的 busy 门，桥侧权威）
@@ -1516,7 +1521,8 @@ function onAcpData(chunk) {
                 try {
                     const m = new Map();
                     for (const o of ((msg.params && msg.params.options) || [])) m.set(o.optionId, o.kind);
-                    permKinds.set(msg.id, { m, t: Date.now() });
+                    const tcP = (msg.params && msg.params.toolCall && msg.params.toolCall.toolCallUpdate) || (msg.params && msg.params.toolCall) || {}; // s105: 双形态同前端权限卡读法
+                    permKinds.set(msg.id, { m, t: Date.now(), tcId: String(tcP.toolCallId || ''), ttl: String(tcP.title || '').slice(0, 80) }); // s105/R2-F1+P4: toolCallId 串超时归因、title 串 events.log 工具名（不带参数防敏感）
                     if (permKinds.size > 200) permKinds.clear();
                 } catch {}
             }
@@ -3585,13 +3591,20 @@ function handleLlmProxy(req, res) {
         };
         const act = activeProvider();
         const host = ((act && act.host) || secrets.FORGE_AGENT_HOST || '').replace(/\/$/, '');
-        if (!host) { res.writeHead(502, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { message: 'no active provider (providers.json)' } })); llmDone(502, 'no active provider (providers.json)'); return; }
+        const isModels = req.method === 'GET' && /\/models$/.test((req.url || '').split('?')[0]); // s105/R2-P3: 提前到未配置分支前（下方原位消费不变）
+        if (!host) {
+            // s105/R2-P3: 净冷装未配置态，goose session/new 后台库存预热（spawn_provider_inventory_refresh，v1.51 acpserver 源）
+            // 自动 GET /models 打到本反代——旧 502+落行=纯噪音，且 502 记失败库存永不更新→每次 session/new 重拉。
+            // 改本地应答 200 空单（OpenAI 兼容形态）：goose 记库存已更新即自熄重复拉取；此应答从未出本机（未进 LLM 转发域），
+            // 不落 llmproxy.log 行。已配置态 /models 照旧转发+留行（有配置保持）。
+            if (isModels) { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ object: 'list', data: [] })); return; }
+            res.writeHead(502, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { message: 'no active provider (providers.json)' } })); llmDone(502, 'no active provider (providers.json)'); return;
+        }
         let body = chunks.length ? Buffer.concat(chunks) : null;
         // s98/llm-proxy: 上游 /models 清单注入别名。后续实测修正：goose 的 set_config_option 校验用自带静态目录、
         // 从不请求 /models——本注入对 goose 目录校验无作用（别名仍必拒，switch_model 已按 sidGooseModel 分流绕开）。
         // 留着（无害，只加不删真名）：① /llmproxy 是通用 OpenAI 兼容面，其他客户端按 /models 认别名即可直接用；
         // ② 若 goose 将来改为按 /models 校验，此路即通。翻译点在下方 modelsInject。
-        const isModels = req.method === 'GET' && /\/models$/.test((req.url || '').split('?')[0]);
         let xlate = null; // {fam, target}
         let rewrote = false; // s101/W4: 非别名路线改写 body 的旗（content-length 需随改写同步，否则上游挂起）
         if (body && req.method === 'POST') {
@@ -5167,9 +5180,9 @@ function handleClient(ws, msg) {
             try {
                 const ke = permKinds.get(msg.callId); permKinds.delete(msg.callId);
                 const kind = ke && ke.m.get(msg.option);
-                if (ke && Date.now() - ke.t >= 60000) statsBump('permissionCards.timeout');
+                if (ke && Date.now() - ke.t >= 60000) { statsBump('permissionCards.timeout'); evJson({ ev: 'permcard', action: 'timeout', tool: (ke && ke.ttl) || '' }); if (ke && ke.tcId) permDecline.set(ke.tcId, 'timeout'); if (permDecline.size > 200) permDecline.clear(); } // s105/P4: 用户侧大事件三日志零留痕→events.log 一行（工具名不带参数防敏感）；s105/R2-F1: 超时归因串进人话门
                 else if (kind === 'allow_once' || kind === 'allow_always') { statsBump('permissionCards.approved'); statsBump('permissionCards.' + kind); } // s99/t3-A: 按选项分裂（键名=ACP kind 原文，零映射；approved 聚合键照旧双计，读侧兼容）
-                else if (kind === 'reject_once' || kind === 'reject_always') { statsBump('permissionCards.denied'); statsBump('permissionCards.' + kind); } // s99/t3-A
+                else if (kind === 'reject_once' || kind === 'reject_always') { statsBump('permissionCards.denied'); statsBump('permissionCards.' + kind); evJson({ ev: 'permcard', action: 'denied', tool: (ke && ke.ttl) || '' }); } // s99/t3-A；s105/P4: 同上留痕
             } catch {}
             acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: msg.callId, result: { outcome: { outcome: 'selected', optionId: msg.option } } }) + '\n');
             return;
