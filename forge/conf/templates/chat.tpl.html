@@ -776,7 +776,7 @@ function connect(){
       ensureWs();
       return;
     }
-    if(m.sys==='error'){ if(pendingQueue.length){ rollbackQueue('对话没开好，刚才记下的话已放回，稍后再发一次。'); pendingForNew=false; } addErr(m.text+(m.text.includes('可选池')?'。到 ⚙️ 设置里勾选它，或换顶栏列表里有的模型。':'')); zombieToolcards(); setBusy(false); renderThinkCtl(); return; } // B1: 开新对话失败时队列倒回（仅队列非空时，不影响其他 error 路径）; s95/F-3: 中断终态帧同样收口工具卡; s98/think-grad: 失败帧按真相源重绘（梯度选择切换失败回滚显示）
+    if(m.sys==='error'){ if(pendingQueue.length){ rollbackQueue('对话没开好，刚才记下的话已放回，稍后再发一次。'); pendingForNew=false; } addErr(m.text+(m.text.includes('可选池')?'。到 ⚙️ 设置里勾选它，或换顶栏列表里有的模型。':'')); if($('modal').classList.contains('on')) note(m.text); zombieToolcards(); setBusy(false); renderThinkCtl(); return; } // B1: 开新对话失败时队列倒回（仅队列非空时，不影响其他 error 路径）; s95/F-3: 中断终态帧同样收口工具卡; s98/think-grad: 失败帧按真相源重绘（梯度选择切换失败回滚显示）; s105/R1-P6: 设置弹窗开着时错误镜像进面板状态行（拉取 502 原先只落聊天流被弹窗挡住=「拉取中…」永挂无反馈）
     if(m.sys==='hello'){ $('version').textContent=m.app||('v'+m.version); return; } // s64: app=应用版本（自带 v 前缀）；回落才是 WS 协议版本
     if(m.sys==='health'){ healthSync(m); return; } // 裁决 provider-health-probe S3: 健康态帧（态变化广播与缓存直发同形）
     if(m.sys==='models'){
@@ -805,7 +805,7 @@ function connect(){
       return;
     }
     if(m.sys==='provider_switching'){ addInfo('正在切换到「'+m.to+'」…大约 5 秒，稍等提示。'); return; }
-    if(m.sys==='provider_switched'){ lastKnownModel=m.model; $('model-cur').textContent=m.provider+' · '+m.model; thinkEcho=''; renderThinkCtl(); addInfo('✅ 已切到 '+m.provider+'（默认模型 '+m.model+'）。'); loadSessions(); if(pendingRetry){ subscribe(null); return; } return; } // s104/R1-F2: 切档帧手里有模型名却只弹 toast 不喂标签——顶栏停在「未设置」直到下次会话动作（model_set :786 同款补齐）；s51c: 重发挂到 subscribed（新会话 ready 后才发，见上方消费点）
+    if(m.sys==='provider_switched'){ lastKnownModel=m.model; $('model-cur').textContent=m.provider+' · '+m.model; thinkEcho=''; renderThinkCtl(); addInfo('✅ 已切到 '+m.provider+(m.model?'（默认模型 '+m.model+'）。':'。')); loadSessions(); if(pendingRetry){ subscribe(null); return; } return; } // s104/R1-F2: 切档帧手里有模型名却只弹 toast 不喂标签——顶栏停在「未设置」直到下次会话动作（model_set :786 同款补齐）；s51c: 重发挂到 subscribed（新会话 ready 后才发，见上方消费点）；s105/R1-P5: 池空帧（models:[]）无默认模型——空括注整个不拼，不再残留「（默认模型 ）。」
     if(m.sys==='session_deleted'){ clearTimeout(delRefreshT); delRefreshT=null; loadSessions(); return; } // #4: 删除回执（桥已发 session_deleted）驱动列表刷新，替代盲等 800ms
   if(m.sys==='sessions_deleted'){ // r4/S2b: 批量删除汇总回执（桥回执后断连一次，重连由既有自动重连兜）
     ssOrg.on=false; ssOrg.sel.clear();
@@ -963,6 +963,7 @@ function paintSideChips(){ // IA-2: chip 态与计数（mtab 同款 aria-selecte
 }
 function showSideView(v){
   sideView=v;
+  closeSearch(); // s105/R1-F4: 切视图先收内容搜索面板——#search-results 盖着 #sessions 时点视图 chip，旧「没找到」空态会遮住整个列表（归档明明有条目看似全空，清搜索词才重现）；收面板+清对方过滤词=两视图各用各的词互不串扰
   $('arch-q-row').style.display='flex'; // 项1(pm裁决2026-09-07-batch1): 搜索行两视图恒驻——同一输入框按当前视图过滤对应列表（R2 出路必须真实存在）
   $('arch-pager').style.display='flex'; // 两视图各自分页，共用同一翻页器容器
   $('arch-q').placeholder=v==='arch'?'🔍 在归档里找…':'🔍 在对话列表里找…';
@@ -1278,25 +1279,26 @@ function thinkDiscard(){ // s105: 收起+收留（裁决 §3.2，supersede s103�
   $('think-draft').style.display='none';
   $('think-buf').textContent='';
 }
-function thinkMount(el,text){ // s105/T3: 消息附属折叠块（裁决 §3.1 挂点=div.msg.agent 内、msgButtons 同层）——默认折叠 DOM 只有按钮零文本节点，全文存闭包，点开才渲染（13,088 字符最坏块不截断，滚动看全）；展开盒闭包持有：同消息多块（规则2 兜底）各管各的互不误关
+function thinkMount(el,text){ // s105/T3: 消息附属折叠块（裁决 §3.1 挂点=div.msg.agent 内、msgButtons 同层）——默认折叠 DOM 只有按钮零文本节点，全文存闭包，点开才渲染（13,088 字符最坏块不截断，滚动看全）；s105/R1-F2: 同消息多段思考合并单入口（钮恒一个，块文本=段序拼接）——后到块经 el._thinkAdd 追加进已挂块的缓冲，已展开则同步刷新文本
   const btn=document.createElement('button'); btn.type='button'; btn.className='thinkbtn'; btn.textContent='它当时怎么想的 ▸';
   el.appendChild(btn);
-  let box=null;
+  let box=null, pre=null, buf=String(text||'');
+  el._thinkAdd=add=>{ if(!add) return; buf=buf?buf+'\n\n'+String(add):String(add); if(pre) pre.textContent=buf; };
   btn.onclick=()=>{
-    if(box){ box.remove(); box=null; btn.textContent='它当时怎么想的 ▸'; return; } // 收起=整块摘除，DOM 回到只有按钮
+    if(box){ box.remove(); box=null; pre=null; btn.textContent='它当时怎么想的 ▸'; return; } // 收起=整块摘除，DOM 回到只有按钮
     box=document.createElement('div'); box.className='thinkblk';
     const note=document.createElement('div'); note.className='td-note'; note.textContent='这是它当时想的过程——从哪来：回答前模型自己写的（原文可能是英文）；怎么变：已经想完，不会再变；变了什么：留在这条回答下面，重开对话也还在。';
-    const pre=document.createElement('pre'); pre.textContent=text;
+    pre=document.createElement('pre'); pre.textContent=buf;
     box.appendChild(note); box.appendChild(pre); el.appendChild(box);
     btn.textContent='收起 ▴';
   };
 }
-function thinkAttach(el,mid){ // s105/T1+T2 挂靠收留点（live 与回放同一套）——规则1：msgId 精确配对挂该消息；规则2：宿主是纯 toolRequest 行（前端无正文元素）的思考挂其后第一条正文消息；各挂各的不合并单块；规则3（零正文回合）在 setBusy 收口弃置
-  let n=0;
-  if(mid&&thinkPend.has(mid)){ thinkMount(el,thinkPend.get(mid)); thinkPend.delete(mid); n++; }
-  for(const k of [...thinkPend.keys()]){ thinkMount(el,thinkPend.get(k)); thinkPend.delete(k); n++; }
-  if(!n&&thinkKeep) thinkMount(el,thinkKeep);
+function thinkAttach(el,mid){ // s105/T1+T2 挂靠收留点（live 与回放同一套）——规则1：msgId 精确配对挂该消息；规则2：宿主是纯 toolRequest 行（前端无正文元素）的思考挂其后第一条正文消息；规则3（零正文回合）在 setBusy 收口弃置。s105/R1-F2: 该消息全部思考块（本体+规则2 兜底，按到达序）合并一个入口（段间空行拼接），不再各挂各的相邻同名钮；挂靠集与归属语义不变（仍按 msgId 归属到消息），drain-all 语义下 mid 无需特判
+  const parts=[];
+  for(const k of [...thinkPend.keys()]){ parts.push(thinkPend.get(k)); thinkPend.delete(k); }
+  if(!parts.length&&thinkKeep) parts.push(thinkKeep);
   thinkKeep='';
+  if(parts.length) thinkMount(el,parts.join('\n\n'));
 }
 $('think-peek').onclick=()=>thinkDraftShow(!thinkDraftOn);
 function setBusy(b){ busy=b; typing.style.display=b?'block':'none'; send.disabled=b; stopBtn.style.display=b?'inline-block':'none';
@@ -1525,7 +1527,7 @@ function onAgentEvent(p){
     const u=p.params.update;
     if(u.sessionUpdate==='agent_message_chunk'){ thinkDiscard(); noteTurnPhase('write'); const mel=addMsg(u.content.text,'agent'); if(mel){ const mg=(u.messageId||(u._meta&&u._meta.goose&&u._meta.goose.messageId)); if(mg) mel.dataset.gmid=mg; thinkAttach(mel,mg||''); } } // s103/S1: 阶段翻「在写答案」；S2: 首个正文帧=想完了，面板收起；s105: 收起同时收留——新消息元素落地即挂思考折叠块+补 gmid（user 侧 :1495 同款先例；live 分支甲与回放同套配对，裁决 §3.2）
     else if(u.sessionUpdate==='user_message_chunk'){ const el=addMsg(u.content.text,'user'); const gm=(u.messageId||(u._meta&&u._meta.goose&&u._meta.goose.messageId)); if(gm) el.dataset.gmid=gm; } // 主线5：回放帧双冗余 id（research/21 §6 顶级 messageId 与 _meta.goose.messageId 同值），存元素上供撤回定位
-    else if(u.sessionUpdate==='agent_thought_chunk'){ const tg=(u.messageId||(u._meta&&u._meta.goose&&u._meta.goose.messageId)); if(tg){ const add=((u.content&&u.content.text)||''); const v=(thinkPend.get(tg)||'')+add; thinkPend.set(tg,(busy&&v.length>THINK_BUF_MAX)?v.slice(-THINK_BUF_MAX):v); } if(busy) thoughtFeed(u); } // s103/S1+S2: live 思考帧照旧喂忙碌面板（deepseek 无此帧=面板不出现，内容不造假）；s105: 帧先进挂靠缓存（回放=全文一帧不裁，live 微帧走 32KB 尾窗同 thinkBuf 口径）；回放期（非 busy）不喂 thinkBuf——不再走「喂进再丢弃」死路（research/48 §3.1）
+    else if(u.sessionUpdate==='agent_thought_chunk'){ const tg=(u.messageId||(u._meta&&u._meta.goose&&u._meta.goose.messageId)); if(tg){ const add=((u.content&&u.content.text)||''); const host=(!thinkPend.has(tg)&&/^\w+$/.test(String(tg)))?chat.querySelector('.msg.agent[data-gmid="'+tg+'"]'):null; if(host&&host._thinkAdd) host._thinkAdd(add); else { const v=(thinkPend.get(tg)||'')+add; thinkPend.set(tg,(busy&&v.length>THINK_BUF_MAX)?v.slice(-THINK_BUF_MAX):v); } } if(busy) thoughtFeed(u); } // s103/S1+S2: live 思考帧照旧喂忙碌面板（deepseek 无此帧=面板不出现，内容不造假）；s105: 帧先进挂靠缓存（回放=全文一帧不裁，live 微帧走 32KB 尾窗同 thinkBuf 口径）；回放期（非 busy）不喂 thinkBuf——不再走「喂进再丢弃」死路（research/48 §3.1）；s105/R1-F2: 块已挂靠（正文先落地）的迟到帧直接追加进该消息的合并块缓冲（展开态同步刷新），不再静默丢失
     else if(u.sessionUpdate==='tool_call'||u.sessionUpdate==='tool_call_update'){ noteTurnPhase('work'); toolCard(u); } // s103/S1: 阶段翻「在动手」——决定调工具前的规划期从此可见
     else if(u.sessionUpdate==='plan'){ /* future */ }
     else if(u.sessionUpdate==='available_commands_update'){}
@@ -1568,6 +1570,7 @@ function onAgentEvent(p){
     let done=false;
     const settle=(opt,label)=>{
       if(done) return; done=true;
+      clearTimeout(card._pto); if(card._pti){ clearInterval(card._pti); card._pti=null; } // s105/R1-F1: 倒计时表随卡收口停走（僵尸化路径由 zombiePermcards 清 _pti，先例同 _pto）
       wssend({type:'acp_reply',callId:p.id,option:opt});
       btns.remove(); card.querySelector('.pnote').textContent='您选了：'+label;
       card.classList.add('settled');
@@ -1598,7 +1601,13 @@ function onAgentEvent(p){
     // reject_once→reject_always（拒绝族=失败安全：停住可恢复，不产生破坏），全无则不回复任何选项、让 goose 自身超时收口
     // ——宁可无动作，不可替用户点 allow
     const noOpt = opts.find(o=>o.kind==='reject_once') || opts.find(o=>o.kind==='reject_always');
-    if(noOpt) card._pto=setTimeout(()=>settle(noOpt.optionId,'（等太久没人选，自动帮你选了 🚫 这次不行。它可能会换个做法再来问你——想让它做，它再问时点「这次可以」就行。）'),60000);
+    if(noOpt){
+      // s105/R1-F1: 卡面倒计时——超时预告句尾动态「（还剩 Ns）」，1s 走表（她不知道卡片在等她、等多久）；settle 清 _pti（对齐 _pto 先例）
+      const pn=card.querySelector('.pnote'), pt0=Date.now();
+      const ptick=()=>{ const left=Math.max(0,Math.ceil((60000-(Date.now()-pt0))/1000)); if(pn) pn.textContent='它不会自己偷偷做。您选了它才动。一分钟没回应，会自动先跳过这次。（还剩 '+left+'s）'; };
+      ptick(); card._pti=setInterval(ptick,1000);
+      card._pto=setTimeout(()=>settle(noOpt.optionId,'（等太久没人选，自动帮你选了 🚫 这次不行。它可能会换个做法再来问你——想让它做，它再问时点「这次可以」就行。）'),60000);
+    }
     return;
   }
   if(p.method==='stop'){ setBusy(false); endStream(); zombiePermcards(); loadSessions(); renderCurPane(); flushPendingQueue(); } // s52b: 任务完成自动刷新文件树（小白不用手动刷新找文件）；#3: 干完活补发排队中的消息；s78 P2-3b: 回合收口时未选的卡同步置灰（会话切换路径由清墙覆盖）
@@ -1646,9 +1655,9 @@ function zombieToolcards(){ // s95/F-3：回合中断的终态兜底——桥报
     if(!c.querySelector('.expbtn')) mkExpBtn(c,id); // s104/V5: unknown 卡也给「这是干啥？」解释入口——喂料 status=unknown，解释者拿诚实状态行
   }
 }
-function zombiePermcards(){ // s78 P2-3b：回合已死的审批卡视觉收口——置灰禁点+撤掉待触发的超时兜底定时器；不发协议帧（回合已死，点了也不算数）
+function zombiePermcards(){ // s78 P2-3b：回合已死的审批卡视觉收口——置灰禁点+撤掉待触发的超时兜底定时器；不发协议帧（回合已死，点了也不算数）；s105/R1-F1: 同清倒计时表 _pti（卡收口停走）
   for(const c of document.querySelectorAll('.permcard:not(.settled)')){
-    clearTimeout(c._pto);
+    clearTimeout(c._pto); if(c._pti){ clearInterval(c._pti); c._pti=null; }
     const b=c.querySelector('.pbtns'); if(b) b.remove();
     const n=c.querySelector('.pnote'); if(n) n.textContent='这轮已经结束，这张卡不用再选了。';
     c.classList.add('settled');

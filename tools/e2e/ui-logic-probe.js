@@ -534,10 +534,21 @@ CUR = 'busy';
             btns(el)[0].onclick();
             ck('再收起：整块摘除，DOM 回到只有按钮', el.children.length === 1 && btns(el).length === 1 && btns(el)[0].textContent === '它当时怎么想的 ▸');
         }
-        { // 规则2：宿主为纯 toolRequest 行的思考挂其后第一条正文消息；各挂各的不合并
+        { // 规则2：宿主为纯 toolRequest 行的思考挂其后第一条正文消息；s105/R1-F2 期望随迁：同消息合并单入口（钮恒一个，块文本=到达序拼接段间空行；修前=两同名钮各挂各的，红证 tmp/s105-r1fix-redgreen/f2-uilogic-RED-premigrate.log）
             const el = mkNode(); api.pend.set('tool-host', 'PRE'); api.pend.set('m2', 'OWN'); api.attach(el, 'm2');
+            ck('规则2 兜底+合并单入口（R1-F2）：一钮一块，toolRequest 宿主思考与本体思考按到达序拼接', btns(el).length === 1 && el.children.filter(c => c.className === 'thinkblk').length === 0 && api.pend.size === 0);
             expand(el);
-            ck('规则2 兜底+不合并单块：toolRequest 宿主思考与本体思考两块各挂各的', blkTexts(el).length === 2 && blkTexts(el)[0] === 'OWN' && blkTexts(el)[1] === 'PRE' && api.pend.size === 0);
+            ck('R1-F2 拼接内容：段间空行，先到段在前（工具前规划先于答案思考，裁决 §3.1 时序）', blkTexts(el).length === 1 && blkTexts(el)[0] === 'PRE\n\nOWN');
+        }
+        { // s105/R1-F2：后到块追加进已挂块缓冲——折叠态 DOM 不动、展开态同步刷新
+            const el = mkNode(); api.pend.set('m4', 'BASE'); api.attach(el, 'm4');
+            el._thinkAdd('LATE');
+            ck('R1-F2 后到块追加：折叠态零渲染（全文在 JS 侧缓冲）', btns(el).length === 1 && el.children.filter(c => c.className === 'thinkblk').length === 0);
+            expand(el);
+            const blk4 = el.children.find(c => c.className === 'thinkblk');
+            ck('R1-F2 展开=追加后全文', blkTexts(el)[0] === 'BASE\n\nLATE');
+            el._thinkAdd('MORE');
+            ck('R1-F2 展开态再追加：pre 即时刷新', blk4.children[1].textContent === 'BASE\n\nLATE\n\nMORE');
         }
         { // 13,088 字符最坏块（research/48 §3.5 p99 之上的实测 max）不截断
             const big = 'X'.repeat(13088); const el = mkNode(); api.pend.set('m3', big); api.attach(el, 'm3'); expand(el);
