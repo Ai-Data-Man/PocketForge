@@ -382,13 +382,15 @@ const thinkDraftShowSrc = grabSoft(/function thinkDraftShow\(on\)\{[\s\S]+?\n\}/
 const thinkDiscardSrc = grabSoft(/function thinkDiscard\(\)\{[\s\S]+?\n\}/, 'thinkDiscard');
 const peekOnclickSrc = grabSoft(/\$\('think-peek'\)\.onclick=[^\n]+/, 'think-peek onclick');
 const THINK_BUF_MAXSrc = grabSoft(/const THINK_BUF_MAX=\d+;/, 'THINK_BUF_MAX');
+const thinkMountSrc = grabSoft(/function thinkMount\(el,text\)\{[\s\S]+?\n\}/, 'thinkMount'); // s105 桩臂：消息附属折叠块
+const thinkAttachSrc = grabSoft(/function thinkAttach\(el,mid\)\{[\s\S]+?\n\}/, 'thinkAttach'); // s105 桩臂：挂靠收留点
 const zombieToolcardsSrc = grabSoft(/function zombieToolcards\(\)\{[\s\S]+?\n\}/, 'zombieToolcards');
 function grabSoft(re, label) { const m = html.match(re); if (!m) { console.error('SOFT-NOT-FOUND: ' + label + '（修前红形态：HEAD 无此函数）'); return ''; } return m[0]; }
 function mkTEl(id) { return { id, textContent: '', style: { display: '' }, onclick: null, scrollTop: 0, scrollHeight: 0 }; }
 function buildBusy(sel) {
     const s1ok = setBusySrc && curThinkLabelSrc && busyPhraseSrc && busyPaintSrc && noteTurnPhaseSrc && THINK_LABELSSrc;
     const s2ok = thoughtFeedSrc && thinkDraftShowSrc && thinkDiscardSrc && peekOnclickSrc && THINK_BUF_MAXSrc;
-    if (!s1ok) return { api: { setBusy() {}, noteTurnPhase() {}, busyPaint() {}, thoughtFeed() {}, thinkDiscard() {}, thinkDraftShow() {} }, els: {}, typing: { style: {} }, tick() {}, text: () => '', buf: () => '', chatAdds: () => 1 }; // 修前红：任一新函数缺失=整组行为断言红（no-op 桩走过不炸）
+    if (!s1ok) return { api: { setBusy() {}, noteTurnPhase() {}, busyPaint() {}, thoughtFeed() {}, thinkDiscard() {}, thinkDraftShow() {}, keep: () => '', pend: () => ({ size: 0 }) }, els: {}, typing: { style: {} }, tick() {}, text: () => '', buf: () => '', chatAdds: () => 1 }; // 修前红：任一新函数缺失=整组行为断言红（no-op 桩走过不炸）
     const els = { 'typing-text': mkTEl('typing-text'), 'typing': mkTEl('typing'), 'think': sel, 'think-peek': mkTEl('think-peek'), 'think-draft': mkTEl('think-draft'), 'think-buf': mkTEl('think-buf') };
     els['think-peek'].style.display = 'none'; els['think-draft'].style.display = 'none'; // 初始折叠（同 HTML 内联）
     const typing = els['typing'], send = { disabled: false }, stopBtn = { style: {} };
@@ -397,7 +399,7 @@ function buildBusy(sel) {
     const s2body = s2ok ? `${THINK_BUF_MAXSrc}\n        ${thoughtFeedSrc}\n        ${thinkDraftShowSrc}\n        ${thinkDiscardSrc}\n        ${peekOnclickSrc}`
         : 'const THINK_BUF_MAX=32768;\n        function thoughtFeed(u){}\n        function thinkDraftShow(on){}\n        function thinkDiscard(){}'; // S2 缺席=S2 断言红（no-op 桩走过不炸）
     const api = new Function('$', 'typing', 'send', 'stopBtn', 'document', 'notifyDone', 'stopNotify', 'setInterval', 'clearInterval', 'Date', 'chat', `
-        let busyPhase='', busyT0=0, busyTick=null, thinkBuf='', thinkDraftOn=false;
+        let busyPhase='', busyT0=0, busyTick=null, thinkBuf='', thinkDraftOn=false, thinkKeep=''; const thinkPend=new Map();
         ${THINK_LABELSSrc}
         ${curThinkLabelSrc}
         ${busyPhraseSrc}
@@ -405,7 +407,7 @@ function buildBusy(sel) {
         ${noteTurnPhaseSrc}
         ${s2body}
         ${setBusySrc}
-        return { setBusy, noteTurnPhase, busyPaint, thoughtFeed, thinkDraftShow, thinkDiscard, buf: () => thinkBuf };
+        return { setBusy, noteTurnPhase, busyPaint, thoughtFeed, thinkDraftShow, thinkDiscard, buf: () => thinkBuf, keep: () => thinkKeep, pend: () => thinkPend };
     `)(id => { if (!els[id]) throw new Error('no stub #' + id); return els[id]; }, typing, send, stopBtn, { hidden: false }, () => {}, () => {},
         fn => { live.push(fn); return 1; }, () => { live.length = 0; }, { now: () => fakeNow }, chat);
     return { api, els, typing, tick: () => { fakeNow += 1100; live.forEach(f => f()); }, text: () => els['typing-text'].textContent, buf: () => api.buf(), chatAdds: () => chatAdds };
@@ -455,8 +457,8 @@ CUR = 'busy';
         ck('停表后不再走秒', b.text() === before && before.includes('秒'));
     }
     SEC = 'busy S1 wiring';
-    ck('thought 分支喂「在想」阶段（:1432 keep silent 已退役）', /agent_thought_chunk'\)\{ (?:thoughtFeed\(u\);|noteTurnPhase\('think'\);)/.test(html) && !/agent_thought_chunk'\)\{ \/\* keep silent \*\//.test(html));
-    ck('message_chunk 分支先翻「在写答案」（thinkDiscard 为 S2 预留位）', /agent_message_chunk'\)\{ (?:thinkDiscard\(\); )?noteTurnPhase\('write'\); addMsg\(/.test(html));
+    ck('thought 分支喂「在想」阶段（:1432 keep silent 已退役）', /agent_thought_chunk'\)\{ const tg=.*if\(busy\) thoughtFeed\(u\); \}/.test(html) && !/agent_thought_chunk'\)\{ \/\* keep silent \*\//.test(html));
+    ck('message_chunk 分支先翻「在写答案」（s105: 收起收留+新消息元素挂靠 thinkAttach+gmid）', /agent_message_chunk'\)\{ thinkDiscard\(\); noteTurnPhase\('write'\); const mel=addMsg\(u\.content\.text,'agent'\); if\(mel\)\{ const mg=\(u\.messageId\|\|\(u\._meta&&u\._meta\.goose&&u\._meta\.goose\.messageId\)\); if\(mg\) mel\.dataset\.gmid=mg; thinkAttach\(mel,mg\|\|''\); \} \}/.test(html));
     ck('tool 分支翻「在动手」', /tool_call_update'\)\{ noteTurnPhase\('work'\); toolCard\(u\); \}/.test(html));
     const addMsgSrcS1 = grab(/function addMsg\(text,who\)\{[\s\S]+?\n\}/, 'addMsg');
     {
@@ -493,12 +495,68 @@ CUR = 'busy';
     const had = draft().style.display === 'flex' && peek().style.display === '' && b.buf().length > 0; // S2 在场性前置（S1 代码上恒 false → 收口族断言红）
     click(); // 收起，进入收口语境
     b.api.thoughtFeed(tframe('开口前最后一段。'));
+    const preDiscard = b.buf(); // s105: 收留内容=收起时刻的 thinkBuf 全量（尾窗口径）
     b.api.thinkDiscard(); b.api.noteTurnPhase('write'); // 首 message_chunk 分支语义
-    ck('首 message_chunk：面板收起+内容弃置+peek 隐藏', had && draft().style.display === 'none' && b.buf() === '' && buf().textContent === '' && peek().style.display === 'none' && b.text() === '它在写答案 · 已 0 秒');
+    ck('首 message_chunk：面板收起+内容收留进 thinkKeep（s105 supersede s103 弃置）+peek 隐藏', had && draft().style.display === 'none' && b.buf() === '' && buf().textContent === '' && b.api.keep() === preDiscard && peek().style.display === 'none' && b.text() === '它在写答案 · 已 0 秒', 'keep=' + b.api.keep().length + '/' + preDiscard.length);
     b.api.setBusy(false); b.api.setBusy(true);
-    ck('回合重开面板为空（stop 后 setBusy(true) 重置）', had && b.buf() === '' && peek().style.display === 'none' && draft().style.display === 'none');
+    ck('回合重开面板为空+挂靠缓存清账（收口按裁决规则3 弃置余量）', had && b.buf() === '' && b.api.keep() === '' && b.api.pend().size === 0 && peek().style.display === 'none' && draft().style.display === 'none');
+    b.api.pend().set('orphan', '弃置我'); // 规则3 前置：零正文回合的挂靠余量
     b.api.setBusy(false);
-    ck('收忙同弃置（setBusy(false) 出口）', had && b.buf() === '' && draft().style.display === 'none');
+    ck('收忙同收口（setBusy(false) 出口：thinkBuf/thinkKeep/thinkPend 三清，不留幽灵块）', had && b.buf() === '' && b.api.keep() === '' && b.api.pend().size === 0 && draft().style.display === 'none');
+}
+// —— s105 桩臂（思考留痕挂靠，裁决 2026-09-30 §3.1/§3.5）：msgId 配对/规则2 兜底/折叠态零文本/13K 不截断/空思考零钮/分支乙 ——
+{
+    const mkNode = () => { const n = { tag: '', children: [], textContent: '', className: '', style: {}, dataset: {}, onclick: null, removed: false, parent: null };
+        n.appendChild = c => { c.parent = n; n.children.push(c); return c; };
+        n.remove = () => { n.removed = true; if (n.parent) { const i = n.parent.children.indexOf(n); if (i >= 0) n.parent.children.splice(i, 1); } }; // 真实 DOM remove=从父级摘除
+        return n; };
+    const doc = { createElement: () => mkNode() };
+    const MOTHER = '这是它当时想的过程——从哪来：回答前模型自己写的（原文可能是英文）；怎么变：已经想完，不会再变；变了什么：留在这条回答下面，重开对话也还在。';
+    if (!thinkMountSrc || !thinkAttachSrc) { SEC = 's105'; ck('thinkMount/thinkAttach 在场（修前红：s105 未实现）', false); }
+    else {
+        const api = new Function('document', 'THINK_BUF_MAX', `
+            const thinkPend=new Map(); let thinkKeep='';
+            ${thinkMountSrc}
+            ${thinkAttachSrc}
+            return { mount: thinkMount, attach: thinkAttach, pend: thinkPend, setKeep: v => thinkKeep = v, getKeep: () => thinkKeep };
+        `)(doc, 32768);
+        const btns = el => el.children.filter(c => c.className === 'thinkbtn');
+        const expand = el => btns(el).forEach(b => b.onclick());
+        const blkTexts = el => el.children.filter(c => c.className === 'thinkblk').map(c => c.children[1].textContent);
+        SEC = 's105';
+        { // 规则1：msgId 精确配对
+            const el = mkNode(); api.pend.set('m1', 'AAA'); api.attach(el, 'm1');
+            ck('规则1 msgId 配对：折叠块挂到对应消息（一钮零其他节点，折叠态 DOM 只有按钮）', btns(el).length === 1 && el.children.length === 1 && btns(el)[0].textContent === '它当时怎么想的 ▸');
+            ck('折叠态零思考文本（点开前 pre 不存在，全文在 JS 侧）', el.children.filter(c => c.className === 'thinkblk').length === 0 && api.pend.size === 0);
+            expand(el);
+            const blk = el.children.find(c => c.className === 'thinkblk');
+            ck('点开才渲染：母句（裁决 §3.4 逐字）+全文 pre+钮翻「收起 ▴」', !!blk && blk.children[0].textContent === MOTHER && blk.children[1].textContent === 'AAA' && btns(el)[0].textContent === '收起 ▴');
+            btns(el)[0].onclick();
+            ck('再收起：整块摘除，DOM 回到只有按钮', el.children.length === 1 && btns(el).length === 1 && btns(el)[0].textContent === '它当时怎么想的 ▸');
+        }
+        { // 规则2：宿主为纯 toolRequest 行的思考挂其后第一条正文消息；各挂各的不合并
+            const el = mkNode(); api.pend.set('tool-host', 'PRE'); api.pend.set('m2', 'OWN'); api.attach(el, 'm2');
+            expand(el);
+            ck('规则2 兜底+不合并单块：toolRequest 宿主思考与本体思考两块各挂各的', blkTexts(el).length === 2 && blkTexts(el)[0] === 'OWN' && blkTexts(el)[1] === 'PRE' && api.pend.size === 0);
+        }
+        { // 13,088 字符最坏块（research/48 §3.5 p99 之上的实测 max）不截断
+            const big = 'X'.repeat(13088); const el = mkNode(); api.pend.set('m3', big); api.attach(el, 'm3'); expand(el);
+            ck('13,088 字符最坏块点开不截断（全文渲染，滚动看全靠 CSS max-height）', blkTexts(el)[0].length === 13088 && api.pend.size === 0);
+        }
+        { // 空思考零钮零块 + 分支乙（live 帧无 msgId 时 thinkKeep 兜底）
+            const e1 = mkNode(); api.attach(e1, 'm-empty');
+            ck('空思考回合零钮零块（无帧不出现，诚实口径）', e1.children.length === 0);
+            const e2 = mkNode(); api.setKeep('BRANCH-B'); api.attach(e2, '');
+            expand(e2);
+            ck('分支乙：thinkKeep 兜底挂首正文消息+收留后清账', blkTexts(e2)[0] === 'BRANCH-B' && api.getKeep() === '');
+        }
+        { // 帧分支源码锚：回放不走 thinkBuf 死路 + assistant 补 gmid + 挂靠集 ⊆ 库内持久行（规则3 收口在 setBusy）
+            ck('thought 帧分支：msgId 进挂靠缓存+busy 门（回放不喂 thinkBuf，死路封堵）', /agent_thought_chunk'\)\{ const tg=\(u\.messageId\|\|\(u\._meta&&u\._meta\.goose&&u\._meta\.goose\.messageId\)\); if\(tg\)\{/.test(html) && /if\(busy\) thoughtFeed\(u\); \}/.test(html));
+            ck('td-note 母句改写（收起后收进这条回答下面）+旧承诺零残留', html.includes('收起后收进这条回答下面——点「它当时怎么想的」随时回看') && !html.includes('不留在对话里'));
+            ck('msgText 剥思考钮/块（留痕不进复制/导出正文）', /function msgText\(m\)\{ const c=m\.cloneNode\(true\); c\.querySelectorAll\('\.mbar,\.thinkbtn,\.thinkblk'\)/.test(html));
+            ck('流式/定稿不吞附属件（addMsg 文本节点追加+endStream 摘挂回挂——textContent+= 清子节点销毁折叠钮+钮文案烘进正文，活体干跑修前红实证 tmp/s105-redgreen/）', /streamEl\.appendChild\(document\.createTextNode\(text\)\);/.test(html) && !/streamEl\.textContent\+=text;/.test(html) && /const keeps=\[\.\.\.streamEl\.children\]\.filter\(n=>n\.classList\.contains\('thinkbtn'\)\|\|n\.classList\.contains\('thinkblk'\)\)/.test(html) && /keeps\.forEach\(n=>streamEl\.appendChild\(n\)\);/.test(html));
+        }
+    }
 }
 // —— busy S9（s103/S9 断线中性收口）：zombieToolcards「失败」翻红→中性态，不撒谎；已收尾的卡不动 ——
 {

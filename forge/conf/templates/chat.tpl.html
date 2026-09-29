@@ -203,6 +203,11 @@ button,input,select,textarea{font-family:inherit;color:inherit;font-size:inherit
 #think-draft{margin-top:6px;max-width:640px;max-height:38vh;display:flex;flex-direction:column;border:1px solid var(--acc-line);border-radius:8px;background:var(--panel-2)}
 #think-draft .td-note{padding:5px 10px;color:var(--mut);font-size:.7rem;border-bottom:1px solid var(--acc-line)}
 #think-buf{margin:0;padding:8px 10px;overflow:auto;white-space:pre-wrap;word-break:break-word;color:var(--mut-2);font-size:.72rem}
+/* s105: 消息附属「它当时怎么想的」折叠块（裁决 2026-09-30 §3.1/§3.5）——默认折叠只有按钮零文本，点开才渲染；展开滚动看全（同 #think-draft 38vh 机制，13K 最坏块不截断） */
+.thinkbtn{margin-top:4px;background:none;border:none;padding:0;color:var(--acc);font-size:.78rem;cursor:pointer;text-decoration:underline}
+.thinkblk{margin-top:4px;max-width:640px;max-height:38vh;display:flex;flex-direction:column;border:1px solid var(--acc-line);border-radius:8px;background:var(--panel-2)}
+.thinkblk .td-note{padding:5px 10px;color:var(--mut);font-size:.7rem;border-bottom:1px solid var(--acc-line)}
+.thinkblk pre{margin:0;padding:8px 10px;overflow:auto;white-space:pre-wrap;word-break:break-word;color:var(--mut-2);font-size:.72rem}
 /* s33: 开场快捷任务 chips */
 .quickwrap{display:flex;flex-wrap:wrap;gap:8px;padding:4px 16px 8px;align-self:flex-start}
 .quickchip{padding:8px 14px;border:1.5px solid var(--acc);border-radius:18px;background:var(--acc-soft);color:var(--acc);font-size:.8rem;cursor:pointer;transition:all .12s}
@@ -371,7 +376,7 @@ details.tz[open]>summary::before{content:'▾ '}
     <button class="icobtn" id="rside-toggle" title="工作区文件">📁</button>
   </div>
   <div id="chat"></div>
-  <div class="typing" id="typing" role="status" style="display:none"><span id="typing-text">小 forge 正在干活</span><span class="tdots"><i></i><i></i><i></i></span><button type="button" id="think-peek" style="display:none">看看它在想什么 ▸</button><!-- s103/S2: 思考草稿折叠入口（仅有 thought 帧时出现） --><div id="think-draft" style="display:none"><div class="td-note">这是它干活前边想边说的草稿——从哪来：模型自己边想边写的（原文可能是英文）；怎么变：想到哪更到哪，只露最后一段，想完开口说话就自动收起；变了什么：收起后不留在对话里，对话只留正式回答。</div><pre id="think-buf"></pre></div></div><!-- s103/S1: 文案进独立 span（忙碌条三要素=阶段+秒计时+当前档人话，随帧刷新）；S2: 草稿面板属忙碌域，不插聊天流（R1） -->
+  <div class="typing" id="typing" role="status" style="display:none"><span id="typing-text">小 forge 正在干活</span><span class="tdots"><i></i><i></i><i></i></span><button type="button" id="think-peek" style="display:none">看看它在想什么 ▸</button><!-- s103/S2: 思考草稿折叠入口（仅有 thought 帧时出现） --><div id="think-draft" style="display:none"><div class="td-note">这是它干活前边想边说的草稿——从哪来：模型自己边想边写的（原文可能是英文）；怎么变：想到哪更到哪，只露最后一段，想完开口说话就自动收起；变了什么：收起后收进这条回答下面——点「它当时怎么想的」随时回看。</div><pre id="think-buf"></pre></div></div><!-- s103/S1: 文案进独立 span（忙碌条三要素=阶段+秒计时+当前档人话，随帧刷新）；S2: 草稿面板属忙碌域，不插聊天流（R1） -->
   <div id="inputbar">
     <input id="txt" placeholder="想让我做什么？@ 引用文件或数据表，Tab=常用话术" autocomplete="off" aria-label="聊天输入框">
     <button id="prompts-btn" title="我的提示词：存住常用话术，一点就用" aria-label="打开我的提示词">📖</button>
@@ -1244,9 +1249,11 @@ function busyPhrase(){ // 深档形态（裁决原文例）：它正在尽全力
 function busyPaint(){ $('typing-text').textContent=busyPhrase(); }
 function noteTurnPhase(ph){ if(busyPhase===ph) return; busyPhase=ph; busyPaint(); }
 // s103/S2（裁决 §3.1 次级供给）：思考草稿折叠面板——仅 glm 系有帧时出现，默认折叠，展开看缓冲尾部+尾随滚动；
-// 32KB 显示缓冲尾窗（R2 同族：防 8-12min 深档会话无界 DOM）；回合结束（stop/首 message_chunk）即弃，不进聊天流不落库不翻译
+// 32KB 显示缓冲尾窗（R2 同族：防 8-12min 深档会话无界 DOM）；回合结束（stop/首 message_chunk）面板收起。
+// s105（裁决 2026-09-30，research/48）：收起不再弃置——思考内容收进回答消息的折叠块留痕；supersede s103「收起后不留」承诺
 const THINK_BUF_MAX=32768;
 let thinkBuf='', thinkDraftOn=false;
+const thinkPend=new Map(); let thinkKeep=''; // s105 挂靠缓存：thought 帧按 messageId 记账（live 帧带 msgId=分支甲，红证 tmp/s105-live-msgid-probe.js：5/5 帧带 id 且与正文同 id；回放=全文一帧）。live 微帧累计同走 32KB 尾窗（与 thinkBuf 同口径）；thinkKeep=thinkDiscard 收留的兜底（分支乙：上游帧无 msgId 时挂首正文消息——容差两分支都写死，裁决 §3.2）
 function thoughtFeed(u){ // thought 帧→在想阶段+草稿缓冲（面板开着才重绘+滚尾，折叠态零 DOM 开销）
   noteTurnPhase('think');
   const t=u.content&&u.content.text;
@@ -1263,17 +1270,38 @@ function thinkDraftShow(on){
   $('think-draft').style.display=on?'flex':'none';
   if(on){ const pre=$('think-buf'); pre.textContent=thinkBuf; pre.scrollTop=pre.scrollHeight; }
 }
-function thinkDiscard(){ // 收起+弃置（母句承诺：收起后不留在对话里，对话只留正式回答）
+function thinkDiscard(){ // s105: 收起+收留（裁决 §3.2，supersede s103「收起+弃置」）——thinkBuf 尾窗收进 thinkKeep，等首条正文消息落地挂靠；分支甲（帧带 msgId）时 thinkPend 已有同文，thinkKeep 用不上即弃。忙碌面板路径零改动
+  if(thinkBuf) thinkKeep=thinkBuf;
   thinkBuf=''; thinkDraftOn=false;
   $('think-peek').style.display='none';
   $('think-draft').style.display='none';
   $('think-buf').textContent='';
 }
+function thinkMount(el,text){ // s105/T3: 消息附属折叠块（裁决 §3.1 挂点=div.msg.agent 内、msgButtons 同层）——默认折叠 DOM 只有按钮零文本节点，全文存闭包，点开才渲染（13,088 字符最坏块不截断，滚动看全）；展开盒闭包持有：同消息多块（规则2 兜底）各管各的互不误关
+  const btn=document.createElement('button'); btn.type='button'; btn.className='thinkbtn'; btn.textContent='它当时怎么想的 ▸';
+  el.appendChild(btn);
+  let box=null;
+  btn.onclick=()=>{
+    if(box){ box.remove(); box=null; btn.textContent='它当时怎么想的 ▸'; return; } // 收起=整块摘除，DOM 回到只有按钮
+    box=document.createElement('div'); box.className='thinkblk';
+    const note=document.createElement('div'); note.className='td-note'; note.textContent='这是它当时想的过程——从哪来：回答前模型自己写的（原文可能是英文）；怎么变：已经想完，不会再变；变了什么：留在这条回答下面，重开对话也还在。';
+    const pre=document.createElement('pre'); pre.textContent=text;
+    box.appendChild(note); box.appendChild(pre); el.appendChild(box);
+    btn.textContent='收起 ▴';
+  };
+}
+function thinkAttach(el,mid){ // s105/T1+T2 挂靠收留点（live 与回放同一套）——规则1：msgId 精确配对挂该消息；规则2：宿主是纯 toolRequest 行（前端无正文元素）的思考挂其后第一条正文消息；各挂各的不合并单块；规则3（零正文回合）在 setBusy 收口弃置
+  let n=0;
+  if(mid&&thinkPend.has(mid)){ thinkMount(el,thinkPend.get(mid)); thinkPend.delete(mid); n++; }
+  for(const k of [...thinkPend.keys()]){ thinkMount(el,thinkPend.get(k)); thinkPend.delete(k); n++; }
+  if(!n&&thinkKeep) thinkMount(el,thinkKeep);
+  thinkKeep='';
+}
 $('think-peek').onclick=()=>thinkDraftShow(!thinkDraftOn);
 function setBusy(b){ busy=b; typing.style.display=b?'block':'none'; send.disabled=b; stopBtn.style.display=b?'inline-block':'none';
   // s103/qa-rework P2-2: 开忙即「想」阶段（prompt 已发=等模型响应窗口=在想，统一显示不依赖 thought 帧）；收忙停表；S2: 收忙同弃草稿
   if(b){ busyPhase='think'; busyT0=Date.now(); busyPaint(); clearInterval(busyTick); busyTick=setInterval(busyPaint,1000); }
-  else{ clearInterval(busyTick); busyTick=null; busyT0=0; thinkDiscard(); }
+  else{ clearInterval(busyTick); busyTick=null; busyT0=0; thinkDiscard(); thinkPend.clear(); thinkKeep=''; } // s105: 回合收口（含回放收口）按裁决 §3.1 规则3 弃置余量——零正文断线回合不留刷新后消失的幽灵块（挂靠集 ⊆ 库内持久行）
   // s21: 小白「干完了」提醒——后台标签页时标题闪烁，回来即停
   if(!b){ if(document.hidden){ notifyDone(); } else { stopNotify(); } } else { stopNotify(); } }
 let notifyTimer=null;
@@ -1325,7 +1353,7 @@ function addMsg(text,who){
   const stick=nearBottom(); // s69 P2-7: 先测距再追加，新增大块内容不影响判定
   // s103/S1: 不再在此藏 #typing——写答案阶段忙碌条在场（阶段+计时），显隐唯一出口=setBusy
   let el=null;
-  if(who==='agent'&&streamEl&&streamEl.dataset.live==='1'){ streamEl.textContent+=text; }
+  if(who==='agent'&&streamEl&&streamEl.dataset.live==='1'){ streamEl.appendChild(document.createTextNode(text)); } // s105: 文本节点追加（原 textContent+= 是读改写——清全部子节点，会把流式中挂上的思考折叠钮销毁、钮文案烘进正文；纯文本流式行为不变）
   else{
     el=document.createElement('div'); el.className='msg '+who; el.textContent=text;
     if(who==='agent'){ el.dataset.live='1'; streamEl=el; } else { demoteLiveUser(); el.appendChild(msgButtons('user')); streamEl=null; } // 主线5：user 操作条多一枚「撤回重写」；新 user 上墙后，上一条无 id 的直播 user 消息不再是最后一行
@@ -1340,9 +1368,12 @@ function demoteLiveUser(){ // 主线5（research/21 §6-3）：直播轮 goose �
 }
 function endStream(abn){ if(streamEl){
   streamEl.dataset.live='0';
+  const keeps=[...streamEl.children].filter(n=>n.classList.contains('thinkbtn')||n.classList.contains('thinkblk')); // s105: 思考附属件先摘下——textContent 读值与 innerHTML 定稿不得吞钮文案/块，定稿后回挂（.children=纯元素，文本节点不入）
+  keeps.forEach(n=>n.remove());
   const txtRaw = streamEl.textContent; // 改名避免遮蔽全局输入框 txt（s50e 重发闭包要读 txt.value）
   streamEl.innerHTML = mdRender(txtRaw);
   if(!streamEl.querySelector('.mbar')) streamEl.appendChild(msgButtons());
+  keeps.forEach(n=>streamEl.appendChild(n)); // s105: 定稿后回挂思考附属件（操作条同层之后；展开盒闭包持有不受影响）
   // s25: 大白话报错转译——上游/服务商故障时给小白一句能懂的提示；s50e: 401=Key 没配好，指引去设置；其余给「换备用线路」一键
   // research/26 R1: 错误卡先读最近健康帧（告警条同源）——stale-model=换模型出路（等也不会好）；down+key=Key 口径；down=不通+时间预期（R3）；
   // 无态/ok=原链不动。同因同回合与告警条并存互指：条在=条是常驻锚，卡给出路（裁决 S3「文案互指去重」错误卡侧落地）
@@ -1491,9 +1522,9 @@ function mkExpBtn(card,id){ // s104/V5: 从 toolCard 收口分支抽出——zom
 function onAgentEvent(p){
   if(p.method==='session/update'){
     const u=p.params.update;
-    if(u.sessionUpdate==='agent_message_chunk'){ thinkDiscard(); noteTurnPhase('write'); addMsg(u.content.text,'agent'); } // s103/S1: 阶段翻「在写答案」（忙碌条不再藏——写答案期也在场，显隐唯一出口=setBusy）；S2: 首个正文帧=想完了，草稿收起弃置
+    if(u.sessionUpdate==='agent_message_chunk'){ thinkDiscard(); noteTurnPhase('write'); const mel=addMsg(u.content.text,'agent'); if(mel){ const mg=(u.messageId||(u._meta&&u._meta.goose&&u._meta.goose.messageId)); if(mg) mel.dataset.gmid=mg; thinkAttach(mel,mg||''); } } // s103/S1: 阶段翻「在写答案」；S2: 首个正文帧=想完了，面板收起；s105: 收起同时收留——新消息元素落地即挂思考折叠块+补 gmid（user 侧 :1495 同款先例；live 分支甲与回放同套配对，裁决 §3.2）
     else if(u.sessionUpdate==='user_message_chunk'){ const el=addMsg(u.content.text,'user'); const gm=(u.messageId||(u._meta&&u._meta.goose&&u._meta.goose.messageId)); if(gm) el.dataset.gmid=gm; } // 主线5：回放帧双冗余 id（research/21 §6 顶级 messageId 与 _meta.goose.messageId 同值），存元素上供撤回定位
-    else if(u.sessionUpdate==='agent_thought_chunk'){ thoughtFeed(u); } // s103/S1+S2: 思考帧喂草稿缓冲（阶段已在开忙置「想」，帧到=内容可见）；deepseek 无此帧=面板不出现（内容不造假，qa-rework P2-2 修订口径）
+    else if(u.sessionUpdate==='agent_thought_chunk'){ const tg=(u.messageId||(u._meta&&u._meta.goose&&u._meta.goose.messageId)); if(tg){ const add=((u.content&&u.content.text)||''); const v=(thinkPend.get(tg)||'')+add; thinkPend.set(tg,(busy&&v.length>THINK_BUF_MAX)?v.slice(-THINK_BUF_MAX):v); } if(busy) thoughtFeed(u); } // s103/S1+S2: live 思考帧照旧喂忙碌面板（deepseek 无此帧=面板不出现，内容不造假）；s105: 帧先进挂靠缓存（回放=全文一帧不裁，live 微帧走 32KB 尾窗同 thinkBuf 口径）；回放期（非 busy）不喂 thinkBuf——不再走「喂进再丢弃」死路（research/48 §3.1）
     else if(u.sessionUpdate==='tool_call'||u.sessionUpdate==='tool_call_update'){ noteTurnPhase('work'); toolCard(u); } // s103/S1: 阶段翻「在动手」——决定调工具前的规划期从此可见
     else if(u.sessionUpdate==='plan'){ /* future */ }
     else if(u.sessionUpdate==='available_commands_update'){}
@@ -3185,7 +3216,7 @@ function doRollback(msg){
   if(!wssend({type:'rollback_rewrite',sessionId:currentSid,messageId:mid||undefined})) rollbackPrefill=null;
 }
 let rollbackPrefill=null; // 发出 rollback_rewrite 时记原文，收回执后预填输入框
-function msgText(m){ const c=m.cloneNode(true); c.querySelectorAll('.mbar').forEach(b=>b.remove()); return c.textContent; } // s62/P3: 正文提取唯一入口——剥 .mbar 操作条后再取 textContent，复制/重发/导出共用
+function msgText(m){ const c=m.cloneNode(true); c.querySelectorAll('.mbar,.thinkbtn,.thinkblk').forEach(b=>b.remove()); return c.textContent; } // s62/P3: 正文提取唯一入口——剥 .mbar 操作条后再取 textContent，复制/重发/导出共用；s105: 同款剥「它当时怎么想的」钮与思考块（思考留痕不进复制/导出正文，裁决 §5-4）
 
 
 

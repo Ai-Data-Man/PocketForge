@@ -325,7 +325,7 @@ sandbox.installedAllV = [];
         const iTyping = html.indexOf('id="typing"'), iInput = html.indexOf('id="inputbar"'), iDraft = html.indexOf('id="think-draft"'), iChat = html.indexOf('id="chat"');
         const chatBlock = html.slice(iChat, iTyping); // #chat 与 #typing 之间即聊天消息域
         ck('S1(R1) 草稿面板在 #typing 忙碌域内（非 #chat 消息域；域内零草稿 DOM）', iTyping >= 0 && iDraft > iTyping && iDraft < iInput && !chatBlock.includes('think-draft') && !chatBlock.includes('think-buf'));
-        ck('S2(R4) 母句原文在场（从哪来/怎么变/变了什么三问可答，作面板说明）', /这是它干活前边想边说的草稿——从哪来：模型自己边想边写的（原文可能是英文）；怎么变：想到哪更到哪，只露最后一段，想完开口说话就自动收起；变了什么：收起后不留在对话里，对话只留正式回答。/.test(html));
+        ck('S2(R4) 母句原文在场（从哪来/怎么变/变了什么三问可答，作面板说明；s105 随迁：「变了什么」段改收留口径，裁决 2026-09-30 §3.4）', /这是它干活前边想边说的草稿——从哪来：模型自己边想边写的（原文可能是英文）；怎么变：想到哪更到哪，只露最后一段，想完开口说话就自动收起；变了什么：收起后收进这条回答下面——点「它当时怎么想的」随时回看。/.test(html));
         ck('S3(R2) 32KB 尾窗机制内建（THINK_BUF_MAX=32768，出生即建非触发式）', /const THINK_BUF_MAX=32768;/.test(html));
         ck('S4(R1) 默认折叠：peek/面板初始均 display:none（HTML 内联初始态）', /<button type="button" id="think-peek" style="display:none">/.test(html) && /<div id="think-draft" style="display:none">/.test(html));
     }
