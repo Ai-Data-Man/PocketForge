@@ -1091,6 +1091,7 @@ function openSession(sid){
       currentSid=prevSid; sessionId=prevSid;
       document.querySelectorAll('.sitem').forEach(el=>el.classList.toggle('active', !!prevSid&&el.dataset.sid===prevSid));
       if(prevSid) wssend({type:'subscribe',sessionId:prevSid}); // prompt 只信桥侧绑定（s50h FIND-4），必须还绑回原会话
+      thinkPend.clear(); // s105/P3-4(qa-s105)：失败路径清挂靠缓存——回放 thought→正文毫秒窗内切死链/载入失败，A 残留思考不得兜底挂到下一会话首条正文（FZ-7）；对照 setBusy 收忙清理先例
       addErr('那段对话已经不在了（可能被删过）。东西本身还在，可以直接打开用。');
     });
 }
@@ -1353,7 +1354,7 @@ function addMsg(text,who){
   const stick=nearBottom(); // s69 P2-7: 先测距再追加，新增大块内容不影响判定
   // s103/S1: 不再在此藏 #typing——写答案阶段忙碌条在场（阶段+计时），显隐唯一出口=setBusy
   let el=null;
-  if(who==='agent'&&streamEl&&streamEl.dataset.live==='1'){ streamEl.appendChild(document.createTextNode(text)); } // s105: 文本节点追加（原 textContent+= 是读改写——清全部子节点，会把流式中挂上的思考折叠钮销毁、钮文案烘进正文；纯文本流式行为不变）
+  if(who==='agent'&&streamEl&&streamEl.dataset.live==='1'){ const tn=document.createTextNode(text); const tb=streamEl.querySelector('.thinkbtn'); if(tb) streamEl.insertBefore(tn,tb); else streamEl.appendChild(tn); } // s105: 文本节点追加（原 textContent+= 是读改写——清全部子节点，会把流式中挂上的思考折叠钮销毁、钮文案烘进正文；纯文本流式行为不变）；P3-2(qa-s105)：钮在场则插钮前——流式期间钮恒在正文末尾不嵌句中（定稿态 endStream keeps 回挂不变，字节级等价）
   else{
     el=document.createElement('div'); el.className='msg '+who; el.textContent=text;
     if(who==='agent'){ el.dataset.live='1'; streamEl=el; } else { demoteLiveUser(); el.appendChild(msgButtons('user')); streamEl=null; } // 主线5：user 操作条多一枚「撤回重写」；新 user 上墙后，上一条无 id 的直播 user 消息不再是最后一行

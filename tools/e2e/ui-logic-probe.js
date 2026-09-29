@@ -554,7 +554,7 @@ CUR = 'busy';
             ck('thought 帧分支：msgId 进挂靠缓存+busy 门（回放不喂 thinkBuf，死路封堵）', /agent_thought_chunk'\)\{ const tg=\(u\.messageId\|\|\(u\._meta&&u\._meta\.goose&&u\._meta\.goose\.messageId\)\); if\(tg\)\{/.test(html) && /if\(busy\) thoughtFeed\(u\); \}/.test(html));
             ck('td-note 母句改写（收起后收进这条回答下面）+旧承诺零残留', html.includes('收起后收进这条回答下面——点「它当时怎么想的」随时回看') && !html.includes('不留在对话里'));
             ck('msgText 剥思考钮/块（留痕不进复制/导出正文）', /function msgText\(m\)\{ const c=m\.cloneNode\(true\); c\.querySelectorAll\('\.mbar,\.thinkbtn,\.thinkblk'\)/.test(html));
-            ck('流式/定稿不吞附属件（addMsg 文本节点追加+endStream 摘挂回挂——textContent+= 清子节点销毁折叠钮+钮文案烘进正文，活体干跑修前红实证 tmp/s105-redgreen/）', /streamEl\.appendChild\(document\.createTextNode\(text\)\);/.test(html) && !/streamEl\.textContent\+=text;/.test(html) && /const keeps=\[\.\.\.streamEl\.children\]\.filter\(n=>n\.classList\.contains\('thinkbtn'\)\|\|n\.classList\.contains\('thinkblk'\)\)/.test(html) && /keeps\.forEach\(n=>streamEl\.appendChild\(n\)\);/.test(html));
+            ck('流式/定稿不吞附属件（addMsg 文本节点追加+P3-2 钮前插入+endStream 摘挂回挂——textContent+= 清子节点销毁折叠钮+钮文案烘进正文，活体干跑修前红实证 tmp/s105-redgreen/；P3-2 期望随迁 qa-s105：钮在场插钮前=流式期间恒在正文末尾，红绿=tmp/s105-p3-red.log/green.log）', /const tn=document\.createTextNode\(text\); const tb=streamEl\.querySelector\('\.thinkbtn'\); if\(tb\) streamEl\.insertBefore\(tn,tb\); else streamEl\.appendChild\(tn\);/.test(html) && !/streamEl\.textContent\+=text;/.test(html) && /const keeps=\[\.\.\.streamEl\.children\]\.filter\(n=>n\.classList\.contains\('thinkbtn'\)\|\|n\.classList\.contains\('thinkblk'\)\)/.test(html) && /keeps\.forEach\(n=>streamEl\.appendChild\(n\)\);/.test(html));
         }
     }
 }
