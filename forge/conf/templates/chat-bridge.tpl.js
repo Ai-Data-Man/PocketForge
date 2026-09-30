@@ -3233,7 +3233,11 @@ function preUpgradeBackup(pkg) {
     try {
         // stateWarnings 是内存态：失败族警告必须由下一次评估清除（含幂等复用路径），否则残留到桥重启
         for (let i = stateWarnings.length - 1; i >= 0; i--) if (stateWarnings[i].indexOf('升级前自动备份失败') === 0) stateWarnings.splice(i, 1);
-        FSS.mkdirSync(bdir, { recursive: true }); // 全新机器可能尚无该目录（首次每日备份前），缺失≠备份失败
+        // s106/C5a：Windows 瞬态 EEXIST——recursive 本应容忍已存在目录，但全史 176 枚实录（pc.log 163+drill 13，
+        // 2026-09-07 s75 引入至今）路径签名一致止于 data\backups 且夹在成功调用之间（与并发 daily-backup/zip 写同
+        // 目录的竞态泄漏）。目录确在=照常继续（备份真正执行，不跳过）；文件占位等真不可建态保持原错误（探针 D2 语义）。
+        try { FSS.mkdirSync(bdir, { recursive: true }); }
+        catch (e) { if (e.code !== 'EEXIST' || !FSS.existsSync(bdir) || !FSS.statSync(bdir).isDirectory()) throw e; } // 全新机器可能尚无该目录（首次每日备份前），缺失≠备份失败
         // 幂等：同一包（名字+字节或下载地址）重复触发不堆积——最新一份 manifest 记的就是它则复用
         const olds = FSS.readdirSync(bdir).filter(n => /^pre-upgrade-/.test(n)).sort();
         if (olds.length) {

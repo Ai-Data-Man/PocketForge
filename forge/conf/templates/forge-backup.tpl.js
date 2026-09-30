@@ -80,6 +80,11 @@ function pgDumpWithWait(db, dump, tries) {
     }
     return lastMsg || 'unknown';
 }
+// s106/C5a 备份诚实性：跟踪本次是否真带上了 DB 份。pg_dump 本轮被跳过时（PG 未起/未就绪/导出失败），
+// zip 里的数据库内容是旧的或没有，仍无条件报 backup ok = 数据安全网说谎（s106 取证：PG 停机 30s 未监听
+// →skip→zip 30KB 仍报 ok）。降级终行归因沿用下方 L99/L101 两分文案族的短形态；PG 本体不在场（老包无
+// bin/pg 或无 pg.port）=机器上没有数据库可丢，不降级。dbNote 首因保留（两库共用同一 PG 服务端，同因）。
+let dbNote = '';
 if (pgPort && fs.existsSync(pgDumpExe)) {
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     fs.mkdirSync(dumpsDir, { recursive: true });
@@ -96,10 +101,13 @@ if (pgPort && fs.existsSync(pgDumpExe)) {
             // →警告，不得再谎报「首启时序，正常」；psql/pg_dump 撞上的恢复期拒绝=真首启瞬态→信息级；
             // 其余=警告。三者都不中断备份链（exit 0）
             if (/not open within/i.test(err)) {
+                if (!dbNote) dbNote = 'PG 未起';
                 console.warn(`pg_dump skipped: ${db} PG 端口 30s 未监听（非首启瞬态；pc 面板 pg 若为 Skipped 即未起，查 data/logs/open-when-ready.log），下次备份会带上`);
             } else if (!err || /does not exist|not yet accepting|starting up/i.test(err)) {
+                if (!dbNote) dbNote = 'PG 未就绪（首启时序，正常）';
                 console.log(`pg_dump skipped: ${db} 未就绪（首启时序，正常），下次备份会带上`);
             } else {
+                if (!dbNote) dbNote = 'pg_dump 失败';
                 console.warn(`pg_dump skipped: ${err}`);
             }
         }
@@ -128,4 +136,7 @@ let removed = 0;
 while (backups.length > KEEP) { fs.unlinkSync(path.join(OUT_DIR, backups.shift())); removed++; }
 
 const size = fs.statSync(out).size;
-console.log(`backup ok: ${path.basename(out)} (${(size/1024).toFixed(0)}KB) kept=${backups.length} pruned=${removed}`);
+// s106/C5a 终行两形态：含本次 DB 份=backup ok 原样；本轮跳过=降级句（数据安全网不说谎），消费方
+// （📮报告 backup.log 尾部原样展示、grep 面）无格式断言，零随迁（tmp/s106-g1 活探针核实）。
+if (dbNote) console.log(`backup ok（这次没带数据库：${dbNote}，下次会带）: ${path.basename(out)} (${(size/1024).toFixed(0)}KB) kept=${backups.length} pruned=${removed}`);
+else console.log(`backup ok: ${path.basename(out)} (${(size/1024).toFixed(0)}KB) kept=${backups.length} pruned=${removed}`);
