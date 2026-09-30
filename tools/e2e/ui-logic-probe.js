@@ -662,30 +662,38 @@ CUR = 'kbd';
     ck('RA4 源锚在场：清指针语句在 subscribe 体内（防未来重构回退）', /if\(!sid\)\{ sessionId=null; currentSid=null; \}/.test(subSrc));
 }
 
-// ================================ s106/1.2 批删回执三分支 4 ck（裁决 2026-10-01-s106 §1.2） ================================
+// ================================ s106/1.2 批删回执三分支 4 ck + P3-1 落点迁移（裁决 2026-10-01-s106 §1.2） ================================
 // P4 措辞：deleted=0&&skipped>0 时旧文案开头「已删除 0 段对话」（读作「删了个寂寞」，实际=当日守卫保护生效）。
 // 修=换「这一批都没删」保护语（与首道 confirm「今天刚聊的不会放进这一批」呼应）；全删成/部分跳过两分支逐字保持。
+// s106/P3-1: 文案对了地方错了——note() 写 #save-note（设置 modal display:none，批删时面板关着=零可见，QA 三通道
+// 采样零捕获实录）；修=回执走 addInfo 消息流（帧处理器族可见回执先例），三分支措辞逐字不动。断言随迁：
+// 回执必须落到可见容器（infos）且不落 #save-note（notes=0）；旧 note 形态红臂。
 {
     const sdSrc = grab(/if\(m\.sys==='sessions_deleted'\)\{[\s\S]*?\n  \}/, 'sessions_deleted branch');
-    const mk = () => {
-        const stubs = 'const notes=[];\n' +
+    const sdSrcOld = sdSrc.replace(/addInfo\(bits\.join\('。'\)\);[^\n]*/, "note(bits.join('。'));"); // 修前形态红臂（只换回执通道行）
+    const mk = (src) => {
+        const stubs = 'const notes=[]; const infos=[];\n' +
             'const ssOrg={on:true,sel:{clear(){}}};\n' +
             'const loadSessions=()=>{}; const loadWorkspaces=()=>{};\n' +
             'const loadArch=()=>({then(f){f();}});\n' +
             'const note=t=>{notes.push(t)};\n' +
-            'const run=m=>{\n' + sdSrc + '\n};\n' +
-            'return {run, notes};\n';
+            'const addInfo=t=>{infos.push(t)};\n' +
+            'const run=m=>{\n' + src + '\n};\n' +
+            'return {run, notes, infos};\n';
         return new Function(stubs)();
     };
     SEC = 's106';
-    let r = mk(); r.run({ sys: 'sessions_deleted', deleted: 2 });
-    ck('SB1 全删成：开头「已删除 2 段对话」逐字保持', r.notes.length === 1 && r.notes[0] === '已删除 2 段对话', JSON.stringify(r.notes));
-    r = mk(); r.run({ sys: 'sessions_deleted', deleted: 1, skipped: 1 });
-    ck('SB2 部分跳过：两段式逐字保持（已删除 1 段+当日守卫注）', r.notes.length === 1 && r.notes[0] === '已删除 1 段对话。有 1 段今天刚聊的没放进这一批——今天的一条一条删更稳妥。', JSON.stringify(r.notes));
-    r = mk(); r.run({ sys: 'sessions_deleted', deleted: 0, skipped: 2 });
-    ck('SB3 零删除有跳过：开头=「这一批都没删：2 段都是今天刚聊的」（修前红锚：『已删除 0 段对话』）', r.notes.length === 1 && r.notes[0].indexOf('这一批都没删：2 段都是今天刚聊的') === 0 && r.notes[0].indexOf('已删除 0 段') < 0, JSON.stringify(r.notes));
-    r = mk(); r.run({ sys: 'sessions_deleted', deleted: 0, skipped: 1, failed: [{ sid: '20260101_000001', err: '不是归档状态的对话，先归档再删' }] });
-    ck('SB3b 混合批（R4-F1 实录向量）：「这一批都没删」+守卫注+failed 原因齐，不断言「都是今天刚聊的」', r.notes.length === 1 && r.notes[0].indexOf('这一批都没删：1 段今天刚聊的没放进这一批') === 0 && r.notes[0].indexOf('1 段没删成：') > 0 && r.notes[0].indexOf('都是今天刚聊的') < 0, JSON.stringify(r.notes));
+    let r = mk(sdSrc); r.run({ sys: 'sessions_deleted', deleted: 2 });
+    ck('SB1 全删成：开头「已删除 2 段对话」逐字保持（可见容器）', r.infos.length === 1 && r.infos[0] === '已删除 2 段对话' && r.notes.length === 0, JSON.stringify(r.infos) + ' notes=' + JSON.stringify(r.notes));
+    r = mk(sdSrc); r.run({ sys: 'sessions_deleted', deleted: 1, skipped: 1 });
+    ck('SB2 部分跳过：两段式逐字保持（已删除 1 段+当日守卫注）', r.infos.length === 1 && r.infos[0] === '已删除 1 段对话。有 1 段今天刚聊的没放进这一批——今天的一条一条删更稳妥。' && r.notes.length === 0, JSON.stringify(r.infos));
+    r = mk(sdSrc); r.run({ sys: 'sessions_deleted', deleted: 0, skipped: 2 });
+    ck('SB3 零删除有跳过：开头=「这一批都没删：2 段都是今天刚聊的」（修前红锚：『已删除 0 段对话』）', r.infos.length === 1 && r.infos[0].indexOf('这一批都没删：2 段都是今天刚聊的') === 0 && r.infos[0].indexOf('已删除 0 段') < 0, JSON.stringify(r.infos));
+    r = mk(sdSrc); r.run({ sys: 'sessions_deleted', deleted: 0, skipped: 1, failed: [{ sid: '20260101_000001', err: '不是归档状态的对话，先归档再删' }] });
+    ck('SB3b 混合批（R4-F1 实录向量）：「这一批都没删」+守卫注+failed 原因齐，不断言「都是今天刚聊的」', r.infos.length === 1 && r.infos[0].indexOf('这一批都没删：1 段今天刚聊的没放进这一批') === 0 && r.infos[0].indexOf('1 段没删成：') > 0 && r.infos[0].indexOf('都是今天刚聊的') < 0, JSON.stringify(r.infos));
+    const ro = mk(sdSrcOld); ro.run({ sys: 'sessions_deleted', deleted: 0, skipped: 2 });
+    ck('SB4 红臂：旧 note 形态回执不落可见容器（修前可见性伤势=断言可区分）', ro.infos.length === 0 && ro.notes.length === 1, 'infos=' + JSON.stringify(ro.infos) + ' notes=' + JSON.stringify(ro.notes));
+    ck('SB5 源锚：回执通道=addInfo（防未来重构回 note）', /addInfo\(bits\.join\('。'\)\)/.test(sdSrc) && !/note\(bits\.join/.test(sdSrc), sdSrc.split('\n').slice(-3).join(' '));
 }
 
 

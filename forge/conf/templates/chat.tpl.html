@@ -821,7 +821,7 @@ function connect(){
       if(m.skipped) bits.push('有 '+m.skipped+' 段今天刚聊的没放进这一批——今天的一条一条删更稳妥。'); // 桥侧当日号段守卫的人话注（裁决 §2.2-S2b 逐字）
     }
     if(m.failed&&m.failed.length) bits.push(m.failed.length+' 段没删成：'+m.failed.slice(0,3).map(f=>f.sid+'：'+f.err).join('；'));
-    note(bits.join('。'));
+    addInfo(bits.join('。')); // s106/P3-1: 回执改走消息流——note() 写 #save-note（设置 modal 内，批删时面板关着=rect 0×0 零可见，QA 三通道采样零捕获实录）；模型切换/撤回回执同走 addInfo 先例，列表刷新（上方 loadSessions）与单删可见语义对齐
     return;
   }
     if(m.sys==='rollback_done'){ // 主线5：手术回执（先于广播刷新到达）——预填原文进输入框+聚焦，不自动发送
