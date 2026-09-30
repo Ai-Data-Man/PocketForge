@@ -265,7 +265,16 @@ function statsFlushDebounced() {
             for (const k of ['allow_always', 'allow_once', 'reject_once', 'reject_always']) if (stats.permissionCards[k] === undefined) stats.permissionCards[k] = 0; // s99/t3-A: 旧格式当天文件补默认（:207 先例）
             if (stats.upgradeEvents.lastSeen === undefined) stats.upgradeEvents.lastSeen = ''; // s99/t3-F
             stats.updated = saved.updated || '';
-        } else statsFlush();
+        } else {
+            // s106/C5b：当日文件尚无（重启进新日期）时从最近一天文件带回 lastSeen——statsBump 跨天行只覆盖
+            // 「进程内跨午夜」；重启路径从默认空指纹起步，陈旧 status.json 终态每天首个桥进程重计一次 fail
+            // （09-22 测试残留冻结 9 天=每天 +1 幻影）。L226「昨天的终态今天不重计」的重启路径补齐。
+            try {
+                const prev = FSS.readdirSync(STATS_DIR).filter(f => /^usage-\d{8}\.json$/.test(f)).sort().pop();
+                if (prev) { const p = readJson(path.join(STATS_DIR, prev), null); if (p && p.upgradeEvents && typeof p.upgradeEvents.lastSeen === 'string') stats.upgradeEvents.lastSeen = p.upgradeEvents.lastSeen; }
+            } catch {}
+            statsFlush();
+        }
     } catch {}
 })();
 // s99/t3-F: 升级事件观察（ok/fail 收口）——start 在 /api/update/start 实际拉起 runner 处计；ok/fail 只认 status.json 终态：

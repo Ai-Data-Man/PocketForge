@@ -13,10 +13,10 @@
 const fs = require('fs');
 const html = fs.readFileSync(__dirname + '/../../forge/conf/templates/chat.tpl.html', 'utf8');
 function grab(re, label) { const m = html.match(re); if (!m) { console.error('NOT FOUND: ' + label); process.exit(1); } return m[0]; }
-let pass = 0, fail = 0, KP = 0, KF = 0, CP = 0, CF = 0, PP = 0, PF = 0, BP = 0, BF = 0, HP = 0, HF = 0, CUR = 'kbd';
+let pass = 0, fail = 0, KP = 0, KF = 0, CP = 0, CF = 0, PP = 0, PF = 0, BP = 0, BF = 0, HP = 0, HF = 0, UP = 0, UF = 0, CUR = 'kbd';
 function ck(name, cond) {
-    if (cond) { console.log('PASS [' + SEC + '] ' + name); pass++; if (CUR === 'kbd') KP++; else if (CUR === 'close-path') CP++; else if (CUR === 'busy') BP++; else if (CUR === 'health') HP++; else PP++; }
-    else { console.log('FAIL [' + SEC + '] ' + name); fail++; if (CUR === 'kbd') KF++; else if (CUR === 'close-path') CF++; else if (CUR === 'busy') BF++; else if (CUR === 'health') HF++; else PF++; }
+    if (cond) { console.log('PASS [' + SEC + '] ' + name); pass++; if (CUR === 'kbd') KP++; else if (CUR === 'close-path') CP++; else if (CUR === 'busy') BP++; else if (CUR === 'health') HP++; else if (CUR === 'upd-age') UP++; else PP++; }
+    else { console.log('FAIL [' + SEC + '] ' + name); fail++; if (CUR === 'kbd') KF++; else if (CUR === 'close-path') CF++; else if (CUR === 'busy') BF++; else if (CUR === 'health') HF++; else if (CUR === 'upd-age') UF++; else PF++; }
 }
 let SEC = '';
 
@@ -701,10 +701,30 @@ CUR = 'kbd';
     ck('PC3 四按钮字面零变化（本批边界：不动 KIND）', kind.indexOf("allow_once:{t:'✅ 这次可以'") >= 0 && kind.indexOf("allow_always:{t:'✅ 以后都允许（会记住，之后不再问）'") >= 0 && kind.indexOf("reject_once:{t:'🚫 这次不行'") >= 0 && kind.indexOf("reject_always:{t:'🚫 以后都别问'") >= 0, kind);
 }
 
+// ================================ upd-age 7 ck（s106/C5b：升级终态带时间——多天前残留不冒充「现在」） ================================
+// status.json 可能冻结在多天前的终态（s106 取证：09-22 测试残留 9 天实录，UI 旧形态无时间=过去当现在）。
+// 修=终态行追加 updAge(st.ts) 相对时间（只显示，不清除不重置——那类设计要 PM 裁决）；5 分钟内=本轮会话不标注。
+{
+    const updAgeSrc = grab(/function updAge\(ts\)\{[\s\S]*?\n\}/, 'updAge helper');
+    const updAge = eval('(' + updAgeSrc + ')');
+    const rfSrc = grab(/async function updateRefresh\(\)\{[\s\S]*?\n\}/, 'updateRefresh');
+    const tickSrc = grab(/function updateStatusTick\(\)\{[\s\S]*?\n\}/, 'updateStatusTick');
+    SEC = 'upd-age'; CUR = 'upd-age';
+    const now = Date.now();
+    ck('UA1 本轮会话（刚发生）不标注', updAge(now) === '', JSON.stringify(updAge(now)));
+    ck('UA2 非法/缺失 ts 保守不标注（无 ts 旧形态兼容）', updAge(undefined) === '' && updAge('abc') === '', '');
+    ck('UA3 分钟档：10 分钟前', updAge(now - 10 * 60000) === '（10 分钟前）', JSON.stringify(updAge(now - 10 * 60000)));
+    ck('UA4 小时档：3 小时前', updAge(now - 3 * 3600000) === '（3 小时前）', JSON.stringify(updAge(now - 3 * 3600000)));
+    ck('UA5 天档：9 天前（s106 实录形状）', updAge(now - 9 * 86400000) === '（9 天前）', JSON.stringify(updAge(now - 9 * 86400000)));
+    ck('UA6 页载终态行带时间（updateRefresh ❌/✅ 行追加 updAge(st.ts)，修前红锚：无时间后缀）', /\+st\.msg\+updAge\(st\.ts\)/.test(rfSrc), '');
+    ck('UA7 轮询收口终态行带时间（updateStatusTick msg 兜底形态同样追加）', /\(st\.msg\|\|''\)\+updAge\(st\.ts\)/.test(tickSrc), '');
+}
+
 console.log('ui-logic-probe kbd: PASS=' + KP + ' FAIL=' + KF);
 console.log('ui-logic-probe close-path: PASS=' + CP + ' FAIL=' + CF);
 console.log('ui-logic-probe prompts: PASS=' + PP + ' FAIL=' + PF);
 console.log('ui-logic-probe busy: PASS=' + BP + ' FAIL=' + BF);
 console.log('ui-logic-probe health: PASS=' + HP + ' FAIL=' + HF);
+console.log('ui-logic-probe upd-age: PASS=' + UP + ' FAIL=' + UF);
 console.log('ui-logic-probe: PASS=' + pass + ' FAIL=' + fail);
 process.exit(fail ? 1 : 0);

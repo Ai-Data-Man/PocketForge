@@ -3240,6 +3240,16 @@ function msgText(m){ const c=m.cloneNode(true); c.querySelectorAll('.mbar,.think
 
 // ---- 升级（ADR-0009）----
 let updAsset=null, updPoll=null, updStagedName=null;
+// s106/C5b：终态带时间——status.json 可能是很多天前测试残留的失败态，无时间显示=把过去当「现在」。
+// 只显示相对时间（诚实修），不做清除/重置（那类设计要 PM 裁决）；5 分钟内=本轮升级会话，不标注。
+function updAge(ts){
+  const d=Date.now()-Number(ts);
+  if(!(d>0)||d<5*60*1000) return '';
+  const m=Math.floor(d/60000);
+  if(m<60) return '（'+m+' 分钟前）';
+  if(m<1440) return '（'+Math.floor(m/60)+' 小时前）';
+  return '（'+Math.floor(m/1440)+' 天前）';
+}
 async function updateRefresh(){
   try{
     const d=await (await fetch('/api/update/status')).json();
@@ -3250,7 +3260,7 @@ async function updateRefresh(){
       $('upd-status').textContent='⏳ '+(st.msg||st.stage)+' '+(st.pct?st.pct+'%':'');
       if(!updPoll) updPoll=setInterval(updateStatusTick,2500);
     } else if(st){
-      $('upd-status').textContent=(st.ok?'✅ ':'❌ ')+st.msg;
+      $('upd-status').textContent=(st.ok?'✅ ':'❌ ')+st.msg+updAge(st.ts);
       if(updPoll){ clearInterval(updPoll); updPoll=null; loadSessions(); loadWorkspaces(); }
     }
   }catch{}
@@ -3260,7 +3270,7 @@ function updateStatusTick(){
     const st=d.status||{};
     if(!st.stage||st.stage==='done'||st.rolledBack){
       clearInterval(updPoll); updPoll=null;
-      $('upd-status').textContent=(st.ok?'✅ ':'❌ ')+(st.msg||'');
+      $('upd-status').textContent=(st.ok?'✅ ':'❌ ')+(st.msg||'')+updAge(st.ts);
       loadSessions(); loadWorkspaces();
     } else $('upd-status').textContent='⏳ '+(st.msg||st.stage)+' '+(st.pct?st.pct+'%':'');
   }).catch(()=>{});
