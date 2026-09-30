@@ -41,3 +41,11 @@ R-A 轮任务书 tmp/s106-roundA-taskbook.md：A 竞态判卷（200/500/1000ms �
 | f955e54 | C4 超时标签 | res close 两分：tFirst 未置位→client timeout (no upstream first byte)；已置位→保持 client aborted（真中断族零变化）；/models 双发归因纠正=goose 库存预热非 UI 轮询（去重留档不做，超 10 行门槛） |
 
 standalone 探针：s106-g1 备份 9/0（PG 停机真跑 60s×2 臂）/g2 EEXIST 6/0/g3 lastSeen 8/0/g4 标签 6/0；ui-logic 126/126（+upd-age 7ck）。待补：§8.2 全量+preupgrade-backup-probe 活体+statsRestore 跨天活体+新标签首条真实流量实录。
+
+## 六、R-A 从零全观测轮（iat110，台账 tmp/s106-roundA-findings.md）
+
+**判卷核心全过**：A2 R5 newchat 竞态 **PASS 3/3**（200/500ms/1s 全落新会话，旧会话零串入，页面全渲染——主线1 出厂包定案）；B1 原子写三判据过；B2 批删文案对（但落点错→P3-1）；B3 permcard 卡面全对（但落库穿 junction→见改判）；B4 无覆写 confirm 弹显可应答→R4-F2 降缓档关案；B5 添加复核→关案自动化误伤；C1/C2 报表入口 PASS+**R4-P6 系统表未透出关案**；修复保持面全保持。
+
+**发现**：P2×1（改判 P3，见下）/P3×4（批删回执落不可见 #save-note；删草稿+保存把假 key 误写活跃 provider 致 401；活跃会话零渲染单次未复现；渲染器僵死 R2-F2 家族第二次）/P4×7。
+
+**主控改判：R-A-P2-1「出厂 goose.exe 烘焙构建机路径」不成立**——真机制=ADR-0005 记载的上游 quirk（goose-mcp memory 硬编码 %APPDATA%\Block\goose\config\memory 绕过 GOOSE_PATH_ROOT）+bootstrap §1c junction 重定向（真机首启即建，记忆正常落包内）；本机 junction 钉 dev 树+守卫只查「Junction 且 Target 存在」不查归属→沙盒记忆穿到 dev 树=交叉污染机制。真缺陷=P3 守卫错向（s85-P4 悬挂家族盲角）。dev 树污染 8 件取证 tmp/s106-mem-pollution/ 后已清（原有记忆保留）。
