@@ -878,6 +878,24 @@ async function readProvidersAsync() { // 探测路径禁同步 IO（research/09 
     catch { return []; }
 }
 function writeProviders(list) { atomicWrite(PROV_FILE, JSON.stringify(list, null, 2)); };
+// s106/followup-A（主控裁决 2026-10-01，证据 tmp/s106-11-readside-hazard.log 3/3）：readJson 吞一切错降级默认值，
+// 外部锁盖住「读取时刻」时保存链会把降级 [] 落盘=providers 真值静默全丢+假成功回执（1.1 写侧重试使该角从
+// 「报错不落盘」变「重试命中即空表落盘」）。保存链专用读：占用族（EPERM/EBUSY/EACCES）走 atomicWrite 同款
+// ≤3 次短重试；耗尽=该次保存失败+人话门（回执诚实报失败），绝不用空表覆盖盘上真值。非占用族（缺文件/坏
+// JSON）维持旧语义 [] 兜底（首装保存、坏文件重建路径零变化）。纯读消费方（面板/探测/路由）不收严，语义零变化。
+function readProvidersForSave() {
+    let err = null;
+    for (let i = 0; i <= 3; i++) {
+        try { return providersFrom(JSON.parse(FSS.readFileSync(PROV_FILE, 'utf8').replace(/^\uFEFF/, ''))); }
+        catch (e) {
+            if (!/\b(?:EPERM|EBUSY|EACCES)\b/.test(String((e && e.code) || (e && e.message) || e))) return readProviders();
+            err = e;
+            if (i < 3) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20 * (i + 1));
+        }
+    }
+    console.log('providers read retry exhausted:', String(err && err.message));
+    throw new Error('配置文件被别的程序占用，这次没保存上，再点一次保存就行');
+}
 function activeProvider() {
     const list = readProviders();
     return list.find(p => p.active) || null;
@@ -5276,7 +5294,7 @@ function handleClient(ws, msg) {
         }
 
         if (msg.type === 'providers') {
-            let list = readProviders();
+            let list = msg.save ? readProvidersForSave() : readProviders(); // s106/followup-A：保存链收严（读失败不得降级 [] 落盘）；纯读（面板打开）维持旧语义
             let needRestart = false;
             if (msg.save) {
                 if (msg.activate !== undefined) {
@@ -5334,7 +5352,7 @@ function handleClient(ws, msg) {
 
         if (msg.type === 'switch_model') {
             // {model} — 可选池内切换：同供应商走 set_config_option，跨供应商热重启 acp
-            const list = readProviders();
+            const list = readProvidersForSave(); // s106/followup-A：跨档分支回写激活态=保存链，读失败不得降级 [] 落盘（锁窗旧行为也是错误帧「不在可选池」，改门只是更诚实）
             const target = list.find(p => (p.models || []).includes(msg.model));
             const fromModel = effectiveModel(list.find(p => p.active) || null); // s103/S5-G7: from=切换前生效模型（lastModelOverride 覆写前取，effectiveModel 单源同读法）
             if (!target) { noteSwitch(false, fromModel, msg.model, '该模型不在可选池：' + msg.model); return ws.send({ sys: 'error', text: '该模型不在可选池：' + msg.model }); } // s99/t3-B: 不在池=换线未成（用户视角同败）
