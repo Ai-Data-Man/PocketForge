@@ -77,3 +77,7 @@ standalone 探针：s106-g1 备份 9/0（PG 停机真跑 60s×2 臂）/g2 EEXIST
 - 主线1：竞态修复从零定案（3/3）；思考留痕出厂链全绿。
 - 主线2：三轮（挖掘+R-A+R-B）→14 修复 commit+3 关案+1 改判+backlog 10 项带触发器。
 - 方法论沉淀：QA 重发现轻归因时主控必须复核机制层（P2 改判 junction 案例查 ADR-0005 即破）；工程师自报副作用（1.1 读取侧）=流程健康信号；「红臂用 git HEAD 旁挂旧桥」技法成熟。
+
+## 十一、回执可见性家族扫雷（78f85a2，iat112 657b2865）
+
+S1 矩阵全量审 note()/帧处理器落点：**14+ 处不可见回执全修**——归档/取消归档、文件树「用电脑打开」、工作区批量清理/单删、链接 guard/fail/catch、上传 guard/fail →消息流；手艺批量停/启成功→#sk-note 弹窗内状态行（失败走 alert 可见=原不对称修正）；cap-modal 恢复/保存失败+校验 6 处→弹窗内 say()；正确形态（设置面板自身表单 14 处落 #save-note）零动。S2 批删回执改 **banner 挂 #chat 之外**（chat.parentNode.insertBefore 先例=s103/S7 health-bar；R-B-P4-1 断连重连清墙销毁回执根治）。S3 种子会话评估（tmp/s106-seed-sessions.md）：790 会话 65 空种子 8.2%+419 目录；建议 P4 桥侧 GC 路线，lazy 不建议（s51c 解绑语义风险）。S4 手册零字面引用=零同步。验证：ui-logic **154**（+17 新台阶）+ia 38+红绿 12/12+活体 CDP 双臂（red=回执销毁实录/green=banner 清墙存活）+主控补跑 e2e 62/0+fuzz 225/0。条件可见两处（error 帧镜像切 pane 双盲/拉取等待期切 pane）留主控裁量→backlog。
