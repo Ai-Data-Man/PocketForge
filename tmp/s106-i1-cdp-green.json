@@ -1,0 +1,22 @@
+{
+  "mode": "green",
+  "fakeSid": "20261001_000901",
+  "sendRet": true,
+  "before": {
+    "banner": "这一批都没删：1 段都是今天刚聊的——今天刚聊的不会放进这一批，一条一条删更稳妥",
+    "bannerInChat": false,
+    "chatInfos": []
+  },
+  "after": {
+    "banner": "这一批都没删：1 段都是今天刚聊的——今天刚聊的不会放进这一批，一条一条删更稳妥",
+    "bannerInChat": false,
+    "chatInfos": [],
+    "chatCleared": true,
+    "wsOpen": false
+  },
+  "recvSys": [
+    "sessions_deleted",
+    "hello",
+    "health"
+  ]
+}

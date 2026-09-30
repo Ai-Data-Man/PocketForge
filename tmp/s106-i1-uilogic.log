@@ -1,0 +1,161 @@
+PASS [model-pick keydown] model-pick Enter opens dropdown
+PASS [model-pick keydown] model-pick Enter resets search + rebuilds list
+PASS [model-pick keydown] model-pick Enter again closes dropdown
+PASS [model-pick keydown] model-pick Space opens dropdown
+PASS [model-pick keydown] model-pick keydown inside search input is not hijacked
+PASS [Esc branch (document-level)] Esc closes open dropdown and returns focus
+PASS [Esc branch (document-level)] Esc with everything closed is a no-op (falls through to modal chain)
+PASS [txt keydown (slash arrows)] slash ArrowDown highlights first item
+PASS [txt keydown (slash arrows)] slash ArrowDown moves highlight to second
+PASS [txt keydown (slash arrows)] slash ArrowUp wraps to last item
+PASS [txt.onkeydown (slash Enter)] slash Enter selects highlighted item (not always first)
+PASS [txt.onkeydown (slash Enter)] slash Enter without highlight runs FIRST item (old behavior kept)
+PASS [txt.onkeydown (at Enter)] at menu Enter without highlight still submits (old behavior kept)
+PASS [txt keydown (at arrows)] at menu ArrowDown highlights first item
+PASS [txt.onkeydown (at Enter)] at menu Enter selects highlighted item, no submit
+PASS [txt keydown (at Esc)] Esc hides both menus (existing path intact)
+PASS [txt keydown (at Esc)] Esc closes prompts panel (wired into same branch)
+PASS [txt keydown (at Esc)] Esc closes optimize preview card (主线3 same branch)
+PASS [txt keydown (IME guard)] IME composing ArrowDown leaves menu untouched, no preventDefault
+PASS [txt keydown (IME guard)] IME composing ArrowUp also inert
+PASS [txt keydown (IME guard)] IME composing Esc keeps menu open (cancel-composition belongs to IME)
+PASS [txt keydown (IME guard)] non-composing ArrowDown still highlights (guard is the discriminator)
+PASS [txt keydown (Tab invoke)] Tab (non-composing) opens prompt menu + preventDefault (focus kept)
+PASS [txt keydown (Tab invoke)] Tab with menu open = no-op (not reopened/reset, focus still not jumped)
+PASS [txt keydown (Tab invoke)] txt Esc closes Tab menu (same branch as other menus)
+PASS [txt keydown (Tab invoke)] IME composing Tab not hijacked (no open, no preventDefault)
+PASS [tab-q keydown (menu keys)] tab-q ArrowDown highlights first row (shared menuHl)
+PASS [tab-q keydown (menu keys)] tab-q Enter clicks highlighted row, NO submit (insert-not-send)
+PASS [tab-q keydown (menu keys)] tab-q Enter without highlight picks FIRST row (slash precedent)
+PASS [tab-q keydown (menu keys)] tab-q Esc closes menu + focus back to txt
+PASS [tab-q keydown (menu keys)] tab-q IME composing ArrowDown inert (IME owns key)
+PASS [tab-q keydown (menu keys)] tab-q Tab = no-op (preventDefault only, menu stays for Esc)
+PASS [inline script syntax] chat.tpl.html has exactly one inline script block
+PASS [inline script syntax] inline JS parses via new Function (bridge-style)
+PASS [inline script syntax] preview.html inline scripts parse
+PASS [NEW #panel .mclose ✕] NEW #panel .mclose ✕| typing sets dirty + half key
+PASS [NEW #panel .mclose ✕] NEW #panel .mclose ✕| close without save resets touched + clears key
+PASS [NEW #panel .mclose ✕] NEW #panel .mclose ✕| next profile does not inherit half key
+PASS [NEW Esc           ] NEW Esc           | typing sets dirty + half key
+PASS [NEW Esc           ] NEW Esc           | close without save resets touched + clears key
+PASS [NEW Esc           ] NEW Esc           | next profile does not inherit half key
+PASS [NEW bg click      ] NEW bg click      | typing sets dirty + half key
+PASS [NEW bg click      ] NEW bg click      | close without save resets touched + clears key
+PASS [NEW bg click      ] NEW bg click      | next profile does not inherit half key
+PASS [OLD Esc 对照 (pre-fix)] OLD Esc (control)| half key carried into next profile (pre-fix behavior)
+PASS [promptInsert] insert at cursor: ABCD[2:2]+XY = ABXYCD
+PASS [promptInsert] selection replaced by insert (ABCD[1:3]+X = AXD)
+PASS [promptInsert] focus back to txt + caret at end of inserted text
+PASS [promptInsert] insert does NOT submit (发送权永远在 Enter)
+PASS [promptNameOf] explicit name kept
+PASS [promptNameOf] fallback = first 20 chars of first line (26-char line truncated)
+PASS [promptNameOf] multiline body takes first line only (and empty → 未命名)
+PASS [prompts outside-click] detached target (panel-internal re-render: paging/edit) does NOT close panel
+PASS [prompts outside-click] real outside click (connected, not inside pop) closes panel
+PASS [prompts outside-click] click inside panel (closest hits #prompts-pop) does NOT close
+PASS [prompts outside-click] outside-click handler runs clean on stub DOM
+PASS [busy S1] 开忙即「想」阶段+计时（qa-rework P2-2：响应窗口统一显示，无档位真值=无标签 它在想 · 已 0 秒）+起 1s 表
+PASS [busy S1] 秒数递增（+1.1s 后 已 1 秒）
+PASS [busy S1] 思考期档位人话（max→它正在尽全力想 · 已 N 秒，THINK_LABELS 单源）
+PASS [busy S1] 非动短语标签括注（low→它在想（快一点），不出「它正在快一点」病句）
+PASS [busy S1] 态③/态④无档位真值→诚实无标签（它在想 · 已 N 秒）
+PASS [busy S1] tool_call 帧→在动手
+PASS [busy S1] message_chunk 帧→在写答案
+PASS [busy S1] deepseek 无 thought 帧=「想」阶段+计时保持（qa-rework P2-2：阶段=响应窗口，假象边界在面板内容不在阶段）
+PASS [busy S1] 收忙停表+藏条（typing display:none）
+PASS [busy S1] 停表后不再走秒
+PASS [busy S1 wiring] thought 分支喂「在想」阶段（:1432 keep silent 已退役）
+PASS [busy S1 wiring] message_chunk 分支先翻「在写答案」（s105: 收起收留+新消息元素挂靠 thinkAttach+gmid）
+PASS [busy S1 wiring] tool 分支翻「在动手」
+PASS [busy S1 wiring] 写答案阶段忙碌条在场：addMsg 不再藏 typing（显隐唯一出口=setBusy）
+PASS [busy S2] 默认折叠+无帧不出现：开忙 peek 隐藏
+PASS [busy S2] 首 thought 帧后 peek 出现、面板仍折叠（仅 glm 系有帧时出现）
+PASS [busy S2] 喂帧零新增聊天流节点（R1：草稿不插聊天消息域）
+PASS [busy S2] 点开：面板显示+缓冲绘制+toggle 翻「收起思考草稿 ▴」
+PASS [busy S2] 展开态尾随：缓冲增长+滚到尾
+PASS [busy S2] 再点收起：面板藏+toggle 回「看看它在想什么 ▸」
+PASS [busy S2] 32KB 显示缓冲上限：灌 40KB+ 后缓冲/DOM ≤32768 且保尾弃头
+PASS [busy S2] 首 message_chunk：面板收起+内容收留进 thinkKeep（s105 supersede s103 弃置）+peek 隐藏
+PASS [busy S2] 回合重开面板为空+挂靠缓存清账（收口按裁决规则3 弃置余量）
+PASS [busy S2] 收忙同收口（setBusy(false) 出口：thinkBuf/thinkKeep/thinkPend 三清，不留幽灵块）
+PASS [s105] 规则1 msgId 配对：折叠块挂到对应消息（一钮零其他节点，折叠态 DOM 只有按钮）
+PASS [s105] 折叠态零思考文本（点开前 pre 不存在，全文在 JS 侧）
+PASS [s105] 点开才渲染：母句（裁决 §3.4 逐字）+全文 pre+钮翻「收起 ▴」
+PASS [s105] 再收起：整块摘除，DOM 回到只有按钮
+PASS [s105] 规则2 兜底+合并单入口（R1-F2）：一钮一块，toolRequest 宿主思考与本体思考按到达序拼接
+PASS [s105] R1-F2 拼接内容：段间空行，先到段在前（工具前规划先于答案思考，裁决 §3.1 时序）
+PASS [s105] R1-F2 后到块追加：折叠态零渲染（全文在 JS 侧缓冲）
+PASS [s105] R1-F2 展开=追加后全文
+PASS [s105] R1-F2 展开态再追加：pre 即时刷新
+PASS [s105] 13,088 字符最坏块点开不截断（全文渲染，滚动看全靠 CSS max-height）
+PASS [s105] 空思考回合零钮零块（无帧不出现，诚实口径）
+PASS [s105] 分支乙：thinkKeep 兜底挂首正文消息+收留后清账
+PASS [s105] thought 帧分支：msgId 进挂靠缓存+busy 门（回放不喂 thinkBuf，死路封堵）
+PASS [s105] td-note 母句改写（收起后收进这条回答下面）+旧承诺零残留
+PASS [s105] msgText 剥思考钮/块（留痕不进复制/导出正文）
+PASS [s105] 流式/定稿不吞附属件（addMsg 文本节点追加+P3-2 钮前插入+endStream 摘挂回挂——textContent+= 清子节点销毁折叠钮+钮文案烘进正文，活体干跑修前红实证 tmp/s105-redgreen/；P3-2 期望随迁 qa-s105：钮在场插钮前=流式期间恒在正文末尾，红绿=tmp/s105-p3-red.log/green.log）
+PASS [busy S9] 断线收口=中性态「连接断了，这一步的结果不确定」：不翻红不出现「失败」
+PASS [busy S9] 进行中卡 _status→unknown（结果未知，explain 喂料同真值）
+PASS [busy S9] 已收尾的卡不动（completed/failed 既有语义保持）
+PASS [health S7] S7a down 帧建条且聊天流零插入（条不进 #chat——修前红锚：chat.insertBefore 路径即 FAIL）
+PASS [health S7] S7b 条挂 #main、位于 #chat 之前（顶部提醒条承载，零新第三处）
+PASS [health S7] S7c down 文案人话+按钮「检查线路」
+PASS [health S7] S7d down+key → Key 口径+按钮「去设置」
+PASS [health S7] S7e stale-model → 下线口径+按钮「更新模型」
+PASS [health S7] S7f 重复 down 帧幂等（同条复用，不重复建）
+PASS [health S7] S7g ok 帧即撤条（恢复即消）
+PASS [health S7] S7h ok+proxy 远端旗仍保留条（s94 F-4c 代理-only 形态不回归）
+PASS [health S7] S7i 无 Key 互斥不建条（key-guide 独占态保持）
+PASS [subrace] RA1 subscribe(null) 即清会话指针（修前红锚：残留 20260930_3 → 消息路由进旧会话）
+PASS [subrace] RA2 pendingForNew 置位（队列路径激活，subscribed 到达自动补发）
+PASS [subrace] RA3 subscribe 帧照发（sessionId:null 上行，桥启动 session/new）
+PASS [subrace] RA4 源锚在场：清指针语句在 subscribe 体内（防未来重构回退）
+PASS [s106] SB1 全删成：开头「已删除 2 段对话」逐字保持（独立回执条）
+PASS [s106] SB2 部分跳过：两段式逐字保持（已删除 1 段+当日守卫注）
+PASS [s106] SB3 零删除有跳过：开头=「这一批都没删：2 段都是今天刚聊的」（修前红锚：『已删除 0 段对话』）
+PASS [s106] SB3b 混合批（R4-F1 实录向量）：「这一批都没删」+守卫注+failed 原因齐，不断言「都是今天刚聊的」
+PASS [s106] SB4 红臂：旧 note 形态回执不落独立条（修前可见性伤势=断言可区分）
+PASS [s106] SB5 源锚：回执通道=banner（防未来重构回 note/addInfo）
+PASS [s106] PC1 sub 行覆盖允许侧（允许的以后直接做）
+PASS [s106] PC2 sub 行覆盖拒绝侧（拒绝的以后直接跳过+都不再问，修前红锚：只解释允许侧）
+PASS [s106] PC3 四按钮字面零变化（本批边界：不动 KIND）
+PASS [s106i1] I1A banner 首调建条且 insertBefore(chat)（挂 #chat 之外，清墙杀不死）
+PASS [s106i1] I1B banner 文本写入+8s 自消计时
+PASS [s106i1] I1C banner 计时到点条自删
+PASS [s106i1] I1D banner 复用既有条不重复建
+PASS [s106i1] I1E archiveSession：回执走 addInfo 不走 note（修前红锚）
+PASS [s106i1] I1E fileNode-open：回执走 addInfo 不走 note（修前红锚）
+PASS [s106i1] I1E wsOrgDelete-note：回执走 addInfo 不走 note（修前红锚）
+PASS [s106i1] I1E ws-del-single：回执走 addInfo 不走 note（修前红锚）
+PASS [s106i1] I1E link-ok-handler：回执走 addInfo 不走 note（修前红锚）
+PASS [s106i1] I1E up-input-handler：回执走 addInfo 不走 note（修前红锚）
+PASS [s106i1] I1F 手艺批量成功回执走 skNote（修前红锚：note 零可见）
+PASS [s106i1] I1G #sk-note 状态行在场（skills-modal 弹窗内）
+PASS [s106i1] I1H cap-modal 弹窗内回执行+say 定义（say 定义 1 处）
+PASS [s106i1] I1I cap-modal 失败/校验 6 处改 say、成功 2 处维持 note
+PASS [s106i1] I1J sessions_deleted 回执走 banner（S2 独立于墙）
+PASS [s106] PB1 前置：add 帧携带表单值（host+key），编辑上下文=新档
+PASS [s106] PB2 add 应答帧：表单跟随新档（fillProvForm 消费）
+PASS [s106] PB3 ✕ 删在编档：remove 帧发出
+PASS [s106] PB4 删在编档先解绑+清 Key 残留（cfgKeyTouched 复位，关闭路径同款惯用语）
+PASS [s106] PB5 回退选中活跃档后保存：update.key=原档真值（real-key），不携带草稿残留 sk-anything-01（修复核心断言）
+PASS [s106] PB1 (旧码)前置：add 帧携带表单值（host+key），编辑上下文=新档
+PASS [s106] PB2 (旧码)add 应答帧：表单跟随新档（fillProvForm 消费）
+PASS [s106] PB3 (旧码)✕ 删在编档：remove 帧发出
+PASS [s106] PB6 红臂：旧形态同序列 update.key=sk-anything-01（活跃档被写脏=断言可区分修前/修后）
+PASS [s106] PB7 边界：保存未建档名仍走自动建档 add（s104/R2-F3 守卫不回归）
+PASS [s106] PB8 prov-add 文案对齐落盘语义（已新建并保存+条件句），旧暗示未存盘句退场
+PASS [upd-age] UA1 本轮会话（刚发生）不标注
+PASS [upd-age] UA2 非法/缺失 ts 保守不标注（无 ts 旧形态兼容）
+PASS [upd-age] UA3 分钟档：10 分钟前
+PASS [upd-age] UA4 小时档：3 小时前
+PASS [upd-age] UA5 天档：9 天前（s106 实录形状）
+PASS [upd-age] UA6 页载终态行带时间（updateRefresh ❌/✅ 行追加 updAge(st.ts)，修前红锚：无时间后缀）
+PASS [upd-age] UA7 轮询收口终态行带时间（updateStatusTick msg 兜底形态同样追加）
+ui-logic-probe kbd: PASS=74 FAIL=0
+ui-logic-probe close-path: PASS=10 FAIL=0
+ui-logic-probe prompts: PASS=11 FAIL=0
+ui-logic-probe busy: PASS=43 FAIL=0
+ui-logic-probe health: PASS=9 FAIL=0
+ui-logic-probe upd-age: PASS=7 FAIL=0
+ui-logic-probe: PASS=154 FAIL=0

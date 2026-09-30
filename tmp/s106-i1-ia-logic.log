@@ -1,0 +1,42 @@
+PASS: A0 对照: 65 归档→第1页渲染30行
+PASS: A0 对照: pager 绘出(pages=3, 4子节点=‹/计数/›/每页N条select r4/S1)
+  [取证] 空态后 arch-pager 子节点数=0，sessions.innerHTML="<div class=\"fnote\" style=\"padding:8px 10"
+PASS: A1 发现已修: 搜索空态后 arch-pager 已清空 (残留=false)
+PASS: A2 对照: paintInstalled 空态清空 skills-pager
+PASS: A3 发现已修: 归档清空早退后 arch-pager 已清空 (子节点=0)
+  [取证] loadSkills2 过滤空集: children=0 html="<div class=\"fnote\">没有找到「beta」</div>"
+PASS: B1 发现已修: loadSkills2 过滤空集显示「没有找到」不再静默 (silent=false)
+PASS: B2 对照: paintInstalled 同查询显示「没有找到」
+PASS: C1 chip=self 命中 origin=self 不命中 null 内置（1 卡=k-self）
+PASS: C2 chip=builtin 判据=origin null（1 卡=k-null）
+PASS: C3 chip=ext 判据=market+local（2 卡，self/builtin 不中）
+PASS: C4 chip=all 对照全渲染（4 卡）
+PASS: C5 st=停着 只渲染 active===false（2 卡，行内「停着」徽章在场）
+PASS: C6 st=在用 只渲染 active!==false（2 卡，含 active 缺省的旧数据兼容）
+PASS: C7 停着的卡不出「让它现在用」（出上下文=模型侧不可装载）、给「▶ 开用」停启钮
+PASS: C8 st=all 在用卡带「⏸ 先停着」钮（开/关双态对称）
+PASS: C9 st=off 空态=「现在没有停着的手艺。」（chip 空态三分）
+PASS: C10 loadSkills2 尾部重拉 loadSkillCmds（V5 装/卸/停启后 slash 命令不再陈旧）
+PASS: D1 apps 31 条→第 1 页 12 卡+翻页器在场+共 31 条
+PASS: D2 › 翻页到第 2 页（页码推进+重渲染不炸）
+PASS: D3 chip=出错了 只剩 fail 卡（run 在前排序下沉的混排痛点即解；命中数与分页无关=3 全显）
+PASS: D4 uiStopped 修正：手动停的 fail 卡归「已停」不归「出错」（与徽章口径一致，剩 2 卡）
+PASS: D5 手动停的卡出现在「已停」chip（8+1=9 卡）
+PASS: D6 chip=运行中 只剩 run 卡（20 条→第 1 页 12 卡+翻页器「共 20 条」，卡片零已停/出错了徽章）
+PASS: D7 chip onclick 切换回第 1 页（pageSlice 既有钳制兜底外的显式复位）
+PASS: D8 过滤缩窄后页码钳制不越界（3 页→fail 2 卡，页码钳回 1）
+PASS: D9 chip 非全且结果空=「没有已停的小应用。」+翻页器清空
+PASS: D10 q+chip 组合空=现有「没找到」分支照旧
+PASS: D11 ≤12 条翻页器不渲染且卡片数不变（机制恒建、阈值内零视觉）
+PASS: E1 sched 31 条→第 1 页 30 行+翻页器在场+共 31 条
+PASS: E2 chip=暂停的 只剩 paused 行（7 行且行内「已暂停」可辨）
+PASS: E3 chip=排着的 只剩未暂停行（24 行、零「已暂停」）
+PASS: E4 chip onclick 切换回第 1 页+过滤生效
+PASS: E5 ≤30 条翻页器不渲染且行数不变
+PASS: E6 chip 非全且结果空=「没有暂停的定时任务。」+翻页器清空
+PASS: S1(R1) 草稿面板在 #typing 忙碌域内（非 #chat 消息域；域内零草稿 DOM）
+PASS: S2(R4) 母句原文在场（从哪来/怎么变/变了什么三问可答，作面板说明；s105 随迁：「变了什么」段改收留口径，裁决 2026-09-30 §3.4）
+PASS: S3(R2) 32KB 尾窗机制内建（THINK_BUF_MAX=32768，出生即建非触发式）
+PASS: S4(R1) 默认折叠：peek/面板初始均 display:none（HTML 内联初始态）
+==============================
+ia-logic-probe: PASS=38 FAIL=0

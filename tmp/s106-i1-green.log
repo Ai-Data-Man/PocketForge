@@ -1,0 +1,13 @@
+PASS: RG1 banner 函数在场且挂 chat 之外（S2 独立于墙）
+PASS: RG2 批删回执走 banner（旧版=addInfo 落墙，重连清墙必现销毁）
+PASS: RG3 archiveSession 归档回执：走 addInfo 不走 note（修前红锚）
+PASS: RG3 文件树「用电脑打开」回执：走 addInfo 不走 note（修前红锚）
+PASS: RG3 工作区批量清理回执：走 addInfo 不走 note（修前红锚）
+PASS: RG3 工作区单删回执：走 addInfo 不走 note（修前红锚）
+PASS: RG3 link-ok 三处回执（guard/fail/catch）：走 addInfo 不走 note（修前红锚）
+PASS: RG3 up-input 两处回执（guard/fail）：走 addInfo 不走 note（修前红锚）
+PASS: RG4 手艺批量成功回执走 skNote（旧版 note 零可见）
+PASS: RG5 #sk-note 状态行+skNote 函数在场（弹窗内回执落点）
+PASS: RG6 cap-modal 弹窗内回执行 capNote+say（旧版失败回执写被盖住的 #save-note）
+PASS: RG7 cap-modal 成功 2 处维持 note（closeCapModal 后 #save-note 露出可见）
+s106-i1-redgreen: PASS=12 FAIL=0

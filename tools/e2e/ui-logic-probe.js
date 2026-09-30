@@ -666,34 +666,38 @@ CUR = 'kbd';
 // P4 措辞：deleted=0&&skipped>0 时旧文案开头「已删除 0 段对话」（读作「删了个寂寞」，实际=当日守卫保护生效）。
 // 修=换「这一批都没删」保护语（与首道 confirm「今天刚聊的不会放进这一批」呼应）；全删成/部分跳过两分支逐字保持。
 // s106/P3-1: 文案对了地方错了——note() 写 #save-note（设置 modal display:none，批删时面板关着=零可见，QA 三通道
-// 采样零捕获实录）；修=回执走 addInfo 消息流（帧处理器族可见回执先例），三分支措辞逐字不动。断言随迁：
-// 回执必须落到可见容器（infos）且不落 #save-note（notes=0）；旧 note 形态红臂。
+// 采样零捕获实录）；修=回执走 addInfo 消息流（帧处理器族可见回执先例），三分支措辞逐字不动。
+// s106/S2(R-B-P4-1) 断言再随迁：消息流也会死——桥发完 sessions_deleted 帧故意断连一次，重连无在开会话走
+// subscribe(null) 清墙，落墙回执必现销毁（双运行对照实录）；修=回执走 banner() 挂 #chat 之外的回执条
+// （s103/S7 health-bar 同款挂载点，8s 自消）。断言=回执落独立条（banners）且不落墙（infos=0）不落
+// #save-note（notes=0）；旧 note 形态红臂保持可区分。
 {
     const sdSrc = grab(/if\(m\.sys==='sessions_deleted'\)\{[\s\S]*?\n  \}/, 'sessions_deleted branch');
-    const sdSrcOld = sdSrc.replace(/addInfo\(bits\.join\('。'\)\);[^\n]*/, "note(bits.join('。'));"); // 修前形态红臂（只换回执通道行）
+    const sdSrcOld = sdSrc.replace(/banner\(bits\.join\('。'\)\);[^\n]*/, "note(bits.join('。'));"); // 修前形态红臂（只换回执通道行）
     const mk = (src) => {
-        const stubs = 'const notes=[]; const infos=[];\n' +
+        const stubs = 'const notes=[]; const infos=[]; const banners=[];\n' +
             'const ssOrg={on:true,sel:{clear(){}}};\n' +
             'const loadSessions=()=>{}; const loadWorkspaces=()=>{};\n' +
             'const loadArch=()=>({then(f){f();}});\n' +
             'const note=t=>{notes.push(t)};\n' +
             'const addInfo=t=>{infos.push(t)};\n' +
+            'const banner=t=>{banners.push(t)};\n' +
             'const run=m=>{\n' + src + '\n};\n' +
-            'return {run, notes, infos};\n';
+            'return {run, notes, infos, banners};\n';
         return new Function(stubs)();
     };
     SEC = 's106';
     let r = mk(sdSrc); r.run({ sys: 'sessions_deleted', deleted: 2 });
-    ck('SB1 全删成：开头「已删除 2 段对话」逐字保持（可见容器）', r.infos.length === 1 && r.infos[0] === '已删除 2 段对话' && r.notes.length === 0, JSON.stringify(r.infos) + ' notes=' + JSON.stringify(r.notes));
+    ck('SB1 全删成：开头「已删除 2 段对话」逐字保持（独立回执条）', r.banners.length === 1 && r.banners[0] === '已删除 2 段对话' && r.notes.length === 0 && r.infos.length === 0, JSON.stringify(r.banners) + ' notes=' + JSON.stringify(r.notes) + ' infos=' + JSON.stringify(r.infos));
     r = mk(sdSrc); r.run({ sys: 'sessions_deleted', deleted: 1, skipped: 1 });
-    ck('SB2 部分跳过：两段式逐字保持（已删除 1 段+当日守卫注）', r.infos.length === 1 && r.infos[0] === '已删除 1 段对话。有 1 段今天刚聊的没放进这一批——今天的一条一条删更稳妥。' && r.notes.length === 0, JSON.stringify(r.infos));
+    ck('SB2 部分跳过：两段式逐字保持（已删除 1 段+当日守卫注）', r.banners.length === 1 && r.banners[0] === '已删除 1 段对话。有 1 段今天刚聊的没放进这一批——今天的一条一条删更稳妥。' && r.notes.length === 0, JSON.stringify(r.banners));
     r = mk(sdSrc); r.run({ sys: 'sessions_deleted', deleted: 0, skipped: 2 });
-    ck('SB3 零删除有跳过：开头=「这一批都没删：2 段都是今天刚聊的」（修前红锚：『已删除 0 段对话』）', r.infos.length === 1 && r.infos[0].indexOf('这一批都没删：2 段都是今天刚聊的') === 0 && r.infos[0].indexOf('已删除 0 段') < 0, JSON.stringify(r.infos));
+    ck('SB3 零删除有跳过：开头=「这一批都没删：2 段都是今天刚聊的」（修前红锚：『已删除 0 段对话』）', r.banners.length === 1 && r.banners[0].indexOf('这一批都没删：2 段都是今天刚聊的') === 0 && r.banners[0].indexOf('已删除 0 段') < 0, JSON.stringify(r.banners));
     r = mk(sdSrc); r.run({ sys: 'sessions_deleted', deleted: 0, skipped: 1, failed: [{ sid: '20260101_000001', err: '不是归档状态的对话，先归档再删' }] });
-    ck('SB3b 混合批（R4-F1 实录向量）：「这一批都没删」+守卫注+failed 原因齐，不断言「都是今天刚聊的」', r.infos.length === 1 && r.infos[0].indexOf('这一批都没删：1 段今天刚聊的没放进这一批') === 0 && r.infos[0].indexOf('1 段没删成：') > 0 && r.infos[0].indexOf('都是今天刚聊的') < 0, JSON.stringify(r.infos));
+    ck('SB3b 混合批（R4-F1 实录向量）：「这一批都没删」+守卫注+failed 原因齐，不断言「都是今天刚聊的」', r.banners.length === 1 && r.banners[0].indexOf('这一批都没删：1 段今天刚聊的没放进这一批') === 0 && r.banners[0].indexOf('1 段没删成：') > 0 && r.banners[0].indexOf('都是今天刚聊的') < 0, JSON.stringify(r.banners));
     const ro = mk(sdSrcOld); ro.run({ sys: 'sessions_deleted', deleted: 0, skipped: 2 });
-    ck('SB4 红臂：旧 note 形态回执不落可见容器（修前可见性伤势=断言可区分）', ro.infos.length === 0 && ro.notes.length === 1, 'infos=' + JSON.stringify(ro.infos) + ' notes=' + JSON.stringify(ro.notes));
-    ck('SB5 源锚：回执通道=addInfo（防未来重构回 note）', /addInfo\(bits\.join\('。'\)\)/.test(sdSrc) && !/note\(bits\.join/.test(sdSrc), sdSrc.split('\n').slice(-3).join(' '));
+    ck('SB4 红臂：旧 note 形态回执不落独立条（修前可见性伤势=断言可区分）', ro.banners.length === 0 && ro.notes.length === 1, 'banners=' + JSON.stringify(ro.banners) + ' notes=' + JSON.stringify(ro.notes));
+    ck('SB5 源锚：回执通道=banner（防未来重构回 note/addInfo）', /banner\(bits\.join\('。'\)\)/.test(sdSrc) && !/note\(bits\.join/.test(sdSrc) && !/addInfo\(bits\.join/.test(sdSrc), sdSrc.split('\n').slice(-3).join(' '));
 }
 
 
@@ -707,6 +711,63 @@ CUR = 'kbd';
     ck('PC1 sub 行覆盖允许侧（允许的以后直接做）', psub.indexOf('允许的以后直接做') >= 0, psub);
     ck('PC2 sub 行覆盖拒绝侧（拒绝的以后直接跳过+都不再问，修前红锚：只解释允许侧）', psub.indexOf('拒绝的以后直接跳过') >= 0 && psub.indexOf('都不再问') >= 0, psub);
     ck('PC3 四按钮字面零变化（本批边界：不动 KIND）', kind.indexOf("allow_once:{t:'✅ 这次可以'") >= 0 && kind.indexOf("allow_always:{t:'✅ 以后都允许（会记住，之后不再问）'") >= 0 && kind.indexOf("reject_once:{t:'🚫 这次不行'") >= 0 && kind.indexOf("reject_always:{t:'🚫 以后都别问'") >= 0, kind);
+}
+
+// ================================ s106/i1 note() 不可见容器家族清扫 12 ck（S1 矩阵+B/C 两类修法） ================================
+// F1（批删回执落 #save-note 零可见，c9c5ae1）暴露的家族面：note() 写设置 modal prov pane 状态行，
+// 一切「动作发生时设置面板关着/被遮罩盖住」的调用点=同族缺陷。修法两类：
+//   B 类（无遮罩同屏界面：左栏列表/右栏文件树与浏览全部）→ note 改 addInfo 消息流（F1 先例通道，同屏可见）；
+//   C 类（遮罩 modal 内动作：skills-modal 批量停启、cap-modal 失败/校验）→ 回执落 modal 自身状态行
+//       （#sk-note / capNote），modal 开着时墙与 #save-note 双盲。
+// S2 同批：banner() 操作回执条挂 #chat 之外（s103/S7 同款挂载点）——批删回执原落墙，桥回执后故意断连，
+// 重连 subscribe(null) 清墙必现销毁（R-B-P4-1 双运行对照）。断言含红锚：9 个 B 类函数源不再含 note(。
+{
+    SEC = 's106i1';
+    // banner 函数行为：挂载点在 chat 之外（不在 chat 内=重连清墙杀不死）+复用同条+到点自删
+    const bannerSrc = grab(/let bannerT=null;\nfunction banner\(t\)\{[\s\S]*?\n\}/, 'banner fn');
+    (function () {
+        const created = []; let timer = null; let timerMs = -1; let made = 0;
+        const chat = { parentNode: { insertBefore(el, ref) { created.push({ el, ref }); } } };
+        const byId = {};
+        const $ = id => byId[id];
+        const docEl = () => { made++; const el = { className: '', style: { cssText: '' }, textContent: '', remove() { el._removed = true; } }; Object.defineProperty(el, 'id', { set() {}, get() { return 'op-banner'; } }); return el; };
+        const fn = new Function('$', 'chat', 'document', 'setTimeout', 'clearTimeout',
+            bannerSrc + '\nreturn banner;')(
+            $, chat, { createElement: docEl }, (f, ms) => { timer = f; timerMs = ms; return 1; }, () => {});
+        fn('已删除 2 段对话');
+        ck('I1A banner 首调建条且 insertBefore(chat)（挂 #chat 之外，清墙杀不死）', created.length === 1 && created[0].ref === chat && made === 1, 'created=' + created.length + ' made=' + made);
+        ck('I1B banner 文本写入+8s 自消计时', created[0].el.textContent === '已删除 2 段对话' && timerMs === 8000, 'text=' + created[0].el.textContent + ' ms=' + timerMs);
+        byId['op-banner'] = created[0].el; // 模拟真实 DOM：建条后 $ 可寻回
+        timer && timer();
+        ck('I1C banner 计时到点条自删', created[0].el._removed === true, 'removed=' + created[0].el._removed);
+        made = 0; const el2 = { textContent: '', style: { cssText: '' }, remove() {} }; byId['op-banner'] = el2;
+        fn('第二条');
+        ck('I1D banner 复用既有条不重复建', made === 0 && el2.textContent === '第二条', 'made=' + made);
+    })();
+    // B 类源锚：9 个无遮罩界面动作的回执通道全部离开 note(
+    const bAnchors = [
+        ['archiveSession', /async function archiveSession\(sid,arch\)\{[\s\S]*?\n\}/],
+        ['fileNode-open', /d\.ok\?addInfo\('已在电脑上打开 '[^\n]*;/],
+        ['wsOrgDelete-note', /else addInfo\('已清理 '[^\n]*;/],
+        ['ws-del-single', /if\(d\.ok\)\{ loadWorkspaces\(\); addInfo\('工作区已删除'\); \}[^\n]*/],
+        ['link-ok-handler', /\$\('link-ok'\)\.onclick=\(\)=>\{[\s\S]*?\n\};/],
+        ['up-input-handler', /\$\('up-input'\)\.onchange=async\(\)=>\{[\s\S]*?\n\};/],
+    ];
+    for (const [label, re] of bAnchors) {
+        const m = html.match(re);
+        ck('I1E ' + label + '：回执走 addInfo 不走 note（修前红锚）', !!m && m[0].indexOf('addInfo(') >= 0 && !/\bnote\(/.test(m[0].split('addInfo(').join('')), label);
+    }
+    // C1：手艺批量停/启回执落 skills-modal 内 #sk-note
+    const skSrc = grab(/async function skOrgBatch\(op\)\{[\s\S]*?\n\}/, 'skOrgBatch');
+    ck('I1F 手艺批量成功回执走 skNote（修前红锚：note 零可见）', /else skNote\(/.test(skSrc) && !/\bnote\(/.test(skSrc), skSrc.split('\n').slice(-2).join(' '));
+    ck('I1G #sk-note 状态行在场（skills-modal 弹窗内）', /id="sk-note"/.test(html) && /function skNote\(t\)\{[\s\S]*?\$\('sk-note'\)/.test(html));
+    // C2：cap-modal 失败/校验回执落弹窗内 say；成功 2 处维持 note（closeCapModal 后 #save-note 露出可见）
+    const capSrc = grab(/function openCapEditor\(model\)\{[\s\S]*?\n\}\n\$\('fetch-models'\)/, 'openCapEditor');
+    const sayN = (capSrc.match(/\bsay\(/g) || []).length;
+    ck('I1H cap-modal 弹窗内回执行+say 定义（say 定义 1 处）', /const capNote=document\.createElement\('div'\);/.test(capSrc) && /const say=t=>\{ capNote\.textContent=t; \};/.test(capSrc), 'sayN=' + sayN);
+    ck('I1I cap-modal 失败/校验 6 处改 say、成功 2 处维持 note', sayN === 6 && /note\('「'\+model\+'」已恢复官方默认。'\)/.test(capSrc) && /note\('「'\+model\+'」的配置已保存。'\)/.test(capSrc), 'sayN=' + sayN);
+    // S2 源锚：批删回执通道=banner
+    ck('I1J sessions_deleted 回执走 banner（S2 独立于墙）', /banner\(bits\.join\('。'\)\);/.test(html));
 }
 
 // ================================ s106/P3-2 表单-条目绑定错位 8 ck（QA 复现序列镜像 tmp/s106a-b5.mjs） ================================

@@ -482,6 +482,7 @@ details.tz[open]>summary::before{content:'▾ '}
     <div id="skills-list" style="max-height:340px;overflow-y:auto"></div><!-- r5/S3: 限高滚动（manage 弹窗同族先例）——翻页器/整理动作条钉在视口内不随长清单滚走 -->
     <div id="skills-pager" style="display:flex;gap:10px;justify-content:center;align-items:center;padding:2px 0 6px"></div>
     <div id="skills-orgbar" style="display:none;gap:6px;align-items:center;padding:2px 0 8px;flex-wrap:wrap"></div><!-- r5/S3: 整理模式动作条（已选 N｜全选｜停用/启用｜退出整理） -->
+    <div class="fnote" id="sk-note" style="display:none;margin-top:2px"></div><!-- s106/S1: 批量停/启回执落点——弹窗遮罩开着时消息流与 #save-note 双不可见，落弹窗自身状态行（#save-note 同款 fnote 形态，8s 自隐） -->
   </div>
   <div class="spane" id="spane-store" style="display:none">
     <input id="store-q" placeholder="🔍 搜想学的做法…" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.78rem;outline:none;margin-bottom:10px">
@@ -821,7 +822,7 @@ function connect(){
       if(m.skipped) bits.push('有 '+m.skipped+' 段今天刚聊的没放进这一批——今天的一条一条删更稳妥。'); // 桥侧当日号段守卫的人话注（裁决 §2.2-S2b 逐字）
     }
     if(m.failed&&m.failed.length) bits.push(m.failed.length+' 段没删成：'+m.failed.slice(0,3).map(f=>f.sid+'：'+f.err).join('；'));
-    addInfo(bits.join('。')); // s106/P3-1: 回执改走消息流——note() 写 #save-note（设置 modal 内，批删时面板关着=rect 0×0 零可见，QA 三通道采样零捕获实录）；模型切换/撤回回执同走 addInfo 先例，列表刷新（上方 loadSessions）与单删可见语义对齐
+    banner(bits.join('。')); // s106/P3-1: 回执改走可见通道（note() 写 #save-note=设置 modal 内，批删时面板关着零可见）；s106/S2(R-B-P4-1): 再改挂 #chat 之外的回执条——桥发完本帧故意断连一次，重连无在开会话走 subscribe(null) 清墙，落消息流的回执必现销毁（双运行对照实录）；条独立于墙 8s 自消
     return;
   }
     if(m.sys==='rollback_done'){ // 主线5：手术回执（先于广播刷新到达）——预填原文进输入框+聚焦，不自动发送
@@ -1328,6 +1329,8 @@ document.addEventListener('visibilitychange',()=>{ if(!document.hidden) stopNoti
 function nearBottom(){ return chat.scrollHeight-chat.scrollTop-chat.clientHeight<80; } // s69 P2-7: 追加前测距——距底 <80px 才粘性滚底，用户上翻回看时不拽回
 function addErr(t){ const stick=nearBottom(); const el=document.createElement('div'); el.className='msg agent'; el.setAttribute('role','alert'); el.textContent='⚠ '+t; chat.appendChild(el); if(stick) chat.scrollTop=chat.scrollHeight; } // s69 P2-11: 错误即时播报
 function addInfo(t){ const stick=nearBottom(); const el=document.createElement('div'); el.className='msg agent info'; el.setAttribute('role','status'); el.textContent=t; chat.appendChild(el); if(stick) chat.scrollTop=chat.scrollHeight; } // s69 P2-11: 状态提示礼貌播报（不加在 #chat 上，避免载入历史回放整墙重读）
+let bannerT=null;
+function banner(t){ let el=$('op-banner'); if(!el){ el=document.createElement('div'); el.id='op-banner'; el.className='fnote'; el.style.cssText='padding:8px 24px;border-bottom:1px solid var(--line);background:var(--panel);margin:0'; chat.parentNode.insertBefore(el,chat); } el.textContent=t; clearTimeout(bannerT); bannerT=setTimeout(()=>{ const b=$('op-banner'); if(b) b.remove(); },8000); } // s106/S2: 操作回执条挂 #main 顶部（s103/S7 health-bar 同款挂载点——#chat 之外的提醒条）——给「动作发生后墙会被系统性清空」的回执用（批删：桥回执后断连一次，重连 subscribe(null) 清墙）；8s 自消，不复用不叠加
 function mdRender(raw){
   let h = raw.split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;');
   const NLCH = String.fromCharCode(10);
@@ -2790,6 +2793,8 @@ function openCapEditor(model){
   const techLine=document.createElement('div'); techLine.className='fnote'; techLine.style.margin='4px 0 0'; techLine.textContent='这些档位实际怎么传给服务商——按各家接口规范自动翻译，不用您管';
   tech.appendChild(techLine);
   body.appendChild(tech);
+  const capNote=document.createElement('div'); capNote.className='fnote'; capNote.style.margin='8px 0 0'; // s106/S1: 弹窗内回执行——cap-modal 开着时失败/校验回执原先写 #save-note（被本弹窗遮罩盖住零可见）
+  const say=t=>{ capNote.textContent=t; };
   const act=document.createElement('div'); act.style.cssText='display:flex;gap:8px;margin-top:8px';
   const save=document.createElement('button'); save.className='mini'; save.textContent='保存';
   const cancel=document.createElement('button'); cancel.className='mini'; cancel.textContent='取消';
@@ -2803,11 +2808,11 @@ function openCapEditor(model){
       try{
         const r=await fetch('/api/modelcaps',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op:'set',model,patch:{reset:'official'}})});
         const d=await r.json();
-        if(!d||!d.ok){ note((d&&d.err)||'没恢复上，稍后再试'); return; }
+        if(!d||!d.ok){ say((d&&d.err)||'没恢复上，稍后再试'); return; }
         note('「'+model+'」已恢复官方默认。');
         closeCapModal();
         loadProvidersUI();
-      }catch(e){ note('没恢复上：'+e.message); }
+      }catch(e){ say('没恢复上：'+e.message); }
     };
     act.appendChild(reset);
   }
@@ -2816,10 +2821,10 @@ function openCapEditor(model){
     if(mm.value!==String(!!cap.multimodal)) patch.multimodal=(mm.value==='true');
     const cv=String(ctx.value==null?'':ctx.value).trim();
     if(cv===''){ if(cap.context_len!=null && uf.indexOf('context_len')>=0) patch.context_len=null; }
-    else { const n=parseInt(cv,10); if(!isFinite(n)||n<=0){ note('上下文要填正整数，不知道就留空'); return; } if(n!==cap.context_len) patch.context_len=n; }
+    else { const n=parseInt(cv,10); if(!isFinite(n)||n<=0){ say('上下文要填正整数，不知道就留空'); return; } if(n!==cap.context_len) patch.context_len=n; }
     const mv=String(mo.value==null?'':mo.value).trim();
     if(mv===''){ if(cap.max_output!=null && uf.indexOf('max_output')>=0) patch.max_output=null; }
-    else { const n=parseInt(mv,10); if(!isFinite(n)||n<=0){ note('最大输出要填正整数，不知道就留空'); return; } if(n!==cap.max_output) patch.max_output=n; }
+    else { const n=parseInt(mv,10); if(!isFinite(n)||n<=0){ say('最大输出要填正整数，不知道就留空'); return; } if(n!==cap.max_output) patch.max_output=n; }
     // 档位集/默认档：与本条现值比对，变则发（字段级）
     const curLv=Array.isArray(t.levels)?t.levels:[];
     if(lvList.join('\u0000')!==curLv.join('\u0000')) patch.thinking=(patch.thinking||{}), patch.thinking.levels=lvList.slice();
@@ -2829,13 +2834,13 @@ function openCapEditor(model){
     try{
       const r=await fetch('/api/modelcaps',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op:'set',model,patch})});
       const d=await r.json();
-      if(!d||!d.ok){ note((d&&d.err)||'没保存上，稍后再试'); return; }
+      if(!d||!d.ok){ say((d&&d.err)||'没保存上，稍后再试'); return; }
       note('「'+model+'」的配置已保存。');
       closeCapModal();
       loadProvidersUI(); // providers 帧重下发→caps 镜像+池区重绘
-    }catch(e){ note('没保存上：'+e.message); }
+    }catch(e){ say('没保存上：'+e.message); }
   };
-  act.appendChild(save); act.appendChild(cancel); body.appendChild(act);
+  act.appendChild(save); act.appendChild(cancel); body.appendChild(act); body.appendChild(capNote);
   $('cap-modal').classList.add('on');
 }
 $('fetch-models').onclick=()=>{
@@ -3078,8 +3083,9 @@ async function skOrgBatch(op){ // r5/S3: 批量停/启=逐条 POST（桥无批�
   skOrg.on=false; skOrg.sel.clear();
   loadSkills2(); loadSkillStore();
   if(failed.length) alert('处理了 '+done+' 条，'+failed.length+' 条没成：\n'+failed.slice(0,5).join('\n')+(failed.length>5?'\n…':''));
-  else note('已'+(op==='disable'?'停':'开')+' '+done+' 条手艺');
+  else skNote('已'+(op==='disable'?'停':'开')+' '+done+' 条手艺'); // s106/S1: 回执落本弹窗状态行
 }
+function skNote(t){ const el=$('sk-note'); if(!el) return; el.textContent=t; el.style.display=''; clearTimeout(skNote._t); skNote._t=setTimeout(()=>{ el.style.display='none'; },8000); } // s106/S1: skills-modal 内回执行（遮罩开着=墙与 #save-note 双盲）；成功批量回执原走 note 零可见，失败本走 alert（保持）
 // s42/s45/s56: 技能商店（本地 skills-repo + 远程缓存；搜索过滤；中文说明优先）
 let storeAll=[]; // 当前可装列表（avail），供搜索过滤
 // r4/S1（裁决 2026-09-19-bloat-r4 §2.1）：页大小可调——翻页器内「每页 N 条」选择器，全局按形态两类记忆（localStorage pfPageSize 形 {card:12,row:30}，缺省 card=12 s71 先例/row=30 行型先例）；档位=默认×2/×4+末档「一页看全」上限 500（超限截断+注，替代出路=其余档位+翻页）；s71 技能卡 12/页先例由 card 首档继承
@@ -3467,7 +3473,7 @@ async function archiveSession(sid,arch){
   try{
     const r=await fetch('/api/sessions/archive',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sid,archived:arch})});
     const d=await r.json();
-    if(d.ok){ await loadArch(); loadSessions(); loadWorkspaces(); note(arch?'已归档':'已取消归档'); }
+    if(d.ok){ await loadArch(); loadSessions(); loadWorkspaces(); addInfo(arch?'已归档':'已取消归档'); } // s106/S1: 归档动作在左栏（无遮罩）——note 落 #save-note（设置 modal 关着）零可见，改消息流同屏通道
     else alert('操作失败: '+(d.err||''));
   }catch(e){ alert('操作失败: '+e.message); }
 }
@@ -3634,7 +3640,7 @@ function fileNode(n,depth){
     (n.att?'<span class="bdg">附件</span>':'')+'<span class="sz">'+fmtSize(n.size||0)+'</span>';
   el.onclick=()=>window.open('/preview/'+encodeURIComponent(curWs+'/'+n.path),'_blank');
   el.appendChild(tactBtn('↗','用电脑里的办公软件打开',async()=>{
-    try{ const r=await fetch('/open/'+encodeURIComponent(curWs+'/'+n.path)); const d=await r.json(); d.ok?note('已在电脑上打开 '+n.name):alert('打不开: '+(d.err||'')); }catch(e){ alert('打不开: '+e.message); }
+    try{ const r=await fetch('/open/'+encodeURIComponent(curWs+'/'+n.path)); const d=await r.json(); d.ok?addInfo('已在电脑上打开 '+n.name):alert('打不开: '+(d.err||'')); }catch(e){ alert('打不开: '+e.message); } // s106/S1: 右栏文件树动作——note 同族不可见，改消息流（注释放行尾，勿吞 catch）
   }));
   el.appendChild(tactBtn('🕘','历史版本',(ev)=>toggleVersions({name:n.path,size:n.size},el)));
   el.appendChild(tactBtn('✎','重命名',async()=>{
@@ -3690,7 +3696,7 @@ async function wsOrgDelete(){
     wsOrg.on=false; wsOrg.sel.clear();
     loadWorkspaces();
     if(d.failed&&d.failed.length) alert('删掉了 '+d.deleted+' 个，'+d.failed.length+' 个没删成：\n'+d.failed.slice(0,5).map(f=>f.ws+'：'+f.err).join('\n')+(d.failed.length>5?'\n…':''));
-    else note('已清理 '+d.deleted+' 个工作区');
+    else addInfo('已清理 '+d.deleted+' 个工作区'); // s106/S1: 右栏浏览全部整理动作——note 同族不可见，改消息流
   }catch(e){ alert('删除失败: '+(e.message||'')); }
 }
 
@@ -3767,7 +3773,7 @@ function renderAllPane(){
         if(!confirm('最后确认：连文件带版本历史一起删，确定？')) return;
         const r=await fetch('/api/ws/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:w.id,sid:sessionId||''})});
         const d=await r.json();
-        if(d.ok){ loadWorkspaces(); note('工作区已删除'); } else alert('删除失败: '+(d.err||''));
+        if(d.ok){ loadWorkspaces(); addInfo('工作区已删除'); } else alert('删除失败: '+(d.err||'')); // s106/S1: 右栏单删动作——note 同族不可见，改消息流
       };
       row.appendChild(del);
     }
@@ -3844,16 +3850,16 @@ $('up-btn2').onclick=()=>$('up-input').click();
 $('link-btn').onclick=()=>{ const r=$('link-row'); r.style.display=r.style.display==='none'?'block':'none'; };
 $('link-ok').onclick=()=>{
   const p=$('link-path').value.trim(); if(!p)return;
-  if(!curWs){ note('工作区还没准备好，几秒后再试'); return; }
+  if(!curWs){ addInfo('工作区还没准备好，几秒后再试'); return; } // s106/S1: 右栏链接动作——note 同族不可见，改消息流
   fetch('/api/link?ws='+encodeURIComponent(curWs)+'&target='+encodeURIComponent(p)+'&label='+encodeURIComponent(p.split('\\').pop().split('/').pop()))
     .then(r=>r.json()).then(d=>{
       if(d.ok){ renderCurPane(); $('link-row').style.display='none'; addInfo('已把文件夹「'+d.name+'」接进本对话的工作区，里面的文件都能 @ 引用了。'); }
-      else note('链接失败: '+(d.err||'未知原因'));
+      else addInfo('链接失败: '+(d.err||'未知原因')); // s106/S1: 失败回执同样要可见
     })
-    .catch(()=>note('链接失败：服务没响应'));
+    .catch(()=>addInfo('链接失败：服务没响应')); // s106/S1: 失败回执同样要可见
 };
 $('up-input').onchange=async()=>{
-  if(!curWs){ note('工作区还没准备好，几秒后再试'); return; }
+  if(!curWs){ addInfo('工作区还没准备好，几秒后再试'); return; } // s106/S1: 右栏上传动作——note 同族不可见，改消息流（成功路径本就 addInfo，失败对齐）
   const names=[];
   for(const f of $('up-input').files){
     try{
@@ -3865,7 +3871,7 @@ $('up-input').onchange=async()=>{
   $('up-input').value='';
   renderCurPane();
   if(names.length){ addInfo('已收到 '+names.length+' 个文件，放在「'+(selDir||'根目录')+'」里。想让我处理它，就在消息里 @ 它的文件名。'); }
-  else note('上传失败，请重试');
+  else addInfo('上传失败，请重试'); // s106/S1: 成功路径已走 addInfo（上行），失败通道对齐
 };
 // 拖拽上传（落点=选中的文件夹）
 document.addEventListener('dragover',e=>{e.preventDefault();});
