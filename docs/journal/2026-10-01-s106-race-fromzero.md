@@ -85,3 +85,7 @@ S1 矩阵全量审 note()/帧处理器落点：**14+ 处不可见回执全修**�
 ## 十二、R-C 紧凑收口轮 8/8 PASS（iat112，台账 tmp/s106-roundC-findings.md）
 
 批删 #op-banner 挂 DIV#main 772×34 跨重连清墙窗全存活；归档/手艺批量/cap-modal 校验/上传守卫四类回执各归其位（rect 实测）；三锚保持（junction 失配重建指 s106c+dev 基线未动/竞态 304ms/思考回放 366 逐字同）；9 批零 JS 异常；LLM 2 轮。新账 P4×1：上传拒因被前端折叠成泛化「上传失败」+混合批部分失败静默→尾批（前端透传桥侧人话 err+逐项结果）。
+
+## 十三、尾批：R-C-P4 上传拒因透传（纯前端）
+
+根因定位：桥 /api/upload 失败响应体本就带人话 err（:4690 缺工作区/:4695 保留名/:4714 fs 异常），前端 onchange+drop 两处理器只读 d.ok——err 在消费层被吞（drop 全失败更零回执）。修法（chat.tpl.html 两处，桥零动）：失败逐项记账 `fails.push('「名」'+(d.err||'没说原因'))`（网络拒收记「服务没响应」），回执 `addErr('有 N 个没传上：'+逐项)`；成功可汇总（原句逐字不动）、失败逐项可见；粘贴/升级上传路径本就透传零动。验证：红绿 tmp/s106-j-redgreen.js（旧版 5 红 3 绿→新版 8/8）+新断言随迁 ui-logic-probe.js s106j 节（162/162）+e2e-chat 62+fuzz 225+活体 CDP 臂 6/6（真页 DataTransfer 注入 #up-input：CON.txt→「⚠ 有 1 个没传上：「CON.txt」名字是 Windows 保留的，换一个吧」479×52 role=alert；混合批成功汇总+失败逐项同场；零 JS 异常；/api/fs/delete 清残留零 CON 落盘）。活体页载自动开种子会话 ws-1001-075217（R-B-P4-2 已知家族行为，上传物已删净归 orphan 不入默认视图）。commit 独立未 push。

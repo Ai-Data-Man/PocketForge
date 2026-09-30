@@ -870,11 +870,75 @@ CUR = 'kbd';
     ck('UA7 轮询收口终态行带时间（updateStatusTick msg 兜底形态同样追加）', /\(st\.msg\|\|''\)\+updAge\(st\.ts\)/.test(tickSrc), '');
 }
 
-console.log('ui-logic-probe kbd: PASS=' + KP + ' FAIL=' + KF);
-console.log('ui-logic-probe close-path: PASS=' + CP + ' FAIL=' + CF);
-console.log('ui-logic-probe prompts: PASS=' + PP + ' FAIL=' + PF);
-console.log('ui-logic-probe busy: PASS=' + BP + ' FAIL=' + BF);
-console.log('ui-logic-probe health: PASS=' + HP + ' FAIL=' + HF);
-console.log('ui-logic-probe upd-age: PASS=' + UP + ' FAIL=' + UF);
-console.log('ui-logic-probe: PASS=' + pass + ' FAIL=' + fail);
-process.exit(fail ? 1 : 0);
+// ================================ s106/j 上传失败回执 8 ck（R-C-S1 升档 P4：桥侧人话 err 透传+混合批失败逐项） ================================
+// 伤势：up-input/drop 两处理器只读 d.ok，桥 /api/upload 400/500 体内 {ok:false,err:'人话'}（保留名/缺 ws/fs 异常）
+// 被整句折叠成「上传失败，请重试」；drop 路径更全失败零回执。混合批只报「已收到 M 个」，失败名单静默。
+// 修=失败逐项记账（文件名+err 入账），成功可汇总、失败 addErr 逐项；纯成功句逐字不动（U3/D3 边界守卫）。
+// 红绿对照臂 tmp/s106-j-redgreen.js（旧版 git HEAD 快照 5 红 3 绿实录：tmp/s106-j-red.log / s106-j-green.log）。
+(async () => {
+    SEC = 's106j';
+    const upSrc = grab(/\$\('up-input'\)\.onchange=async\(\)=>\{[\s\S]*?\n\};/, 'up-input onchange');
+    const dropSrc = grab(/document\.addEventListener\('drop',async e=>\{[\s\S]*?\n\}\);/, 'drop listener');
+    const RESERVED = '名字是 Windows 保留的，换一个吧'; // 桥 fileNameSafe 拒绝分支 err 逐字（chat-bridge.tpl.js /api/upload）
+    const mkFile = name => ({ name, arrayBuffer: async () => new ArrayBuffer(0) });
+    const mkFetch = () => async url => { // 名含 CON→保留名 400 形状；名含 NET→网络拒收；其余成功
+        const n = decodeURIComponent(url.split('name=')[1]);
+        if (n.indexOf('NET') >= 0) throw new TypeError('Failed to fetch');
+        if (n.indexOf('CON') >= 0) return { json: async () => ({ ok: false, err: RESERVED }) };
+        return { json: async () => ({ ok: true, name: n }) };
+    };
+    const runOnchange = files => {
+        const infos = [], errs = []; const upInput = { files, value: 'sentinel' };
+        const fn = new Function('$', 'fetch', 'curWs', 'selDir', 'addInfo', 'addErr', 'renderCurPane',
+            upSrc + '\nreturn $("up-input").onchange;')(
+            id => { if (id !== 'up-input') throw new Error('unexpected $(' + id + ')'); return upInput; },
+            mkFetch(), 'ws-1001-070000', '', t => infos.push(t), t => errs.push(t), () => {});
+        return Promise.resolve(fn()).then(() => ({ infos, errs, reset: upInput.value }));
+    };
+    const runDrop = files => {
+        const infos = [], errs = []; let handler = null;
+        const doc = { addEventListener: (t, h) => { if (t === 'drop') handler = h; } };
+        new Function('document', 'fetch', 'curWs', 'selDir', 'addInfo', 'addErr', 'renderCurPane', dropSrc)(
+            doc, mkFetch(), 'ws-1001-070000', '', t => infos.push(t), t => errs.push(t), () => {});
+        if (!handler) throw new Error('drop handler not captured');
+        return Promise.resolve(handler({ preventDefault() {}, dataTransfer: { files } })).then(() => ({ infos, errs }));
+    };
+    let r = await runOnchange([mkFile('CON.txt')]);
+    ck('U1 onchange 全失败：err 透传桥侧保留名人话（含文件名），泛化句退场（修前红锚）',
+        r.errs.length === 1 && r.errs[0].indexOf('CON.txt') >= 0 && r.errs[0].indexOf(RESERVED) >= 0 && !r.infos.some(t => t.indexOf('上传失败，请重试') >= 0),
+        'infos=' + JSON.stringify(r.infos) + ' errs=' + JSON.stringify(r.errs));
+    ck('U1b onchange 全失败也复位输入（再选同名可重触发）', r.reset === '', 'value=' + JSON.stringify(r.reset));
+    r = await runOnchange([mkFile('ok.md'), mkFile('CON.txt')]);
+    ck('U2 onchange 混合批：成功汇总+失败逐项（文件名+原因）同场（修前红锚：失败静默）',
+        r.infos.length === 1 && r.infos[0].indexOf('已收到 1 个文件') === 0 && r.errs.length === 1 && r.errs[0].indexOf('CON.txt') >= 0 && r.errs[0].indexOf(RESERVED) >= 0,
+        'infos=' + JSON.stringify(r.infos) + ' errs=' + JSON.stringify(r.errs));
+    r = await runOnchange([mkFile('note.md')]);
+    ck('U3 onchange 纯成功句逐字零变化（边界守卫，新旧都绿）',
+        r.infos.length === 1 && r.infos[0] === '已收到 1 个文件，放在「根目录」里。想让我处理它，就在消息里 @ 它的文件名。' && r.errs.length === 0,
+        'infos=' + JSON.stringify(r.infos) + ' errs=' + JSON.stringify(r.errs));
+    r = await runOnchange([mkFile('NET.doc')]);
+    ck('U4 onchange 网络拒收：逐项「服务没响应」而非泛化句（修前红锚）',
+        r.errs.length === 1 && r.errs[0].indexOf('NET.doc') >= 0 && r.errs[0].indexOf('服务没响应') >= 0,
+        'infos=' + JSON.stringify(r.infos) + ' errs=' + JSON.stringify(r.errs));
+    r = await runDrop([mkFile('CON.txt')]);
+    ck('D1 drop 全失败：回执逐项在场（修前红锚：零回执全静默）',
+        r.errs.length === 1 && r.errs[0].indexOf('CON.txt') >= 0 && r.errs[0].indexOf(RESERVED) >= 0,
+        'infos=' + JSON.stringify(r.infos) + ' errs=' + JSON.stringify(r.errs));
+    r = await runDrop([mkFile('ok.md'), mkFile('CON.txt')]);
+    ck('D2 drop 混合批：成功汇总+失败逐项同场（修前红锚：只报成功）',
+        r.infos.length === 1 && r.infos[0].indexOf('收到 1 个文件') === 0 && r.errs.length === 1 && r.errs[0].indexOf(RESERVED) >= 0,
+        'infos=' + JSON.stringify(r.infos) + ' errs=' + JSON.stringify(r.errs));
+    r = await runDrop([mkFile('note.md')]);
+    ck('D3 drop 纯成功句逐字零变化（边界守卫，新旧都绿）',
+        r.infos.length === 1 && r.infos[0] === '收到 1 个文件（在「根目录」）。消息里用 @ 引用即可让我处理。' && r.errs.length === 0,
+        'infos=' + JSON.stringify(r.infos) + ' errs=' + JSON.stringify(r.errs));
+
+    console.log('ui-logic-probe kbd: PASS=' + KP + ' FAIL=' + KF);
+    console.log('ui-logic-probe close-path: PASS=' + CP + ' FAIL=' + CF);
+    console.log('ui-logic-probe prompts: PASS=' + PP + ' FAIL=' + PF);
+    console.log('ui-logic-probe busy: PASS=' + BP + ' FAIL=' + BF);
+    console.log('ui-logic-probe health: PASS=' + HP + ' FAIL=' + HF);
+    console.log('ui-logic-probe upd-age: PASS=' + UP + ' FAIL=' + UF);
+    console.log('ui-logic-probe: PASS=' + pass + ' FAIL=' + fail);
+    process.exit(fail ? 1 : 0);
+})();

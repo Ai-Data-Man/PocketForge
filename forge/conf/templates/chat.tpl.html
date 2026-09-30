@@ -3860,33 +3860,34 @@ $('link-ok').onclick=()=>{
 };
 $('up-input').onchange=async()=>{
   if(!curWs){ addInfo('工作区还没准备好，几秒后再试'); return; } // s106/S1: 右栏上传动作——note 同族不可见，改消息流（成功路径本就 addInfo，失败对齐）
-  const names=[];
+  const names=[]; const fails=[]; // s106/j(R-C-S1)：失败逐项记账——桥侧人话 err 不再折成泛化句（文件名+原因入账）
   for(const f of $('up-input').files){
     try{
       const buf=await f.arrayBuffer();
       const r=await fetch('/api/upload?ws='+encodeURIComponent(curWs)+'&dir='+encodeURIComponent(selDir||'')+'&name='+encodeURIComponent(f.name),{method:'POST',body:buf});
-      const d=await r.json(); if(d.ok) names.push(d.name);
-    }catch(e){}
+      const d=await r.json(); if(d.ok) names.push(d.name); else fails.push('「'+f.name+'」'+(d.err||'没说原因'));
+    }catch(e){ fails.push('「'+f.name+'」服务没响应'); }
   }
   $('up-input').value='';
   renderCurPane();
   if(names.length){ addInfo('已收到 '+names.length+' 个文件，放在「'+(selDir||'根目录')+'」里。想让我处理它，就在消息里 @ 它的文件名。'); }
-  else addInfo('上传失败，请重试'); // s106/S1: 成功路径已走 addInfo（上行），失败通道对齐
+  if(fails.length){ addErr('有 '+fails.length+' 个没传上：'+fails.join('；')); } // s106/j：失败必须逐项可见（成功可汇总，失败带名字带原因）；全失败/混合批同形
 };
 // 拖拽上传（落点=选中的文件夹）
 document.addEventListener('dragover',e=>{e.preventDefault();});
 document.addEventListener('drop',async e=>{
   e.preventDefault();
   if(!curWs){ addErr('工作区还没准备好，等状态灯变绿再拖文件进来。'); return; }
-  const names=[];
+  const names=[]; const fails=[]; // s106/j(R-C-S1)：同 onchange——失败逐项记账（原先全失败零回执=静默）
   for(const f of (e.dataTransfer||{}).files||[]){
     try{
       const buf=await f.arrayBuffer();
       const r=await fetch('/api/upload?ws='+encodeURIComponent(curWs)+'&dir='+encodeURIComponent(selDir||'')+'&name='+encodeURIComponent(f.name),{method:'POST',body:buf});
-      const d=await r.json(); if(d.ok) names.push(d.name);
-    }catch(err){}
+      const d=await r.json(); if(d.ok) names.push(d.name); else fails.push('「'+f.name+'」'+(d.err||'没说原因'));
+    }catch(err){ fails.push('「'+f.name+'」服务没响应'); }
   }
   if(names.length){ renderCurPane(); addInfo('收到 '+names.length+' 个文件（在「'+(selDir||'根目录')+'」）。消息里用 @ 引用即可让我处理。'); }
+  if(fails.length){ addErr('有 '+fails.length+' 个没传上：'+fails.join('；')); } // s106/j：失败逐项可见；全失败也有回执
 });
 
 // ===== 提示词库（用户五主线批2-主线1；裁决 2026-09-08-user-five-lines-batch2 §2）=====
