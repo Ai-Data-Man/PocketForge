@@ -67,3 +67,13 @@ standalone 探针：s106-g1 备份 9/0（PG 停机真跑 60s×2 臂）/g2 EEXIST
 ## 八、iat111 与 R-B 轮（在飞→补记）
 
 包 sha256 553eebf5…（bootstrap GetFullPath/新文案锚在场）。R-B=升级路径轮（官方 v0.9.17 基座→iat111）：junction 归属活体判卷（本机 junction 现指 dev 树，沙盒冷装须重定向）+升级双判据+残件清扫+批 2/3 八项出厂判卷+P3-3 机会复现。任务书 tmp/s106-roundB-taskbook.md，台账 tmp/s106-roundB-findings.md。
+
+## 九、R-B 升级验证轮全 PASS（iat111，台账 tmp/s106-roundB-findings.md）
+
+判卷矩阵零 FAIL：双包 sha/基座净装/残件升级首启清/robocopy 双判据（8 锚+providers+会话+思考块逐字节保持）/备份双形态（PG 停→「这次没带数据库」人话）/EEXIST 包锚/升级窗格「（9 天前）」/**F3 junction 归属活体（dev→s106b 重定向，两轮记忆落沙盒+dev 零新增）**/F1 回执消息流可见/F2 假 key 零上桌/F4 新句/F5 allow×2 活体/超时标签活体「客户端超时（无上游首字节）」/P3-3 未复现。新账 P4×2（无在开会话批删回执被断连重连清墙销毁并播种垃圾会话【双运行对照】；种子会话垃圾）→backlog。环境：dev 栈恢复 200；junction 归还 dev 树；PF-TEST 清零；LLM 4/6 轮。
+
+## 十、会话总结
+
+- 主线1：竞态修复从零定案（3/3）；思考留痕出厂链全绿。
+- 主线2：三轮（挖掘+R-A+R-B）→14 修复 commit+3 关案+1 改判+backlog 10 项带触发器。
+- 方法论沉淀：QA 重发现轻归因时主控必须复核机制层（P2 改判 junction 案例查 ADR-0005 即破）；工程师自报副作用（1.1 读取侧）=流程健康信号；「红臂用 git HEAD 旁挂旧桥」技法成熟。
