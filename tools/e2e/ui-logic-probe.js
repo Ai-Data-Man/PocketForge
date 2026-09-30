@@ -662,6 +662,32 @@ CUR = 'kbd';
     ck('RA4 源锚在场：清指针语句在 subscribe 体内（防未来重构回退）', /if\(!sid\)\{ sessionId=null; currentSid=null; \}/.test(subSrc));
 }
 
+// ================================ s106/1.2 批删回执三分支 4 ck（裁决 2026-10-01-s106 §1.2） ================================
+// P4 措辞：deleted=0&&skipped>0 时旧文案开头「已删除 0 段对话」（读作「删了个寂寞」，实际=当日守卫保护生效）。
+// 修=换「这一批都没删」保护语（与首道 confirm「今天刚聊的不会放进这一批」呼应）；全删成/部分跳过两分支逐字保持。
+{
+    const sdSrc = grab(/if\(m\.sys==='sessions_deleted'\)\{[\s\S]*?\n  \}/, 'sessions_deleted branch');
+    const mk = () => {
+        const stubs = 'const notes=[];\n' +
+            'const ssOrg={on:true,sel:{clear(){}}};\n' +
+            'const loadSessions=()=>{}; const loadWorkspaces=()=>{};\n' +
+            'const loadArch=()=>({then(f){f();}});\n' +
+            'const note=t=>{notes.push(t)};\n' +
+            'const run=m=>{\n' + sdSrc + '\n};\n' +
+            'return {run, notes};\n';
+        return new Function(stubs)();
+    };
+    SEC = 's106';
+    let r = mk(); r.run({ sys: 'sessions_deleted', deleted: 2 });
+    ck('SB1 全删成：开头「已删除 2 段对话」逐字保持', r.notes.length === 1 && r.notes[0] === '已删除 2 段对话', JSON.stringify(r.notes));
+    r = mk(); r.run({ sys: 'sessions_deleted', deleted: 1, skipped: 1 });
+    ck('SB2 部分跳过：两段式逐字保持（已删除 1 段+当日守卫注）', r.notes.length === 1 && r.notes[0] === '已删除 1 段对话。有 1 段今天刚聊的没放进这一批——今天的一条一条删更稳妥。', JSON.stringify(r.notes));
+    r = mk(); r.run({ sys: 'sessions_deleted', deleted: 0, skipped: 2 });
+    ck('SB3 零删除有跳过：开头=「这一批都没删：2 段都是今天刚聊的」（修前红锚：『已删除 0 段对话』）', r.notes.length === 1 && r.notes[0].indexOf('这一批都没删：2 段都是今天刚聊的') === 0 && r.notes[0].indexOf('已删除 0 段') < 0, JSON.stringify(r.notes));
+    r = mk(); r.run({ sys: 'sessions_deleted', deleted: 0, skipped: 1, failed: [{ sid: '20260101_000001', err: '不是归档状态的对话，先归档再删' }] });
+    ck('SB3b 混合批（R4-F1 实录向量）：「这一批都没删」+守卫注+failed 原因齐，不断言「都是今天刚聊的」', r.notes.length === 1 && r.notes[0].indexOf('这一批都没删：1 段今天刚聊的没放进这一批') === 0 && r.notes[0].indexOf('1 段没删成：') > 0 && r.notes[0].indexOf('都是今天刚聊的') < 0, JSON.stringify(r.notes));
+}
+
 console.log('ui-logic-probe kbd: PASS=' + KP + ' FAIL=' + KF);
 console.log('ui-logic-probe close-path: PASS=' + CP + ' FAIL=' + CF);
 console.log('ui-logic-probe prompts: PASS=' + PP + ' FAIL=' + PF);

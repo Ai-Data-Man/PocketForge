@@ -810,8 +810,16 @@ function connect(){
   if(m.sys==='sessions_deleted'){ // r4/S2b: 批量删除汇总回执（桥回执后断连一次，重连由既有自动重连兜）
     ssOrg.on=false; ssOrg.sel.clear();
     loadSessions(); loadArch().then(loadWorkspaces); // ws 解绑改变工作区状态→浏览全部同步刷
-    const bits=['已删除 '+m.deleted+' 段对话'];
-    if(m.skipped) bits.push('有 '+m.skipped+' 段今天刚聊的没放进这一批——今天的一条一条删更稳妥。'); // 桥侧当日号段守卫的人话注（裁决 §2.2-S2b 逐字）
+    // s106/1.2（裁决 §1.2）：deleted=0&&skipped>0 时开头不再说「已删除 0 段对话」（读作「删了个寂寞」，实际=当日
+    // 守卫保护生效）——换「这一批都没删」保护语，与首道 confirm「今天刚聊的不会放进这一批」呼应；混合批（有
+    // failed）只说没删，不断言「都是今天刚聊的」。其余两分支文案逐字保持。
+    const bits=[];
+    if(m.deleted===0&&m.skipped>0){
+      bits.push(m.failed&&m.failed.length ? '这一批都没删：'+m.skipped+' 段今天刚聊的没放进这一批' : '这一批都没删：'+m.skipped+' 段都是今天刚聊的——今天刚聊的不会放进这一批，一条一条删更稳妥');
+    } else {
+      bits.push('已删除 '+m.deleted+' 段对话');
+      if(m.skipped) bits.push('有 '+m.skipped+' 段今天刚聊的没放进这一批——今天的一条一条删更稳妥。'); // 桥侧当日号段守卫的人话注（裁决 §2.2-S2b 逐字）
+    }
     if(m.failed&&m.failed.length) bits.push(m.failed.length+' 段没删成：'+m.failed.slice(0,3).map(f=>f.sid+'：'+f.err).join('；'));
     note(bits.join('。'));
     return;
