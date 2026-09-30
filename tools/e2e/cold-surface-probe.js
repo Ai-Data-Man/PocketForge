@@ -196,6 +196,19 @@ function parseUserBlock(raw) {
         if (!man.includes('把「思考力度」调浅一档')) throw new Error('guidance sentence missing');
     });
 
+    // ---------- ⑧s106/F3 memory junction 归属：Target 必须指向本安装树 ----------
+    // 同机双安装伤势（s106 轮 dev↔沙盒实锤）：后装 bootstrap 的旧守卫（Junction+Target 存在）对指向前树的
+    // junction 判通过→记忆穿旧链接写进先装树。冷装断言=Target 归一后等值本树 memory 路径（只读，不重建）。
+    ck('S8: memory junction Target == this install conf/goose/config/memory (s106/F3)', () => {
+        const memApp = path.join(process.env.APPDATA || '', 'Block', 'goose', 'config', 'memory');
+        const st = fs.lstatSync(memApp);
+        if (!st.isSymbolicLink()) throw new Error('not a junction: ' + memApp + ' LinkType=null');
+        const target = fs.readlinkSync(memApp);
+        const norm = p => path.resolve(p).replace(/[\/\\]+$/, '').toLowerCase();
+        const want = path.join(PF_ROOT, 'conf', 'goose', 'config', 'memory');
+        if (norm(target) !== norm(want)) throw new Error('Target=' + target + ' != ' + want);
+    });
+
     console.log('==============================');
     console.log('cold-surface-probe [' + PF_ROOT + ' bridge:' + BRIDGE_PORT + ' pc:' + PC_PORT + ']: PASS=' + pass + ' FAIL=' + fail);
     process.exit(fail ? 1 : 0);

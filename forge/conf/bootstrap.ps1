@@ -107,17 +107,25 @@ foreach ($stubName in @('web-search','goose-doc-guide')) {
 #     见 docs/research/04-goose.md）。NTFS junction 重定向到便携目录（免管理员；卸载=删 junction）。
 #     s85/P4: 守卫从 Test-Path 改为「是 Junction 且 Target 存在」双条件——悬挂 junction 的 Test-Path 同样返回
 #     True，旧守卫在用户改名/搬迁整个文件夹后永不重建（经该路径的记忆读写静默 FileNotFoundError）；失效即删旧重建。
+#     s106/F3: 双条件仍错向——Target 存在但指向他树（同机双安装：dev↔沙盒/用户并排两版）也算通过→后装的记忆
+#     穿旧 junction 静默写进先装树（s106 轮 dev↔沙盒双向污染实录，ADR-0005）。守卫加第三查：Target 归一后
+#     等值本安装 memory 路径（[IO.Path]::GetFullPath 双侧归一+TrimEnd 尾分隔符，PS -eq 大小写不敏感）；
+#     失配即删旧重建。删除改 cmd /c rmdir——只摘链接永不碰目标内容（旧 Remove-Item -Force -Recurse 对
+#     junction 会穿链接删目标树内容；对真目录=删用户数据。非空真目录 rmdir 删不动→保守留置，mklink 失败，
+#     记忆落 %APPDATA% 原位——好过删数据）。
 $memPort = Join-Path $ForgeRoot 'conf\goose\config\memory'
 New-Item -ItemType Directory -Force -Path $memPort | Out-Null
 $memApp  = Join-Path $env:APPDATA 'Block\goose\config\memory'
+$normMem = { param($p) [IO.Path]::GetFullPath([string]$p).TrimEnd('\','/') }
 $memOk = $false
 if (Test-Path $memApp) {
     $memIt = Get-Item $memApp -Force
-    $memOk = ($memIt.LinkType -eq 'Junction') -and (Test-Path ($memIt.Target -join ''))
+    $memTgt = $memIt.Target -join ''
+    $memOk = ($memIt.LinkType -eq 'Junction') -and (Test-Path $memTgt) -and ((& $normMem $memTgt) -eq (& $normMem $memPort))
 }
 if (-not $memOk) {
     New-Item -ItemType Directory -Force -Path (Split-Path $memApp) | Out-Null
-    if (Test-Path $memApp) { Remove-Item $memApp -Force -Recurse }
+    if (Test-Path $memApp) { cmd /c rmdir "$memApp" }
     cmd /c mklink /J "$memApp" "$memPort" | Out-Null
 }
 
