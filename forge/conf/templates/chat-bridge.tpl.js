@@ -1508,6 +1508,11 @@ function spawnAcp() {
     delete env.GOOSE_MODE;
     lastSpawnEnv = ((act && act.name) || 'secrets.env') + '\0' + env.GOOSE_MODEL + '\0' + env.OPENAI_HOST + '\0' + env.OPENAI_API_KEY; // s94-b2 F-3: 本次落地的 env 指纹——面板连打保存时同指纹重启是纯噪音（杀进程+假切换播报），providers 保存路径据此跳过
     const child = spawn(GOOSE, ['acp'], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+    // s106/followup-B（主控裁决 2026-10-01）：stdin 零 error 监听——双热重启竞态（60ms 内两次真热重启）下旧 acp 被
+    // kill 时在飞/排队写 EPIPE 以未接 'error' 事件冒泡=桥进程崩（pc.log 崩溃栈实录，pc respawn 兜底但会话内 WS 全断）。
+    // 被杀子进程的 stdin 错误只记不崩：善后已有既有机制（热重启 waiting.clear 先拒后清+新 acp 接管；自发死亡的
+    // exit 路径 abortInflightTurns+exit(1) 不变）。
+    child.stdin.on('error', e => console.log('acp stdin err (superseded or dying child):', (e && e.code) || (e && e.message) || e));
     child.stdout.on('data', chunk => onAcpData(chunk));
     child.stderr.on('data', d => process.stderr.write('[acp] ' + d));
     child.on('exit', c => {
