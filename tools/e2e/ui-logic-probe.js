@@ -688,6 +688,19 @@ CUR = 'kbd';
     ck('SB3b 混合批（R4-F1 实录向量）：「这一批都没删」+守卫注+failed 原因齐，不断言「都是今天刚聊的」', r.notes.length === 1 && r.notes[0].indexOf('这一批都没删：1 段今天刚聊的没放进这一批') === 0 && r.notes[0].indexOf('1 段没删成：') > 0 && r.notes[0].indexOf('都是今天刚聊的') < 0, JSON.stringify(r.notes));
 }
 
+
+// ================================ s106/1.3 权限卡 sub 行双覆盖 3 ck（裁决 2026-10-01-s106 §1.3） ================================
+// 台账 R2 观察项：sub 行只解释允许侧，「以后都别问」可被误读「以后别做这件事」。修=sub 行补拒绝侧半句；
+// 边界=只动 sub 行，四按钮字面（KIND）与权限语义零变化。
+{
+    const psub = grab(/'<div class="psub">[^']*<\/div>'/, 'permcard sub line');
+    const kind = grab(/const KIND=\{allow_once[\s\S]*?\}\};/, 'permcard KIND buttons');
+    SEC = 's106';
+    ck('PC1 sub 行覆盖允许侧（允许的以后直接做）', psub.indexOf('允许的以后直接做') >= 0, psub);
+    ck('PC2 sub 行覆盖拒绝侧（拒绝的以后直接跳过+都不再问，修前红锚：只解释允许侧）', psub.indexOf('拒绝的以后直接跳过') >= 0 && psub.indexOf('都不再问') >= 0, psub);
+    ck('PC3 四按钮字面零变化（本批边界：不动 KIND）', kind.indexOf("allow_once:{t:'✅ 这次可以'") >= 0 && kind.indexOf("allow_always:{t:'✅ 以后都允许（会记住，之后不再问）'") >= 0 && kind.indexOf("reject_once:{t:'🚫 这次不行'") >= 0 && kind.indexOf("reject_always:{t:'🚫 以后都别问'") >= 0, kind);
+}
+
 console.log('ui-logic-probe kbd: PASS=' + KP + ' FAIL=' + KF);
 console.log('ui-logic-probe close-path: PASS=' + CP + ' FAIL=' + CF);
 console.log('ui-logic-probe prompts: PASS=' + PP + ' FAIL=' + PF);

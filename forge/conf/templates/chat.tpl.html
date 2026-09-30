@@ -1568,7 +1568,7 @@ function onAgentEvent(p){
     const memSave=tTitle.replace(/_/g,' ').indexOf('remember memory')>=0;
     const card=document.createElement('div'); card.className='permcard';
     card.innerHTML='<div class="ptitle">🛡 小 forge 想做一个操作，需要您点头：</div>'+
-      '<div class="psub">选「以后」的会被记住，之后这类操作不再问。</div>'+
+      '<div class="psub">选「以后」的会被记住：允许的以后直接做，拒绝的以后直接跳过，都不再问了。</div>'+ // s106/1.3（裁决 §1.3）：sub 行补拒绝侧半句——旧行只解释允许侧，「以后都别问」可被误读成「以后别做这件事」（实义=这类不再问=记住拒绝）；只动本行，四按钮字面与权限语义零变化
       (memSave?'<div class="psub">它想把这件事记下来，以后都记得——同意它记就行。</div>':'')+
       '<div class="pbody"><b></b>'+(tDetail?'<pre></pre>':'')+'</div>'+
       '<div class="pnote">它不会自己偷偷做。您选了它才动。一分钟没回应，会自动先跳过这次。</div>';
