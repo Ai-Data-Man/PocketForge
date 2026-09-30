@@ -49,3 +49,21 @@ standalone 探针：s106-g1 备份 9/0（PG 停机真跑 60s×2 臂）/g2 EEXIST
 **发现**：P2×1（改判 P3，见下）/P3×4（批删回执落不可见 #save-note；删草稿+保存把假 key 误写活跃 provider 致 401；活跃会话零渲染单次未复现；渲染器僵死 R2-F2 家族第二次）/P4×7。
 
 **主控改判：R-A-P2-1「出厂 goose.exe 烘焙构建机路径」不成立**——真机制=ADR-0005 记载的上游 quirk（goose-mcp memory 硬编码 %APPDATA%\Block\goose\config\memory 绕过 GOOSE_PATH_ROOT）+bootstrap §1c junction 重定向（真机首启即建，记忆正常落包内）；本机 junction 钉 dev 树+守卫只查「Junction 且 Target 存在」不查归属→沙盒记忆穿到 dev 树=交叉污染机制。真缺陷=P3 守卫错向（s85-P4 悬挂家族盲角）。dev 树污染 8 件取证 tmp/s106-mem-pollution/ 后已清（原有记忆保留）。
+
+## 七、批 3 五 commit（工程师，§8.2 十一套全量新基线）
+
+| commit | 项 | 要点 |
+|---|---|---|
+| c9c5ae1 | F1 P3-1 批删回执落点 | sessions_deleted 回执 note→addInfo（消息流可见通道）；活体帧到页绿/红双臂（绿=#chat 542×47 可见，红=旧模板 rect 0×0 复刻 QA 实录） |
+| ed87290 | F2 P3-2 表单解绑 | ✕ 删在编档先解绑（curProvName=null+cfgKeyTouched=false+清 cfg-key）；红臂=旧 del.onclick 同序列 update.key=sk-anything-01；PB7 边界=s104 R2-F3 自动建档守卫不回归 |
+| cdb60e0 | F3 P3 junction 守卫 | Target 归一等值校验+失配删旧重建+删除改 cmd rmdir（只摘链接）；红绿 7/0（从他树重建/大小写/悬挂/用户数据完好）；cold-surface +S8 断言 19/19 |
+| 99c1f79 | F4 P4-2 文案对齐 | 「已新建并保存「X」…」——添加即落盘语义诚实化，行为不动 |
+| 9929d49 | F5 P4-4 allow 日志 | permcard action:allow 补齐（timeout/denied/allow 枚举面齐）；活体 allow 行留 R-B 轮判卷 |
+
+批 2 补验全齐：§8.2 十一套（ui-logic **139** 新台阶=126+13）/preupgrade-backup-probe 31/0 活体/statsRestore 跨天带回活体（fail=0 零幻影）/C4 新标签真桥首录。未尽：F2 同族 s69 P3-14 dirty-key 跨档张力→backlog 带触发器；R-A-P3-3/P3-4 未触碰（后者 R2-F2 家族二次复发，触发器=再现抓 chrome://tracing）。
+
+附：R-A-P4-5 effort 恒空关案（tmp/s106-effort-rca.md：非空⟺显式带档/override；53 条非空全落 V1 前播种时代；建议补 effortSrc 标记挂 backlog）。
+
+## 八、iat111 与 R-B 轮（在飞→补记）
+
+包 sha256 553eebf5…（bootstrap GetFullPath/新文案锚在场）。R-B=升级路径轮（官方 v0.9.17 基座→iat111）：junction 归属活体判卷（本机 junction 现指 dev 树，沙盒冷装须重定向）+升级双判据+残件清扫+批 2/3 八项出厂判卷+P3-3 机会复现。任务书 tmp/s106-roundB-taskbook.md，台账 tmp/s106-roundB-findings.md。
