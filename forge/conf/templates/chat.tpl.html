@@ -2505,7 +2505,7 @@ function keyGuideSync(list){
   const el=document.createElement('div');
   el.id='key-guide'; el.className='msg agent info';
   el.style.cssText='display:flex;align-items:center;gap:10px;flex-wrap:wrap';
-  const t=document.createElement('span'); t.textContent='还没连上大模型，发消息会失败。点这里 2 分钟配好 →';
+  const t=document.createElement('span'); t.textContent='还没连上大模型。点这里 2 分钟配好 →'; // s105/R3-F1: 删失败断言——开放线路+池有模型态（升级继承半配置/host 兜底）发消息实际能通，谎报失败与结果当场矛盾；真发不出（池空）由 submit 前置守卫人话兜底（s104/R2-F4 分层保持）
   const b=document.createElement('button'); b.className='msgbtn'; b.textContent='去配置';
   b.onclick=()=>{ $('modal').classList.add('on'); switchPane('prov'); loadProvidersUI(); setTimeout(()=>$('cfg-key').focus(),100); };
   el.appendChild(t); el.appendChild(b);
