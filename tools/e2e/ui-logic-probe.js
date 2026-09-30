@@ -640,6 +640,28 @@ CUR = 'busy';
 }
 CUR = 'kbd';
 
+// ================================ subrace 4 ck（s105/用户复现：newchat→subscribed 窗口竞态） ================================
+// 活体事故：开新对话后立刻发消息（goose session/new 生成要几秒），旧 sessionId 未清→桥按旧绑定把消息路由进
+// 上一会话，回合帧只发旧会话订阅者=新页面零渲染（回复+思考全部隐形）。修=subscribe(null) 即清指针，
+// submit 落 pendingQueue 队列路径由 subscribed 回执补发（C3 既有机制）。修前红锚：sessionId 残留旧值。
+{
+    const subSrc = grab(/function subscribe\(sid\)\{[^\n]*\n/, 'subscribe'); // 单行函数体
+    const stubs = 'let sessionId="20260930_3", currentSid="20260930_3", pendingForNew=false, lastOrig="x", lastKnownModel=null;\n' +
+        'const sent=[];\n' +
+        'const wssend=o=>{sent.push(o);return true;};\n' +
+        'const chat={set innerHTML(v){}, appendChild(){}};\n' +
+        'const toolCards=new Map();\n' +
+        'const localStorage={getItem:()=>null};\n' +
+        'const addMsg=()=>{}; const addQuickPrompts=()=>{};\n';
+    const call = new Function(stubs + subSrc + ' subscribe(null); return { getS: () => sessionId, getC: () => currentSid, getP: () => pendingForNew, getSent: () => sent };')();
+    const sent = call.getSent();
+    SEC = 'subrace';
+    ck('RA1 subscribe(null) 即清会话指针（修前红锚：残留 20260930_3 → 消息路由进旧会话）', call.getS() === null && call.getC() === null, 'sessionId=' + call.getS());
+    ck('RA2 pendingForNew 置位（队列路径激活，subscribed 到达自动补发）', call.getP() === true);
+    ck('RA3 subscribe 帧照发（sessionId:null 上行，桥启动 session/new）', sent.length === 1 && sent[0].type === 'subscribe' && sent[0].sessionId === null, JSON.stringify(sent));
+    ck('RA4 源锚在场：清指针语句在 subscribe 体内（防未来重构回退）', /if\(!sid\)\{ sessionId=null; currentSid=null; \}/.test(subSrc));
+}
+
 console.log('ui-logic-probe kbd: PASS=' + KP + ' FAIL=' + KF);
 console.log('ui-logic-probe close-path: PASS=' + CP + ' FAIL=' + CF);
 console.log('ui-logic-probe prompts: PASS=' + PP + ' FAIL=' + PF);

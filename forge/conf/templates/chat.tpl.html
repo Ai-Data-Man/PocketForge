@@ -977,7 +977,7 @@ $('svw-arch').onclick=()=>showSideView('arch');
 $('sess-org').onclick=()=>{ ssOrg.on=!ssOrg.on; ssOrg.sel.clear(); renderSessions(lastSessions); }; // r4/S2b: 整理模式进/出
 let archQT=null; // IA-2: 归档搜索（store-q 同款防抖 200ms；过滤变化回第 1 页）
 $('arch-q').oninput=()=>{ clearTimeout(archQT); archQT=setTimeout(()=>{ listPage.arch=1; listPage.chat=1; renderSessions(lastSessions); },200); }; // 项1: 两视图共用搜索词，各自回第 1 页
-function subscribe(sid){ pendingForNew=!sid; lastOrig=null; wssend({type:'subscribe',sessionId:sid,model:lastKnownModel||undefined,think:(!sid&&localStorage.getItem('pfThinkEffort'))||undefined}); chat.innerHTML=''; toolCards.clear(); if(!sid){ addMsg('你好！我是小 forge。想做什么直接打字告诉我。','agent'); addQuickPrompts(); } }
+function subscribe(sid){ pendingForNew=!sid; lastOrig=null; if(!sid){ sessionId=null; currentSid=null; } wssend({type:'subscribe',sessionId:sid,model:lastKnownModel||undefined,think:(!sid&&localStorage.getItem('pfThinkEffort'))||undefined}); chat.innerHTML=''; toolCards.clear(); if(!sid){ addMsg('你好！我是小 forge。想做什么直接打字告诉我。','agent'); addQuickPrompts(); } } // s105/用户复现：开新对话到 subscribed 回执的窗口内（goose session/new 生成要几秒）sessionId 仍是上一个会话——此刻发消息被桥按旧绑定路由进旧会话，回合帧只发旧会话订阅者=新页面收不到，回复与思考全部隐形（活体复现：消息落 20260930_3 旧会话+页面零渲染）。修=开新对话即清指针，submit 落入 pendingQueue 队列路径（C3 既有机制：subscribed 到达自动补发，openSession 切走自动放回）
 // s33: 开场快捷任务——小白不用想"该说什么"，点一下就发
 const QUICK_PROMPTS=[
   {label:'🩺 做个体检', text:'做个体检'},
