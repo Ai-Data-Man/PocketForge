@@ -27,3 +27,17 @@ docs/verdicts/2026-10-01-s106-backlog-triage.md（3bb61ec）：今日批 4（R3-
 
 包 dist/PocketForge-20261001-v0.9.17.zip sha256 9ee08b22…（iat109 15cb98bb… 为今日批前中间态，已被覆盖；包内锚抽查：readProvidersForSave/cleanProvTmp/stdin-error/sessionId=null;currentSid=null/新措辞全在场）。
 R-A 轮任务书 tmp/s106-roundA-taskbook.md：A 竞态判卷（200/500/1000ms 三发全落新会话）/B 今日批出厂+B4 无覆写 confirm 宿主+B5 添加复核/C 报表卡链+系统表透出/D 全观测。台账 tmp/s106-roundA-findings.md。
+
+## 四、dev 树日志挖掘（pf-researcher，tmp/s106-devlog-mining.md）
+
+五异常族：**C1「rename 耗尽后 hot_restart 照发」=主控复核误归因关案**（4.7s 间隔=工程师红绿探针的下一笔成功保存；新码 throw 结构上先于 evJson/hot_restart 不可达；重试全程仅 ~120ms 非 5s）。有效四条：C5a 备份诚实性（pg_dump skipped 仍报 backup ok，zip 无 DB 份 30KB 实录）→批 2 修；C5b 升级计数分裂（lastSeen/status.json 冻结 09-22 九天）→批 2 调查+修；C4 models 5s 停摆带被 "client aborted" 标签掩盖（45/53 status:0 恒 totalMs≈5000）→批 2 修标签；C2 goose panic 循环 7h 无熔断（09-05 史实，permission.yaml 已 PROTECTED）+C3 PG 57P02 ×21 跨四周（真凶 backend 不在留存日志）→backlog 带触发器。副产品：R5 竞态日志巡检锚（同 sid 分钟内 stale session/new discarded→pending closes flushed→single rescue 三连）；effort「恒空」观察过时（54 条非空，s101 W1 修复生效侧证）。
+
+## 五、批 2 三 commit（工程师，standalone 红绿全绿；§8.2 全量待 dev 栈恢复补）
+
+| commit | 项 | 要点 |
+|---|---|---|
+| 03ff025 | C5a 备份诚实性 | 终行两形态（含 DB 份=原样；跳过=「backup ok（这次没带数据库：归因，下次会带）」）；PG 本体不在场不降级；EEXIST 真凶=recursive 下 Windows 瞬态泄漏（规格纠正：mkdir 本就 recursive，全史 176 枚实证）→守卫放行目录态；「backup ok」零断言消费方 |
+| a4e602c | C5b 升级计数 | lastSeen 冻结=设计内（指纹语义）+真缺陷=跨天重启陈旧终态重计（L226 自违反）→当日文件缺位从最近 usage-* 带回 6 行；ok 恒 0=语义正确不修（update-runner done 语义核）；UI 最小诚实修=终态行相对时间「（9 天前）」（不做清除/重置=PM 域） |
+| f955e54 | C4 超时标签 | res close 两分：tFirst 未置位→client timeout (no upstream first byte)；已置位→保持 client aborted（真中断族零变化）；/models 双发归因纠正=goose 库存预热非 UI 轮询（去重留档不做，超 10 行门槛） |
+
+standalone 探针：s106-g1 备份 9/0（PG 停机真跑 60s×2 臂）/g2 EEXIST 6/0/g3 lastSeen 8/0/g4 标签 6/0；ui-logic 126/126（+upd-age 7ck）。待补：§8.2 全量+preupgrade-backup-probe 活体+statsRestore 跨天活体+新标签首条真实流量实录。
