@@ -2571,7 +2571,12 @@ function renderProviders(list){
     const use=document.createElement('button'); use.textContent=pr.active?'✓使用中':'启用';
     use.onclick=(e)=>{e.stopPropagation(); wssend({type:'providers',save:true,activate:pr.name}); curProvName=pr.name; note('已切换到 '+pr.name); }; // s78: 表单跟随刚启用的档案
     const del=document.createElement('button'); del.textContent='✕';
-    del.onclick=(e)=>{e.stopPropagation(); if(confirm('删除服务商「'+pr.name+'」？')) wssend({type:'providers',save:true,remove:pr.name}); };
+    del.onclick=(e)=>{e.stopPropagation(); if(!confirm('删除服务商「'+pr.name+'」？')) return;
+      // s106/P3-2: 删的正是表单在编档——先解绑再发删。旧态 curProvName 悬空+cfgKeyTouched 残 true，回执帧回退选中
+      // 活跃档时 fillProvForm 的清 Key 门被 dirty 跳过→草稿 Key 残留进表单，点保存即写脏活跃档（QA 实录：删「坏中转2」
+      // →「自家中转」.key 被写假值→此后全 401）。复位=模态关闭路径同款惯用语（cfgKeyTouched=false+清 Key）。
+      if(pr.name===curProvName){ curProvName=null; cfgKeyTouched=false; $('cfg-key').value=''; }
+      wssend({type:'providers',save:true,remove:pr.name}); };
     el.appendChild(use); el.appendChild(del);
     el.onclick=()=>{ selected=pr; fillProvForm(pr); renderModelPool(pr); };
     box.appendChild(el);

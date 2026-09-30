@@ -709,6 +709,84 @@ CUR = 'kbd';
     ck('PC3 四按钮字面零变化（本批边界：不动 KIND）', kind.indexOf("allow_once:{t:'✅ 这次可以'") >= 0 && kind.indexOf("allow_always:{t:'✅ 以后都允许（会记住，之后不再问）'") >= 0 && kind.indexOf("reject_once:{t:'🚫 这次不行'") >= 0 && kind.indexOf("reject_always:{t:'🚫 以后都别问'") >= 0, kind);
 }
 
+// ================================ s106/P3-2 表单-条目绑定错位 8 ck（QA 复现序列镜像 tmp/s106a-b5.mjs） ================================
+// 伤势：添加「坏中转2」(key=假值)→条目✕移除→「保存这家服务商」→活跃「自家中转」key 被写假值→此后全 401。
+// 链：prov-add 置 curProvName+cfgKeyTouched=true；删在编档不解绑→回执帧回退选中活跃档，fillProvForm 清 Key 门
+// 被 dirty 跳过→草稿 Key 残留进表单→保存即写脏。修=删在编档先解绑（关闭路径同款复位惯用语）。
+// 红臂=旧 del.onclick 形态（只发删不复位）跑同序列；边界臂=s104/R2-F3 保存未建档自动建档守卫不回归。
+{
+    const provAddSrc = grab(/\$\('prov-add'\)\.onclick=\(\)=>\{[\s\S]*?\n\};/, 'prov-add onclick');
+    const rpSrc = grab(/function renderProviders\(list\)\{[\s\S]*?\n\}/, 'renderProviders');
+    const fpSrc = grab(/function fillProvForm\(pr\)\{[\s\S]*?\n\}/, 'fillProvForm');
+    const saveSrc = grab(/\$\('save-cfg'\)\.onclick=\(\)=>\{[\s\S]*?\n\};/, 'save-cfg onclick');
+    const rpOld = rpSrc.replace(/del\.onclick=\(e\)=>\{e\.stopPropagation\(\); if\(!confirm\('删除服务商「'\+pr\.name\+'」？'\)\) return;[\s\S]*?wssend\(\{type:'providers',save:true,remove:pr\.name\}\); \};/, "del.onclick=(e)=>{e.stopPropagation(); if(confirm('删除服务商「'+pr.name+'」？')) wssend({type:'providers',save:true,remove:pr.name}); };");
+    // 替换不中=模板已是修前旧形态（红跑）——arm 退回原文即旧形态，断言面不变
+    const HOME = { name: '自家中转', active: true, host: 'http://127.0.0.1:20128/v1', key: 'real-key', hasKey: true, models: ['glm-5.3-flash'] };
+    const BAD = { name: '坏中转2', host: 'http://127.0.0.1:9/v1', key: 'sk-anything-01', hasKey: true, models: [] };
+    const build = (rp) => {
+        const els = {};
+        const mkEl = id => { const el = { id, value: '', innerHTML: '', className: '', textContent: '', title: '', style: {}, children: [], parentElement: null, onclick: null }; el.classList = { add() {}, remove() {}, contains: () => false }; el.appendChild = c => { el.children.push(c); c.parentElement = el; }; return el; };
+        const doc = {
+            activeElement: null,
+            querySelectorAll: () => [],
+            createElement: () => mkEl('_node'),
+        };
+        const api = new Function('$', 'document', `
+            let providerList=[]; let curProvName=null; let cfgKeyTouched=false; let keepFetchPoolNextRender=false; let fetchedModels=null; let lastHealthFrame=null;
+            const sent=[]; const wssend=o=>{sent.push(o);return true;};
+            const notes=[]; const note=t=>{notes.push(t);};
+            const keyGuideSync=()=>{}; const healthSync=()=>{};
+            const renderFetchPool=()=>{}; const renderModelPool=()=>{};
+            const esc=s=>String(s); const confirm=()=>true; const loadProvidersUI=()=>{}; const setTimeout=()=>0;
+            ${provAddSrc}
+            ${rp}
+            ${fpSrc}
+            ${saveSrc}
+            const set=(id,v)=>{ $(id).value=v; if(id==='cfg-key'&&v!=='') cfgKeyTouched=true; };
+            const frame=l=>renderProviders(l);
+            const removeByName=nm=>{ for(const el of $('prov-list').children){ if(String(el.innerHTML).includes(nm)){ for(const c of el.children){ if(c.textContent==='✕'){ c.onclick({stopPropagation(){}}); return true; } } } } return false; };
+            return { sent, notes, set, frame, removeByName,
+                add: ()=>$('prov-add').onclick(), save: ()=>$('save-cfg').onclick(),
+                state: () => ({ cur: curProvName, host: $('cfg-host').value, key: $('cfg-key').value, touched: cfgKeyTouched }) };
+        `);
+        const $ = id => els[id] || (els[id] = mkEl(id));
+        return api($, doc);
+    };
+    const scenario = (a, label, expectInjury) => {
+        SEC = 's106';
+        a.frame([HOME]);
+        a.set('prov-name', '坏中转2'); a.set('cfg-host', 'http://127.0.0.1:9/v1'); a.set('cfg-key', 'sk-anything-01');
+        a.add();
+        const addMsg = a.sent[a.sent.length - 1];
+        ck('PB1 ' + label + '前置：add 帧携带表单值（host+key），编辑上下文=新档', addMsg.type === 'providers' && addMsg.save === true && addMsg.add && addMsg.add.name === '坏中转2' && addMsg.add.key === 'sk-anything-01' && a.state().cur === '坏中转2', JSON.stringify(addMsg));
+        a.frame([HOME, BAD]);
+        ck('PB2 ' + label + 'add 应答帧：表单跟随新档（fillProvForm 消费）', a.state().cur === '坏中转2' && a.state().host === 'http://127.0.0.1:9/v1', JSON.stringify(a.state()));
+        const removed = a.removeByName('坏中转2');
+        const rmMsg = a.sent[a.sent.length - 1];
+        ck('PB3 ' + label + '✕ 删在编档：remove 帧发出', removed && rmMsg.type === 'providers' && rmMsg.remove === '坏中转2', JSON.stringify(rmMsg));
+        a.frame([HOME]);
+        a.save();
+        const fin = a.sent[a.sent.length - 1];
+        return fin;
+    };
+    // 绿（现行模板）：解绑复位→回退选中如实重填→保存不带残留
+    const g = build(rpSrc);
+    const finG = scenario(g, '');
+    ck('PB4 删在编档先解绑+清 Key 残留（cfgKeyTouched 复位，关闭路径同款惯用语）', /if\(pr\.name===curProvName\)\{ curProvName=null; cfgKeyTouched=false; \$\('cfg-key'\)\.value=''; \}/.test(rpSrc), rpSrc.split('\n').find(l => l.includes('===curProvName')) || 'anchor missing');
+    ck('PB5 回退选中活跃档后保存：update.key=原档真值（real-key），不携带草稿残留 sk-anything-01（修复核心断言）', finG.type === 'providers' && finG.update && finG.update.name === '自家中转' && finG.update.key === 'real-key' && finG.update.key !== 'sk-anything-01', JSON.stringify(finG));
+    // 红（旧 del.onclick 形态）：同序列跑出伤势
+    const r = build(rpOld);
+    const finR = scenario(r, '(旧码)');
+    ck('PB6 红臂：旧形态同序列 update.key=sk-anything-01（活跃档被写脏=断言可区分修前/修后）', finR.update && finR.update.name === '自家中转' && finR.update.key === 'sk-anything-01', JSON.stringify(finR));
+    // 边界：s104/R2-F3 保存未建档自动建档守卫不回归（该守卫依赖 add 语义）
+    const b = build(rpSrc);
+    b.frame([HOME]);
+    b.set('prov-name', '全新档'); b.set('cfg-host', 'http://127.0.0.1:20129/v1'); b.set('cfg-key', 'sk-new-01');
+    b.save();
+    const finB = b.sent[b.sent.length - 1];
+    ck('PB7 边界：保存未建档名仍走自动建档 add（s104/R2-F3 守卫不回归）', finB.type === 'providers' && finB.add && finB.add.name === '全新档' && finB.add.key === 'sk-new-01', JSON.stringify(finB));
+}
+
 // ================================ upd-age 7 ck（s106/C5b：升级终态带时间——多天前残留不冒充「现在」） ================================
 // status.json 可能冻结在多天前的终态（s106 取证：09-22 测试残留 9 天实录，UI 旧形态无时间=过去当现在）。
 // 修=终态行追加 updAge(st.ts) 相对时间（只显示，不清除不重置——那类设计要 PM 裁决）；5 分钟内=本轮会话不标注。
