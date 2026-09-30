@@ -2493,7 +2493,7 @@ $('prov-add').onclick=()=>{
   $('prov-name').value='';
   if(k) cfgKeyTouched=true; // s94 F-1: 添加带 key → 重渲染不清 Key 栏（保存曾消费 dirty，档案回填守卫会误清）
   keepFetchPoolNextRender=true; // s94 F-1: 添加后的刷新不得丢已拉取的模型勾选面（renderProviders 消费）
-  note('已新建「'+name+'」。填好地址和 Key 后点保存，再⟳拉取模型勾选。');
+  note('已新建并保存「'+name+'」。地址和 Key 还没填的话填好点保存，再⟳拉取模型勾选。'); // s106/P4-2: add 即 save:true 落盘（QA 实录 providers.json 未点保存已含新档）——旧文案「填好…后点保存」暗示草稿未存，与行为相悖；对齐=承认已存盘，点保存只用于补填/改动
   // s94-b2 F-1 残留: 不再 300ms 后补拉列表——add 请求本身就有 providers 应答（桥 handlers 恒回），补拉造成
   // 第二次 renderProviders：keepFetch 单次 flag 已被首帧消费，第二帧走 renderModelPool 把 120 个勾选面整盒覆写成
   // 「还没勾任何模型」空态（ia2 实录 checkbox 归零）。单帧刷新后勾选面由 flag 保住。

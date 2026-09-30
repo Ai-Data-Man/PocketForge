@@ -785,6 +785,9 @@ CUR = 'kbd';
     b.save();
     const finB = b.sent[b.sent.length - 1];
     ck('PB7 边界：保存未建档名仍走自动建档 add（s104/R2-F3 守卫不回归）', finB.type === 'providers' && finB.add && finB.add.name === '全新档' && finB.add.key === 'sk-new-01', JSON.stringify(finB));
+
+    // s106/P4-2 文案锚：add 即落盘（save:true），旧「填好…后点保存」暗示未存盘的文案退场
+    ck('PB8 prov-add 文案对齐落盘语义（已新建并保存+条件句），旧暗示未存盘句退场', html.includes("已新建并保存「'+name+'」。地址和 Key 还没填的话填好点保存，再⟳拉取模型勾选。") && !html.includes("填好地址和 Key 后点保存"), 'new anchor missing or old anchor present');
 }
 
 // ================================ upd-age 7 ck（s106/C5b：升级终态带时间——多天前残留不冒充「现在」） ================================
