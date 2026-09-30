@@ -3769,7 +3769,11 @@ function handleLlmProxy(req, res) {
             try { res.writeHead(502, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { message: 'upstream unreachable: ' + (e && e.message || e) } })); } catch {}
             llmDone(502, 'upstream unreachable: ' + (e && e.message || e)); // s103/S4: 连接层失败也一行
         });
-        res.on('close', () => { if (!res.writableEnded) { try { up.destroy(); } catch {} llmDone(upStatus, 'client aborted'); } }); // 客户端半途断开（goose 超时/取消）→ 掐上游，不留孤儿流；s103/S4: 断开留行（正常收尾已记则跳过）
+        // 客户端半途断开（goose 超时/取消）→ 掐上游，不留孤儿流；s103/S4: 断开留行（正常收尾已记则跳过）。
+        // s106/C4 两分：首字节已到后的断开=真客户端中断（流式进行中放弃，firstMs 有值）；首字节未到就关=
+        // 客户端到点放弃（我方栈 5s 超时形状，如 goose /models 拉取），真相是上游停摆——旧统一标签 "client
+        // aborted" 把 45 条 models-5s 停摆记成客户端行为（s106 取证 C4），掩盖服务端故障面。
+        res.on('close', () => { if (!res.writableEnded) { try { up.destroy(); } catch {} llmDone(upStatus, tFirst ? 'client aborted' : 'client timeout (no upstream first byte)'); } });
         if (body) up.write(body);
         up.end();
     });
