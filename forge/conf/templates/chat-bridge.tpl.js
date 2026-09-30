@@ -65,10 +65,25 @@ const fsp = require('fs').promises;
 const FSS = require('fs');
 
 // 断电安全写：临时文件+rename，杜绝截断归零（审查 I7）
+// s106/R3-F2（裁决 2026-10-01-s106 §1.1）：rename 撞 EPERM/EBUSY（保存→热重启同秒自竞态 / EDR 瞬时锁，台账实录
+// EPERM 原文+全路径直入妻子消息流）——先 ≤3 次毫秒级退避短重试消瞬态，命中即静默成功；耗尽落人话门（删除路径
+// humanDeleteErr 同款文案先例）：原始错误恒落桥 console（pc.log 供诊断），抛出的 message 零技术原文零路径
+// （handleClient 尾 catch 原样透传进消息流）。残件不就地删——冷启清扫（下方 cleanProvTmp）兜底。
+// 非占用族错误原样抛：行为零变化。
 function atomicWrite(file, data) {
     const tmp = file + '.tmp-' + process.pid + '-' + Date.now();
     FSS.writeFileSync(tmp, data);
-    FSS.renameSync(tmp, file);
+    let lockErr = null;
+    for (let i = 0; i <= 3; i++) {
+        try { FSS.renameSync(tmp, file); return; }
+        catch (e) {
+            if (!/\b(?:EPERM|EBUSY|EACCES)\b/.test(String((e && e.code) || (e && e.message) || e))) throw e;
+            lockErr = e;
+            if (i < 3) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20 * (i + 1)); // 20/40/60ms 同步退避
+        }
+    }
+    console.log('atomicWrite rename retry exhausted:', file, String(lockErr && lockErr.message));
+    throw new Error('有文件正被别的程序占用，没保存上——稍后再试一次');
 }
 
 // 流式 sha256（离线升级校验用；大文件不整读进内存）
@@ -116,6 +131,19 @@ function upErr(e, msg) { const o = { ok: false, err: msg }; const t = e && (e.ty
         if (empty.changes > 0) console.log('pruned', empty.changes, 'empty acp sessions');
         db.close();
     } catch (e) { console.error('prune scheduled failed:', e.message); }
+})();
+// s106/R3-F2（裁决 §1.1）：冷启清扫 data/providers.json.tmp-* 残件——atomicWrite 占用族重试耗尽后的遗物
+// （旧版台账实录：残件经 robocopy /E 升级带入新版永存）。此刻进程内在飞写尚未开始，data/ 下该前缀必为残件。
+(function cleanProvTmp() {
+    try {
+        const dir = path.join(ROOT, 'data');
+        let n = 0;
+        for (const f of FSS.readdirSync(dir)) {
+            if (!f.startsWith('providers.json.tmp-')) continue;
+            try { FSS.rmSync(path.join(dir, f), { force: true }); n++; } catch {}
+        }
+        if (n) console.log('cleaned', n, 'providers.json tmp residue');
+    } catch {}
 })();
 // s50e: strip UTF-8 BOM——记事本默认带 BOM 保存，不剥则 JSON.parse 抛错、配置"消失"
 function readJson(f, dft) { try { return JSON.parse(FSS.readFileSync(f, 'utf8').replace(/^\uFEFF/, '')); } catch { return dft; } }
