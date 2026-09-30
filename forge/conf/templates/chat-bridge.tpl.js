@@ -5249,7 +5249,7 @@ function handleClient(ws, msg) {
                 const ke = permKinds.get(msg.callId); permKinds.delete(msg.callId);
                 const kind = ke && ke.m.get(msg.option);
                 if (ke && Date.now() - ke.t >= 60000) { statsBump('permissionCards.timeout'); evJson({ ev: 'permcard', action: 'timeout', tool: (ke && ke.ttl) || '' }); if (ke && ke.tcId) permDecline.set(ke.tcId, 'timeout'); if (permDecline.size > 200) permDecline.clear(); } // s105/P4: 用户侧大事件三日志零留痕→events.log 一行（工具名不带参数防敏感）；s105/R2-F1: 超时归因串进人话门
-                else if (kind === 'allow_once' || kind === 'allow_always') { statsBump('permissionCards.approved'); statsBump('permissionCards.' + kind); } // s99/t3-A: 按选项分裂（键名=ACP kind 原文，零映射；approved 聚合键照旧双计，读侧兼容）
+                else if (kind === 'allow_once' || kind === 'allow_always') { statsBump('permissionCards.approved'); statsBump('permissionCards.' + kind); evJson({ ev: 'permcard', action: 'allow', tool: (ke && ke.ttl) || '' }); } // s99/t3-A: 按选项分裂（键名=ACP kind 原文，零映射；approved 聚合键照旧双计，读侧兼容）；s106/P4-4: timeout/denied 均留痕而 allow 独缺（B3 批准实录零日志）——补齐三面齐
                 else if (kind === 'reject_once' || kind === 'reject_always') { statsBump('permissionCards.denied'); statsBump('permissionCards.' + kind); evJson({ ev: 'permcard', action: 'denied', tool: (ke && ke.ttl) || '' }); } // s99/t3-A；s105/P4: 同上留痕
             } catch {}
             acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: msg.callId, result: { outcome: { outcome: 'selected', optionId: msg.option } } }) + '\n');
