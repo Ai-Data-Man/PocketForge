@@ -89,3 +89,10 @@ S1 矩阵全量审 note()/帧处理器落点：**14+ 处不可见回执全修**�
 ## 十三、尾批：R-C-P4 上传拒因透传（纯前端）
 
 根因定位：桥 /api/upload 失败响应体本就带人话 err（:4690 缺工作区/:4695 保留名/:4714 fs 异常），前端 onchange+drop 两处理器只读 d.ok——err 在消费层被吞（drop 全失败更零回执）。修法（chat.tpl.html 两处，桥零动）：失败逐项记账 `fails.push('「名」'+(d.err||'没说原因'))`（网络拒收记「服务没响应」），回执 `addErr('有 N 个没传上：'+逐项)`；成功可汇总（原句逐字不动）、失败逐项可见；粘贴/升级上传路径本就透传零动。验证：红绿 tmp/s106-j-redgreen.js（旧版 5 红 3 绿→新版 8/8）+新断言随迁 ui-logic-probe.js s106j 节（162/162）+e2e-chat 62+fuzz 225+活体 CDP 臂 6/6（真页 DataTransfer 注入 #up-input：CON.txt→「⚠ 有 1 个没传上：「CON.txt」名字是 Windows 保留的，换一个吧」479×52 role=alert；混合批成功汇总+失败逐项同场；零 JS 异常；/api/fs/delete 清残留零 CON 落盘）。活体页载自动开种子会话 ws-1001-075217（R-B-P4-2 已知家族行为，上传物已删净归 orphan 不入默认视图）。commit 独立未 push。
+
+## 十三、会话终态（08:5x）
+
+- 尾批 6f55f57 详见 STATE（工程师同批落账：上传拒因透传两处+红绿 8/8+活体 CON.txt 人话拒因）；ui-logic 终态 **162**。
+- 会话终包 **iat113=197dd70b…**（当日全部 16 修复 commit，锚抽查过）；轮次包 iat110 9ee08b22（R-A）/iat111 553eebf5（R-B）/iat112 657b2865（R-C）。
+- 环境终态：dev 栈 PFdrill2 healthz 200；junction 归还 dev 树（dev 记忆基线未动）；C:\PF-TEST 零残留；commit 3bb61ec→6f55f57 全部已 push。
+- 会话产出总账：PM 裁决 1+研究 3（日志挖掘/effort RCA/种子评估）+工程 16 修复 commit+QA 三轮（R-A 全观测/R-B 升级/R-C 收口）+关案 5（R4-F2/R2-P6/R4-P6/effort/C1）+改判 1（P2-1 junction）+backlog 新增 11 项带触发器。
