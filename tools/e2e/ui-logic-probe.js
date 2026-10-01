@@ -933,6 +933,37 @@ CUR = 'kbd';
         r.infos.length === 1 && r.infos[0] === '收到 1 个文件（在「根目录」）。消息里用 @ 引用即可让我处理。' && r.errs.length === 0,
         'infos=' + JSON.stringify(r.infos) + ' errs=' + JSON.stringify(r.errs));
 
+    // ================================ s106/k 异步帧回执面板关态可见性 6 ck（qa s106 返工 P3-3） ================================
+    // 伤势：test_result/saved_config 是异步 WS 帧回执——用户点「测试连通/保存」后关掉设置面板，回执仍落
+    // #save-note（设置 modal 内，面板关着=rect 0×0 零可见），与 S1 家族同形态。修=关态走 banner（#op-banner
+    // 挂 #chat 之外，78f85a2 先例），开态保持 #save-note 面板内现状（面板语境优先）。
+    const trSrc = grab(/if\(m\.sys==='test_result'\)\{[^\n]*/, 'test_result branch');
+    const scSrc = grab(/if\(m\.sys==='saved_config'\)\{[^\n]*/, 'saved_config branch');
+    const mkR = (src, modalOn) => {
+        const notes = [], banners = [];
+        const modal = { classList: { contains: () => modalOn } };
+        const run = m => new Function('$', 'note', 'banner', 'm', src)(id => modal, t => notes.push(t), t => banners.push(t), m);
+        return { run, notes, banners };
+    };
+    SEC = 's106k';
+    let q = mkR(trSrc, false);
+    q.run({ sys: 'test_result', ok: false, http: 401, reply: 'nope' });
+    ck('K1 test_result 面板关：回执走 banner（修前红锚：note 零可见）', q.banners.length === 1 && q.banners[0].indexOf('❌ 失败 HTTP 401') === 0 && q.notes.length === 0, JSON.stringify(q.banners) + JSON.stringify(q.notes));
+    q = mkR(trSrc, true);
+    q.run({ sys: 'test_result', ok: true, http: 200, reply: 'pong' });
+    ck('K2 test_result 面板开：保持 #save-note 面板内现状', q.notes.length === 1 && q.notes[0].indexOf('✅ 连通 OK（HTTP 200）') === 0 && q.banners.length === 0, JSON.stringify(q.notes) + JSON.stringify(q.banners));
+    q = mkR(scSrc, false);
+    q.run({ sys: 'saved_config' });
+    ck('K3 saved_config 面板关：走 banner', q.banners.length === 1 && q.banners[0] === '已保存' && q.notes.length === 0, JSON.stringify(q.banners) + JSON.stringify(q.notes));
+    q = mkR(scSrc, true);
+    q.run({ sys: 'saved_config' });
+    ck('K4 saved_config 面板开：保持 note', q.notes.length === 1 && q.notes[0] === '已保存' && q.banners.length === 0, JSON.stringify(q.notes) + JSON.stringify(q.banners));
+    const trOld = "if(m.sys==='test_result'){ note(m.ok?('✅ 连通 OK（HTTP '+m.http+'）回复: '+m.reply):('❌ 失败 HTTP '+m.http+' '+m.reply)); return; }"; // 修前形态红臂（只换回执通道）
+    q = mkR(trOld, false);
+    q.run({ sys: 'test_result', ok: false, http: 401, reply: 'x' });
+    ck('K5 红臂：旧形态面板关=note（零可见伤势可区分）', q.notes.length === 1 && q.banners.length === 0, JSON.stringify(q.notes) + JSON.stringify(q.banners));
+    ck('K6 源锚：两分支按面板态路由（防未来重构回无条件 note）', /\$\('modal'\)\.classList\.contains\('on'\)\) note\(tt\); else banner\(tt\);/.test(trSrc) && /\$\('modal'\)\.classList\.contains\('on'\)\) note\('已保存'\); else banner\('已保存'\);/.test(scSrc), '');
+
     console.log('ui-logic-probe kbd: PASS=' + KP + ' FAIL=' + KF);
     console.log('ui-logic-probe close-path: PASS=' + CP + ' FAIL=' + CF);
     console.log('ui-logic-probe prompts: PASS=' + PP + ' FAIL=' + PF);

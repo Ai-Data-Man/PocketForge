@@ -786,7 +786,7 @@ function connect(){
       renderFetchPool();
       return;
     }
-    if(m.sys==='test_result'){ note(m.ok?('✅ 连通 OK（HTTP '+m.http+'）回复: '+m.reply):('❌ 失败 HTTP '+m.http+' '+m.reply)); return; }
+    if(m.sys==='test_result'){ const tt=m.ok?('✅ 连通 OK（HTTP '+m.http+'）回复: '+m.reply):('❌ 失败 HTTP '+m.http+' '+m.reply); if($('modal').classList.contains('on')) note(tt); else banner(tt); return; } // qa s106 返工 P3-3: 异步回执到达时设置面板可能已关（#save-note 在 modal 内=rect 0×0 零可见）——关态走 #op-banner（78f85a2 先例），开态保持面板内现状
     if(m.sys==='providers'){ providerList=m.list||[]; modelCaps=Object.assign({}, ...(m.list||[]).map(p=>p.caps||{})); renderProviders(providerList); renderModelLabel(); thinkEcho=''; renderThinkCtl(); return; } // s98/think-grad→llm-proxy: 池变了→家族在场判定重算（成员被勾掉即散）；C2: caps 随帧下发（能力编辑器数据面）；s99/qa R1: caps 嵌在每个 provider 条目 list[].caps 内（桥 :4685）——页侧按条目合并，帧级 m.caps 不存在
     if(m.sys==='model_switched'){
       // 顶栏立即反映（不信 configOptions 缓存）
@@ -835,7 +835,7 @@ function connect(){
       if(m.sessionId===currentSid&&!busy) openSession(m.sessionId);
       return;
     }
-    if(m.sys==='saved_config'){ note('已保存'); return; }
+    if(m.sys==='saved_config'){ if($('modal').classList.contains('on')) note('已保存'); else banner('已保存'); return; } // qa s106 返工 P3-3: 同 test_result——面板关态回执走 banner（异步帧到达时面板已关=原先零可见）
     if(m.sys==='tool_explanation_delta'){ // 流式增量：追加进气泡（思考期桥不转发，故收到即首字）
       const card=toolCards.get(m.id); if(!card) return;
       clearTimeout(card._exp12); clearInterval(card._exptick); const b=card.querySelector('.expbtn'); if(b) b.textContent='想想…';

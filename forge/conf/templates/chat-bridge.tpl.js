@@ -791,6 +791,22 @@ function humanToggleErr(failText, e) {
     if (/\bENOENT\b/.test(m)) return '已经不在了';
     return failText + '，稍后再试';
 }
+// qa s106 返工 P2-1/P3-1: 错误出人话面统一净化门——Node 系统错误的 message 自带盘符全路径（ENOENT/ENOSPC
+// 形态活体实锤 tmp/s106-k1-upload-red.log / qa-s106-upload-leak.txt），原样进消息流/回执=安装布局泄漏。三消费点
+// 同口：/api/upload 500 / save_config / handleClient 尾 catch（atomicWrite 非占用族原文+tmp 路径同门根治）。
+// 规则：①e.code 或 message 形态码字（CODE:）→常见码映射人话，未映射→「这一步没做成（内部原因 CODE）」（仅码
+// 名，不带路径不带 message）；②其余含中文=自己 throw 的人话句直通（引号包裹的路径段防御性剥除——未来组合句
+// 兜底）；③纯英文技术句→通用句。原始错误恒落桥 console（pc.log 供诊断），由各消费点负责落。
+function humanErr(e) {
+    const m = String((e && e.message) || e || '');
+    const code = (e && e.code && /^[A-Z]{2,}$/.test(String(e.code))) ? String(e.code) : ((m.match(/\b([A-Z][A-Z]+):/) || [])[1] || '');
+    if (code) {
+        const h = { ENOENT: '文件没找到或名字不对', ENOSPC: '磁盘满了，腾点地方再试', EPERM: '没权限这么做', EACCES: '没权限这么做', EEXIST: '已经有了同名的东西', EBUSY: '有文件正被别的程序占用，稍后再试', EROFS: '这里不让写入' }[code];
+        return h || ('这一步没做成（内部原因 ' + code + '）');
+    }
+    if (/[\u4e00-\u9fff]/.test(m)) return m.replace(/'[^']*'|"[^"]*"/g, '').replace(/\s{2,}/g, ' ').trim();
+    return '这一步没做成，稍后再试';
+}
 // r4/S2a: 单工作区删除守卫+落盘核心（/api/ws/delete 与 /api/ws/delete_batch 共用；逻辑自单删路径原样抽出，
 // 行为零变化）。成功删目录并从 map 摘键（写回由调用方收口：单删=删后即写，批量=末尾一次写）；失败返回人话 err 串。
 function wsDeleteOne(ws, curSid, map) {
@@ -1522,6 +1538,10 @@ function spawnAcp() {
     // 被杀子进程的 stdin 错误只记不崩：善后已有既有机制（热重启 waiting.clear 先拒后清+新 acp 接管；自发死亡的
     // exit 路径 abortInflightTurns+exit(1) 不变）。
     child.stdin.on('error', e => console.log('acp stdin err (superseded or dying child):', (e && e.code) || (e && e.message) || e));
+    // qa s106 返工 P3-2: child 本体无 'error' 监听——spawn 失败族（GOOSE 可执行缺失/损坏/EMFILE fd 耗尽）以未接
+    // 'error' 事件冒泡=桥崩（与上方 EPIPE 同机制同后果，L3427/L4133 先例同款意识，spawnAcp 独缺）。记码不崩：
+    // spawn 失败时 'exit' 不发，acp 保持死引用=本会话 LLM 链路不可用，靠 pc respawn 兜底重建（与 EPIPE 善后语义一致）。
+    child.on('error', e => console.log('acp spawn err:', (e && e.code) || (e && e.message) || e));
     child.stdout.on('data', chunk => onAcpData(chunk));
     child.stderr.on('data', d => process.stderr.write('[acp] ' + d));
     child.on('exit', c => {
@@ -4711,7 +4731,7 @@ const ext = path.extname(f).toLowerCase();
                 writeForgeMeta(ws, meta);
                 console.log('uploaded:', ws + '/' + rp);
                 json200(res, { ok: true, name: rp });
-            } catch (e) { res.writeHead(500); res.end(JSON.stringify({ ok: false, err: e.message })); }
+            } catch (e) { console.log('upload err:', ws, String((e && e.message) || e)); res.writeHead(500); res.end(JSON.stringify({ ok: false, err: humanErr(e) })); } // qa s106 返工 P2-1: 原文落 console，回执走人话门（零路径零技术原文——6f55f57 透传打开的泄漏通道根治）
         });
     }
     else { res.writeHead(404); res.end(); }
@@ -5551,11 +5571,12 @@ function handleClient(ws, msg) {
                 rewriteSecretsEnv(kv);
                 console.log('config saved (takes effect after restart):', c.model || '', c.host || '');
                 ws.send({ sys: 'saved_config' });
-            } catch (e) { ws.send({ sys: 'error', text: '保存失败: ' + e.message }); }
+            } catch (e) { console.log('save_config err:', String((e && e.message) || e)); ws.send({ sys: 'error', text: '保存失败: ' + humanErr(e) }); } // qa s106 返工 P3-1: secrets.env 读/写失败原文含全路径——人话门（原文落 console）
             return;
         }
     } catch (e) {
-        ws.send({ sys: 'error', text: String(e.message || e) });
+        console.log('ws handler err:', String((e && e.message) || e)); // 原始错误恒落 console（诊断通道）
+        ws.send({ sys: 'error', text: humanErr(e) }); // qa s106 返工 P3-1: 尾 catch 人话门（atomicWrite 非占用族 ENOSPC/EROFS 等原文含 tmp 全路径，原先逐字透传进消息流）；中文守卫句直通零回归
     }
 }
 
