@@ -51,7 +51,16 @@ goto wait_stop2
 rem ---- s97/F-13: close Edge windows anchored to THIS install root (chat window profile and
 rem ---- welcome page live under data\ - while they run the install folder cannot be renamed
 rem ---- or deleted, breaking the "delete folder = full uninstall" acceptance line) ----
+rem ---- s107/f8: post-stop port sweep (bounded, 15s budget, 1baffa5 precedent). Root cause of the
+rem ---- 2026-10-02 incident: a postgres --forkchild backend that inherited the 5432 LISTENING
+rem ---- socket survives the pc tree-kill after reparenting; wait_stop only watches the pc API,
+rem ---- so a clean pc exit jumps straight to :stopped and the orphan is never collected. Next
+rem ---- start then crash-loops pg on the busy port ("cannot connect to database"). Sweep every
+rem ---- product port (data\*.port current values + known defaults): alive holder whose exe path
+rem ---- is under THIS root gets killed (path-scoped, foreign processes untouched); a port held
+rem ---- by a dead PID (ghost socket) gets a wait-and-retry, then one plain-language hint.
 :stopped
+powershell -NoProfile -Command "$root='%FORGE_ROOT%'; $ports=@(8790,8091,8099,5432,4222,8222); foreach($f in @('pc.port','pg.port','faucet.port')){ try{ $v=[int](Get-Content (Join-Path $root ('data\'+$f)) -ErrorAction Stop).Trim(); $ports+=$v }catch{} }; $ports=@($ports | Sort-Object -Unique); $sw=[Diagnostics.Stopwatch]::StartNew(); do{ $again=$false; foreach($p in $ports){ $c=$null; try{ $c=Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction Stop | Select-Object -First 1 }catch{}; if($c){ $pr=Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue; if($pr -and $pr.Path -and $pr.Path.StartsWith($root,[StringComparison]::OrdinalIgnoreCase)){ try{ Stop-Process -Id $pr.Id -Force -ErrorAction Stop }catch{}; $again=$true } elseif(-not $pr){ $again=$true } } }; if($again -and $sw.Elapsed.TotalSeconds -lt 12){ Start-Sleep -Seconds 3 } } while($again -and $sw.Elapsed.TotalSeconds -lt 12); foreach($p in $ports){ $c=$null; try{ $c=Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction Stop | Select-Object -First 1 }catch{}; if($c){ $pr=Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue; if((-not $pr) -or ($pr.Path -and $pr.Path.StartsWith($root,[StringComparison]::OrdinalIgnoreCase))){ Write-Host ('[PocketForge] port '+$p+' is still busy. Wait a few seconds, then start again.') } } }"
 powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'msedge.exe' -and $_.CommandLine -and $_.CommandLine -match [regex]::Escape('%FORGE_ROOT%') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
 timeout /t 2 /nobreak >nul
 echo [PocketForge] all stopped.
@@ -60,6 +69,7 @@ pause
 exit /b 0
 
 :stopped_hard
+powershell -NoProfile -Command "$root='%FORGE_ROOT%'; $ports=@(8790,8091,8099,5432,4222,8222); foreach($f in @('pc.port','pg.port','faucet.port')){ try{ $v=[int](Get-Content (Join-Path $root ('data\'+$f)) -ErrorAction Stop).Trim(); $ports+=$v }catch{} }; $ports=@($ports | Sort-Object -Unique); $sw=[Diagnostics.Stopwatch]::StartNew(); do{ $again=$false; foreach($p in $ports){ $c=$null; try{ $c=Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction Stop | Select-Object -First 1 }catch{}; if($c){ $pr=Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue; if($pr -and $pr.Path -and $pr.Path.StartsWith($root,[StringComparison]::OrdinalIgnoreCase)){ try{ Stop-Process -Id $pr.Id -Force -ErrorAction Stop }catch{}; $again=$true } elseif(-not $pr){ $again=$true } } }; if($again -and $sw.Elapsed.TotalSeconds -lt 12){ Start-Sleep -Seconds 3 } } while($again -and $sw.Elapsed.TotalSeconds -lt 12); foreach($p in $ports){ $c=$null; try{ $c=Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction Stop | Select-Object -First 1 }catch{}; if($c){ $pr=Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue; if((-not $pr) -or ($pr.Path -and $pr.Path.StartsWith($root,[StringComparison]::OrdinalIgnoreCase))){ Write-Host ('[PocketForge] port '+$p+' is still busy. Wait a few seconds, then start again.') } } }"
 powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'msedge.exe' -and $_.CommandLine -and $_.CommandLine -match [regex]::Escape('%FORGE_ROOT%') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
 timeout /t 2 /nobreak >nul
 echo [PocketForge] all stopped (forced).
