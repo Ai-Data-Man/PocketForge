@@ -55,10 +55,13 @@
 
 ## 七、会话终态
 
-- **缺陷账**：#1/#1b（P3 alert 失败臂 14 处）修；#3（P3 junction 自愈）根因定案+可观测修；#2（P2 报表权限卡）端到端根治；QA 复审追加 3×P3 修（f5）；P4×5 留档。
-- **七 commit**：034bf13/0c79693/18e68e0/6ab8056/efff8e8/b8350ae/ac0e932 全部已推；docs 四枚（研究/裁决/journal/STATE）。
-- **测试包**：iat116≡iat115（bd406357 构建确定性再证）/iat117（3209767e）/iat118（8adf5c89）/iat119（f0feb4e3）/iat120（1ef68a94）在 dist 不入发布序。
+- **尾段三批**：**f6=9d28117 探针入库**（s106「§8.2 探针入库义务」落地——12 件入 tools/e2e：三红绿合并 receipt-failarms-probe.js 30ck/向导 7ck/junction 三态摆臂/CDP 骨架+脱敏验收驱动/§8.2 六套自 forge/tmp 迁入补账，入库位逐个绿跑一致；README 索引+债务清单）。**QA 对抗复审 f4/f4b/f4c/f5 判 REWORK→f7=8b8610a**：P2=f4 编辑事故把 bootstrap $regTpl 误成 ReadAllText 内容串而 Test-Path 消费端未动→forge-register.cmd 物化链断（被 dev 残留件掩盖，QA 三证：Test-Path 实测恒 False/时间戳自然实验/blame）——一行复位+红绿（删产物不生→再生逐字节一致）+邻区审计净（14 个 ReadAllText 零喂 Test-Path）+QA 闭合核对三查**终判 PASS**；read 安全面 QA fuzz 29/29 全过（穿越 12 形态全拒/类型混淆零崩溃/窗口边界精确）+四臂判别力三臂变体实证。P4×6 留档（最重要：**junction 跟随逃逸沙盒**=词法校验无 realpath，当前不可利用，升级触发条件=未来任何免卡写/链接通道即升 P2；8KB 嗅探窗外 fail-open 边缘）。
+- **iat121=a274fe16 交付门**：冷装 cold-surface **19/19 全过**（forge-register.cmd 5499B 在场/read 工具注册/S8 junction/全 UI 锚）；首次冷启 17/19 两红均我方环境事故（见下）。
+- **环境事故与观测盲区（诚实记）**：dev 栈 pc down 后 **pg backend 孤儿继承 5432 监听口**（s91 孤儿家族新数据点；幽灵 socket PID 已死仍 LISTENING）→**当日全部沙盒 pg 均未起来**——healthz 不盖 pg+当日流程不依赖 pg=双盲；报表双源 db 侧未验到（向导静默降级 files-only 属设计内但意味着「pg 不可达」全程零妻子可见信号→backlog 观测项）。灭孤儿+复启后 pg Ready 实证。
+- **缺陷账**：#1/#1b（P3 alert 失败臂 14 处）修；#3（P3 junction 自愈）根因定案+可观测修；#2（P2 报表权限卡）端到端根治；QA 复审追加 3×P3 修（f5）+1×P2 修（f7）；P4×11 留档（5+6）。
+- **九 commit**：034bf13/0c79693/18e68e0/6ab8056/efff8e8/b8350ae/ac0e932/9d28117/8b8610a 全部已推；docs 五枚。
+- **测试包**：iat116≡iat115（bd406357 构建确定性再证）/iat117（3209767e）/iat118（8adf5c89）/iat119（f0feb4e3）/iat120（1ef68a94）/iat121（a274fe16）在 dist 不入发布序。
 - **回归基线**：e2e 62/fuzz 225/ui-logic 168/ia 38/sem 38/think-grad 27/capeditor 141/modelcaps 44/proxythink 30/xlate 10/w2-preset 15 全绿。
-- **环境终态**：PF-TEST 零残留（六沙盒 a/b/upg/c/d/e/f 全清）；junction 归 dev 树；dev 栈 PFdrill2 healthz 200。
-- **方法论沉淀**：①「失败臂」是回执迁移类任务的系统性盲区——成功臂迁移时失败臂必须同批过堂（s106/S1→f1/f1b→f5 三次同课）；②探针「合法族」钉扎会固化漏网（f5 反转教训）；③验收判据用**可观测日志计数**（permcard=0）而非体感——三轮迭代每轮都有硬数字；④junction 是 per-account 单例：沙盒↔dev 争抢靠运营守则+f3 留痕，账户分离（forge-sbx）定案后不再玄学。
-- **backlog 新增**：QA P4×5（/open GET+Origin 门 GET 豁免/纯空格名/bootstrap Get-Item 无 try/重复注释/连点重入）；todo 卡在非向导任务仍会出（裁决域外，观察项）；/models 上游慢脉冲（5s 超时×6，chat 零影响）。
+- **环境终态**：PF-TEST 零残留（七沙盒 a/b/upg/c/d/e/f/g 全清）；junction 归 dev 树；dev 栈 PFdrill2 healthz 200。
+- **方法论沉淀**：①「失败臂」是回执迁移类任务的系统性盲区——成功臂迁移时失败臂必须同批过堂（s106/S1→f1/f1b→f5 三次同课）；②探针「合法族」钉扎会固化漏网（f5 反转教训）；③验收判据用**可观测日志计数**（permcard=0）而非体感——三轮迭代每轮都有硬数字；④junction 是 per-account 单例（forge-sbx 定案）；⑤**healthz≠全栈健康**——沙盒判卷必须含 pg/restarts 面（cold-surface 是对的门，healthz 是错的门）；⑥多模板变量混串（$regTpl 案）=复制相邻写法时的配对审查义务。
+- **backlog 新增**：QA P4×11（/open GET 豁免/空格名/bootstrap Get-Item 无 try/重复注释/连点重入/junction 跟随逃逸+升级触发条件/8KB 嗅探窗外 fail-open 等）；todo 卡非向导任务观察项；/models 上游慢脉冲；**pg 孤儿句柄继承 5432**（pc down 后 backend 幸存——s91 家族，连环沙盒场景毒化，候选修法=down 后按端口持有复核）；**pg 不可达的妻子可见信号缺失**（数据面板/报表双源静默降级）；当日沙盒 pg 盲区教训=cold-surface 门 mandatory。
