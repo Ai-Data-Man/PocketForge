@@ -3611,7 +3611,7 @@ function handleSkillstore(req, res, url) {
                 });
                 json200(res, { ok: true });
             } catch (e) {
-                json200(res, { ok: false, err: e.message });
+                console.log('api err skills-install:', String((e && e.message) || e)); json200(res, { ok: false, err: humanErr(e) }); // s106/L: fs 写路径原文(ENOSPC/EPERM 带盘符全路径)直达妻子面——人话门
             }
         });
     } else { res.writeHead(405); res.end(); }
@@ -3850,7 +3850,7 @@ async function handleHttp(req, res) {
                     atomicWrite(CAPS_FILE, JSON.stringify(j, null, 2));
                     console.log('model-caps updated:', b.model);
                     json200(res, { ok: true, caps: j.caps });
-                } catch (e) { json200(res, { ok: false, err: '保存失败：' + e.message }); }
+                } catch (e) { console.log('api err caps-save:', String((e && e.message) || e)); json200(res, { ok: false, err: '保存失败：' + humanErr(e) }); } // s106/L: atomicWrite 原文含 tmp 全路径——人话门
             });
         } else { res.writeHead(405); res.end(); }
     }
@@ -3955,7 +3955,7 @@ async function handleHttp(req, res) {
             FSS.symlinkSync(target, dest, 'junction');
             console.log('linked external dir:', target, '->', ws + '/' + label);
             res.end(JSON.stringify({ ok: true, name: label }));
-        } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
+        } catch (e) { console.log('api err fs-linkext:', String((e && e.message) || e)); res.end(JSON.stringify({ ok: false, err: humanErr(e) })); } // s106/L: symlink/realpath 原文带全路径(消息流 addInfo 可见)——人话门
     }
     else if (url === '/api/vcs/log') {
         const qs = new URL(req.url, 'http://x').searchParams;
@@ -3997,7 +3997,7 @@ async function handleHttp(req, res) {
                 await vcsSnapshot(root, rel, '已恢复到 ' + oid.slice(0, 6) + ' 那一版');
                 console.log('restored:', ws + '/' + rel, '->', oid);
                 res.end(JSON.stringify({ ok: true }));
-            } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
+            } catch (e) { console.log('api err vcs-restore:', String((e && e.message) || e)); res.end(JSON.stringify({ ok: false, err: humanErr(e) })); } // s106/L: git/fs 原文(git 报错+writeFile 带路径)——人话门
         });
     }
     else if (url.startsWith('/open/')) {
@@ -4127,7 +4127,7 @@ const ext = path.extname(f).toLowerCase();
                         delete mcpInstallState[id];
                         FSS.rmSync(path.join(ROOT, 'bin', 'vendor', 'mcp-' + id), { recursive: true, force: true });
                         res.end(JSON.stringify({ ok: true, note: '已卸载' }));
-                    } catch (e) { res.end(JSON.stringify({ ok: false, err: '卸载失败: ' + e.message })); }
+                    } catch (e) { console.log('api err mcp-uninstall:', String((e && e.message) || e)); res.end(JSON.stringify({ ok: false, err: '卸载失败: ' + humanErr(e) })); } // s106/L: rmSync 原文带路径——人话门
                     return;
                 }
                 if (!item) { res.end(JSON.stringify({ ok: false, err: '目录里没有这个 MCP' })); return; }
@@ -4216,7 +4216,7 @@ const ext = path.extname(f).toLowerCase();
                     atomicWrite(CFG, raw);
                     json200(res, { ok: true, note: '重启数字员工后生效' });
                 } catch (e) {
-                    json200(res, { ok: false, err: e.message });
+                    console.log('api err ext-toggle:', String((e && e.message) || e)); json200(res, { ok: false, err: humanErr(e) }); // s106/L: atomicWrite 原文带路径——人话门
                 }
             });
         } else { res.writeHead(405); res.end(); }
@@ -4277,7 +4277,7 @@ const ext = path.extname(f).toLowerCase();
                     } else throw new Error('未知操作');
                     json200(res, { ok: true });
                 } catch (e) {
-                    json200(res, { ok: false, err: e.message });
+                    console.log('api err mem-op:', String((e && e.message) || e)); json200(res, { ok: false, err: humanErr(e) }); // s106/L: atomicWrite 原文带路径——人话门
                 }
             });
         } else { res.writeHead(405); res.end(); }
@@ -4320,7 +4320,7 @@ const ext = path.extname(f).toLowerCase();
                     } else throw new Error('未知操作');
                     json200(res, { ok: true });
                 } catch (e) {
-                    json200(res, { ok: false, err: e.message });
+                    console.log('api err prompt-op:', String((e && e.message) || e)); json200(res, { ok: false, err: humanErr(e) }); // s106/L: writePrompts 原文带路径——人话门
                 }
             });
         } else { res.writeHead(405); res.end(); }
@@ -4437,7 +4437,7 @@ const ext = path.extname(f).toLowerCase();
                     if (b.archived) arch[b.sid] = Date.now(); else delete arch[b.sid];
                     writeArch(arch);
                     res.end(JSON.stringify({ ok: true }));
-                } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
+                } catch (e) { console.log('api err archives:', String((e && e.message) || e)); res.end(JSON.stringify({ ok: false, err: humanErr(e) })); } // s106/L: writeArch 原文带路径(侧栏可见)——人话门
             });
         } else {
             // s98/R2-P2-1/P3-1: 归档管理面数据源=归档索引全量（readArch 键集，前端归档视图 rows 消费），与
@@ -4509,7 +4509,7 @@ const ext = path.extname(f).toLowerCase();
                 FSS.symlinkSync(tReal, dest, 'junction');
                 console.log('ws link:', b.ws + '/' + label, '->', b.target);
                 res.end(JSON.stringify({ ok: true, name: label }));
-            } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
+            } catch (e) { console.log('api err ws-link:', String((e && e.message) || e)); res.end(JSON.stringify({ ok: false, err: humanErr(e) })); } // s106/L: symlink 原文带路径——人话门
         });
     }
     else if (url === '/api/ws/unlink' && req.method === 'POST') {
@@ -4525,7 +4525,7 @@ const ext = path.extname(f).toLowerCase();
                 FSS.rmSync(dest);
                 console.log('ws unlink:', b.ws + '/' + rel);
                 res.end(JSON.stringify({ ok: true }));
-            } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
+            } catch (e) { console.log('api err ws-unlink:', String((e && e.message) || e)); res.end(JSON.stringify({ ok: false, err: humanErr(e) })); } // s106/L: lstat/rm 原文带路径——人话门
         });
     }
     else if (url === '/api/ws/delete' && req.method === 'POST') {
@@ -4542,7 +4542,7 @@ const ext = path.extname(f).toLowerCase();
                 writeWsMap(map);
                 console.log('ws deleted:', b.ws);
                 res.end(JSON.stringify({ ok: true }));
-            } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
+            } catch (e) { console.log('api err ws-delete:', String((e && e.message) || e)); res.end(JSON.stringify({ ok: false, err: humanErr(e) })); } // s106/L: wsDeleteOne 残余 fs(realpath/rmSync)原文带路径——人话门
         });
     }
     else if (url === '/api/ws/delete_batch' && req.method === 'POST') {
@@ -4569,7 +4569,7 @@ const ext = path.extname(f).toLowerCase();
                 if (deleted) writeWsMap(map);
                 console.log('ws batch deleted:', deleted, 'failed:', failed.length);
                 res.end(JSON.stringify({ ok: true, deleted, failed }));
-            } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
+            } catch (e) { console.log('api err ws-delete-batch:', String((e && e.message) || e)); res.end(JSON.stringify({ ok: false, err: humanErr(e) })); } // s106/L: writeWsMap 原文带路径——人话门
         });
     }
     else if (url === '/api/fs/new' && req.method === 'POST') {
@@ -4590,7 +4590,7 @@ const ext = path.extname(f).toLowerCase();
                 else { FSS.mkdirSync(path.dirname(full), { recursive: true }); FSS.writeFileSync(full, ''); }
                 console.log('fs new:', b.type, b.ws + '/' + rel);
                 res.end(JSON.stringify({ ok: true }));
-            } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
+            } catch (e) { console.log('api err fs-new:', String((e && e.message) || e)); res.end(JSON.stringify({ ok: false, err: humanErr(e) })); } // s106/L: mkdir/writeFile 原文带路径(文件树 alert 可见)——人话门
         });
     }
     else if (url === '/api/fs/rename' && req.method === 'POST') {
@@ -4618,7 +4618,7 @@ const ext = path.extname(f).toLowerCase();
                 if (meta.attachments && meta.attachments.includes(rel)) meta.attachments = meta.attachments.map(p => p === rel ? nrel : p);
                 writeForgeMeta(b.ws, meta);
                 res.end(JSON.stringify({ ok: true, path: nrel }));
-            } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
+            } catch (e) { console.log('api err fs-rename:', String((e && e.message) || e)); res.end(JSON.stringify({ ok: false, err: humanErr(e) })); } // s106/L: rename 原文带路径——人话门
         });
     }
     else if (url === '/api/fs/delete' && req.method === 'POST') {
@@ -4656,7 +4656,7 @@ const ext = path.extname(f).toLowerCase();
                 if (meta.attachments) { meta.attachments = meta.attachments.filter(p => p !== rel && !p.startsWith(rel + '/')); writeForgeMeta(b.ws, meta); }
                 console.log('fs delete:', b.ws + '/' + rel);
                 res.end(JSON.stringify({ ok: true }));
-            } catch (e) { res.end(JSON.stringify({ ok: false, err: e.message })); }
+            } catch (e) { console.log('api err fs-delete:', String((e && e.message) || e)); res.end(JSON.stringify({ ok: false, err: humanErr(e) })); } // s106/L: rmSync 原文带路径——人话门
         });
     }
     else if (url === '/api/ws/new') {
@@ -4739,7 +4739,7 @@ const ext = path.extname(f).toLowerCase();
 // 任何路由异常都不许挂死连接：统一回 500 JSON
 const server = http.createServer((req, res) => Promise.resolve(handleHttp(req, res)).catch(e => {
     console.error('http error', req.url, e.message);
-    try { res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: false, err: String(e.message || e) })); } catch {}
+    try { res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: false, err: humanErr(e) })); } catch {} // s106/L: 顶层 500 兜底原文直出(57bff19 已建 humanErr 接线；原文恒落上行 console.error)
 }));
 
 server.on('upgrade', (req, socket) => {
