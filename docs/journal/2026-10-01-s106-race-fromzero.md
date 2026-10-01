@@ -113,3 +113,7 @@ QA 新眼睛审当日 19 枚 commit 三面（安全/边界/一致）：**P2-1 �
 - L5173 批删透传：静态验证 QA 断言成立（外层 try 可达 throw 仅两条人话；hardDeleteSession 被内层 humanDeleteErr 吃；readArch/writeFrame 吞错；ws.send 异常冒泡至尾 catch humanErr 门）——留档不动。
 - 验证：红绿 tmp/s106-l-redgreen.js（wiring red 17 红/green 17 绿+unit 7/7+keep 9/9）+活体 4/4（物化后真桥 /api/ws/link 负向量=symlinkSync ENOENT 带全路径形态→回人话零盘符零码字）+node --check 双文件+物化 tpl==bin+pc restart chat-bridge+healthz 200；§8.2：e2e-chat 聚合（ui-logic 168/ia 38/sched 15/preupgrade 31，汇总行与 k3 基线 diff 逐字一致）+fuzz 225/0+semantics 38/0。六套（think-grad/capeditor/modelcaps/proxythink/xlate/w2-preset）探针脚本未留存（tmp 无源文件、git 全史无名）无法复跑——本批改动为 17 行 catch 表达式，与六套断言域零交集（git diff 为证）；backlog：§8.2 探针入库义务（每次会话重写探针=验收不可复现）。
 - commit b4f6986 独立未 push；bin/chat-bridge.js 物化产物按仓库约定不入库（bootstrap L268-269 物化链）。
+
+## 十六、末批 HTTP 面收编+会话收工（09:0x）
+
+b4f6986：分诊表 26 处——收编 17（humanErr 接线，妻子可见面+fs 原文带盘符族）/保持 9（技术面/无路径形态/用户自填 host R2 口径）/L5173 静态验证成立留档。红绿 17→17+活体 4/4+§8.2 子集绿。新流程发现：§8.2 六套探针源码无入库无法复跑（断言域零交集以 diff 为证）→backlog 建议立规。**会话真终包 iat115=bd406357…**（19 commit 全含）。会话收工：08.5 小时连续产出，主控全程，四角色协作（PM 裁决 1/研究 3/工程 19 commit/QA 三轮+对抗复审）。
