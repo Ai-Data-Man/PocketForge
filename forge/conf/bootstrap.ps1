@@ -118,7 +118,8 @@ New-Item -ItemType Directory -Force -Path $memPort | Out-Null
 $memApp  = Join-Path $env:APPDATA 'Block\goose\config\memory'
 $normMem = { param($p) [IO.Path]::GetFullPath([string]$p).TrimEnd('\','/') }
 $memOk = $false
-if (Test-Path $memApp) {
+$memHad = Test-Path $memApp
+if ($memHad) {
     $memIt = Get-Item $memApp -Force
     $memTgt = $memIt.Target -join ''
     $memOk = ($memIt.LinkType -eq 'Junction') -and (Test-Path $memTgt) -and ((& $normMem $memTgt) -eq (& $normMem $memPort))
@@ -127,6 +128,19 @@ if (-not $memOk) {
     New-Item -ItemType Directory -Force -Path (Split-Path $memApp) | Out-Null
     if (Test-Path $memApp) { cmd /c rmdir "$memApp" }
     cmd /c mklink /J "$memApp" "$memPort" | Out-Null
+}
+# s107/f3: 守卫三态留痕（此前创建/修复/保持全静默，悬挂/错向/争抢只能事后猜——PFdrill2 以 forge-sbx
+#     账户跑，bootstrap 自愈的是 forge-sbx 的 junction，Administrator 侧无自愈者，运营守则核对需一眼可判）。
+#     修复/新建以重建后复验为准；原位真目录保守留置=mklink 失败态，红字 WARNING 不谎报修复（L90 先例）。
+$memNewIt = if (Test-Path $memApp) { Get-Item $memApp -Force } else { $null }
+$memNewOk = ($null -ne $memNewIt) -and ($memNewIt.LinkType -eq 'Junction') -and ((& $normMem ($memNewIt.Target -join '')) -eq (& $normMem $memPort))
+if ($memOk) {
+    Write-Host "[bootstrap] memory junction: 保持(目标 $memTgt)"
+} elseif ($memNewOk) {
+    if ($memHad) { $memOld = if ($memTgt) { $memTgt } else { '原位非链接' }; Write-Host "[bootstrap] memory junction: 修复(旧目标 $memOld → 新目标 $memPort)" }
+    else { Write-Host "[bootstrap] memory junction: 新建(目标 $memPort)" }
+} else {
+    Write-Host "[bootstrap] WARNING: memory junction 重建失败(原位保守留置，记忆将落 %APPDATA% 原位)" -ForegroundColor Red
 }
 
 # 2) 首启 secrets
