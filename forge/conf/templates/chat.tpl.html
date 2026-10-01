@@ -887,6 +887,15 @@ function loadSessions(){ rpc2('session/list').then(d=>{
   if(d&&d.error){ console.warn('session/list error:',d.error); sessListErr=true; renderSessions([]); return; }
   sessListErr=false; const s=(d.result&&d.result.sessions)||[]; lastSessions=s; renderSessions(s);
 }).catch(e=>{ console.warn('session/list failed:',e); sessListErr=true; renderSessions([]); }); }
+// s107/f11（双窗矩阵实录 tmp/s107h-dualwin.json）：B 页载恰逢空列表（A 会话尚未诞生）后侧栏永不刷新——
+// A 完成多轮 B 仍显误导性空态「还没有对话」（s83d F-1 家族：误导性空态必须修）。可见即重拉：
+// focus / visibilitychange→visible 触发 loadSessions，2s 防抖合并（连串可见事件并成一拉）；
+// loadSessions 自带 catch 静默（桥不在线不扰=现状），幂等重拉对单窗零影响。只修会话清单本面——
+// 归档计数/arch 列表同族陈旧为顺手面评估项，有实据再立（本批不动）。
+let sessVisT=null;
+function sessRefreshOnVisible(){ clearTimeout(sessVisT); sessVisT=setTimeout(()=>{ try{ loadSessions(); }catch(e){} }, 2000); }
+window.addEventListener('focus', sessRefreshOnVisible);
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') sessRefreshOnVisible(); });
 let currentSid=null;
 let sideView='chat', archCount=0; // IA-2: 侧栏视图切换（对话/归档）——旧尾部折叠头机制被视图取代；archCount 喂「📦 归档 N」计数
 function tsLocal(s){ // goose 两种时间串：ACP 带 +00:00 后缀、sessions.db 是无时区 UTC 裸串；统一转本地，失败回落原串
