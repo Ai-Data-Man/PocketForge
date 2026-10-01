@@ -4179,6 +4179,7 @@ const ext = path.extname(f).toLowerCase();
             // r5/S2（裁决 §4 归置审计）：browser 收窄为「要用真浏览器」——抓表格让给工具/手艺划界句；memory 补反向指路（与 memory-graph 双向划界）
             'browser': { name: '浏览器自动化', desc: '要用真浏览器的活儿：要登录、要点按的页面，看内网系统' },
             'memory': { name: '长期记忆', desc: '平时的喜好和常用做法它自己记，去「💭 记忆」看、可删；人物设备的台账关系用「关系图谱记忆」（🔌 工具）' },
+            'read': { name: '读文件', desc: '把工作区里文件的内容读出来看（表格、CSV 这些）——它只读不改，读文件不用你点头' }, // s107/f4: 只读内容工具人话名（R4）；readOnlyHint 免卡见 goose-config 注释
             'chatrecall': { name: '会话回忆', desc: '能翻自己以前聊过的内容' },
         };
         if (req.method === 'GET') {

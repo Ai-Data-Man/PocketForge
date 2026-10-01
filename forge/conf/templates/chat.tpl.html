@@ -522,7 +522,7 @@ details.tz[open]>summary::before{content:'▾ '}
   </div>
   <div class="mpane" id="mpane-ext">
     <h3 style="margin:0 0 8px">自带的（出厂长在它身上）</h3>
-    <div class="fnote" style="margin-bottom:10px">这些是它出厂就长在身上的：数据库、浏览器、长期记忆。只能开和关——关上哪个，它这次就不用哪个（重启数字员工后生效）。添不了新的，也拆不掉。想给它添工具，去「🔌 工具」；想看它学会的做法，去「🧩 手艺」。</div>
+    <div class="fnote" style="margin-bottom:10px">这些是它出厂就长在身上的：数据库、浏览器、长期记忆、读文件。只能开和关——关上哪个，它这次就不用哪个（重启数字员工后生效）。添不了新的，也拆不掉。想给它添工具，去「🔌 工具」；想看它学会的做法，去「🧩 手艺」。</div>
     <div id="ext-list"></div>
   </div>
   <div class="mpane" id="mpane-db" style="display:none">
@@ -1008,7 +1008,7 @@ function addQuickPrompts(){
 // s48: 「帮我做张报表」内联分步引导——两问（哪个表格/算什么）→ 组装提示词走现有发送链路
 function reportReady(file,want){ return !!(String(file||'').trim()&&String(want||'').trim()); }
 function reportPrompt(file,want){
-  return '请帮我做一张报表：\n用这个表格：'+file+'\n我想知道：'+want+'\n做完生成一个 Excel 文件给我预览。\n表格里没有的数据不要自己编，缺什么直接告诉我。';
+  return '请帮我做一张报表：\n用这个表格：'+file+'\n我想知道：'+want+'\n先把报表结果直接写在回复里（用 Markdown 表格）；要存成 Excel 文件时先问我要不要，我点头再做。\n表格里没有的数据不要自己编，缺什么直接告诉我。'; // s107/f4：报表=答案先到（Markdown 直出，零卡），Excel 导出移第二拍（gen-xlsx 走 shell 是第二道卡墙，用户在场应答）
 }
 function sheetFiles(){ // 数据源=右侧文件树同款（renderCurPane 缓存的 curTreeRoot），递归挑表格文件
   const out=[];

@@ -304,9 +304,14 @@ $provTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\faucet-p
 
 # 5i) s95 F-6: 应用热注册 wrapper 生成（agent 自己拼 pc project update 的形态在 cmd 嵌套引号下不可执行，
 #     且 -f 集不全时 pc 整体替换项目会重启整栈、打断进行中的对话；wrapper 自带 root+完整文件集+人话退出码）
-$regTpl = Join-Path $ForgeRoot 'conf\templates\forge-register.tpl.cmd'
+$regTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\forge-register.tpl.cmd'))
 $regOut = Join-Path $ForgeRoot 'bin\pc\forge-register.cmd'
 if (Test-Path $regTpl) { Copy-Item $regTpl $regOut -Force }
+
+# 5j) s107/f4: read-file MCP 生成（只读文件内容工具，裁决 2026-10-02-s107-report-permission-readtool；
+#     真相源入库同 5e/5f 先例。artifacts 根由 goose-config 物化时经 argv 传入，本文件不吃 env）
+$readTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\read-file-mcp.tpl.js'))
+[IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\read-file-mcp.js'), $readTpl)
 
 # 5c) 首启欢迎页（仅首次：data/welcome.done 不存在时生成 html 并由启动器打开）
 $done = Join-Path $ForgeRoot 'data\welcome.done'

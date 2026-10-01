@@ -33,6 +33,16 @@ extensions:
     cmd: 'cmd'
     args: ['/c', 'C:/ZCodeWorks/PocketForge/forge/bin/memory-mcp.cmd']
     timeout: 120
+  # s107/f4（裁决 2026-10-02-s107-report-permission-readtool）：只读文件内容工具。read_only_hint 注解
+  # → smart_approve 判定链第②步确定性放行，报表 happy path 免卡读（上传即同意）。作用域恒限
+  # data/artifacts/ 子树（conf/ 与 data/ 其它面有密钥，不进模型上下文）；机制不进配置面、无专用开关。
+  read:
+    type: stdio
+    name: read
+    enabled: true
+    cmd: 'C:/ZCodeWorks/PocketForge/forge/bin/node-v22/node-v22.21.1-win-x64/node.exe'
+    args: ['C:/ZCodeWorks/PocketForge/forge/bin/read-file-mcp.js', 'C:/ZCodeWorks/PocketForge/forge/data/artifacts']
+    timeout: 60
   # G3（裁决书 S-B）：关停无场景点名的平台扩展——已双臂探针实证（tmp/goose-probe/ext-probe.js）：
   # apps/summon/extensionmanager/analyze 共 11 把工具消失，其余扩展不受影响。
   # todo 保留（ACP plan 事件来源，P32 底座）。用户在设置面板改过开关的，bootstrap 重建时保留其值。
