@@ -106,3 +106,10 @@ QA 新眼睛审当日 19 枚 commit 三面（安全/边界/一致）：**P2-1 �
 57bff19：humanErr 三消费点根治泄漏族（红绿 upload 2红→4绿/savecfg 3红→4绿/unit 15/wiring 4；原文恒落 console 诊断通道）+spawnAcp child error 一行+关面板回执走 banner（活体 6/6）+capeditor 预存红随迁（78f85a2 漏迁，非新引入）。§8.2 全绿 ui-logic 168。泄漏面终扫余额四类（HTTP 22 处/批删透传/host 回显/顶层 500）→backlog。
 **会话真终包 iat114=53baa375…**（17 修复 commit）。环境终态：dev 栈 healthz 200；junction 归 dev 树；PF-TEST 零残留；全 commit 已 push（3bb61ec→57bff19）。
 **方法论终账**：①「拆掉折叠层前先查它是否兼职脱敏」——6f55f57 教训（对抗复审兜住了）；②QA 重发现轻归因×2（P2 烘焙误判/C1 误归因）都靠主控查 ADR/源码翻案——复核层不可省；③对抗复审作为当日收口工序价值实证（用户之前发现了 P2，这次我们自己先发现）。
+
+## 终扫余额收编（L 批，b4f6986，工程师 08:43-10:00 时间盒）
+
+- 分诊表 tmp/s106-l-triage.md：HTTP 面 22 处逐处（行号/消费面/收编或保持+理由）；收编 17（含 L4742 顶层 500 兜底接线 57bff19 已建 humanErr），保持 9（llmproxy 上游 API 技术面/升级 fetch 无路径形态/搜索 sqlite 读面/报告技术面/L5305+L5332 用户自填 host 回显 R2 口径——L5332 判卷 e 来源=reqMod.request 至用户自填 host，非桥 fetch 上游，无内部 URL 细节）。
+- L5173 批删透传：静态验证 QA 断言成立（外层 try 可达 throw 仅两条人话；hardDeleteSession 被内层 humanDeleteErr 吃；readArch/writeFrame 吞错；ws.send 异常冒泡至尾 catch humanErr 门）——留档不动。
+- 验证：红绿 tmp/s106-l-redgreen.js（wiring red 17 红/green 17 绿+unit 7/7+keep 9/9）+活体 4/4（物化后真桥 /api/ws/link 负向量=symlinkSync ENOENT 带全路径形态→回人话零盘符零码字）+node --check 双文件+物化 tpl==bin+pc restart chat-bridge+healthz 200；§8.2：e2e-chat 聚合（ui-logic 168/ia 38/sched 15/preupgrade 31，汇总行与 k3 基线 diff 逐字一致）+fuzz 225/0+semantics 38/0。六套（think-grad/capeditor/modelcaps/proxythink/xlate/w2-preset）探针脚本未留存（tmp 无源文件、git 全史无名）无法复跑——本批改动为 17 行 catch 表达式，与六套断言域零交集（git diff 为证）；backlog：§8.2 探针入库义务（每次会话重写探针=验收不可复现）。
+- commit b4f6986 独立未 push；bin/chat-bridge.js 物化产物按仓库约定不入库（bootstrap L268-269 物化链）。
