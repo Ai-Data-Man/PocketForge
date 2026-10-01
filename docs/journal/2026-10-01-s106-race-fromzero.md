@@ -96,3 +96,7 @@ S1 矩阵全量审 note()/帧处理器落点：**14+ 处不可见回执全修**�
 - 会话终包 **iat113=197dd70b…**（当日全部 16 修复 commit，锚抽查过）；轮次包 iat110 9ee08b22（R-A）/iat111 553eebf5（R-B）/iat112 657b2865（R-C）。
 - 环境终态：dev 栈 PFdrill2 healthz 200；junction 归还 dev 树（dev 记忆基线未动）；C:\PF-TEST 零残留；commit 3bb61ec→6f55f57 全部已 push。
 - 会话产出总账：PM 裁决 1+研究 3（日志挖掘/effort RCA/种子评估）+工程 16 修复 commit+QA 三轮（R-A 全观测/R-B 升级/R-C 收口）+关案 5（R4-F2/R2-P6/R4-P6/effort/C1）+改判 1（P2-1 junction）+backlog 新增 11 项带触发器。
+
+## 十四、对抗性复审（tmp/qa-s106-review.md）总判 REWORK→返工批
+
+QA 新眼睛审当日 19 枚 commit 三面（安全/边界/一致）：**P2-1 实锤=6f55f57 上传透传打开路径泄漏**（桥 L4714 catch-all e.message 原文含盘符全路径进消息流，300 字符名活体实录；修前折叠句兼职脱敏层——我的尾批引入）；P3-1 人话门只盖三码（ENOSPC 族原文+tmp 路径同漏，save_config L5554/尾 catch L5558 同族）；P3-2 spawnAcp child 本体无 error 监听（a294f50 只守 stdin，spawn ENOENT 族同款崩桥）；P3-3 test_result/saved_config 异步帧面板已关零可见（S1 矩阵缺「回执到达时刻」维度）；P4×7（banner 互踩/240ms 同步阻塞/清扫双桥竞态/备份首因半批/junction 8.3 变体〔误判方向安全〕/解绑回执窄角/透传模式在场）。验证面确认正确：批删三桶完备/updAge/混合批双回执/banner 跨清墙。→返工批（时间盒 10:00）：humanErr 净化三消费点根治 P2-1+P3-1、P3-2 一行、P3-3 时间盒内做。
