@@ -57,6 +57,9 @@
 
 - **尾段三批**：**f6=9d28117 探针入库**（s106「§8.2 探针入库义务」落地——12 件入 tools/e2e：三红绿合并 receipt-failarms-probe.js 30ck/向导 7ck/junction 三态摆臂/CDP 骨架+脱敏验收驱动/§8.2 六套自 forge/tmp 迁入补账，入库位逐个绿跑一致；README 索引+债务清单）。**QA 对抗复审 f4/f4b/f4c/f5 判 REWORK→f7=8b8610a**：P2=f4 编辑事故把 bootstrap $regTpl 误成 ReadAllText 内容串而 Test-Path 消费端未动→forge-register.cmd 物化链断（被 dev 残留件掩盖，QA 三证：Test-Path 实测恒 False/时间戳自然实验/blame）——一行复位+红绿（删产物不生→再生逐字节一致）+邻区审计净（14 个 ReadAllText 零喂 Test-Path）+QA 闭合核对三查**终判 PASS**；read 安全面 QA fuzz 29/29 全过（穿越 12 形态全拒/类型混淆零崩溃/窗口边界精确）+四臂判别力三臂变体实证。P4×6 留档（最重要：**junction 跟随逃逸沙盒**=词法校验无 realpath，当前不可利用，升级触发条件=未来任何免卡写/链接通道即升 P2；8KB 嗅探窗外 fail-open 边缘）。
 - **iat121=a274fe16 交付门**：冷装 cold-surface **19/19 全过**（forge-register.cmd 5499B 在场/read 工具注册/S8 junction/全 UI 锚）；首次冷启 17/19 两红均我方环境事故（见下）。
+- **收线两批**：**f8=31a60db 停止脚本端口扫尾**（pg forkchild 孤儿持口毒化下次启动=今日环境事故转正的产品缺陷，s91 家族新数据点；修=两分支同款扫尾段≤15s：产品口集∪默认/根内存活持有者收杀/幽灵口等+重试/仍占一句提示；红绿=毒化→治愈→复活全环；诚实标注：幽灵口臂与真 backend 继承形态不可确定性合成→逻辑覆盖）；**f9=b84373e pg 停态可见性收窄版**（PM 微裁决 2026-10-02-s107-pg-down-visibility 选 A：🗄️tab 空/非空两分支消费 tblMiss 同句+📊向导 rdbnote 一行注，零桥改零新探活；活体验证含 PM 形态精准复现〔ok:true+tables:[]+tblMiss:true〕+sqlite 不降级正确性；live 探针证伪初版作用域 bug 后自修复=探针价值再证）。
+- **iat122=eadc0d72 会话终包交付门：cold-surface 19/19 全过**（干净冷装含 pg，无环境事故干扰）。
+- **会话总账**：**十一 commit**（f1/f1b/f3/f4/f5/f4b/f4c/f6/f7/f8/f9）+docs 六枚+研究 1+裁决 2 全部已推；缺陷闭环 5 枚（#1/#1b/#3/#2/环境事故转正 2）+QA 两轮对抗复审（REWORK×2 全闭合 PASS）；测试包 iat116-122 七枚在 dist 不入发布序。
 - **环境事故与观测盲区（诚实记）**：dev 栈 pc down 后 **pg backend 孤儿继承 5432 监听口**（s91 孤儿家族新数据点；幽灵 socket PID 已死仍 LISTENING）→**当日全部沙盒 pg 均未起来**——healthz 不盖 pg+当日流程不依赖 pg=双盲；报表双源 db 侧未验到（向导静默降级 files-only 属设计内但意味着「pg 不可达」全程零妻子可见信号→backlog 观测项）。灭孤儿+复启后 pg Ready 实证。
 - **缺陷账**：#1/#1b（P3 alert 失败臂 14 处）修；#3（P3 junction 自愈）根因定案+可观测修；#2（P2 报表权限卡）端到端根治；QA 复审追加 3×P3 修（f5）+1×P2 修（f7）；P4×11 留档（5+6）。
 - **九 commit**：034bf13/0c79693/18e68e0/6ab8056/efff8e8/b8350ae/ac0e932/9d28117/8b8610a 全部已推；docs 五枚。
