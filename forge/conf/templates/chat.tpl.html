@@ -1034,12 +1034,13 @@ function toggleReportCard(wrap){
   function refresh(){ sendB.disabled=!reportReady(cur1(),q2inp.value.trim()); }
   async function paintSel(){
     const files=sheetFiles();
-    let tbls=[];
+    let tbls=[], ovMiss=false;
     try{ const ov=await dbOverview();
-      if(ov) for(const s of ov.services) for(const t of s.tables){
+      if(ov){ ovMiss=!!ov.tblMiss; // s107/f9: 信号外提（ov 块作用域）——降级注在 try 外消费
+        for(const s of ov.services) for(const t of s.tables){
         if(t.name==='forge_meta'||t.name==='forge_table_info') continue; // s98: 建账表不进选择器（@ 菜单 renderAtMenu 同门边界）
         tbls.push({s:s.service,n:t.name,r:t.rows});
-      }
+      } }
     }catch(e){} // s98: dbOverview 失败（网络/桥错）→只显示文件组，静默降级（@ 菜单同款 try{}）
     if(!files.length&&!tbls.length){ if(sel.isConnected) sel.remove(); q1inp.style.display=''; refresh(); return; } // 两来源都空→降级手填
     const prev=sel.value;
@@ -1055,6 +1056,8 @@ function toggleReportCard(wrap){
       for(const t of tbls){ const o=document.createElement('option'); o.value='db:'+t.s+'.'+t.n; o.textContent=t.s+'.'+t.n+'（'+(t.r==null?'－':t.r+' 条')+'）'; vals.add(o.value); g.appendChild(o); } // 行数对齐 @ 菜单（N 条 / －）
       sel.appendChild(g); }
     if(prev&&vals.has(prev)) sel.value=prev;
+    const oldNote=box.querySelector('.rdbnote'); if(oldNote) oldNote.remove(); // 幂等：paintSel 重跑（文件树刷新竞态）先清旧注
+    if(ovMiss){ const n=document.createElement('div'); n.className='fnote rdbnote'; n.style.cssText='margin:2px 0 4px'; n.textContent='数据库这会儿没连上，表暂时列不出来。数据没丢。重启数字员工试试；还不行就先放一放，回头再看。'; (sel.isConnected?sel:q1inp).after(n); } // s107/f9: 向导库表组降级一行注（信号=overview 既有 tblMiss，零新探活）
   }
   for(const t of ['总共是多少','按种类分开各算各的','只挑最近一段时间的']){
     const b=document.createElement('button'); b.className='mini'; b.type='button'; b.textContent=t;
@@ -2230,7 +2233,7 @@ function dbPaint(){
     for(const t of sL) seq.push([s.service,t,true]);
   }
   if(!seq.length){
-    box.innerHTML='<div class="fnote">'+(q?'没找到跟“'+esc(q)+'”有关的表。换个词试试，或直接在聊天里问小 forge。':'还没存数据。让小 forge 抓数时说一声存进数据库就行。')+'</div>';
+    box.innerHTML='<div class="fnote">'+(lastDbOv.tblMiss?'数据库这会儿没连上，表暂时列不出来。数据没丢。重启数字员工试试；还不行就先放一放，回头再看。':(q?'没找到跟“'+esc(q)+'”有关的表。换个词试试，或直接在聊天里问小 forge。':'还没存数据。让小 forge 抓数时说一声存进数据库就行。'))+'</div>'; // s107/f9: tblMiss 诚实降级（PM 裁决原文）——pg 停时 overview ok:true+services:[]，旧空态「还没存数据」=误导性安慰
     pagerPaint('db-pager',1,1,0,null); return;
   }
   const ps=pageSlice(seq,'db','row'); // r4/S1: 行型（row 档位记忆，缺省 30）
@@ -2256,6 +2259,12 @@ function dbPaint(){
     g.appendChild(dbRowEl(svc,t));
   }
   pagerPaint('db-pager',listPage.db,ps.pages,ps.total,p=>{ listPage.db=p; dbPaint(); },'row',ps.trunc);
+  if(lastDbOv.tblMiss){ // s107/f9: 非空分支同句（部分表在列但库读失败——两分支渲染同句=验收臂）
+    const tm=document.createElement('div');
+    tm.className='fnote'; tm.style.marginTop='6px';
+    tm.textContent='数据库这会儿没连上，表暂时列不出来。数据没丢。重启数字员工试试；还不行就先放一放，回头再看。';
+    box.appendChild(tm);
+  }
   if(lastDbOv.truncated){ // s98/db-scale: >2000 异常库防御护栏注——搜索跑在全量表名上（真出路），不再有「问小 forge」兜底误导
     const tr=document.createElement('div');
     tr.className='fnote'; tr.style.marginTop='6px';
