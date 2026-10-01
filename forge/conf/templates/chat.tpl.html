@@ -1008,7 +1008,7 @@ function addQuickPrompts(){
 // s48: 「帮我做张报表」内联分步引导——两问（哪个表格/算什么）→ 组装提示词走现有发送链路
 function reportReady(file,want){ return !!(String(file||'').trim()&&String(want||'').trim()); }
 function reportPrompt(file,want){
-  return '请帮我做一张报表：\n用这个表格：'+file+'\n我想知道：'+want+'\n先把报表结果直接写在回复里（用 Markdown 表格）；要存成 Excel 文件时先问我要不要，我点头再做。\n表格里没有的数据不要自己编，缺什么直接告诉我。'; // s107/f4：报表=答案先到（Markdown 直出，零卡），Excel 导出移第二拍（gen-xlsx 走 shell 是第二道卡墙，用户在场应答）
+  return '请帮我做一张报表：\n用这个表格：'+file+'\n我想知道：'+want+'\n先把报表结果直接写在回复里（用 Markdown 表格）；要存成 Excel 文件时先问我要不要，我点头再做。这个任务直接做，不用 todo 清单。\n表格里没有的数据不要自己编，缺什么直接告诉我。'; // s107/f4：报表=答案先到（Markdown 直出，零卡），Excel 导出移第二拍（gen-xlsx 走 shell 是第二道卡墙，用户在场应答）；s107/f4c：todo 禁令句（iat119 验收 todo write 卡残留处方）
 }
 function sheetFiles(){ // 数据源=右侧文件树同款（renderCurPane 缓存的 curTreeRoot），递归挑表格文件
   const out=[];
