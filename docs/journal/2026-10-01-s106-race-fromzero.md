@@ -100,3 +100,9 @@ S1 矩阵全量审 note()/帧处理器落点：**14+ 处不可见回执全修**�
 ## 十四、对抗性复审（tmp/qa-s106-review.md）总判 REWORK→返工批
 
 QA 新眼睛审当日 19 枚 commit 三面（安全/边界/一致）：**P2-1 实锤=6f55f57 上传透传打开路径泄漏**（桥 L4714 catch-all e.message 原文含盘符全路径进消息流，300 字符名活体实录；修前折叠句兼职脱敏层——我的尾批引入）；P3-1 人话门只盖三码（ENOSPC 族原文+tmp 路径同漏，save_config L5554/尾 catch L5558 同族）；P3-2 spawnAcp child 本体无 error 监听（a294f50 只守 stdin，spawn ENOENT 族同款崩桥）；P3-3 test_result/saved_config 异步帧面板已关零可见（S1 矩阵缺「回执到达时刻」维度）；P4×7（banner 互踩/240ms 同步阻塞/清扫双桥竞态/备份首因半批/junction 8.3 变体〔误判方向安全〕/解绑回执窄角/透传模式在场）。验证面确认正确：批删三桶完备/updAge/混合批双回执/banner 跨清墙。→返工批（时间盒 10:00）：humanErr 净化三消费点根治 P2-1+P3-1、P3-2 一行、P3-3 时间盒内做。
+
+## 十五、返工闭包+会话真终态（08:3x）
+
+57bff19：humanErr 三消费点根治泄漏族（红绿 upload 2红→4绿/savecfg 3红→4绿/unit 15/wiring 4；原文恒落 console 诊断通道）+spawnAcp child error 一行+关面板回执走 banner（活体 6/6）+capeditor 预存红随迁（78f85a2 漏迁，非新引入）。§8.2 全绿 ui-logic 168。泄漏面终扫余额四类（HTTP 22 处/批删透传/host 回显/顶层 500）→backlog。
+**会话真终包 iat114=53baa375…**（17 修复 commit）。环境终态：dev 栈 healthz 200；junction 归 dev 树；PF-TEST 零残留；全 commit 已 push（3bb61ec→57bff19）。
+**方法论终账**：①「拆掉折叠层前先查它是否兼职脱敏」——6f55f57 教训（对抗复审兜住了）；②QA 重发现轻归因×2（P2 烘焙误判/C1 误归因）都靠主控查 ADR/源码翻案——复核层不可省；③对抗复审作为当日收口工序价值实证（用户之前发现了 P2，这次我们自己先发现）。
