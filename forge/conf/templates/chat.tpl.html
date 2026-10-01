@@ -3474,8 +3474,8 @@ async function archiveSession(sid,arch){
     const r=await fetch('/api/sessions/archive',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sid,archived:arch})});
     const d=await r.json();
     if(d.ok){ await loadArch(); loadSessions(); loadWorkspaces(); addInfo(arch?'已归档':'已取消归档'); } // s106/S1: 归档动作在左栏（无遮罩）——note 落 #save-note（设置 modal 关着）零可见，改消息流同屏通道
-    else alert('操作失败: '+(d.err||''));
-  }catch(e){ alert('操作失败: '+e.message); }
+    else addErr('没归档成：'+(d.err||'')); // s107/f5: 失败臂同族迁消息流（成功臂 s106/S1 已在，同构不对称）
+  }catch(e){ console.error('归档失败', e); addErr('没归档成，稍后再试一次'); } // s107/f5: 裸 e.message 不进妻子面（原文 console，人话兜底——s106/L 口径）
 }
 function askDeleteSession(s){
   // 单向门：删除只从归档组发起；首次删除给完整后果说明（内存级标志，每次打开页面重新提醒）
@@ -3837,8 +3837,8 @@ async function toggleVersions(f, rowEl){
           const rr=await fetch('/api/vcs/restore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,file:f.name,oid:v.oid})});
           const dd=await rr.json();
           if(dd.ok){ addInfo('已把「'+f.name.split('/').pop()+'」恢复到上一版。'); renderCurPane(); }
-          else { alert('恢复失败: '+(dd.err||'未知')); rs.disabled=false; rs.textContent='恢复'; }
-        }catch(e){ alert('恢复失败: '+e.message); rs.disabled=false; rs.textContent='恢复'; }
+          else { addErr('没恢复成：'+(dd.err||'稍后再试')); rs.disabled=false; rs.textContent='恢复'; } // s107/f5: 失败臂迁消息流（成功臂 addInfo 已在，同构不对称）
+        }catch(e){ console.error('版本恢复失败', e); addErr('没恢复成，稍后再试一次'); rs.disabled=false; rs.textContent='恢复'; } // s107/f5: 裸 e.message 不进妻子面（原文 console，人话兜底）
       };
       it.appendChild(pv); it.appendChild(rs);
       box.appendChild(it);

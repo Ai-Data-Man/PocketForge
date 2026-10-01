@@ -4005,9 +4005,9 @@ async function handleHttp(req, res) {
         const name = decodeURIComponent(url.slice('/open/'.length));
         // I5(审查s15): 黑名单保留（防御纵深）——拒绝引号/cmd 元字符/换行
         // s50h(FIND-1): fileNameSafe 不拒 '.'（归一化后变空串）——点号/隐藏名显式拒，防 spawn 打开 artifacts 目录本身
-        if (!name || name.startsWith('.') || !fileNameSafe(name) || name.includes('..') || ['"', "'", '%', '^', '&', '|', '<', '>', '!', '\n', '\r'].some(ch => name.includes(ch))) { res.writeHead(400); res.end(JSON.stringify({ok:false, err:'bad name'})); return; }
+        if (!name || name.startsWith('.') || !fileNameSafe(name) || name.includes('..') || ['"', "'", '%', '^', '&', '|', '<', '>', '!', '\n', '\r'].some(ch => name.includes(ch))) { res.writeHead(400); res.end(JSON.stringify({ok:false, err:'文件名不对，打不开'})); return; } // s107/f5: 英文技术串直达妻子面（f1b 迁消息流后放大，QA P3-1）——人话化对齐 humanErr 门口径
         const f = path.join(ROOT, 'data', 'artifacts', name);
-        if (!require('fs').existsSync(f)) { res.writeHead(404); res.end(JSON.stringify({ok:false, err:'not found'})); return; }
+        if (!require('fs').existsSync(f)) { res.writeHead(404); res.end(JSON.stringify({ok:false, err:'文件没找到或名字不对'})); return; } // s107/f5: 同上——'not found' 人话化（/api/fs/delete 同款词）
         // s50c: 路径经 base64 进 PowerShell 再解码（照 copy_artifact 先例），彻底消除 shell 解释层；
         // 不用 detached——VERIFIED-RUN 2026-08-29：detached+stdio:ignore 下 Start-Process 静默失败打不开文件
         const b64 = Buffer.from(f, 'utf8').toString('base64');
