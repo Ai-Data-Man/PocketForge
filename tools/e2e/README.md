@@ -25,6 +25,20 @@ UI JS 常备回归网，56 断言秒级（无桥无网络）：从 chat.tpl.html
 
 ### tools/e2e/cold-surface-probe.sh（s69 转正自 tmp s69-cold-probe.js + s69-assert.js）发版前对沙盒冷启跑一次的只读六新面断言（15 ck）：冷启态（healthz 200 + pg Ready restarts=0 + pg-init Completed）+ v0.9.10 六新面（升级两步向导标记 / skill-sources 双源首启 / mcp-catalog 3 条 / permission user 三键+never_allow / CONTEXT_FILE_NAMES+四扩展关停 / 能力面板 enabled 与 config.yaml 一致含注释读取）。用法：目标栈冷启后 `PF_ROOT='C:/PocketForge-Test' bash tools/e2e/cold-surface-probe.sh`；PF_ROOT / PF_BRIDGE_PORT 可参数化（PC 端口自动读目标树 data/pc.port），传 dev 树 `<repo>/forge` 可复跑同款断言。前置：目标栈已启动；提权账户直启 pg 必 crash-loop——沙盒须 runas /trustlevel:0x20000 降权包装且重拉前清旧 wrapper cmd（s67 先例）。回归层级：**每发版一次**（全栈冷启太重，不进常规 e2e-chat / fuzz）。
 
+### s107/f6 探针入库批（2026-10-02；背景=s106 立项「§8.2 探针入库义务」——tmp 探针一次性滚动，本批补账）
+
+**右栏回执/向导/junction 回归钉（本批新写或合并）：**
+- `receipt-failarms-probe.js`：回执「失败臂」迁移族合并钉（f1 删/改名+f1b 创建/打开/引入+f5 归档/版本恢复，30 ck）。handler 逐字提取+AsyncFunction 桩沙盒；结构面=全模板 alert 总数 25+已迁移族清零+弹窗内 in-context 族原样。改 chat.tpl.html 回执面必跑；红对照=对 `git show <迁移前ref>:forge/conf/templates/chat.tpl.html` 快照传参跑（应呈大面积红=判别力）。
+- `report-wizard-probe.js`：报表向导提示词钉（7 ck）：两拍化（Markdown 先到+Excel 先问）+todo 禁令句+数据纪律句+逐字拼装+句序。
+- `bootstrap-junction-stage.ps1`：bootstrap junction 守卫三态摆臂（fake/new/keep → 修复/新建/保持日志行）。**会摆动 Administrator 全局 junction——仅 dev 窗口用，沙盒栈在跑时勿动**（ADR-0005 争抢形态）。
+- `cdp-observe.mjs`：CDP 观测骨架（Edge --app+控制台/4xx 采集+ev 基元），独立跑=10s 冒烟；env：PF_CDP_PORT/PF_PAGE_URL/PF_CDP_PROFILE（并行会话各用独立口与 profile）。
+- `sandbox-accept-driver.mjs`：从零验收驱动（配流→上传 CSV→向导→发送→permcard 计数判零卡）。前置=dist 包冷启场景+真实 LLM 轮次；env：PF_ACCEPT_ROOT（必填）+PF_ACCEPT_HOST/MODEL/KEY（缺省 dev 树 providers.json 活跃档案现读，key 不落任何输出）。
+
+**§8.2 触桥清单六套补账（自 forge/tmp 迁入，深度一行随迁；env 覆盖 PF_TPL/PF_BRIDGE/PF_PRESETS/PF_GOOSE_BIN）：**
+- `think-grad-probe.js`（27 ck）、`capeditor-probe.js`（141 ck）、`modelcaps-probe.js`（44 ck）、`proxythink-probe.js`（30 ck）、`llmproxy-xlate-probe.js`（10 ck）、`w2-preset-probe.js`（15 ck）——各自头注有用途/用法；自建沙箱桥本地口，不碰 dev 栈 8790。
+
+**债务清单（未入库+原因）：** s106/s107 各批一次性红绿快照类（tmp/s106-*-redgreen.js、tmp/s107-f1|f1b|f5-redgreen.mjs 原件、tmp/s107-*-live.mjs 代理起源探针等）——一次性历史证据形态，长期价值已被上述入库件吸收（合并/移植），原件留 tmp 会话留痕不入库；如需考古见各批 commit message 的探针路径索引。
+
 ## 手工回归清单（GUI，改动 chat.tpl.html / chat-bridge.tpl.js 后必跑）
 1. 页面加载：bridge ok，左栏列表/归档折叠正常
 2. 新对话：欢迎语 + 4 个快捷任务 chips（点 chip 填入输入框）
