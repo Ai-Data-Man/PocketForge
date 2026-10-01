@@ -3579,12 +3579,12 @@ function entryRow(c){
     el.appendChild(tactBtn('＋📄','在这个文件夹里新建文件',async()=>{
       const nm=prompt('新文件叫什么名字？'); if(!nm) return;
       const r=await fetch('/api/fs/new',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:c.path+'/'+nm,type:'file'})});
-      const d=await r.json(); d.ok?(selDir=c.path,renderCurPane()):alert('创建失败: '+(d.err||''));
+      const d=await r.json(); d.ok?(selDir=c.path,renderCurPane()):addErr('没建成：'+(d.err||''));
     }));
     el.appendChild(tactBtn('＋📁','在这个文件夹里新建子文件夹',async()=>{
       const nm=prompt('新文件夹叫什么名字？'); if(!nm) return;
       const r=await fetch('/api/fs/new',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:c.path+'/'+nm,type:'dir'})});
-      const d=await r.json(); d.ok?(selDir=c.path,renderCurPane()):alert('创建失败: '+(d.err||''));
+      const d=await r.json(); d.ok?(selDir=c.path,renderCurPane()):addErr('没建成：'+(d.err||''));
     }));
   }
   el.appendChild(tactBtn('✎','重命名',async()=>{
@@ -3601,7 +3601,7 @@ function entryRow(c){
     el.appendChild(tactBtn('✕','取消引入（只移除链接，不动原文件）',async()=>{
       if(!confirm('取消引入「'+c.name+'」？只移除这个链接，原工作区和文件都不动。')) return;
       const r=await fetch('/api/ws/unlink',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:c.path})});
-      const d=await r.json(); d.ok?renderCurPane():alert('失败: '+(d.err||''));
+      const d=await r.json(); d.ok?renderCurPane():addErr('没取消成：'+(d.err||''));
     }));
   }
   return el;
@@ -3640,7 +3640,7 @@ function fileNode(n,depth){
     (n.att?'<span class="bdg">附件</span>':'')+'<span class="sz">'+fmtSize(n.size||0)+'</span>';
   el.onclick=()=>window.open('/preview/'+encodeURIComponent(curWs+'/'+n.path),'_blank');
   el.appendChild(tactBtn('↗','用电脑里的办公软件打开',async()=>{
-    try{ const r=await fetch('/open/'+encodeURIComponent(curWs+'/'+n.path)); const d=await r.json(); d.ok?addInfo('已在电脑上打开 '+n.name):alert('打不开: '+(d.err||'')); }catch(e){ alert('打不开: '+e.message); } // s106/S1: 右栏文件树动作——note 同族不可见，改消息流（注释放行尾，勿吞 catch）
+    try{ const r=await fetch('/open/'+encodeURIComponent(curWs+'/'+n.path)); const d=await r.json(); d.ok?addInfo('已在电脑上打开 '+n.name):addErr('没打开成：'+(d.err||'')); }catch(e){ console.error('本地打开失败', e); addErr('没打开成，稍后再试一次'); } // s106/S1 成功臂+s107/f1b 失败臂——note 同族不可见，均走消息流（注释放行尾，勿吞 catch）
   }));
   el.appendChild(tactBtn('🕘','历史版本',(ev)=>toggleVersions({name:n.path,size:n.size},el)));
   el.appendChild(tactBtn('✎','重命名',async()=>{
@@ -3758,7 +3758,7 @@ function renderAllPane(){
           const r=await fetch('/api/ws/link',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,target:w.id,label})});
           const d=await r.json();
           if(d.ok){ showTab('cur'); renderCurPane(); addInfo('已把「'+wsDisplayName(w)+'」以链接方式引进本对话，里面的文件都能 @ 引用了。'); }
-          else { alert('引入失败: '+(d.err||'')); row.querySelectorAll('button').forEach(b=>b.style.display=''); form.remove(); }
+          else { addErr('没引入成：'+(d.err||'')); row.querySelectorAll('button').forEach(b=>b.style.display=''); form.remove(); } // s107/f1b: 失败臂迁消息流（成功孪生 s106/S1 已在消息流）
         };
         cc.onclick=()=>{ form.remove(); row.querySelectorAll('button').forEach(b=>b.style.display=''); };
         form.appendChild(inp); form.appendChild(ok); form.appendChild(cc);
@@ -3806,10 +3806,10 @@ $('ws-refresh').onclick=()=>{ loadWorkspaces(); renderCurPane(); loadArch().then
 $('att-only').onchange=()=>renderCurPane();
 $('nf-btn').onclick=async()=>{ const nm=prompt('新文件叫什么名字？（放进当前选中的文件夹：'+(selDir||'根目录')+'）'); if(!nm) return;
   const r=await fetch('/api/fs/new',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:(selDir?selDir+'/':'')+nm,type:'file'})});
-  const d=await r.json(); d.ok?renderCurPane():alert('创建失败: '+(d.err||'')); };
+  const d=await r.json(); d.ok?renderCurPane():addErr('没建成：'+(d.err||'')); };
 $('nd-btn').onclick=async()=>{ const nm=prompt('新文件夹叫什么名字？（放在 '+(selDir||'根目录')+' 下）'); if(!nm) return;
   const r=await fetch('/api/fs/new',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:(selDir?selDir+'/':'')+nm,type:'dir'})});
-  const d=await r.json(); d.ok?(selDir=selDir?selDir+'/'+nm:nm,renderCurPane()):alert('创建失败: '+(d.err||'')); };
+  const d=await r.json(); d.ok?(selDir=selDir?selDir+'/'+nm:nm,renderCurPane()):addErr('没建成：'+(d.err||'')); };
 // ---- 版本时间线：点 🕘 展开该文件的历史版本，可预览/一键恢复 ----
 $('rside-toggle').onclick=()=>{ $('rside').classList.toggle('open'); renderCurPane(); loadWorkspaces(); };
 // ---- 版本时间线：点 🕘 展开该文件的历史版本，可预览/一键恢复 ----
