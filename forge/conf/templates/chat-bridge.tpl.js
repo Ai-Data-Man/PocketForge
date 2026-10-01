@@ -4002,6 +4002,14 @@ async function handleHttp(req, res) {
     }
     else if (url.startsWith('/open/')) {
         // 用系统默认程序打开本地文件（PowerShell Start-Process）
+        // s107/f10（qa-f123 P4-1）：本端点 GET 也有副作用（弹本机文件窗口）——顶部全局门只拦非 GET，
+        // 跨站 <img src=/open/…> 可零确认触发。GET 不豁免 Origin 门（/api/report S1 同款）：
+        // 同源 GET fetch 不带 Origin 头照常放行，跨站携带异源 Origin 一律 403，无 Origin（curl/直导）放行。
+        if (origin && origin !== 'http://127.0.0.1:' + PORT) {
+            res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: false, err: '跨站请求被拒绝' }));
+            return;
+        }
         const name = decodeURIComponent(url.slice('/open/'.length));
         // I5(审查s15): 黑名单保留（防御纵深）——拒绝引号/cmd 元字符/换行
         // s50h(FIND-1): fileNameSafe 不拒 '.'（归一化后变空串）——点号/隐藏名显式拒，防 spawn 打开 artifacts 目录本身

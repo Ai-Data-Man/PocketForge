@@ -3819,7 +3819,6 @@ $('nf-btn').onclick=async()=>{ const nm=prompt('新文件叫什么名字？（�
 $('nd-btn').onclick=async()=>{ const nm=prompt('新文件夹叫什么名字？（放在 '+(selDir||'根目录')+' 下）'); if(!nm) return;
   const r=await fetch('/api/fs/new',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:(selDir?selDir+'/':'')+nm,type:'dir'})});
   const d=await r.json(); d.ok?(selDir=selDir?selDir+'/'+nm:nm,renderCurPane()):addErr('没建成：'+(d.err||'')); };
-// ---- 版本时间线：点 🕘 展开该文件的历史版本，可预览/一键恢复 ----
 $('rside-toggle').onclick=()=>{ $('rside').classList.toggle('open'); renderCurPane(); loadWorkspaces(); };
 // ---- 版本时间线：点 🕘 展开该文件的历史版本，可预览/一键恢复 ----
 async function toggleVersions(f, rowEl){

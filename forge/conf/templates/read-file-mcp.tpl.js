@@ -44,10 +44,11 @@ function resolveInRoot(rel) {
     return (abs === ROOT || abs.startsWith(rootSep)) ? abs : null;
 }
 
-function looksBinary(buf) { // 头 8KB 嗅探：NUL 字节或非法 UTF-8 序列（xlsx/zip/图片全在首段暴露）
-    const sniff = buf.subarray(0, 8192);
-    if (sniff.includes(0)) return true;
-    try { new TextDecoder('utf-8', { fatal: true }).decode(sniff); return false; } catch { return true; }
+function looksBinary(buf) { // 全量检测：NUL 字节或非法 UTF-8 序列（qa-f45 P4-3：头 8KB 嗅探窗外 fail-open——中后段坏字节
+    // 被放行为含 U+FFFD/\0 有损文本，与裁决「内容非 UTF-8 → 人话错误」边缘不合。全量 fatal decode 与
+    // 后续 toString 同阶成本（文件本体 ≤100MB 上限内），方向 fail-closed）
+    if (buf.includes(0)) return true;
+    try { new TextDecoder('utf-8', { fatal: true }).decode(buf); return false; } catch { return true; }
 }
 
 function humanSize(n) { return n >= 1048576 ? (n / 1048576).toFixed(0) + ' MB' : (n / 1024).toFixed(0) + ' KB'; }

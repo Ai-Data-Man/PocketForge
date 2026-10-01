@@ -120,9 +120,8 @@ $normMem = { param($p) [IO.Path]::GetFullPath([string]$p).TrimEnd('\','/') }
 $memOk = $false
 $memHad = Test-Path $memApp
 if ($memHad) {
-    $memIt = Get-Item $memApp -Force
-    $memTgt = $memIt.Target -join ''
-    $memOk = ($memIt.LinkType -eq 'Junction') -and (Test-Path $memTgt) -and ((& $normMem $memTgt) -eq (& $normMem $memPort))
+    try { $memIt = Get-Item $memApp -Force; $memTgt = $memIt.Target -join '' } catch { $memTgt = '' } # s107/f10（qa-f123 P4-3）：%APPDATA% 含 [] 等通配/超长路径时 Get-Item 抛——防御捕获，视为失配走自愈重建
+    $memOk = ($memTgt -ne '') -and ($memIt.LinkType -eq 'Junction') -and (Test-Path $memTgt) -and ((& $normMem $memTgt) -eq (& $normMem $memPort))
 }
 if (-not $memOk) {
     New-Item -ItemType Directory -Force -Path (Split-Path $memApp) | Out-Null
@@ -132,7 +131,7 @@ if (-not $memOk) {
 # s107/f3: 守卫三态留痕（此前创建/修复/保持全静默，悬挂/错向/争抢只能事后猜——PFdrill2 以 forge-sbx
 #     账户跑，bootstrap 自愈的是 forge-sbx 的 junction，Administrator 侧无自愈者，运营守则核对需一眼可判）。
 #     修复/新建以重建后复验为准；原位真目录保守留置=mklink 失败态，红字 WARNING 不谎报修复（L90 先例）。
-$memNewIt = if (Test-Path $memApp) { Get-Item $memApp -Force } else { $null }
+$memNewIt = if (Test-Path $memApp) { try { Get-Item $memApp -Force } catch { $null } } else { $null } # s107/f10：同款防御（f3 留痕读）
 $memNewOk = ($null -ne $memNewIt) -and ($memNewIt.LinkType -eq 'Junction') -and ((& $normMem ($memNewIt.Target -join '')) -eq (& $normMem $memPort))
 if ($memOk) {
     Write-Host "[bootstrap] memory junction: 保持(目标 $memTgt)"
