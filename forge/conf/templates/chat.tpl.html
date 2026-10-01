@@ -3590,12 +3590,12 @@ function entryRow(c){
   el.appendChild(tactBtn('✎','重命名',async()=>{
     const nn=prompt('改成什么名字？',c.name); if(!nn||nn===c.name) return;
     const r=await fetch('/api/fs/rename',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:c.path,name:nn})});
-    const d=await r.json(); if(d.ok){ if(selDir===c.path) selDir=d.path; else if(selDir.startsWith(c.path+'/')) selDir=d.path+selDir.slice(c.path.length); renderCurPane(); } else alert('改名失败: '+(d.err||''));
+    const d=await r.json(); if(d.ok){ if(selDir===c.path) selDir=d.path; else if(selDir.startsWith(c.path+'/')) selDir=d.path+selDir.slice(c.path.length); renderCurPane(); } else addErr('没改成：'+(d.err||''));
   }));
   el.appendChild(tactBtn('🗑','删除',async()=>{
     if(!confirm('删除文件夹「'+c.name+'」？里面的文件也会一起删掉。')) return;
     const r=await fetch('/api/fs/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:c.path})});
-    const d=await r.json(); if(d.ok){ if(selDir===c.path||selDir.startsWith(c.path+'/')) selDir=''; renderCurPane(); } else alert('删除失败: '+(d.err||''));
+    const d=await r.json(); if(d.ok){ if(selDir===c.path||selDir.startsWith(c.path+'/')) selDir=''; renderCurPane(); } else addErr('没删成：'+(d.err||''));
   }));
   if(c.type==='link'){
     el.appendChild(tactBtn('✕','取消引入（只移除链接，不动原文件）',async()=>{
@@ -3646,12 +3646,12 @@ function fileNode(n,depth){
   el.appendChild(tactBtn('✎','重命名',async()=>{
     const nn=prompt('改成什么名字？',n.name); if(!nn||nn===n.name) return;
     const r=await fetch('/api/fs/rename',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:n.path,name:nn})});
-    const d=await r.json(); d.ok?renderCurPane():alert('改名失败: '+(d.err||''));
+    const d=await r.json(); d.ok?renderCurPane():addErr('没改成：'+(d.err||''));
   }));
   el.appendChild(tactBtn('🗑','删除',async()=>{
     if(!confirm('删除「'+n.name+'」？'+(n.att?'':'\n（删之前会自动存一版，可在历史版本里找回）'))) return;
     const r=await fetch('/api/fs/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:curWs,path:n.path})});
-    const d=await r.json(); d.ok?renderCurPane():alert('删除失败: '+(d.err||''));
+    const d=await r.json(); d.ok?renderCurPane():addErr('没删成：'+(d.err||''));
   }));
   return el;
 }
@@ -3695,9 +3695,9 @@ async function wsOrgDelete(){
     if(!d.ok) throw new Error(d.err||'失败');
     wsOrg.on=false; wsOrg.sel.clear();
     loadWorkspaces();
-    if(d.failed&&d.failed.length) alert('删掉了 '+d.deleted+' 个，'+d.failed.length+' 个没删成：\n'+d.failed.slice(0,5).map(f=>f.ws+'：'+f.err).join('\n')+(d.failed.length>5?'\n…':''));
+    if(d.failed&&d.failed.length) addErr('删掉了 '+d.deleted+' 个，'+d.failed.length+' 个没删成：'+d.failed.slice(0,5).map(f=>f.ws+'：'+f.err).join('；')+(d.failed.length>5?'；…':'')); // s107/f1: 失败臂 alert→消息流；分隔 \n→；（消息流单行渲染，同 s106/j 上传先例）
     else addInfo('已清理 '+d.deleted+' 个工作区'); // s106/S1: 右栏浏览全部整理动作——note 同族不可见，改消息流
-  }catch(e){ alert('删除失败: '+(e.message||'')); }
+  }catch(e){ console.error('ws批量清理失败', e); addErr('没清理成，稍后再试一次'); } // s107/f1: 裸 e.message 不再进妻子面（原文落 console，人话兜底——s106/L 口径）
 }
 
 // ===== 浏览全部 pane =====
@@ -3773,7 +3773,7 @@ function renderAllPane(){
         if(!confirm('最后确认：连文件带版本历史一起删，确定？')) return;
         const r=await fetch('/api/ws/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ws:w.id,sid:sessionId||''})});
         const d=await r.json();
-        if(d.ok){ loadWorkspaces(); addInfo('工作区已删除'); } else alert('删除失败: '+(d.err||'')); // s106/S1: 右栏单删动作——note 同族不可见，改消息流
+        if(d.ok){ loadWorkspaces(); addInfo('工作区已删除'); } else addErr('没删成：'+(d.err||'')); // s106/S1 成功臂+s107/f1 失败臂——note 同族不可见，均走消息流
       };
       row.appendChild(del);
     }
