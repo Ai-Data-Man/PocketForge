@@ -187,7 +187,7 @@ const TOOL_TBL = {
             description: { type: 'string', description: '一句中文人话：这张表装什么、给谁用' },
             rows: { type: 'array', description: '可选：首批数据行，每行 {列名: 值}', items: { type: 'object' } }
         },
-        required: ['service', 'table', 'columns', 'description']
+        required: ['service', 'table', 'description'] // columns 对追加形态（表已存在+rows）可省——d2 二轮实录：省 columns 被前置校验白吃一张卡
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } // write 注解 → 一次建表=一张真同意卡（首批行搭车，不拆卡）
 };
@@ -197,13 +197,15 @@ async function createTable(args) {
     if (!svc || typeof svc !== 'string' || !NAME_RE.test(svc)) return err(svc ? badName('库', svc) : '要告诉它在哪个库建表：service 参数填库名（faucet_list_services 里看到的）。');
     if (!tbl || typeof tbl !== 'string' || !NAME_RE.test(tbl)) return err(tbl ? badName('表', tbl) : '要告诉它表叫什么：table 参数填表名（中英文都行，1 到 64 个字）。');
     if (!args.description || typeof args.description !== 'string' || !args.description.trim()) return err('要写一句说明：description 参数用一句人话说清这张表装什么、给谁用（数据面板靠它显示说明）。');
-    if (!Array.isArray(args.columns) || !args.columns.length) return err('要给出列：columns 参数是数组，每项 {"name":"列名","type":"TEXT"}，至少一列。');
+    // columns 对「已存在的表」可省（追加形态：只带 rows）；对新建必需——先探存在性再分派（d2 二轮实录：
+    // 追加时省 columns 被前置校验白吃一张卡；无 columns 无 rows 的空调用也由探后的两臂各自给专错）。rows 每行必须是 {列名: 值} 对象。
+    const hasCols = Array.isArray(args.columns) && args.columns.length;
+    const rowsIn = Array.isArray(args.rows) ? args.rows : null;
     const cols = [];
-    for (const c of args.columns.slice(0, 64)) {
+    if (hasCols) for (const c of args.columns.slice(0, 64)) {
         if (!c || typeof c !== 'object' || typeof c.name !== 'string' || !c.name.trim()) return err('columns 里有拿不出手的列定义：每项必须是 {"name":"列名","type":"TEXT"}，name 不能空。');
         cols.push({ name: c.name.trim(), type: (typeof c.type === 'string' && c.type.trim()) ? c.type.trim().toUpperCase() : 'TEXT' });
     }
-    const rowsIn = Array.isArray(args.rows) ? args.rows : null;
     if (rowsIn) for (const r of rowsIn) if (!r || typeof r !== 'object' || Array.isArray(r)) return err('rows 里每行都必须是 {列名: 值} 的对象。');
     const key = readKey();
     if (!key) return err('数据库还没配好钥匙（首启供给可能还没跑完）。等十几秒再试一次；还不行就重启数字员工后再试。');
@@ -212,16 +214,28 @@ async function createTable(args) {
     // 库必须已在（本工具不做 restart——那是 db_create_service 的内部编排；insert 路径永不动它）
     const seen = await svcVisible(svc, port, key);
     if (!seen) return err('没有叫「' + svc + '」的库在数据库网关里（或服务暂时没响应）。先用 db_create_service 建库；如果是刚建的，等几秒再试一次。');
-    // ① 建表（表名在 UTF-8 JSON body，中文安全；REST POST _schema）。已存在=追加模式：不建表只加行
-    //（会话内 faucet_* MCP 对新建库不可见——spawn 时连接注册表不刷新，d2 验收实录：agent 被「Service not
-    // found. Available services: []」逼回 shell 27 卡老路——工具必须自给同会话写通道，f4「吸收重造」同精神）
-    const sc = await api('POST', '/api/v1/' + encodeURIComponent(svc) + '/_schema', port, key,
-        { name: tbl, columns: cols.map(c => ({ name: c.name, type: c.type })) });
-    const exists = sc.code !== 201 && /already exists/.test(sc.body);
-    if (exists && !rowsIn) {
-        return err('「' + svc + '」库里已经有一张叫「' + tbl + '」的表。要往里补数据：再调一次本工具并带上 rows（表已存在不冲突，只加行）；要建的是别的表就换个名字。');
+    // ① 探表存在（GET _schema 清单，实测 200 {tables:[…]}）→ 存在=追加模式（不建表不重复记账，columns 可省）
+    //（会话内 faucet_* MCP 对新建库不可见——spawn 时连接注册表不刷新，d2 验收实录：agent 被「Service
+    // not found. Available services: []」逼回 shell 27 卡老路——工具必须自给同会话写通道，f4「吸收重造」同精神）
+    let exists = false;
+    const ls = await api('GET', '/api/v1/' + encodeURIComponent(svc) + '/_schema', port, key);
+    if (ls.code === 200) {
+        try { exists = ((JSON.parse(ls.body) || {}).tables || []).some(t => t && t.name === tbl); } catch {}
     }
-    if (!exists && sc.code !== 201) return err('建表没成功：' + apiErr(sc) + '。请把这句如实告诉用户，不要自己反复重试。');
+    if (exists && !rowsIn) {
+        return err('「' + svc + '」库里已经有一张叫「' + tbl + '」的表。要往里补数据：再调一次本工具并带上 rows（columns 可省，只加行）；要建的是别的表就换个名字。');
+    }
+    if (!exists && !hasCols) {
+        return err('「' + svc + '」库里还没有「' + tbl + '」这张表，新建它必须给列：columns 参数是数组，每项 {"name":"列名","type":"TEXT"}。');
+    }
+    if (!exists) {
+        const sc = await api('POST', '/api/v1/' + encodeURIComponent(svc) + '/_schema', port, key,
+            { name: tbl, columns: cols.map(c => ({ name: c.name, type: c.type })) });
+        if (sc.code !== 201) {
+            if (/already exists/.test(sc.body)) exists = true; // 探查与创建间的窄窗竞态：按追加收口
+            else return err('建表没成功：' + apiErr(sc) + '。请把这句如实告诉用户，不要自己反复重试。');
+        }
+    }
     let rowsNote = '';
     if (rowsIn && rowsIn.length) {
         const ins = await api('POST', '/api/v1/' + encodeURIComponent(svc) + '/_table/' + encodeURIComponent(tbl), port, key,
@@ -230,7 +244,7 @@ async function createTable(args) {
         else rowsNote = '（但数据没写进去：' + apiErr(ins) + '——' + (exists ? '表本来就在' : '表已经建好') + '；缺的行再带 rows 调一次本工具补上。请如实告诉用户。）';
     }
     if (exists) {
-        return ok('没建新表——「' + svc + '」库里的「' + tbl + '」本来就在' + (rowsNote || '，这次也没有要加的数据') + '。这个对话里继续补数据都用本工具带 rows。');
+        return ok('没建新表——「' + svc + '」库里的「' + tbl + '」本来就在' + (rowsNote || '，这次也没有要加的数据') + '。这个对话里继续补数据都用本工具带 rows（columns 可省）。');
     }
     // ② 表说明（forge_table_info 建表+写一行——hints 建表留说明义务；仅新建时写，追加不重复记账）
     let infoNote = '';
