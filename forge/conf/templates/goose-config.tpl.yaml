@@ -43,6 +43,17 @@ extensions:
     cmd: '__NODE_DIR__/node.exe'
     args: ['__FORGE_ROOT__/bin/read-file-mcp.js', '__FORGE_ROOT__/data/artifacts']
     timeout: 60
+  # s108/d2（裁决 2026-10-03-s108-db-write-path 裁决一）：建数据库工具（db_create_service/db_create_table
+  # 两把，全部 write 注解 readOnlyHint=false → smart_approve 注解归一确定性 ask_before——一次建库/一次建表
+  # 各一张真同意卡，取代旧 shell 路径的 27 卡墙）。密钥（faucet .apikey）只在工具进程内读取，不进 agent 上下文；
+  # pc restart 编排内置于 db_create_service（端口逐次读 data/pc.port 动态值），机制不进配置面、无专用开关。
+  db-create:
+    type: stdio
+    name: db-create
+    enabled: true
+    cmd: '__NODE_DIR__/node.exe'
+    args: ['__FORGE_ROOT__/bin/db-create-mcp.js', '__FORGE_ROOT__']
+    timeout: 90
   # G3（裁决书 S-B）：关停无场景点名的平台扩展——已双臂探针实证（tmp/goose-probe/ext-probe.js）：
   # apps/summon/extensionmanager/analyze 共 11 把工具消失，其余扩展不受影响。
   # todo 保留（ACP plan 事件来源，P32 底座）。用户在设置面板改过开关的，bootstrap 重建时保留其值。

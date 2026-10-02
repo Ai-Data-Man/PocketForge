@@ -312,6 +312,11 @@ if (Test-Path $regTpl) { Copy-Item $regTpl $regOut -Force }
 $readTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\read-file-mcp.tpl.js'))
 [IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\read-file-mcp.js'), $readTpl)
 
+# 5k) s108/d2: 建数据库 MCP 生成（db_create_service/db_create_table，裁决 2026-10-03-s108-db-write-path 裁决一；
+#     真相源入库同 5j 先例。安装根由 goose-config 物化时经 argv 传入——pc/faucet 端口与 .apikey 全部逐次现读）
+$dbTpl = [IO.File]::ReadAllText((Join-Path $ForgeRoot 'conf\templates\db-create-mcp.tpl.js'))
+[IO.File]::WriteAllText((Join-Path $ForgeRoot 'bin\db-create-mcp.js'), $dbTpl)
+
 # 5c) 首启欢迎页（仅首次：data/welcome.done 不存在时生成 html 并由启动器打开）
 $done = Join-Path $ForgeRoot 'data\welcome.done'
 if (-not (Test-Path $done)) {
