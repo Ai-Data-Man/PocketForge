@@ -184,7 +184,7 @@ const TOOL_TBL = {
             service: { type: 'string', description: '库名（faucet_list_services 里看到的）' },
             table: { type: 'string', description: '表名（文字/数字/下划线/连字符，1-64 字，中英文都行）' },
             columns: { type: 'array', description: '列定义数组，每项 {"name":"列名","type":"TEXT"}', items: { type: 'object' } },
-            description: { type: 'string', description: '一句中文人话：这张表装什么、给谁用' },
+            description: { type: 'string', description: '一句中文人话：这张表装什么、给谁用（新建表必填；表已存在只补数据时可省）' },
             rows: { type: 'array', description: '可选：首批数据行，每行 {列名: 值}', items: { type: 'object' } }
         },
         required: ['service', 'table', 'description'] // columns 对追加形态（表已存在+rows）可省——d2 二轮实录：省 columns 被前置校验白吃一张卡
@@ -196,9 +196,9 @@ async function createTable(args) {
     const svc = args.service, tbl = args.table;
     if (!svc || typeof svc !== 'string' || !NAME_RE.test(svc)) return err(svc ? badName('库', svc) : '要告诉它在哪个库建表：service 参数填库名（faucet_list_services 里看到的）。');
     if (!tbl || typeof tbl !== 'string' || !NAME_RE.test(tbl)) return err(tbl ? badName('表', tbl) : '要告诉它表叫什么：table 参数填表名（中英文都行，1 到 64 个字）。');
-    if (!args.description || typeof args.description !== 'string' || !args.description.trim()) return err('要写一句说明：description 参数用一句人话说清这张表装什么、给谁用（数据面板靠它显示说明）。');
-    // columns 对「已存在的表」可省（追加形态：只带 rows）；对新建必需——先探存在性再分派（d2 二轮实录：
-    // 追加时省 columns 被前置校验白吃一张卡；无 columns 无 rows 的空调用也由探后的两臂各自给专错）。rows 每行必须是 {列名: 值} 对象。
+    // description/columns 都只对「新建」必填，对「追加」（表已存在+rows）可省——d2 三轮实录：追加省 columns、
+    // 省 description 各白吃一张卡；两检都移到探存在之后分派。rows 每行必须是 {列名: 值} 对象。
+    const descOk = typeof args.description === 'string' && args.description.trim();
     const hasCols = Array.isArray(args.columns) && args.columns.length;
     const rowsIn = Array.isArray(args.rows) ? args.rows : null;
     const cols = [];
@@ -223,10 +223,13 @@ async function createTable(args) {
         try { exists = ((JSON.parse(ls.body) || {}).tables || []).some(t => t && t.name === tbl); } catch {}
     }
     if (exists && !rowsIn) {
-        return err('「' + svc + '」库里已经有一张叫「' + tbl + '」的表。要往里补数据：再调一次本工具并带上 rows（columns 可省，只加行）；要建的是别的表就换个名字。');
+        return err('「' + svc + '」库里已经有一张叫「' + tbl + '」的表。要往里补数据：再调一次本工具并带上 rows（columns 和 description 可省，只加行）；要建的是别的表就换个名字。');
     }
-    if (!exists && !hasCols) {
-        return err('「' + svc + '」库里还没有「' + tbl + '」这张表，新建它必须给列：columns 参数是数组，每项 {"name":"列名","type":"TEXT"}。');
+    if (!exists && (!descOk || !hasCols)) {
+        const missing = [];
+        if (!hasCols) missing.push('columns 列定义（数组，每项 {"name":"列名","type":"TEXT"}）');
+        if (!descOk) missing.push('description 一句人话说明（数据面板靠它显示说明）');
+        return err('要新建「' + tbl + '」这张表，还差：' + missing.join('；') + '。补上再调一次。');
     }
     if (!exists) {
         const sc = await api('POST', '/api/v1/' + encodeURIComponent(svc) + '/_schema', port, key,
