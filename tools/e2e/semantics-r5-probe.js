@@ -48,7 +48,7 @@ ck('脚本段「技能」仅存活于技能源技术区字符串/agent 面备注
 ck('HTML 段（摘技术区后）「技能」=0', htmlWife.indexOf('技能') < 0, hit(htmlWife, '技能'));
 
 // ---- ② 三母句逐字（§2.2 原文）+ 三 h3 ----
-const M_EXT = '这些是它出厂就长在身上的：数据库、浏览器、长期记忆、读文件。只能开和关——关上哪个，它这次就不用哪个（重启数字员工后生效）。添不了新的，也拆不掉。想给它添工具，去「🔌 工具」；想看它学会的做法，去「🧩 手艺」。';
+const M_EXT = '这些是它出厂就长在身上的：数据库、建数据库、浏览器、长期记忆、读文件。只能开和关——关上哪个，它这次就不用哪个（重启数字员工后生效）。添不了新的，也拆不掉。想给它添工具，去「🔌 工具」；想看它学会的做法，去「🧩 手艺」。'; // s108/d2 随迁：+建数据库
 const M_MCP = '这里是从工具目录给它添的外接工具。跟出厂自带的不一样：这些是后来装的，装一个多一件家伙，不用了可以卸掉。带「官方」牌的是官方出品，其余是自己加的。装、卸、开和关都在这里（重启数字员工后生效）。';
 const M_SK  = '这些是教它怎么干活的做法册：有出厂带的，有从市场装的，还有它干活时自己学会的。工具说的是「它有什么」，做法说的是「它怎么干」——聊天里说到相关的活儿它会自己用；也可以点「让它现在用」。';
 ck('母句①自带的（mpane-ext fnote 逐字）', htmlNoBody.indexOf(M_EXT) >= 0);
@@ -118,8 +118,8 @@ ck('欢迎页旧词清零（本事|本领|插件|技能）', !bridgeZero('welcom
         res.on('end', () => {
             let rows = null;
             try { rows = JSON.parse(body); } catch {}
-            const ok4 = Array.isArray(rows) && rows.length === 5 && rows.every(r => typeof r.name === 'string' && typeof r.desc === 'string'); // s107/f4 随迁：4→5（内置新增 read 读文件）
-            ck('活体 /api/extensions 五行形状（含 name/desc 字符串；s107/f4 +read）', ok4, body.slice(0, 120));
+            const ok4 = Array.isArray(rows) && rows.length === 6 && rows.every(r => typeof r.name === 'string' && typeof r.desc === 'string'); // s107/f4 随迁：4→5（内置新增 read 读文件）；s108/d2 随迁：5→6（内置新增 db-create 建数据库）
+            ck('活体 /api/extensions 六行形状（含 name/desc 字符串；s108/d2 +db-create）', ok4, body.slice(0, 120));
             if (ok4) {
                 const hitW = rows.map(r => [r.name, r.desc].join(' ')).map(s => BRIDGE_BAD.filter(w => s.indexOf(w) >= 0)).filter(a => a.length);
                 ck('活体 /api/extensions desc 零旧词（本事|本领|插件|技能）', hitW.length === 0, JSON.stringify(hitW));

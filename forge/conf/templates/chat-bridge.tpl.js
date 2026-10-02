@@ -4187,6 +4187,7 @@ const ext = path.extname(f).toLowerCase();
         // 对小白隐藏 chatrecall（纯增强，关掉无收益）；只暴露有感知差异的扩展
         const LABELS = {
             'faucet-db': { name: '数据库', desc: '存数据、查数据的（保留它基本功能都在）' }, // qa2/P2-1: 去「本事」（裁决 §3 词汇表；QA 活体证伪的桥侧残留）
+            'db-create': { name: '建数据库', desc: '说一声就能新建数据库、建表存东西——建的时候会弹卡片请你点头，点头一次就能建好' }, // s108/d2: 建库/建表工具人话名（R4，裁决 2026-10-03-s108-db-write-path；write 注解 ask_before 见 goose-config 注释；紧邻 faucet-db=同域归置）
             // r5/S2（裁决 §4 归置审计）：browser 收窄为「要用真浏览器」——抓表格让给工具/手艺划界句；memory 补反向指路（与 memory-graph 双向划界）
             'browser': { name: '浏览器自动化', desc: '要用真浏览器的活儿：要登录、要点按的页面，看内网系统' },
             'memory': { name: '长期记忆', desc: '平时的喜好和常用做法它自己记，去「💭 记忆」看、可删；人物设备的台账关系用「关系图谱记忆」（🔌 工具）' },

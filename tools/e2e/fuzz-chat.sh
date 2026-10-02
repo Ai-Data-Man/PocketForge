@@ -130,17 +130,20 @@ curl -s -X POST "$B/api/mcpstore" -H 'content-type: application/json' -d '{"id":
 curl -s -X POST "$B/api/skillstore" -H 'content-type: application/json' -d '{"name":"ghost-skill-zzz","op":"uninstall"}' | grep -q '没有安装这个手艺'; ck "skillstore uninstall unknown name friendly" $?
 # s57 并入已撤（裁决 2026-09-16 §2）：GET=纯内置（chatrecall visible:false 在内），零 mcp-*；写通道 POST 保留给插件 tab 开关钮
 # s107/f4 随迁：内置五行——新增 read（只读文件内容工具，裁决 2026-10-02-s107-report-permission-readtool），断言含其人话名
+# s108/d2 随迁：5→6——新增 db-create（建库/建表工具，裁决 2026-10-03-s108-db-write-path），断言含其人话名
 curl -s "$B/api/extensions" | python -c "
 import sys,json
 d=json.load(sys.stdin)
-assert isinstance(d,list) and len(d)==5, d
-assert all(x['id'] in ('faucet-db','browser','memory','read','chatrecall') for x in d), d
+assert isinstance(d,list) and len(d)==6, d
+assert all(x['id'] in ('faucet-db','db-create','browser','memory','read','chatrecall') for x in d), d
 rd=[x for x in d if x['id']=='read']
 assert rd and rd[0]['name']=='读文件' and rd[0]['enabled'] is True, d
+dc=[x for x in d if x['id']=='db-create']
+assert dc and dc[0]['name']=='建数据库' and dc[0]['enabled'] is True, d
 assert not [x for x in d if x['id'].startswith('mcp-')], d
 cr=[x for x in d if x['id']=='chatrecall']
 assert cr and cr[0]['visible'] is False, d
-"; ck "extensions GET pure builtin 5 rows (s107/f4 +read 读文件), no mcp-* (s57 revoked)" $?
+"; ck "extensions GET pure builtin 6 rows (s107/f4 +read, s108/d2 +db-create 建数据库), no mcp-* (s57 revoked)" $?
 curl -s -X POST "$B/api/extensions" -H 'content-type: application/json' -d '{"id":"mcp-ghost-zzz","enabled":false}' | grep -q '参数不合法'; ck "extensions dynamic id whitelist enforced" $?
 # qa返工(P3-3): 回归钉——disable 已装 MCP → mcpstore enabled 显 false → 按原值还原（GET 已收窄，写通道保留给插件 tab 开关钮；端态还原零残留）
 EN0=$(curl -s "$B/api/mcpstore" | python -c "
