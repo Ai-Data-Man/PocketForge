@@ -1,0 +1,23 @@
+# s108/ef1 会话记录：注册桥替换回合孤儿化修复（D 双门烧漂移 + C 悬空补帧 + 回写加门）
+
+- 日期：2026-10-03。角色：实现工程师（ef1）。输入：RCA docs/research/2026-10-03-s108-register-bridge-restart-rca.md + 裁决 docs/verdicts/2026-10-03-s108-bridge-restart-turn-loss.md + 任务书 tmp/s108-task-ef1.md。基座：D-1（5e72354/0d9c665）+ D-2（fcf2723→6ffe201）。
+- 交付四 commit（不 push，任务书指明）：
+  - 03af523 桥侧三件：①:5387 回写值比对门（面板纯打开零写入）；②BOOT_PC_ENV boot 指纹（含真实 host，禁复用 sig2）→ 写盘+指纹陈旧+三键非空才 spawnForgeConverge（cmd.exe 显式通道+30s taskkill /T 兜底），触发轮跳过 hotRestartProvider，首档 add 独立判定；③data/turns-inflight.json（STATE_SCHEMAS schema 1）busySids 持久化镜像，五路收口清+sessionDel 随清，subscribe 先清后补发 dangling_turn（裁决措辞）。events 两新行 providers_converge/dangling_notify。
+  - 5a817d1 wrapper fail-loud：三键行缺失 rc=4+人话行+register.log 原文，不发 update；空值放行。
+  - dfedc3e 前端：dangling_turn 消费（role=status 消息流，不 banner 不健康面）+「再问一次」纯前端钮+lastUserMsg 双源（live submit+回放 user_message_chunk）。
+  - b4a6b13 探针入库：ef1-wrapgate-probe（7 ck）/ef1-uiarm-probe（17 ck）/ef1-ws-probe/红绿驱动（README 索引）。
+- 红绿（沙盒 C:\PF-TEST\ef1，降权冷启 runas //trustlevel:0x20000，glm-5.3-flash@9router 20128）：
+  - 红=iat128（修前）10/0：R1 面板纯打开即改写 secrets（mtime 变）；R3 复刻 iat124 全形态——agent 回合内 forge-register 12.6s 处只换桥（pg PID 稳定）、回复截断「apps/hello.yaml 存在。开始注册。」、零 stop 零错误帧、重连窗口零悬空提示、events 零新行。
+  - 绿=iat129 五臂+负检查四项：G2 配流保存→保存点 converge 5.7s 换桥+providers_converge 行+再存同值零换桥（收敛闭环）；G3 核心臂注册零换桥+回合完整回复+pg 稳定+forge-register 单命令单卡（events permcard 行核对；总卡数 3 vs 红 2=todo_write LLM 步数噪音）；G4 killturn（pc process restart=同一硬杀 stopper 路）通知 2007ms≤10s+措辞含「再问一次」+标记清+重发新回合 stop 收尾+二订无二次；G5 正常完成回合重连零提示（S9 本体不动）；G7 同定义改档（models 追加）零换桥零 converge；G6 wrapper 活体（删 GOOSE_MODEL_NAME 行→rc=4+桥 PID 稳定）；G9 升级臂（停止→iat129 差量覆盖除 data/→冷启）标记存活+boot 后标记会话恰一次通知+干净 sid 零误报。G1 面板纯打开 mtime 纳秒级不变。
+  - 单元：wrapgate 7/0；uiarm 17/0；dev 栈 panelopen 快检绿。
+- §8.2 触桥批全清单（dev 栈 PFdrill2-forge-sbx 通道）：e2e-chat 61/1（rescue 探针 LLM 延迟瞬时，单跑绿——既有抖动家族）+fuzz 225+ui-logic 168+ia 38+sem 38+think-grad 27+capeditor 141+modelcaps 44+proxythink 30+xlate 10+w2-preset 15+receipt-failarms 30（改 chat.tpl.html 回执族加跑）。
+- 测试包：iat129=df57ee21…（dist，不入发布序，含本批全部改动）。
+- 过程实录（复现要领，已固化进红绿驱动脚本）：
+  - iat124 复刻必须等 boot converge 完成（open-when-ready.log 出 converge rc= 行）再配流——settle 窗内配流会把首更的全表重启连带烧掉漂移（自愈无害，但会吞掉红臂前提）。
+  - 配流必须复刻 UI 两帧（add + 勾选保存 update）——旧码第二帧才触发 hotRestart 给 acp 真 key；单 add 帧后空 env 桥的 LLM 调用走 llmproxy 透明路原样转发空 bearer→401。
+  - 8790 归属门：探针前置断言监听者 exe 路径在沙盒树内（本批首轮红曾误打 dev 栈，已清理污染会话 20261002_44 并加门）。
+  - 降权 wrapper 需先清上一轮挂在 pause 的 wrapper cmd（s67 实证观察项复现）。
+- 留档观察项（不夹带修）：
+  - P4：forge-register pc 调用失败路的 exit /b 1 在本机被吞（cmd 返回 0；HEAD 同形实测同样——预存 quirk 非本批引入；新增 rc=4 门传播正常）。
+  - 备忘：pc `process info` 无 -o json 子命令（process list 才有）。
+- 环境终态：沙盒 C:\PF-TEST\ef1 整删零残留（零进程零端口，仅存主控 s108a）；dev 树 materialization tpl→bin 一致（node --check 双过）；dev 栈停栈让位后已 schtasks /Run PFdrill2 归位（healthz 200）。
