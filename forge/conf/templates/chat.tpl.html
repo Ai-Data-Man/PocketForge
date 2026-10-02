@@ -778,6 +778,14 @@ function connect(){
       return;
     }
     if(m.sys==='error'){ if(pendingQueue.length){ rollbackQueue('对话没开好，刚才记下的话已放回，稍后再发一次。'); pendingForNew=false; } addErr(m.text+(m.text.includes('可选池')?'。到 ⚙️ 设置里勾选它，或换顶栏列表里有的模型。':'')); if($('modal').classList.contains('on')) note(m.text); zombieToolcards(); setBusy(false); renderThinkCtl(); return; } // B1: 开新对话失败时队列倒回（仅队列非空时，不影响其他 error 路径）; s95/F-3: 中断终态帧同样收口工具卡; s98/think-grad: 失败帧按真相源重绘（梯度选择切换失败回滚显示）; s105/R1-P6: 设置弹窗开着时错误镜像进面板状态行（拉取 502 原先只落聊天流被弹窗挡住=「拉取中…」永挂无反馈）
+    if(m.sys==='dangling_turn'){ // s108/ef1（裁决一 C）：重连补终态——桥重启时在飞回合的悬空说明。回合级消息流一条（不弹 banner、不进健康面：S7 已裁健康条退出聊天流，回合终态属会话记录；S9 本体不动——无标记断线仍零提示）。「再问一次」=纯前端重发本会话最后一条用户消息（复用 submit 既有路径，桥零改动）
+      const el=document.createElement('div'); el.className='msg agent info'; el.setAttribute('role','status');
+      el.textContent=m.text;
+      const b=document.createElement('button'); b.className='msgbtn'; b.textContent='再问一次';
+      b.onclick=()=>{ if(busy) return; if(!lastUserMsg){ b.remove(); return; } txt.value=lastUserMsg; el.remove(); submit(); };
+      el.appendChild(b);
+      const stick=nearBottom(); chat.appendChild(el); if(stick) chat.scrollTop=chat.scrollHeight;
+      return; }
     if(m.sys==='hello'){ $('version').textContent=m.app||('v'+m.version); return; } // s64: app=应用版本（自带 v 前缀）；回落才是 WS 协议版本
     if(m.sys==='health'){ healthSync(m); return; } // 裁决 provider-health-probe S3: 健康态帧（态变化广播与缓存直发同形）
     if(m.sys==='models'){
@@ -995,7 +1003,7 @@ $('svw-arch').onclick=()=>showSideView('arch');
 $('sess-org').onclick=()=>{ ssOrg.on=!ssOrg.on; ssOrg.sel.clear(); renderSessions(lastSessions); }; // r4/S2b: 整理模式进/出
 let archQT=null; // IA-2: 归档搜索（store-q 同款防抖 200ms；过滤变化回第 1 页）
 $('arch-q').oninput=()=>{ clearTimeout(archQT); archQT=setTimeout(()=>{ listPage.arch=1; listPage.chat=1; renderSessions(lastSessions); },200); }; // 项1: 两视图共用搜索词，各自回第 1 页
-function subscribe(sid){ pendingForNew=!sid; lastOrig=null; if(!sid){ sessionId=null; currentSid=null; } wssend({type:'subscribe',sessionId:sid,model:lastKnownModel||undefined,think:(!sid&&localStorage.getItem('pfThinkEffort'))||undefined}); chat.innerHTML=''; toolCards.clear(); if(!sid){ addMsg('你好！我是小 forge。想做什么直接打字告诉我。','agent'); addQuickPrompts(); } } // s105/用户复现：开新对话到 subscribed 回执的窗口内（goose session/new 生成要几秒）sessionId 仍是上一个会话——此刻发消息被桥按旧绑定路由进旧会话，回合帧只发旧会话订阅者=新页面收不到，回复与思考全部隐形（活体复现：消息落 20260930_3 旧会话+页面零渲染）。修=开新对话即清指针，submit 落入 pendingQueue 队列路径（C3 既有机制：subscribed 到达自动补发，openSession 切走自动放回）
+function subscribe(sid){ pendingForNew=!sid; lastOrig=null; lastUserMsg=null; if(!sid){ sessionId=null; currentSid=null; } wssend({type:'subscribe',sessionId:sid,model:lastKnownModel||undefined,think:(!sid&&localStorage.getItem('pfThinkEffort'))||undefined}); chat.innerHTML=''; toolCards.clear(); if(!sid){ addMsg('你好！我是小 forge。想做什么直接打字告诉我。','agent'); addQuickPrompts(); } } // s105/用户复现：开新对话到 subscribed 回执的窗口内（goose session/new 生成要几秒）sessionId 仍是上一个会话——此刻发消息被桥按旧绑定路由进旧会话，回合帧只发旧会话订阅者=新页面收不到，回复与思考全部隐形（活体复现：消息落 20260930_3 旧会话+页面零渲染）。修=开新对话即清指针，submit 落入 pendingQueue 队列路径（C3 既有机制：subscribed 到达自动补发，openSession 切走自动放回）
 // s33: 开场快捷任务——小白不用想"该说什么"，点一下就发
 const QUICK_PROMPTS=[
   {label:'🩺 做个体检', text:'做个体检'},
@@ -1096,7 +1104,7 @@ function toggleReportCard(wrap){
 function openSession(sid){
   if(busy){ addErr('它正在干活，等一下或先停止。'); return; }
   tabMenuClose(); // s78 qa P3-D：切会话关 Tab 菜单+清过滤词（侧栏点击/搜索窗选会话/撤回恢复重载全走此口；menu 不关则 Esc 前残留且再按 Tab 被「已开不重置」守卫卡成无操作）
-  pendingForNew=false; lastOrig=null; // C3: 切旧会话不补发队列；s50e: 清重发原文，防上一会话原文串进本会话（回放末尾 endStream 可能读它）
+  pendingForNew=false; lastOrig=null; lastUserMsg=null; // C3: 切旧会话不补发队列；s50e: 清重发原文，防上一会话原文串进本会话（回放末尾 endStream 可能读它）；s108/ef1: 同清（随后回放按本会话重记）
   if(pendingQueue.length){ rollbackQueue('你切到了别的对话，刚才排队没发出去的话已放回，稍后再发一次。'); } // C3: 用户改主意切走，别替他发
   const prevSid=currentSid, prevChat=[...chat.childNodes]; // s83 返工🟡2: 死链 load 失败时还原现场（存节点引用非 innerHTML 串——保住卡上的事件处理器）
   // 先订阅再载入：load 的历史回放通知才能流进 UI
@@ -1229,7 +1237,7 @@ function switchModel(v){
   addInfo('正在切换到 '+v+' …');
   wssend({type:'switch_model',model:v});
 }
-let pendingSwitch=null; let pendingRetry=null; let lastOrig=null; // s50e: 换备用线路后自动重发的一次性回调（provider_switched 时消费）；lastOrig=最近一次实际发送的原文，会话切换时清空
+let pendingSwitch=null; let pendingRetry=null; let lastOrig=null; let lastUserMsg=null; // s50e: 换备用线路后自动重发的一次性回调（provider_switched 时消费）；lastOrig=最近一次实际发送的原文，会话切换时清空；s108/ef1: lastUserMsg=当前会话最后一条用户消息原文（live 提交与回放双来源），悬空补帧的「再问一次」钮用它重发（页面重开场景 lastOrig 为空，回放补位）
 let pendingQueue=[]; let pendingForNew=false; // #3: 对话还没开好时先记下用户消息，subscribed 后自动补发（替代原先直接拒发）；C3: 仅新对话补发
 function rollbackQueue(tip){ if(!pendingQueue.length) return; if(txt.value.trim()) addInfo('你正在打的字（已让位给排队的话，怕你找不到，先放这儿）：'+(txt.value.length>200?txt.value.slice(0,200)+'…（太长，只显示前 200 字）':txt.value)); txt.value=pendingQueue.shift(); for(const q of pendingQueue) addInfo('你刚输入的：'+q); pendingQueue=[]; addInfo(tip); } // B1/C3: 队列倒回——第一条回输入框，其余上墙展示；s62: 被让位的草稿也上墙，不再无声丢失；s62/P3: 草稿超长截断 200 字，防撑爆消息墙
 function flushPendingQueue(){ while(pendingQueue.length){ if(busy||!sessionId) return; submit(pendingQueue.shift()); } } // B2: 直发不经输入框，不碰用户正在打的草稿
@@ -1549,7 +1557,7 @@ function onAgentEvent(p){
   if(p.method==='session/update'){
     const u=p.params.update;
     if(u.sessionUpdate==='agent_message_chunk'){ thinkDiscard(); noteTurnPhase('write'); const mel=addMsg(u.content.text,'agent'); if(mel){ const mg=(u.messageId||(u._meta&&u._meta.goose&&u._meta.goose.messageId)); if(mg) mel.dataset.gmid=mg; thinkAttach(mel,mg||''); } } // s103/S1: 阶段翻「在写答案」；S2: 首个正文帧=想完了，面板收起；s105: 收起同时收留——新消息元素落地即挂思考折叠块+补 gmid（user 侧 :1495 同款先例；live 分支甲与回放同套配对，裁决 §3.2）
-    else if(u.sessionUpdate==='user_message_chunk'){ const el=addMsg(u.content.text,'user'); const gm=(u.messageId||(u._meta&&u._meta.goose&&u._meta.goose.messageId)); if(gm) el.dataset.gmid=gm; } // 主线5：回放帧双冗余 id（research/21 §6 顶级 messageId 与 _meta.goose.messageId 同值），存元素上供撤回定位
+    else if(u.sessionUpdate==='user_message_chunk'){ const el=addMsg(u.content.text,'user'); lastUserMsg=u.content.text; const gm=(u.messageId||(u._meta&&u._meta.goose&&u._meta.goose.messageId)); if(gm) el.dataset.gmid=gm; } // 主线5：回放帧双冗余 id（research/21 §6 顶级 messageId 与 _meta.goose.messageId 同值），存元素上供撤回定位；s108/ef1: 回放顺带记账最后一条用户消息（悬空补帧「再问一次」钮在页面重开场景的数据源）
     else if(u.sessionUpdate==='agent_thought_chunk'){ const tg=(u.messageId||(u._meta&&u._meta.goose&&u._meta.goose.messageId)); if(tg){ const add=((u.content&&u.content.text)||''); const host=(!thinkPend.has(tg)&&/^\w+$/.test(String(tg)))?chat.querySelector('.msg.agent[data-gmid="'+tg+'"]'):null; if(host&&host._thinkAdd) host._thinkAdd(add); else { const v=(thinkPend.get(tg)||'')+add; thinkPend.set(tg,(busy&&v.length>THINK_BUF_MAX)?v.slice(-THINK_BUF_MAX):v); } } if(busy) thoughtFeed(u); } // s103/S1+S2: live 思考帧照旧喂忙碌面板（deepseek 无此帧=面板不出现，内容不造假）；s105: 帧先进挂靠缓存（回放=全文一帧不裁，live 微帧走 32KB 尾窗同 thinkBuf 口径）；回放期（非 busy）不喂 thinkBuf——不再走「喂进再丢弃」死路（research/48 §3.1）；s105/R1-F2: 块已挂靠（正文先落地）的迟到帧直接追加进该消息的合并块缓冲（展开态同步刷新），不再静默丢失
     else if(u.sessionUpdate==='tool_call'||u.sessionUpdate==='tool_call_update'){ noteTurnPhase('work'); toolCard(u); } // s103/S1: 阶段翻「在动手」——决定调工具前的规划期从此可见
     else if(u.sessionUpdate==='plan'){ /* future */ }
@@ -1652,6 +1660,7 @@ function submit(forced){
   if(!wssend({type:'prompt',text:t+hint})) return; // C6: 未连上直接返回（wssend 已提示自动重连），消息留在输入框，不上墙不置 busy
   addMsg(t,'user'); if(fromBox){ txt.value=''; optBtnSync(); } setBusy(true); // B2: 清空输入框仅在值来自输入框时发生；主线3：清空后 ✨ 回 disabled
   lastOrig=t; // s50e: 记录用户原文（原写 streamEl.dataset.orig 在 addMsg user 分支置 null 之后，恒不执行），上游失败时「换备用线路再试」用它重发
+  lastUserMsg=t; // s108/ef1: live 提交同记账（与回放路同键，会话切换随 lastOrig 同清）
 }
 send.onclick=()=>submit();
 txt.onkeydown=e=>{
