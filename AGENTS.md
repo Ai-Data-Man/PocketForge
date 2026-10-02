@@ -88,7 +88,7 @@
 
 ### 8.2 触桥批必跑探针清单（2026-09-22 s99 立；背景=s98 1874b94/72350ca 两次有意语义变更后漏跑 think-grad-probe，预存红漂到 s99 才归因，RCA=tmp/s99-thinkgrad-red-rca.md）
 
-任何改动 `conf/templates/chat-bridge.tpl.js`（或其物化链 bootstrap 消费方）的批次，验收必须跑齐：**e2e-chat 全量 + fuzz 全量 + ui-logic + ia-logic + semantics-r5 + think-grad + capeditor（活体臂）+ modelcaps + proxythink + llmproxy-xlate + w2-preset（官方预置表正确性，s101/W2 立）**。既有 tmp 探针的期望断言随语义变更**同批随迁**（红绿对照留证），不允许"探针不在套件里就不跑"。改前端 chat.tpl.html 的帧消费（providers/caps/think 面）时，至少一条**活体探针**（真桥真 WS 帧，禁桩）覆盖帧→页链路——桩探针只验逻辑不验链路（s99 QA P1 系统性假绿教训）。改 `conf/model-presets.json`（官方预置表，s101/W2 随包只读资源，桥运行时直读）时，w2-preset 探针 + 各沙箱探针的 conf 复制义务同批核对——表变化会撞既有 caps 断言（modelcaps R1/R6、capeditor 档位文案、proxythink 归一档）。
+任何改动 `conf/templates/chat-bridge.tpl.js`（或其物化链 bootstrap 消费方）的批次，验收必须跑齐：**e2e-chat 全量 + fuzz 全量 + ui-logic + ia-logic + semantics-r5 + think-grad + capeditor（活体臂）+ modelcaps + proxythink + llmproxy-xlate + w2-preset（官方预置表正确性，s101/W2 立）**。以上探针源码均已入库 `tools/e2e/`（s107/f6 起，含 §8.2 六套补账）；改 `chat.tpl.html` 回执/弹窗/alert 族时加跑 **receipt-failarms-probe**（结构面：alert 总数+迁移族清零+in-context 族钉扎，s107/f1-f5 立）；改报表向导（reportPrompt/paintSel）时加跑 **report-wizard-probe**（s107/f4 立）。既有 tmp 探针的期望断言随语义变更**同批随迁**（红绿对照留证），不允许"探针不在套件里就不跑"。改前端 chat.tpl.html 的帧消费（providers/caps/think 面）时，至少一条**活体探针**（真桥真 WS 帧，禁桩）覆盖帧→页链路——桩探针只验逻辑不验链路（s99 QA P1 系统性假绿教训）。改 `conf/model-presets.json`（官方预置表，s101/W2 随包只读资源，桥运行时直读）时，w2-preset 探针 + 各沙箱探针的 conf 复制义务同批核对——表变化会撞既有 caps 断言（modelcaps R1/R6、capeditor 档位文案、proxythink 归一档）。
 
 ### 8.1 约定测试目录（2026-09-15 s93 用户拍板；所有会话/子智能体必须遵守）
 
