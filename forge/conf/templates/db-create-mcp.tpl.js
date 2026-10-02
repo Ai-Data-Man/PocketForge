@@ -103,7 +103,7 @@ function badName(kind, v) {
 // ---- 工具 1：db_create_service（建库+留账；restart 编排唯一宿主） ----
 const TOOL_SVC = {
     name: 'db_create_service',
-    description: '新建一个数据库（一类数据的家，比如「家务账」）。填 name 库名、description 一句人话说清这个库给谁做什么、source 工作区目录名（系统备注里 data/artifacts/ 后面那串）。它会自动建库文件、登记到数据库网关、留账（forge_meta 一行，设置面板「做过的东西」靠它显示来历），必要时让数据库服务重新加载（可能要等几秒），完成后 faucet_list_services 等 faucet_* 工具立即可见。建新库用它，不要用 shell 命令、不要自己重启任何进程。',
+    description: '新建一个数据库（一类数据的家，比如「家务账」）。填 name 库名、description 一句人话说清这个库给谁做什么、source 工作区目录名（系统备注里 data/artifacts/ 后面那串）。它会自动建库文件、登记到数据库网关、留账（forge_meta 一行，设置面板「做过的东西」靠它显示来历），必要时让数据库服务重新加载（可能要等几秒）。建好后马上用 db_create_table 建表。注意：当前对话里 faucet_* 工具暂时看不到新库（老进程，正常），不要验证、不要用 shell、不要重启任何进程。建新库用它。',
     inputSchema: {
         type: 'object',
         properties: {
@@ -171,13 +171,13 @@ async function createService(args) {
     } catch (e) {
         accountNote = '，但有一件事没办成：没记上账（' + String(e && e.message || e).slice(0, 120) + '）——库能用，只是在「做过的东西」里会显示成来源不详。请把这句如实告诉用户。';
     }
-    return ok('库建好了：「' + name + '」' + (restarted ? '（等了数据库服务重载，约 ' + waited + ' 秒）' : '') + '。账已留：设置面板「做过的东西」会显示它的来历说明。现在 faucet_list_services 立即可见，建表用 db_create_table、插数据用 faucet_insert' + accountNote + '。');
+    return ok('库建好了：「' + name + '」' + (restarted ? '（等了数据库服务重载，约 ' + waited + ' 秒）' : '') + '。账已留：设置面板「做过的东西」会显示它的来历说明。接着马上用 db_create_table 建表，头几行数据可以随 rows 一起写进去。注意：当前这个对话里 faucet_* 工具暂时看不到这个新库（它们是建库前就启动的老进程，属正常现象）——不要去验证、不要碰命令行、不要重启任何东西；下个对话自然就能看到' + accountNote + '。');
 }
 
 // ---- 工具 2：db_create_table（建表+表说明+可选首批行；永不 restart） ----
 const TOOL_TBL = {
     name: 'db_create_table',
-    description: '在已有数据库里新建一张表，可顺带写入头几行。service 填库名（db_create_service 建的、或 faucet_list_services 里看到的）、table 填表名、columns 填列定义数组（每项 {"name":"列名","type":"TEXT"}，type 常用 TEXT 文字 / INTEGER 整数 / REAL 小数）、description 一句人话说清这张表装什么给谁用、rows 可选（数组，每行是 {列名: 值}）。它会自动建表、写表说明（forge_table_info，数据面板的说明来自这里）、写入给定行。建新表用它；往已有的表补数据用 faucet_insert。',
+    description: '在数据库里建一张新表，或往表里补数据。service 填库名、table 填表名、columns 填列定义数组（每项 {"name":"列名","type":"TEXT"}，type 常用 TEXT 文字 / INTEGER 整数 / REAL 小数；表已存在时 columns 会被忽略）、description 一句人话说清这张表装什么给谁用、rows 填要写的数据行（数组，每行 {列名: 值}）——建新表时是头几行，表已存在时就是补数据（只加行，不冲突）。它会自动建表、写表说明（forge_table_info，数据面板的说明来自这里）、写入给定行。刚建的新库在这个对话里 faucet_insert 还看不到——补数据就继续用它带 rows。',
     inputSchema: {
         type: 'object',
         properties: {
@@ -212,12 +212,27 @@ async function createTable(args) {
     // 库必须已在（本工具不做 restart——那是 db_create_service 的内部编排；insert 路径永不动它）
     const seen = await svcVisible(svc, port, key);
     if (!seen) return err('没有叫「' + svc + '」的库在数据库网关里（或服务暂时没响应）。先用 db_create_service 建库；如果是刚建的，等几秒再试一次。');
-    // ① 建表（表名在 UTF-8 JSON body，中文安全；REST POST _schema）
+    // ① 建表（表名在 UTF-8 JSON body，中文安全；REST POST _schema）。已存在=追加模式：不建表只加行
+    //（会话内 faucet_* MCP 对新建库不可见——spawn 时连接注册表不刷新，d2 验收实录：agent 被「Service not
+    // found. Available services: []」逼回 shell 27 卡老路——工具必须自给同会话写通道，f4「吸收重造」同精神）
     const sc = await api('POST', '/api/v1/' + encodeURIComponent(svc) + '/_schema', port, key,
         { name: tbl, columns: cols.map(c => ({ name: c.name, type: c.type })) });
-    if (/already exists/.test(sc.body)) return err('「' + svc + '」库里已经有一张叫「' + tbl + '」的表。要加数据用 faucet_insert；要建的是别的表就换个名字。');
-    if (sc.code !== 201) return err('建表没成功：' + apiErr(sc) + '。请把这句如实告诉用户，不要自己反复重试。');
-    // ② 表说明（forge_table_info 建表+写一行——hints 建表留说明义务）
+    const exists = sc.code !== 201 && /already exists/.test(sc.body);
+    if (exists && !rowsIn) {
+        return err('「' + svc + '」库里已经有一张叫「' + tbl + '」的表。要往里补数据：再调一次本工具并带上 rows（表已存在不冲突，只加行）；要建的是别的表就换个名字。');
+    }
+    if (!exists && sc.code !== 201) return err('建表没成功：' + apiErr(sc) + '。请把这句如实告诉用户，不要自己反复重试。');
+    let rowsNote = '';
+    if (rowsIn && rowsIn.length) {
+        const ins = await api('POST', '/api/v1/' + encodeURIComponent(svc) + '/_table/' + encodeURIComponent(tbl), port, key,
+            { resource: rowsIn.slice(0, 1000) });
+        if (ins.code === 201) rowsNote = '，并写入了 ' + Math.min(rowsIn.length, 1000) + ' 行数据';
+        else rowsNote = '（但数据没写进去：' + apiErr(ins) + '——' + (exists ? '表本来就在' : '表已经建好') + '；缺的行再带 rows 调一次本工具补上。请如实告诉用户。）';
+    }
+    if (exists) {
+        return ok('没建新表——「' + svc + '」库里的「' + tbl + '」本来就在' + (rowsNote || '，这次也没有要加的数据') + '。这个对话里继续补数据都用本工具带 rows。');
+    }
+    // ② 表说明（forge_table_info 建表+写一行——hints 建表留说明义务；仅新建时写，追加不重复记账）
     let infoNote = '';
     try {
         let tsc = await api('POST', '/api/v1/' + encodeURIComponent(svc) + '/_schema', port, key,
@@ -229,15 +244,7 @@ async function createTable(args) {
     } catch (e) {
         infoNote = '（但表说明没写上：' + String(e && e.message || e).slice(0, 100) + '——表能用，只是数据面板里没有说明文字。请如实告诉用户。）';
     }
-    // ③ 可选首批行（编码 path REST insert——rca §三 VERIFIED 通道）
-    let rowsNote = '';
-    if (rowsIn && rowsIn.length) {
-        const ins = await api('POST', '/api/v1/' + encodeURIComponent(svc) + '/_table/' + encodeURIComponent(tbl), port, key,
-            { resource: rowsIn.slice(0, 1000) });
-        if (ins.code === 201) rowsNote = '，并写入了 ' + Math.min(rowsIn.length, 1000) + ' 行数据';
-        else rowsNote = '（但首批数据没写进去：' + apiErr(ins) + '——表已经建好；缺的行用 faucet_insert 补。请如实告诉用户。）';
-    }
-    return ok('表建好了：「' + svc + '」库里的「' + tbl + '」，共 ' + cols.length + ' 列' + rowsNote + '。表说明已写：数据面板里能看到这句人话' + infoNote + '。以后往这张表补数据用 faucet_insert。');
+    return ok('表建好了：「' + svc + '」库里的「' + tbl + '」，共 ' + cols.length + ' 列' + rowsNote + '。表说明已写：数据面板里能看到这句人话' + infoNote + '。这个对话里要往这张表补数据：再调一次本工具并带上 rows（表已存在不冲突，只加行）。');
 }
 
 const TOOLS = [TOOL_SVC, TOOL_TBL];

@@ -8,7 +8,7 @@
 - 进程管家：process-compose（API http://127.0.0.1:8099）。查看进程：`"__FORGE_ROOT__\bin\pc\process-compose.exe" -p 8099 process list`
 - 数据库网关 faucet：REST http://127.0.0.1:__FAUCET_PORT__ ，MCP 工具 faucet_* 已挂载。（端口动态：读本文件时已由 bootstrap 按机器实际端口替换；若见占位符原文=物化异常，读 data/faucet.port）
   - 建新库：用 db_create_service 工具（name 填库名、description 一句人话、source 填本对话工作区目录名）。它自己建库文件、登记网关、留账，需要时还会让数据库服务重新加载（可能等几秒）——不要碰命令行，不要自己重启任何进程。
-  - 建库留账：db_create_service 建库时会在同库的 forge_meta 账本表（三列：description 说明、created_at 建库日期、source 来源）写一行——description 就是你填的那句人话，created_at 工具自动填，source 填本对话工作区目录名（每条消息系统备注里 data/artifacts/ 后面那串）。设置面板「做过的东西」清单靠这行账显示这个库的来历；漏写不会报错（只会显示成来源不详）。新库建好后 faucet_* 工具立即可见，插数据用 faucet_insert / 建表用 db_create_table。
+  - 建库留账：db_create_service 建库时会在同库的 forge_meta 账本表（三列：description 说明、created_at 建库日期、source 来源）写一行——description 就是你填的那句人话，created_at 工具自动填，source 填本对话工作区目录名（每条消息系统备注里 data/artifacts/ 后面那串）。设置面板「做过的东西」清单靠这行账显示这个库的来历；漏写不会报错（只会显示成来源不详）。新库建好马上用 db_create_table 建表，头几行数据随 rows 一起写进去；补数据也用它（再调一次带 rows，表已存在不冲突、只加行）。刚建的库在当前对话里 faucet_* 工具暂时看不到（老进程，正常现象）——别去验证、别碰命令行，下个对话自然就能看到。
   - 日常读写用 faucet_query / faucet_insert / faucet_update / faucet_describe_table。
   - 数据发现纪律：用户提到数据/表/报表但没给文件时，先用 faucet_list_services + faucet_list_tables 看库里有什么，用一两句人话（哪个服务哪张表、大概多少行、内容是什么）向用户确认后再动手。
   - 引用识别：消息里出现「数据库表 <服务>.<表>」就是 faucet 里的确定表名，直接用 faucet_query 等工具操作它，不猜、不改名、不要求用户澄清。
