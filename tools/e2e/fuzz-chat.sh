@@ -94,8 +94,9 @@ FRX="$(cd "$(dirname "$0")/../.." && pwd)/forge"
 command -v cygpath >/dev/null 2>&1 && FRX="$(cygpath -u "$FRX" 2>/dev/null || echo "$FRX")"
 "$FRX/bin/node-v22/node-v22.21.1-win-x64/node.exe" "$(dirname "$0")/ia3-tinfo-probe.js" "$B"; ck "db overview desc carry + bad-value skip + drop degrade (IA-3)" $?
 # s51(FIND-3): _schema 白名单钉子——非法名必须命中 DB_NAME_RE 拒绝分支（区别于「表不存在」的 ok:false）
-curl -s --get "$B/api/db/_schema" --data-urlencode "svc=../etc" --data-urlencode "tbl=passwd" | grep -q '表名不对'; ck "db/_schema whitelist branch (bad name msg)" $?
-curl -s "$B/api/db/_schema?svc=x%27%20OR%201%3D1&tbl=t--" | grep -q '表名不对'; ck "db/_schema whitelist branch (injection-ish)" $?
+# s108 随迁：拒绝分支文案已人话化（原「表名不对，没有这张表。」→「…显示不了的字符…」，裁决 2026-10-03-s108 §Q4）——断言锚同步换族，钉子语义不变
+curl -s --get "$B/api/db/_schema" --data-urlencode "svc=../etc" --data-urlencode "tbl=passwd" | grep -q '显示不了的字符'; ck "db/_schema whitelist branch (bad name msg)" $?
+curl -s "$B/api/db/_schema?svc=x%27%20OR%201%3D1&tbl=t--" | grep -q '显示不了的字符'; ck "db/_schema whitelist branch (injection-ish)" $?
 # s50h(FIND-1): /open/ 打开 artifacts 目录本身必须 400（'.' 与 %2e 两种编码形态）
 [ "$(curl -s -o /dev/null -w '%{http_code}' "$B/open/.")" = "400" ]; ck "open dot refused 400" $?
 [ "$(curl -s -o /dev/null -w '%{http_code}' "$B/open/%2e")" = "400" ]; ck "open %2e refused 400" $?
