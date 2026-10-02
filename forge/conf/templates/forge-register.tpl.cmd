@@ -78,6 +78,26 @@ set "NO_PROXY=127.0.0.1,localhost"
 set "no_proxy=127.0.0.1,localhost"
 
 set "FORGE_ROOT=%ROOT%"
+rem s108/ef1 (verdict D, D2-7): fail-loud gate. If secrets.env is missing or any of the three
+rem key LINES is absent, the "for /f" above silently skipped them, this run would render EMPTY
+rem values into every ${GOOSE_MODEL_NAME}/${FORGE_AGENT_HOST}/${FORGE_AGENT_API_KEY} site, and
+rem pc update would knock the chat-bridge back to an empty env (drift amplification, not
+rem convergence). Refuse to update: rc!=0, human line to console, raw reason to register.log.
+rem Empty VALUES are allowed (factory unconfigured state renders the same as the launcher seed
+rem - no drift); only missing lines refuse.
+set "KEYMISS="
+if not exist "%ROOT%\data\secrets.env" set "KEYMISS=secrets.env"
+if not defined KEYMISS findstr /B /C:"GOOSE_MODEL_NAME=" "%ROOT%\data\secrets.env" >nul 2>&1
+if not defined KEYMISS if errorlevel 1 set "KEYMISS=GOOSE_MODEL_NAME"
+if not defined KEYMISS findstr /B /C:"FORGE_AGENT_HOST=" "%ROOT%\data\secrets.env" >nul 2>&1
+if not defined KEYMISS if errorlevel 1 set "KEYMISS=FORGE_AGENT_HOST"
+if not defined KEYMISS findstr /B /C:"FORGE_AGENT_API_KEY=" "%ROOT%\data\secrets.env" >nul 2>&1
+if not defined KEYMISS if errorlevel 1 set "KEYMISS=FORGE_AGENT_API_KEY"
+if defined KEYMISS (
+  echo [PocketForge] secrets.env unreadable ^(missing: %KEYMISS%^) - update NOT sent, bridge env would be wiped. 1>>"%ROOT%\data\logs\register.log" 2>&1
+  echo [PocketForge] register failed: data\secrets.env is missing key lines; see data\logs\register.log
+  exit /b 4
+)
 rem pc writes 2 debug lines to stderr on every run ("Path not found for process compose config home");
 rem the agent shell treats non-empty stderr as a failed command, so keep stderr out of the tool output
 rem (diagnostics still land in data\logs\register.log).
