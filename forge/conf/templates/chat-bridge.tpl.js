@@ -39,6 +39,11 @@ function readSecrets(file) {
     return out;
 }
 const secrets = readSecrets(path.join(ROOT, 'data', 'secrets.env'));
+// s108/ef1（裁决一 D 门2）：桥 boot 时的 pc 渲染三键指纹（process-compose.yaml:117-119 由 pc 按渲染时调用方
+// env 插值——launcher 冷启空值渲染、converge/注册后真值渲染）。刻意 ≠ sig2：sig2 的 host 项恒为桥反代
+// GOOSE_LLM_HOST（goose env 不含真实服务商 host），本指纹含真实 host，专供「定义已陈旧」判定（保存点 converge
+// 触发门，禁复用 sig2）。进程内恒定（pc 换桥才会重渲染）。
+const BOOT_PC_ENV = { model: process.env.GOOSE_MODEL || '', host: process.env.OPENAI_HOST || '', key: process.env.OPENAI_API_KEY || '' };
 
 // C4（research/24 §7）：providers/save_config 两分支同构回写合一。换行容差取宽 split(/\r?\n/)
 // （原 save_config 版；providers 版 split('\n') 遇 CRLF 文件存活行会残留 \r 尾巴，宽容差即归一为 LF）。
@@ -625,6 +630,7 @@ const stateWarnings = [];
 const STATE_SCHEMAS = {
     'workspace-map.json': { latest: 1, steps: {} },
     'session-archive.json': { latest: 1, steps: {} },
+    'turns-inflight.json': { latest: 1, steps: {} }, // s108/ef1（裁决一 C，ADR-0009 登记）：悬空回合标记（桥死亡时谁在飞）；读写全经 turnInflight* 助手，新文件无迁移步骤
     'prompts.json': { latest: 1, steps: {} }, // 用户五主线批2-主线1: 手工收藏制提示词库（裁决 2026-09-08-user-five-lines-batch2 §2.2）
     '.forge': { latest: 1, steps: {} },
     // s70 切片B: manifest v2 = 条目补 source{repo,branch}（存量默认 anthropics/skills；步骤内用字面量——迁移 IIFE 跑在下方 REMOTE_SKILLS 初始化之前，引用常量会 TDZ）
@@ -739,6 +745,24 @@ function writeForgeMeta(ws, meta) { try { atomicWrite(forgeFile(ws), JSON.string
 const ARCH_FILE = path.join(ROOT, 'data', 'session-archive.json');
 function readArch() { return readJson(ARCH_FILE, {}); }
 function writeArch(m) { FSS.mkdirSync(path.dirname(ARCH_FILE), { recursive: true }); atomicWrite(ARCH_FILE, JSON.stringify(m, null, 2)); pgStateSync('arch'); } // s73 切片2: 文件先行 + pg 态整表同步镜像
+// s108/ef1（裁决一 C）：悬空回合标记 data/turns-inflight.json——busySids 的持久化镜像（按 sid 记 start ts）。
+// 桥被 pc 硬杀（taskkill /F /T 用户态零钩子，RCA A）时内存 busySids 消失而本文件留痕，新化身在 subscribe
+// 命中时补发一帧终态说明。防假悬空（RCA C3 坑①②）：turn 三路收口（resolve/reject/写失败）+ stop 帧 +
+// abortInflightTurns 即清；同 sid 新回合开启即覆写。不进 pg（pgStateQ 只有两队列，RCA C1——文件+atomicWrite
+// 先例即足够；data/ 在升级面 PROTECTED，标记跨升级保留）。写失败只记 console 不反噬回合主路径。
+const INFIGHT_FILE = path.join(ROOT, 'data', 'turns-inflight.json');
+function readInflightSids() {
+    try {
+        const j = JSON.parse(FSS.readFileSync(INFIGHT_FILE, 'utf8'));
+        if (j && typeof j === 'object' && j.sids && typeof j.sids === 'object' && !Array.isArray(j.sids)) return j.sids;
+    } catch {}
+    return {};
+}
+function writeInflightSids(sids) {
+    try { FSS.mkdirSync(path.dirname(INFIGHT_FILE), { recursive: true }); atomicWrite(INFIGHT_FILE, JSON.stringify({ _schema: STATE_SCHEMAS['turns-inflight.json'].latest, sids }, null, 2)); } catch (e) { console.log('turns-inflight write failed:', (e && e.message) || e); }
+}
+function turnInflightMark(sid) { const sids = readInflightSids(); sids[sid] = { at: Date.now() }; writeInflightSids(sids); }
+function turnInflightClear(sid) { const sids = readInflightSids(); if (!(sid in sids)) return; delete sids[sid]; writeInflightSids(sids); }
 function wsState(id, map, arch, sid, files, meta) {
     if (!sid) return 'orphan';
     if (arch[sid]) return 'archived';
@@ -1616,6 +1640,7 @@ function onAcpData(chunk) {
                     const txt = turnText.get(sid) || '';
                     turnText.delete(sid);
                     busySids.delete(sid); // 主线5：防御性收口（ACP 模式 goose 从不发 stop，见 sendTurn 注释；发了也不许漏登记）
+                    turnInflightClear(sid); // s108/ef1: 同步清盘面标记（防御路与主路同语义）
                     if (S26_ERR_WRAP_RE.test(txt)) { statsBump('errorsByType.upstream'); statsBump('errorsByType.upstreamByKind.' + classifyUpstream(txt)); } // s103/S8: 判定面随 resolve 路收窄到错误报告头冠（成功 stop 零计数）
                 }
             } catch {}
@@ -1705,11 +1730,17 @@ const TURN_RETRY_TEXT = '这一轮没完成，请再发一次试试。';
 // s95/F-3: 会话中断（acp 子进程退出）时的终态文案——在此之前在飞回合桥侧不留任何痕：前端工具卡恒「in_progress」、
 // typing 常亮（用户视角=永久挂无出路）。文案零术语 + 给出路（内容都在库里，重开对话即回放）
 const TURN_BROKEN_TEXT = '它干活中途断了，没能做完。刚才说过的话都还在——等几秒再发一次它就接着干；实在不行点左边「＋ 新对话」重新开始。';
+// s108/ef1（裁决一 C）：悬空回合重连补终态文案——桥被换/断线跨死后，页面重连/重开补发的回合级说明。
+// 中性+人话+零技术坐标（对齐 S9 中性哲学：这是 S9 泛断线零提示的一条窄例外，仅限有持久化悬空标记的回合）。
+// 前端「再问一次」钮按本句措辞出现（纯前端重发，桥零改动）。
+const DANGLING_TURN_TEXT = '刚才你发的那条消息还没回完，服务刚好重启了一下，这条回答没有完成。可以点『再问一次』，或者直接重新说一遍。';
 function sendTurn(ws, sid, text, allowRescue) {
     const id = nextId++;
     busySids.add(sid); // 主线5：turn 在飞登记（resolve/reject/write 失败三路都收）
+    turnInflightMark(sid); // s108/ef1: 同步落盘镜像（同 sid 新回合即覆写）——桥被硬杀时「谁在飞」的唯一幸存证词
     waiting.set(id, { ws, resolve: () => {
         busySids.delete(sid);
+        turnInflightClear(sid); // s108/ef1: 回合完成即清（防假悬空）
         // s50e 修复：goose 上游故障以 agent_message_chunk 文本随正常 turn 结束返回（session/prompt 正常 resolve，非 reject）
         // s103/S8（裁决 §3.3-②）：成功 stop 的回合不再进 upstream 计数、不触发健康复检——判定面收窄到错误报告头冠
         // S26_ERR_WRAP_RE（正文提及关键词的成功回复=误报根，fp-probe 实证 upstream+1+60s 复检回执）；上游真实状态码/错误体由 llmproxy 全请求行（S4）承载
@@ -1719,6 +1750,7 @@ function sendTurn(ws, sid, text, allowRescue) {
         ws.send({ agent: { method: 'stop', params: { sessionId: sid, reason: 'end' } } });
     }, reject: (e) => {
         busySids.delete(sid);
+        turnInflightClear(sid); // s108/ef1: 错误帧已发终态，标记随清（裁决「:780 错误帧即清」的桥侧对应路）
         sidErrAt.set(sid, Date.now()); if (sidErrAt.size > 500) sidErrAt.delete(sidErrAt.keys().next().value); // s99/t3-D: reject 即回合错误（救援/人话/上游同收——救援重放走新 sid，旧 sid 标记只随死 sid 退役）
         // P31-③: turn 失败按 s26 正则归类上游故障
         // goose 的 JSON-RPC error：message=错误类（如 Resource not found），具体原因在 data（如 Session not found: <sid>）——拼接后供匹配
@@ -1742,7 +1774,7 @@ function sendTurn(ws, sid, text, allowRescue) {
     // reject 回调可能来自 onAcpData 栈（不在 handleClient try 内），acp 写失败必须就地接住
     try {
         acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/prompt', params: { sessionId: sid, prompt: [{ type: 'text', text }] } }) + '\n');
-    } catch (e) { waiting.delete(id); busySids.delete(sid); sidErrAt.set(sid, Date.now()); ws.send({ sys: 'error', text: '服务忙不过来（对话引擎没响应），稍等几秒再发一次。' }); } // s99/t3-D: 写失败同错误标记（用户看到的等价物=错误卡）
+    } catch (e) { waiting.delete(id); busySids.delete(sid); turnInflightClear(sid); sidErrAt.set(sid, Date.now()); ws.send({ sys: 'error', text: '服务忙不过来（对话引擎没响应），稍等几秒再发一次。' }); } // s99/t3-D: 写失败同错误标记（用户看到的等价物=错误卡）
 }
 // s95/F-3: 会话中断终态兜底——acp 一死，它在飞回合不会被任何人收尾（goose 侧那次工具调用连 toolResponse
 // 都没落库），必须由桥补发终态。帧形状沿用既有错误卡通道（{sys:'error',text}，前端既有分支直接消费：
@@ -1754,6 +1786,7 @@ function abortInflightTurns(text) {
         const set = sessionClients.get(sid);
         if (set) for (const ws of set) { try { ws.send({ sys: 'error', text }); } catch {} }
         turnText.delete(sid); // 当轮文本累计随回合作废（残留会让下一个回合的报错检测误判）
+        turnInflightClear(sid); // s108/ef1: 错误帧已补发终态，标记随清（本路存活=帧送达前端 :780 消费路）
         sidErrAt.set(sid, Date.now()); // s99/t3-D: acp 死中断=该会话当轮错误（用户后续再发=错误后重试）
     }
     busySids.clear();
@@ -2802,6 +2835,22 @@ function pcExec(args, cb) { // execFile 走 chat-bridge:2151 先例通道（sche
     try { pcPort = FSS.readFileSync(path.join(ROOT, 'data', 'pc.port'), 'utf8').trim() || pcPort; } catch {}
     require('child_process').execFile(path.join(ROOT, 'bin', 'pc', 'process-compose.exe'),
         ['-p', pcPort].concat(args), { timeout: 10000, windowsHide: true }, cb);
+}
+// s108/ef1（裁决一 D）：保存点烧漂移通道——经 bin/pc/forge-register.cmd converge（wrapper 自备 launcher 同款
+// env+三件套，open-when-ready.ps1:157 同款 cmd /c 先例；arm3 实证自杀式 update 守护端照落、398ms 级换新化身）。
+// fire-and-forget：守护端受理后本进程树即被换桥杀掉，等不到也不需要等。.cmd 脚本须显式经 cmd.exe（Node ≥22
+// 安全限制直接 exec .cmd 报 EINVAL——本仓 Windows 陷阱清单）。30s 树杀兜底：pc.port 打错/守护不受理时 update
+// 客户端可能挂起，不留孤儿（正常路径桥早被换走，本定时器随进程死自然消亡）。
+function spawnForgeConverge() {
+    try {
+        const reg = path.join(ROOT, 'bin', 'pc', 'forge-register.cmd');
+        if (!FSS.existsSync(reg)) { console.log('converge skipped: forge-register.cmd missing'); evJson({ ev: 'providers_converge', trigger: '保存', err: 'forge-register.cmd missing' }); return; }
+        const child = require('child_process').spawn(process.env.ComSpec || 'cmd.exe',
+            ['/d', '/s', '/c', '"' + reg + '" converge'], { windowsHide: true, windowsVerbatimArguments: true, stdio: 'ignore' });
+        child.on('error', e => { console.log('converge spawn err:', (e && e.message) || e); evJson({ ev: 'providers_converge', trigger: '保存', err: String((e && e.message) || e).slice(0, 120) }); });
+        const pid = child.pid;
+        setTimeout(() => { if (pid) { try { require('child_process').execFile('taskkill', ['/F', '/T', '/PID', String(pid)], () => {}); } catch {} } }, 30000).unref();
+    } catch (e) { console.log('converge spawn failed:', (e && e.message) || e); }
 }
 // s95/S3a（裁决 2026-09-16 §4）：基础设施进程 deny-list——/api/apps 写通道从注册表推导出的 proc 名命中即拒
 // `参数不合法`（防御纵深：ADR-0003 禁 agent 定义基础设施键，聚合器是文本拼接不可信）。
@@ -4979,6 +5028,7 @@ function hardDeleteSession(sessionId) {
     sidModelApplied.delete(sessionId); // qa s94 P4-4: 会话已删，模型记账随之清（防 Map 无界增长/陈旧条目）
     sidThinkValues.delete(sessionId); sidThinkApplied.delete(sessionId); // s98/think: 同款清账
     sidGooseModel.delete(sessionId); sidGooseCo.delete(sessionId); // s98/llm-proxy: goose 侧模型记账同清（防陈旧别名判定/Map 无界）
+    turnInflightClear(sessionId); // s108/ef1: 会话已删，悬空标记随清（死 sid 不留永久悬空条目）
     // I1(审查s15): 会话删了就解除其工作区绑定，否则区卡在 active 态永远无法清理
     const wsm = readWsMap();
     let unbound = false;
@@ -5016,6 +5066,16 @@ function handleClient(ws, msg) {
                 wsFirstPrompt.set(ws, true); // research/18 断点①: 每次绑定（重）开允许首轮救援
                 bindWs(ws, msg.sessionId);
                 ws.send({ sys: 'subscribed', sessionId: msg.sessionId, modes: [], configOptions: [] });
+                // s108/ef1（裁决一 C）：重连补终态——悬空标记命中本 sid → 先清标记再补发一帧（清先于发：中途崩
+                // 最多丢一次提示，绝不二次提示教用户忽略）。无静默时长阈值：重连即判、每标记只提示一次；多窗口同
+                // sid 广播全部订阅者（abortInflightTurns 同语义，可接受）。帧走独立 sys 类型——不复用 error 帧
+                // （不触发前端 rollbackQueue/zombie 收口族，S9 本体零改动）。
+                const mark = readInflightSids()[msg.sessionId];
+                if (mark) {
+                    turnInflightClear(msg.sessionId);
+                    evJson({ ev: 'dangling_notify', sid: String(msg.sessionId).slice(0, 16), ageMs: Date.now() - (mark.at || 0) }); // s103/S3 语义：age 供沉淀后复核假悬空率（裁决成功指标）
+                    for (const w2 of (sessionClients.get(msg.sessionId) || [])) { try { w2.send({ sys: 'dangling_turn', text: DANGLING_TURN_TEXT }); } catch {} }
+                }
             } else {
                 const id = nextId++;
                 wsPendingNew.set(ws, id); // s78 P1-A 代际守卫：登记本次发起，回调到达时校验
@@ -5384,11 +5444,37 @@ function handleClient(ws, msg) {
                 if (msg.update) evJson({ ev: 'providers', action: 'update', name: String((msg.update && msg.update.name) || '') });
                 healthCache.at = 0; probeProviderHealth(); // §S1 缓存失效：save/activate/改模型即后台重探（换档对齐；面板修复→告警条即消的 GUI 闭环）
             }
+            // s108/ef1（裁决二）：回写加门——由活跃档构造三键与盘上 secrets 现值逐一比对，全等则不写（值不变零
+            // 写入）。修前面板纯打开（msg.save=false 也走本点）每次往返都回写=漂移积累面比保存宽（RCA D1 表），
+            // 任何一次随手开面板都会造出「下次注册必换桥」的漂移债；加门后漂移只能由真变更产生。缺键/空值读作
+            // ''（空值等价=不写，readSecrets 本就不收空值行）。secrets 常量是 boot 快照，比对必须现读盘。
             const act = list.find(p => p.active);
-            if (act) rewriteSecretsEnv({ model: act.models && act.models[0] || '', host: act.host || '', key: act.key || '' });
+            let actKv = null, secretsWrote = false;
+            if (act) {
+                actKv = { model: act.models && act.models[0] || '', host: act.host || '', key: act.key || '' };
+                const cur = readSecrets(path.join(ROOT, 'data', 'secrets.env'));
+                if (String(cur.GOOSE_MODEL_NAME || '') !== actKv.model || String(cur.FORGE_AGENT_HOST || '') !== actKv.host || String(cur.FORGE_AGENT_API_KEY || '') !== actKv.key) {
+                    rewriteSecretsEnv(actKv);
+                    secretsWrote = true;
+                }
+            }
+            // s108/ef1（裁决一 D 门2）：定义陈旧判定——boot 时 pc 渲染三键（BOOT_PC_ENV，含真实 host——禁复用
+            // sig2，其刻意不含 host）≠ 刚写盘的新值 → 定义已漂移。空键防烧回空值（新值任一为空不 converge，
+            // RCA D2-7 反面：烧回空 env 是漂移放大不是收敛）。独立于 needRestart 判定：首档 add 路径
+            // needRestart 本就不置（:5364），而首配恰是最典型的漂移出生点（空值渲染→写真值，iat124）。
+            const convergeStale = !!(actKv && secretsWrote && (BOOT_PC_ENV.model !== actKv.model || BOOT_PC_ENV.host !== actKv.host || BOOT_PC_ENV.key !== actKv.key)
+                && actKv.model && actKv.host && actKv.key);
             const capsAll = syncModelCaps().caps; // s98/llm-proxy C2: 池刚落盘——先补缺省再随帧下发（只加不破既有形状）
             ws.send({ sys: 'providers', list: list.map(pr => ({ name: pr.name, host: pr.host, models: pr.models || [], active: !!pr.active, hasKey: !!pr.key, caps: (function () { const o = {}; for (const m of (pr.models || [])) o[m] = capsAll[m] || null; return o; })() })) });
-            if (needRestart) {
+            if (convergeStale) {
+                // s108/ef1（裁决一 D）：保存点烧漂移——只挂「这次真写盘了」之后（门1），且定义真陈旧才烧（门2）。
+                // 本轮跳过 hotRestartProvider：pc 换桥已含换 acp（裁决「与 hotRestartProvider 的排序」——日常
+                // 同定义改档体验零变化，只有定义真陈旧才付一次换桥，在飞回合由 C 悬空标记+补帧兜底）。arm3 实证
+                // 自杀式 update 守护端照落（调用方树死不回滚）；新化身 boot 指纹=secrets 新值，收敛闭环。
+                lastModelOverride = '';
+                evJson({ ev: 'providers_converge', trigger: '保存', model: actKv.model, host: sanHost(actKv.host) }); // s103/S3 语义：key 永不落（sanHost 同口径只留 scheme+域名+port）
+                spawnForgeConverge();
+            } else if (needRestart) {
                 lastModelOverride = ''; // qa s78c P3-1: 面板换档/改池清除 override——生效模型随档回落池首（防同名模型跨家碰撞时探测/重启假锚旧选择）
                 // s94-b2 F-3: env 指纹与上次落地一致的热重启是纯噪音——ia2 首配连打保存触发三连重启：
                 // 三条「✅ 已切到…」重复播报 + 三代 acp 进程更替（回合竞态燃料），env 实质没变。跳过。
