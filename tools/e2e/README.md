@@ -63,3 +63,10 @@ POST /api/extensions {id,enabled} /api/memory {op,category[,text]} /api/schedule
 ## 已知外部依赖风险
 - goose 出网走 Windows IE 系统代理（见 STATE #3）；手工跑 goose 必带 NO_PROXY=127.0.0.1,localhost
 - glm-5.2 myopencode 线路 401/429 锁定会使探针假象性"护栏失灵"——先查 9router-server.log 再下结论
+
+### s108/ef1 探针入库批（2026-10-03；裁决 docs/verdicts/2026-10-03-s108-bridge-restart-turn-loss.md 红绿驱动）
+
+- **tools/e2e/ef1-uiarm-probe.js**：悬空补帧前端逻辑钉，17 ck 秒级（无桥无网络，ui-logic 同款手法：从 chat.tpl.html 提取 dangling_turn handler+回放分支，vm 桩沙盒）——帧→role=status 说明→「再问一次」钮→点击经 submit 重发原文/移除说明行；busy 拒发；lastUserMsg 空摘钮；回放 user_message_chunk 记账；源锚（msgbtn/同清点）。可单跑。
+- **tools/e2e/ef1-wrapgate-probe.sh**：forge-register fail-loud 门单元，7 ck（最小沙盒缺 pc.exe：缺文件/缺键行→rc=4+register.log 人话行；空值/真值→过门走到 pc 调用）。改 forge-register.tpl.cmd 时跑。
+- **tools/e2e/ef1-ws-probe.js**：沙盒验收 WS 探针（configure 两帧复刻 UI/panelopen/converge-arm/corearm/killturn/samesave/danglingone），PF_SB 指向沙盒根。
+- **tools/e2e/ef1-red-driver.sh / ef1-green-driver.sh**：iat128（修前）/iat129（修复）沙盒五臂驱动实录（降权冷启+开窗等待+归属门防打错目标；key 读主控沙盒惯例档）。环境耦合（依赖 dist 测试包+9router），复现用非常跑。
