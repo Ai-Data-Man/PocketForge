@@ -68,3 +68,10 @@
 - **环境终态**：PF-TEST 零残留（七沙盒 a/b/upg/c/d/e/f/g 全清）；junction 归 dev 树；dev 栈 PFdrill2 healthz 200。
 - **方法论沉淀**：①「失败臂」是回执迁移类任务的系统性盲区——成功臂迁移时失败臂必须同批过堂（s106/S1→f1/f1b→f5 三次同课）；②探针「合法族」钉扎会固化漏网（f5 反转教训）；③验收判据用**可观测日志计数**（permcard=0）而非体感——三轮迭代每轮都有硬数字；④junction 是 per-account 单例（forge-sbx 定案）；⑤**healthz≠全栈健康**——沙盒判卷必须含 pg/restarts 面（cold-surface 是对的门，healthz 是错的门）；⑥多模板变量混串（$regTpl 案）=复制相邻写法时的配对审查义务。
 - **backlog 新增**：QA P4×11（/open GET 豁免/空格名/bootstrap Get-Item 无 try/重复注释/连点重入/junction 跟随逃逸+升级触发条件/8KB 嗅探窗外 fail-open 等）；todo 卡非向导任务观察项；/models 上游慢脉冲；**pg 孤儿句柄继承 5432**（pc down 后 backend 幸存——s91 家族，连环沙盒场景毒化，候选修法=down 后按端口持有复核）；**pg 不可达的妻子可见信号缺失**（数据面板/报表双源静默降级）；当日沙盒 pg 盲区教训=cold-surface 门 mandatory。
+
+## 八、真终件（会话末段）
+
+- **双窗并发交互矩阵（s107h，iat123）**：A 在飞回合中 B 开新对话零竞态；两窗零控制台错误；猎到 **#4（P3）第二窗口会话清单陈旧空态**（B 页载恰逢空表后永不刷新=误导性空态，s83d F-1 家族）→**f11=b6479e4**（focus/visibilitychange 重拉+2s 防抖；桩页红绿 8/8+活体机理红绿+ui-logic 168）。
+- **iat124=3736e8fb 终门 cold-surface 19/19**（干净冷装）。
+- 主控工作流自省入册：停 dev 栈用 pc down 而非产品停止脚本→f8 扫尾不跑=5432 孤儿复发两次的自身根因；运营守则更新=主控停 dev 栈后必核 5432。
+- **会话总账（终）**：十三修复/工程 commit+docs 八枚+研究 2+裁决 2 全推；缺陷闭环 6 枚（#1/#1b/#2/#3/环境转正 2/双窗空态）；QA 两轮 REWORK 全闭合；测试包 iat116-124 九枚不入发布序。
