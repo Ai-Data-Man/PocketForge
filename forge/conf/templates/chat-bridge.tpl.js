@@ -2474,7 +2474,9 @@ function marketMutate(b) {
 
 // ---- s50b: 库里有什么（GET /api/db/overview）——faucet CLI 发现实 + 每库两次 REST 富化（tinfo 说明/forge_meta 建账）；端点不收任何用户参数 ----
 const FAUCET_EXE = path.join(ROOT, 'bin', 'faucet', 'faucet.exe');
-const DB_NAME_RE = /^[A-Za-z0-9_\-]+$/; // 服务/表名白名单：来自 faucet 输出，拼 CLI 参数/REST 路径前强制过一遍
+const DB_NAME_RE = /^[\p{L}\p{N}_\-]{1,64}$/u; // 服务/表名白名单：来自 faucet 输出，拼 CLI 参数/REST 路径前强制过一遍
+// s108（裁决 2026-10-03-s108 §裁决二）：白名单扩 Unicode 字母+数字（中文表/服务名=faucet 全链实测畅通，research/2026-10-03-s108）；
+// 仍构造性拒 / \ . 空白 控制 % ? # 引号 零宽（\p{Cf}）及 >64 字；安全=白名单拒一遍+REST 侧 encodeURIComponent 兜一遍双保险
 // FINDING-1（fuzz bea6ee7）：并发 GET /api/assets 与 /api/db/overview 时，桥迸发的 faucet CLI 进程同撞 config store
 // （faucet.db，SQLite 无 busy_timeout）→ SQLITE_BUSY(5) 快败（rc=1「open config store: database is locked」，
 // 100 进程迸发实测 ~90% 复现；桥响应级表源静默缺席 22-48%）。桥侧两层最小修（不碰 faucet 上游）：
@@ -2540,14 +2542,14 @@ async function dbOverview() {
     try { port = parseInt(FSS.readFileSync(path.join(ROOT, 'data', 'faucet.port'), 'utf8').trim(), 10) || 0; } catch {}
     try { key = FSS.readFileSync(path.join(ROOT, 'data', 'faucet', '.apikey'), 'utf8').trim(); } catch {}
     const services = [];
-    let n = 0, truncated = 0, schemaMiss = false;
+    let n = 0, truncated = 0, schemaMiss = false, nameSkipped = 0; // s108: nameSkipped=白名单拒名计数（独立字段不复用 tblMiss——两因两话：tblMiss=库读不到，nameSkipped=名字显示不了）
     for (const s of list) {
         const svc = (s && s.name) || '';
         if (!DB_NAME_RE.test(svc)) continue;
         const entry = { service: svc, tables: [] };
         services.push(entry);
         let names = [];
-        try { names = ((JSON.parse(await faucetCli(['db', 'schema', svc]) || 'x') || {}).tables || []).map(t => (t && t.name) || '').filter(x => DB_NAME_RE.test(x)); } catch { schemaMiss = true; } // FINDING-1: schema 通道与 list 同病（SQLITE_BUSY 重试后仍败）——置 tblMiss 不再静默
+        try { names = ((JSON.parse(await faucetCli(['db', 'schema', svc]) || 'x') || {}).tables || []).map(t => (t && t.name) || '').filter(x => { if (DB_NAME_RE.test(x)) return true; nameSkipped++; return false; }); } catch { schemaMiss = true; } // FINDING-1: schema 通道与 list 同病（SQLITE_BUSY 重试后仍败）——置 tblMiss 不再静默；s108: 拒名计数=拒绝必有回声（裁决 §裁决三）
         for (const nm of names) {
             if (n >= 2000) { truncated++; continue; } // s98/db-scale：护栏 200→2000（表名唯一成本=每库一次 schema CLI，faucet 实测全量返回无内部分页/上限）；>2000=防御异常库，truncated 注同步改真话（搜索已全覆盖）
             entry.tables.push({ name: nm, rows: null, desc: null, ts: null }); n++;
@@ -2559,7 +2561,7 @@ async function dbOverview() {
         const jobs = [];
         for (const en of services) {
             // s98/db-scale：删每表 ?fields=id 行数预取（200 表=200 并发 HTTP 请求风暴）——行数移至 /api/db/_schema 响应 rows 字段按需取（dbTableSchema）
-            jobs.push(faucetGet('/api/v1/' + en.service + '/_table/' + TINFO_TBL + '?max_results=1000', port, key, b => {
+            jobs.push(faucetGet('/api/v1/' + encodeURIComponent(en.service) + '/_table/' + TINFO_TBL + '?max_results=1000', port, key, b => {
                 const rows = JSON.parse(b).resource;
                 if (!Array.isArray(rows)) return null; // 表不存在/读不到 → 无说明，静默降级
                 const m = new Map();
@@ -2572,7 +2574,7 @@ async function dbOverview() {
             }).then(m => { if (m) for (const t of en.tables) { const e = m.get(t.name); if (e !== undefined) { t.desc = e.d; t.ts = e.ts; } } })); // IA-3：每库一次请求
             // s83: 每库读 forge_meta 建账行（hints 建库留账义务）——desc/ts/source；缺表/无行 → null 静默降级（存量服务=来源不详，不考古）
             // s83 返工🟡3: 逐行校验（对齐上方 tinfo :1560-1564 读法纪律）——字段类型合法才算好行，坏行跳过取首个好行；全坏=null 不编造
-            jobs.push(faucetGet('/api/v1/' + en.service + '/_table/' + META_TBL + '?max_results=2', port, key, b => {
+            jobs.push(faucetGet('/api/v1/' + encodeURIComponent(en.service) + '/_table/' + META_TBL + '?max_results=2', port, key, b => {
                 const rows = JSON.parse(b).resource;
                 if (!Array.isArray(rows) || !rows.length) return null;
                 for (const row of rows) {
@@ -2590,6 +2592,7 @@ async function dbOverview() {
     }
     const out = { ok: true, services };
     if (truncated) out.truncated = truncated;
+    if (nameSkipped) out.nameSkipped = nameSkipped; // s108: 拒名回声（裁决 §裁决三——前端 🗄️渲染「有 N 张表的名字显示不了」降级行；不复用 tblMiss）
     if (schemaMiss) out.tblMiss = true; // FINDING-1: schema 读失败同标记（/api/assets 前端「表这次没数进来」同款消费；/api/db/overview 响应同带）
     return out;
 }
@@ -2601,7 +2604,7 @@ function faucetSchema(svc) {
     });
 }
 async function dbTableSchema(svc, tbl) {
-    if (!DB_NAME_RE.test(svc) || !DB_NAME_RE.test(tbl)) return { ok: false, err: '表名不对，没有这张表。' };
+    if (!DB_NAME_RE.test(svc) || !DB_NAME_RE.test(tbl)) return { ok: false, err: '这个名字里有显示不了的字符（比如空格、斜杠，或者太长），看不了这张表。' }; // s108: 文案人话化（裁决 §Q4）——非法名不得再宣称「没有这张表」（把存量合法表说成不存在=误导）
     const tables = await faucetSchema(svc);
     if (!tables) return { ok: false, err: '数据库没在跑或没有这个库，看不了表结构。' };
     const def = tables.find(t => t && t.name === tbl);
@@ -2618,8 +2621,8 @@ async function dbTableSchema(svc, tbl) {
     let rows = null; // s98/db-scale: 行数按需取（overview 富化已删预取；读法=原预取同款 ?fields=id meta.count；null=未知前端显「－」）
     if (port && key) {
         const [s, r] = await Promise.all([
-            faucetGet('/api/v1/' + svc + '/_table/' + tbl + '?max_results=3', port, key, b => (JSON.parse(b).resource) || []),
-            faucetGet('/api/v1/' + svc + '/_table/' + tbl + '?fields=id', port, key, b => { const j = JSON.parse(b); return j.meta && typeof j.meta.count === 'number' ? j.meta.count : null; }),
+            faucetGet('/api/v1/' + encodeURIComponent(svc) + '/_table/' + encodeURIComponent(tbl) + '?max_results=3', port, key, b => (JSON.parse(b).resource) || []),
+            faucetGet('/api/v1/' + encodeURIComponent(svc) + '/_table/' + encodeURIComponent(tbl) + '?fields=id', port, key, b => { const j = JSON.parse(b); return j.meta && typeof j.meta.count === 'number' ? j.meta.count : null; }), // s108: 变量段 encodeURIComponent（中文名裸拼 path=node 抛 ERR_UNESCAPED_CHARACTERS 被 try 吞成静默 null；常量查询参数原样）
         ]);
         samples = s; rows = r;
     }

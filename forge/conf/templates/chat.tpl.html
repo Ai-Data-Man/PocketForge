@@ -2243,9 +2243,16 @@ function dbPaint(){
   }
   if(!seq.length){
     box.innerHTML='<div class="fnote">'+(lastDbOv.tblMiss?'数据库这会儿没连上，表暂时列不出来。数据没丢。重启数字员工试试；还不行就先放一放，回头再看。':(q?'没找到跟“'+esc(q)+'”有关的表。换个词试试，或直接在聊天里问小 forge。':'还没存数据。让小 forge 抓数时说一声存进数据库就行。'))+'</div>'; // s107/f9: tblMiss 诚实降级（PM 裁决原文）——pg 停时 overview ok:true+services:[]，旧空态「还没存数据」=误导性安慰
+    if(lastDbOv.nameSkipped){ const nsk=document.createElement('div'); nsk.className='fnote'; nsk.style.marginTop='6px'; nsk.textContent='有 '+lastDbOv.nameSkipped+' 张表的名字显示不了，数据没丢。'; box.appendChild(nsk); } // s108: 空态同置降级行（s83d F-1 家族：有拒名却只显「还没存数据」=误导性空态；innerHTML 之后再 append）
     pagerPaint('db-pager',1,1,0,null); return;
   }
   const ps=pageSlice(seq,'db','row'); // r4/S1: 行型（row 档位记忆，缺省 30）
+  if(lastDbOv.nameSkipped){ // s108: 拒名诚实降级行（裁决 2026-10-03-s108 §裁决三，清单顶部；不复用 tblMiss 行——两因两话：库读不到≠名字显示不了）
+    const nsk=document.createElement('div');
+    nsk.className='fnote'; nsk.style.margin='2px 0 4px';
+    nsk.textContent='有 '+lastDbOv.nameSkipped+' 张表的名字显示不了，数据没丢。';
+    box.appendChild(nsk);
+  }
   let prevSvc=null, g=null, dz=null;
   for(const [svc,t,isSys] of ps.rows){
     if(svc!==prevSvc){ // 服务变更处插组头（含跨页续段的页首——组头跨页正确）；N=该服务匹配总数
