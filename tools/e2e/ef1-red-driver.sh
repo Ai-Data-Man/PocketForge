@@ -6,7 +6,7 @@
 #   R3 回合在飞时桥被换 → WS 零终态帧、重连后零悬空提示（石沉大海）
 # 用法：bash tmp/ef1-red.sh   （完测后由 ef1-clean.sh 整删）
 set -u
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)" # s108 返工(qa P2-1): 原差一级（ZIP 与 ws-probe 双断链）；ws-probe 改引入库位 tools/e2e/
 SB=/c/PF-TEST/ef1
 SBW='C:\PF-TEST\ef1'
 ZIP="$ROOT/dist/PocketForge-20261003-iat128.zip"
@@ -73,14 +73,14 @@ done
 ck "bridge re-ready after boot converge" $ok
 
 echo "== 配流（UI 同款 WS 保存帧）=="
-node "$ROOT/tmp/ef1-ws-probe.js" configure "$KEY" > "$SB/data/logs/ef1-red-configure.log" 2>&1
+node "$ROOT/tools/e2e/ef1-ws-probe.js" configure "$KEY" > "$SB/data/logs/ef1-red-configure.log" 2>&1
 ck "configure provider via WS save frame" $?
 tail -2 "$SB/data/logs/ef1-red-configure.log"
 
 echo "== R1: 面板纯打开 → secrets 被改写（RED 期望=改写）=="
 sleep 1.2
 M1=$(stat -c %y "$SB/data/secrets.env")
-node "$ROOT/tmp/ef1-ws-probe.js" panelopen > /dev/null 2>&1
+node "$ROOT/tools/e2e/ef1-ws-probe.js" panelopen > /dev/null 2>&1
 sleep 1
 M2=$(stat -c %y "$SB/data/secrets.env")
 [ "$M1" != "$M2" ]; ck "R1-RED panel-open rewrote secrets.env ($M1 -> $M2)" $?
@@ -97,7 +97,7 @@ processes:
     availability:
       restart: 'no'
 YAML
-node "$ROOT/tmp/ef1-ws-probe.js" corearm "$KEY" swap none > "$SB/data/logs/ef1-red-corearm.log" 2>&1
+node "$ROOT/tools/e2e/ef1-ws-probe.js" corearm "$KEY" swap none > "$SB/data/logs/ef1-red-corearm.log" 2>&1
 RC=$?
 echo "--- corearm probe output (tail) ---"; tail -3 "$SB/data/logs/ef1-red-corearm.log"
 [ "$RC" = "0" ]; ck "R3-RED register swapped bridge mid-turn, zero dangling/error in window (iat124 form)" $?

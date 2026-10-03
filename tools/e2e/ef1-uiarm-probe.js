@@ -6,7 +6,7 @@
 //   D4 回放 user_message_chunk → lastUserMsg 记账（页面重开场景的数据源）
 'use strict';
 const fs = require('fs'), vm = require('vm');
-const html = fs.readFileSync(__dirname + '/../forge/conf/templates/chat.tpl.html', 'utf8');
+const html = fs.readFileSync(__dirname + '/../../forge/conf/templates/chat.tpl.html', 'utf8'); // s108 返工(qa P2-1): 原差一级 ENOENT
 function grab(re, label) { const m = html.match(re); if (!m) { console.error('NOT FOUND: ' + label); process.exit(1); } return m[0]; }
 let pass = 0, fail = 0;
 function ck(name, cond) { console.log((cond ? 'PASS' : 'FAIL') + ': ' + name); cond ? pass++ : fail++; }

@@ -33,8 +33,12 @@ function makeEnv(s26re, classify, health) { // s76c: 可注入 S26 正则/归类
         busySids: new Set(), // 主线5：sendTurn 在飞登记（桩内共享集合）
         healthCache: health || { state: null, kind: null }, // research/26 R1: sendTurn 拒绝分支读桥侧 healthCache——桩注入三态
         healthCalls: 0, // 裁决 provider-health-probe S2-2: S26 命中安排健康复检防抖的计数桩
+        inflightSids: {}, inflightSeq: 0, // s108 返工(P1-1/P2-2): sendTurn 新引用的 turnInflightMark/Clear——真语义内存桩（回合令牌版）
         console: { log() {}, error() {} },
     };
+    // s108 返工: 复刻 tpl mark/clear 语义（标记带 n 令牌；带参清=只清自己那条，无参=无条件清）——S20 竞态臂断言据此判红绿
+    env.turnInflightMark = sid => { env.inflightSeq += 1; env.inflightSids[sid] = { n: env.inflightSeq }; return env.inflightSeq; };
+    env.turnInflightClear = (sid, tok) => { const m = env.inflightSids[sid]; if (!m || (tok !== undefined && m.n !== tok)) return; delete env.inflightSids[sid]; };
     // s98/think: 提取块内 rescueSession 新增 noteThinkOptions/acpSetThink/sidThinkApplied/lastThinkOverride
     // （均定义在提取区外的 s98/think 块）——同款手法：把该块原文一并提取前置，真语义零桩化
     //（默认 lastThinkOverride='' → acpSetThink 不写帧，既有 writes 序号断言零位移）。
@@ -42,13 +46,15 @@ function makeEnv(s26re, classify, health) { // s76c: 可注入 S26 正则/归类
     const thinkEnd = src.indexOf('function applyModelBeforeTurn');
     if (thinkStart < 0 || thinkEnd < 0 || thinkEnd <= thinkStart) { console.log('FAIL: s98/think extraction anchors not found'); process.exit(1); }
     const thinkSrc = src.slice(thinkStart, thinkEnd);
-    const factory = new Function('waiting', '__nid', 'turnText', 'sidErrAt', 'S26_ERR_RE', 'classifyUpstream', 'statsBump', 'acp', 'console', 'ROOT', 'wsSession', 'sessionClients', 'busySids', 'healthFailDebounce', 'bindWs', 'healthCache',
+    const factory = new Function('waiting', '__nid', 'turnText', 'sidErrAt', 'S26_ERR_RE', 'S26_ERR_WRAP_RE', 'classifyUpstream', 'statsBump', 'acp', 'console', 'ROOT', 'wsSession', 'sessionClients', 'busySids', 'healthFailDebounce', 'bindWs', 'healthCache', 'turnInflightMark', 'turnInflightClear',
         // s95/F-3: 提取块新增 abortInflightTurns（它读的 busySids/turnText/sessionClients 已是本工厂的入参，零额外声明）
         // s99/t3-D: 提取块新增 sidErrAt 错误标记（同 busySids 手法：真 Map 直传）
+        // s108 返工(P1-1): ef1 03af523 给 sendTurn 加 turnInflightMark/Clear（定义在提取区外 :753-765）——同款手法随迁，否则 vm 桩 ReferenceError 打死探针（qa P1-1 复现）
+        // s108 返工(P2-2): S26_ERR_WRAP_RE 在提取区外、此前探针从未踩 sendTurn resolve 体——S20 首踩，永不命中桩同 S26_ERR_RE 默认
         thinkSrc + '\n' + block.replace(/nextId\+\+/g, '__nid()') + '\nreturn { sendTurn, rescueSession, abortInflightTurns, bindWs, noteThinkOptions, acpSetThink, noteSessionBorn };');
     // s78: 桥端 bindWs 提升为共享助手（提取块外）——桩内以 wsSession/sessionClients 复刻同语义
     const bindWs = (ws, sid) => { env.wsSession.set(ws, sid); if (!env.sessionClients.has(sid)) env.sessionClients.set(sid, new Set()); env.sessionClients.get(sid).add(ws); };
-    const api = factory(env.waiting, () => env.nextId++, env.turnText, env.sidErrAt, env.S26_ERR_RE, env.classifyUpstream, k => env.statsBump(k), env.acp, env.console, 'C:/PF-ROOT', env.wsSession, env.sessionClients, env.busySids, () => env.healthCalls++, bindWs, env.healthCache);
+    const api = factory(env.waiting, () => env.nextId++, env.turnText, env.sidErrAt, env.S26_ERR_RE, /(?!)/, env.classifyUpstream, k => env.statsBump(k), env.acp, env.console, 'C:/PF-ROOT', env.wsSession, env.sessionClients, env.busySids, () => env.healthCalls++, bindWs, env.healthCache, env.turnInflightMark, env.turnInflightClear);
     return { env, api };
 }
 const mkWs = () => ({ alive: true, sends: [], send(o) { this.sends.push(o); } });
@@ -267,6 +273,19 @@ const NF = { message: 'resource_not_found', data: 'Session not found: SID' };
     ck('S19a doSet SESSION_NF 自愈分支在场（error 整帧形态→spawnSetNew）', /healNf && res && res\.error && SESSION_NF_RE\.test/.test(src));
     ck('S19b 死绑定首绑 dispatch 带 heal 旗标（doSet(sid, true) else spawnSetNew）', /if \(sid\) \{ doSet\(sid, true\); \} else spawnSetNew\(\);/.test(src));
     ck('S19c 代开会话 doSet 不带 heal 旗标（单次守卫）', /doSet\(res\.sessionId\);\n/.test(src) && !/doSet\(res\.sessionId, true\)/.test(src));
+}
+// S20（s108 返工 qa P2-2）：同 sid 并发双回合竞态——先完成回合无条件清标会把后发回合的悬空标记一起清掉
+// （窗口 A 回合1 mark → 窗口 B 同 sid 回合2 mark 覆写 → 回合1 完成 resolve 清标 → 回合2 在飞桥死无补帧）。
+// 修后语义：标记带回合令牌，先完成者只清自己那条；后发回合自己收口才清。改前模板跑本臂必红（S20b）。
+{
+    const { env, api } = makeEnv(); const wsA = mkWs();
+    api.sendTurn(wsA, 'CX', 'hi', true); // 回合1（令牌 n=1）
+    api.sendTurn(wsA, 'CX', 'again', true); // 同 sid 回合2（覆写标记 n=2，裁决「新回合即覆写」保持）
+    ck('S20a 同 sid 后发回合覆写标记（标记属回合2）', env.inflightSids.CX && env.inflightSids.CX.n === 2);
+    env.waiting.get(env.acp.stdin.writes[0].id).resolve({}); // 回合1 先完成
+    ck('S20b 先完成回合不清后发回合的标记（后发在飞桥死仍有补帧）', !!(env.inflightSids.CX && env.inflightSids.CX.n === 2));
+    env.waiting.get(env.acp.stdin.writes[1].id).reject({ message: 'x' }); // 回合2 自己收口
+    ck('S20c 后发回合自己收口才清标', !('CX' in env.inflightSids));
 }
 console.log('rescue-guard-probe: PASS=' + pass + ' FAIL=' + fail);
 process.exit(fail ? 1 : 0);

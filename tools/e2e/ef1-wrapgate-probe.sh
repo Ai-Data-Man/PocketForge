@@ -4,7 +4,7 @@
 # 门拒(缺键/缺文件)=rc4 且不碰 pc；门放行(键在,值可空)=走到 pc 调用(9009→rc1≠4)。
 # 判据：rc4=门拒；rc1=门放行后 pc 失败（证明过了门）；rc2=用法错。
 set -u
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)" # s108 返工(qa P2-1): 原差一级解析到 tools/forge——cp 落空沙盒断言全假
 T=$(mktemp -d)
 mkdir -p "$T/bin/pc" "$T/data/logs"
 cp "$ROOT/forge/bin/pc/forge-register.cmd" "$T/bin/pc/forge-register.cmd"

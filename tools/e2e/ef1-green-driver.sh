@@ -3,7 +3,7 @@
 # 验收五臂（裁决三）+ 负检查四项 + events 两新事件行 + 升级臂
 # 用法：bash tmp/ef1-green.sh   （完测后由 ef1-clean.sh 整删）
 set -u
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)" # s108 返工(qa P2-1): 原差一级；ws-probe 改引入库位 tools/e2e/
 SB=/c/PF-TEST/ef1
 SBW='C:\PF-TEST\ef1'
 ZIP='C:/ZCodeWorks/PocketForge/dist/PocketForge-20261003-iat129.zip'
@@ -61,14 +61,14 @@ done
 ck "bridge re-ready after boot converge" $ok
 
 echo "== G2 漂移收敛臂：配流保存 → 保存点 converge 换桥 + events 行 + 收敛闭环 =="
-node "$ROOT/tmp/ef1-ws-probe.js" converge-arm "$KEY" > "$SB/data/logs/ef1-g2.log" 2>&1
+node "$ROOT/tools/e2e/ef1-ws-probe.js" converge-arm "$KEY" > "$SB/data/logs/ef1-g2.log" 2>&1
 ck "G2 converge-arm (swap+event+resave-stable)" $?
 tail -3 "$SB/data/logs/ef1-g2.log"
 
 echo "== G1 负检查①：面板纯打开 → secrets 零写入 =="
 sleep 1.2
 M1=$(stat -c %y "$SB/data/secrets.env")
-node "$ROOT/tmp/ef1-ws-probe.js" panelopen > /dev/null 2>&1
+node "$ROOT/tools/e2e/ef1-ws-probe.js" panelopen > /dev/null 2>&1
 sleep 1
 M2=$(stat -c %y "$SB/data/secrets.env")
 [ "$M1" = "$M2" ]; ck "G1 panel-open leaves secrets.env untouched" $?
@@ -84,7 +84,7 @@ processes:
     availability:
       restart: 'no'
 YAML
-node "$ROOT/tmp/ef1-ws-probe.js" corearm "$KEY" noswap none > "$SB/data/logs/ef1-g3.log" 2>&1
+node "$ROOT/tools/e2e/ef1-ws-probe.js" corearm "$KEY" noswap none > "$SB/data/logs/ef1-g3.log" 2>&1
 ck "G3 core arm: register with zero bridge swap, turn completes with reply" $?
 tail -2 "$SB/data/logs/ef1-g3.log"
 grep -o '"pgStable":true' "$SB/data/logs/ef1-g3.log" | head -1 | grep -q true; ck "G3 pg stable" $?
@@ -93,17 +93,17 @@ PCNT=$(grep -oE '"permCards":[0-9]+' "$SB/data/logs/ef1-g3.log" | head -1 | grep
 [ "$PCNT" = "2" ]; ck "G3 permcard count == red baseline (got $PCNT)" $?
 
 echo "== G4 悬空补帧：回合在飞硬杀桥 → 通知 ≤10s + 再问一次可用 =="
-node "$ROOT/tmp/ef1-ws-probe.js" killturn dangling midturn > "$SB/data/logs/ef1-g4.log" 2>&1
+node "$ROOT/tools/e2e/ef1-ws-probe.js" killturn dangling midturn > "$SB/data/logs/ef1-g4.log" 2>&1
 ck "G4 dangling note <=10s + wording + marker cleared + no second note + resend completes" $?
 tail -2 "$SB/data/logs/ef1-g4.log"
 
 echo "== G5 负检查②③：正常完成回合后断线重连 → 零悬空提示 =="
-node "$ROOT/tmp/ef1-ws-probe.js" killturn none done > "$SB/data/logs/ef1-g5.log" 2>&1
+node "$ROOT/tools/e2e/ef1-ws-probe.js" killturn none done > "$SB/data/logs/ef1-g5.log" 2>&1
 ck "G5 completed-turn reconnect: zero dangling note (S9 intact)" $?
 tail -1 "$SB/data/logs/ef1-g5.log"
 
 echo "== G7 负检查④：同定义改档 → 零换桥 =="
-node "$ROOT/tmp/ef1-ws-probe.js" samesave > "$SB/data/logs/ef1-g7.log" 2>&1
+node "$ROOT/tools/e2e/ef1-ws-probe.js" samesave > "$SB/data/logs/ef1-g7.log" 2>&1
 ck "G7 same-def profile save: zero bridge swap, zero converge event" $?
 tail -2 "$SB/data/logs/ef1-g7.log"
 
@@ -170,7 +170,7 @@ for i in $(seq 1 60); do
 done
 ck "G9 bridge re-ready" $ok
 # 重开标记会话 → 悬空通知恰一次（补帧），无标记会话 → 零提示
-node "$ROOT/tmp/ef1-ws-probe.js" danglingone "$SID" > "$SB/data/logs/ef1-g9.log" 2>&1
+node "$ROOT/tools/e2e/ef1-ws-probe.js" danglingone "$SID" > "$SB/data/logs/ef1-g9.log" 2>&1
 ck "G9 seeded marker -> one dangling note on reopen; clean sid -> none" $?
 tail -2 "$SB/data/logs/ef1-g9.log"
 

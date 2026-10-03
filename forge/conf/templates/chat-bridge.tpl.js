@@ -761,8 +761,11 @@ function readInflightSids() {
 function writeInflightSids(sids) {
     try { FSS.mkdirSync(path.dirname(INFIGHT_FILE), { recursive: true }); atomicWrite(INFIGHT_FILE, JSON.stringify({ _schema: STATE_SCHEMAS['turns-inflight.json'].latest, sids }, null, 2)); } catch (e) { console.log('turns-inflight write failed:', (e && e.message) || e); }
 }
-function turnInflightMark(sid) { const sids = readInflightSids(); sids[sid] = { at: Date.now() }; writeInflightSids(sids); }
-function turnInflightClear(sid) { const sids = readInflightSids(); if (!(sid in sids)) return; delete sids[sid]; writeInflightSids(sids); }
+// s108 返工（qa P2-2）：标记带回合令牌——同 sid 双回合并发时先完成者只清自己那条（否则后发回合在飞而标记已没，
+// 桥死无补帧=iat124 形态窄门复活）。无参调用=无条件清（stop 帧/abort/会话删/subscribe 补帧四条会话级收口路保持原语义）。
+let inflightSeq = Date.now(); // 令牌基值取时钟：桥重启后新化身令牌恒大于旧标记（同 sid 新回合本就覆写，双保险防撞号）
+function turnInflightMark(sid) { const sids = readInflightSids(); const tok = ++inflightSeq; sids[sid] = { at: Date.now(), n: tok }; writeInflightSids(sids); return tok; }
+function turnInflightClear(sid, tok) { const sids = readInflightSids(); const m = sids[sid]; if (!m || (tok !== undefined && m.n !== tok)) return; delete sids[sid]; writeInflightSids(sids); }
 function wsState(id, map, arch, sid, files, meta) {
     if (!sid) return 'orphan';
     if (arch[sid]) return 'archived';
@@ -1737,10 +1740,10 @@ const DANGLING_TURN_TEXT = '刚才你发的那条消息还没回完，服务刚�
 function sendTurn(ws, sid, text, allowRescue) {
     const id = nextId++;
     busySids.add(sid); // 主线5：turn 在飞登记（resolve/reject/write 失败三路都收）
-    turnInflightMark(sid); // s108/ef1: 同步落盘镜像（同 sid 新回合即覆写）——桥被硬杀时「谁在飞」的唯一幸存证词
+    const inflightTok = turnInflightMark(sid); // s108/ef1: 同步落盘镜像（同 sid 新回合即覆写）——桥被硬杀时「谁在飞」的唯一幸存证词；s108 返工: 返回回合令牌
     waiting.set(id, { ws, resolve: () => {
         busySids.delete(sid);
-        turnInflightClear(sid); // s108/ef1: 回合完成即清（防假悬空）
+        turnInflightClear(sid, inflightTok); // s108/ef1: 回合完成即清（防假悬空）；s108 返工(P2-2): 只清自己回合的标记
         // s50e 修复：goose 上游故障以 agent_message_chunk 文本随正常 turn 结束返回（session/prompt 正常 resolve，非 reject）
         // s103/S8（裁决 §3.3-②）：成功 stop 的回合不再进 upstream 计数、不触发健康复检——判定面收窄到错误报告头冠
         // S26_ERR_WRAP_RE（正文提及关键词的成功回复=误报根，fp-probe 实证 upstream+1+60s 复检回执）；上游真实状态码/错误体由 llmproxy 全请求行（S4）承载
@@ -1750,7 +1753,7 @@ function sendTurn(ws, sid, text, allowRescue) {
         ws.send({ agent: { method: 'stop', params: { sessionId: sid, reason: 'end' } } });
     }, reject: (e) => {
         busySids.delete(sid);
-        turnInflightClear(sid); // s108/ef1: 错误帧已发终态，标记随清（裁决「:780 错误帧即清」的桥侧对应路）
+        turnInflightClear(sid, inflightTok); // s108/ef1: 错误帧已发终态，标记随清（裁决「:780 错误帧即清」的桥侧对应路）；s108 返工(P2-2): 只清自己回合的标记
         sidErrAt.set(sid, Date.now()); if (sidErrAt.size > 500) sidErrAt.delete(sidErrAt.keys().next().value); // s99/t3-D: reject 即回合错误（救援/人话/上游同收——救援重放走新 sid，旧 sid 标记只随死 sid 退役）
         // P31-③: turn 失败按 s26 正则归类上游故障
         // goose 的 JSON-RPC error：message=错误类（如 Resource not found），具体原因在 data（如 Session not found: <sid>）——拼接后供匹配
@@ -1774,7 +1777,7 @@ function sendTurn(ws, sid, text, allowRescue) {
     // reject 回调可能来自 onAcpData 栈（不在 handleClient try 内），acp 写失败必须就地接住
     try {
         acp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'session/prompt', params: { sessionId: sid, prompt: [{ type: 'text', text }] } }) + '\n');
-    } catch (e) { waiting.delete(id); busySids.delete(sid); turnInflightClear(sid); sidErrAt.set(sid, Date.now()); ws.send({ sys: 'error', text: '服务忙不过来（对话引擎没响应），稍等几秒再发一次。' }); } // s99/t3-D: 写失败同错误标记（用户看到的等价物=错误卡）
+    } catch (e) { waiting.delete(id); busySids.delete(sid); turnInflightClear(sid, inflightTok); sidErrAt.set(sid, Date.now()); ws.send({ sys: 'error', text: '服务忙不过来（对话引擎没响应），稍等几秒再发一次。' }); } // s99/t3-D: 写失败同错误标记（用户看到的等价物=错误卡）；s108 返工(P2-2): 只清自己回合的标记
 }
 // s95/F-3: 会话中断终态兜底——acp 一死，它在飞回合不会被任何人收尾（goose 侧那次工具调用连 toolResponse
 // 都没落库），必须由桥补发终态。帧形状沿用既有错误卡通道（{sys:'error',text}，前端既有分支直接消费：
@@ -2848,6 +2851,9 @@ function spawnForgeConverge() {
         const child = require('child_process').spawn(process.env.ComSpec || 'cmd.exe',
             ['/d', '/s', '/c', '"' + reg + '" converge'], { windowsHide: true, windowsVerbatimArguments: true, stdio: 'ignore' });
         child.on('error', e => { console.log('converge spawn err:', (e && e.message) || e); evJson({ ev: 'providers_converge', trigger: '保存', err: String((e && e.message) || e).slice(0, 120) }); });
+        // s108 返工（qa P2-3）：rc≠0 最小观察面——wrapper 门拒（rc=4 不发 update）时桥无感知、events 无行，症状只有
+        // register.log 一条诊断线。错码时一行 providers_converge_failed；正常路（rc=0，桥随后被换走）零噪音。
+        child.on('exit', rc => { if (rc) { console.log('converge rc=' + rc); evJson({ ev: 'providers_converge_failed', trigger: '保存', rc: rc || 0 }); } });
         const pid = child.pid;
         setTimeout(() => { if (pid) { try { require('child_process').execFile('taskkill', ['/F', '/T', '/PID', String(pid)], () => {}); } catch {} } }, 30000).unref();
     } catch (e) { console.log('converge spawn failed:', (e && e.message) || e); }

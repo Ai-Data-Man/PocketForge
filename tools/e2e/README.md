@@ -69,4 +69,5 @@ POST /api/extensions {id,enabled} /api/memory {op,category[,text]} /api/schedule
 - **tools/e2e/ef1-uiarm-probe.js**：悬空补帧前端逻辑钉，17 ck 秒级（无桥无网络，ui-logic 同款手法：从 chat.tpl.html 提取 dangling_turn handler+回放分支，vm 桩沙盒）——帧→role=status 说明→「再问一次」钮→点击经 submit 重发原文/移除说明行；busy 拒发；lastUserMsg 空摘钮；回放 user_message_chunk 记账；源锚（msgbtn/同清点）。可单跑。
 - **tools/e2e/ef1-wrapgate-probe.sh**：forge-register fail-loud 门单元，7 ck（最小沙盒缺 pc.exe：缺文件/缺键行→rc=4+register.log 人话行；空值/真值→过门走到 pc 调用）。改 forge-register.tpl.cmd 时跑。
 - **tools/e2e/ef1-ws-probe.js**：沙盒验收 WS 探针（configure 两帧复刻 UI/panelopen/converge-arm/corearm/killturn/samesave/danglingone），PF_SB 指向沙盒根。
-- **tools/e2e/ef1-red-driver.sh / ef1-green-driver.sh**：iat128（修前）/iat129（修复）沙盒五臂驱动实录（降权冷启+开窗等待+归属门防打错目标；key 读主控沙盒惯例档）。环境耦合（依赖 dist 测试包+9router），复现用非常跑。
+- **tools/e2e/ef1-red-driver.sh / ef1-green-driver.sh**：iat128（修前）/iat129（修复）沙盒五臂驱动实录（降权冷启+开窗等待+归属门防打错目标；key 读主控沙盒惯例档）。环境耦合（依赖 dist 测试包+9router），复现用非常跑。s108 返工（qa P2-1）：ROOT 差一级+ws-probe 引用 tmp/ 未入库副本双断链已修——驱动现引 tools/e2e/ef1-ws-probe.js（git 内）。
+- **tools/e2e/ef1-converge-obs-probe.js**（s108 返工 qa P2-3）：spawnForgeConverge 观察面单元钉，5 ck 秒级（vm 桩提取函数体：exit rc=4→events 一行 providers_converge_failed；rc=0 零噪音；spawn error/缺文件既有行保持）。改 spawnForgeConverge 或 providers_converge 事件族时跑。

@@ -302,7 +302,7 @@ if [ "$rc" = "0" ]; then rm -f /tmp/sid-reuse-rescue.log; else cp /tmp/sid-reuse
 # ---------- 18b) 救援判据守卫桩测（qa s76 P2-A）：畸形 reject 载荷不崩桥/去重/alive 门 + 非 NF 失败三档人话（s76 遗留⑦）+ 错误卡健康态三档（research/26 R1）+ S26 对 goose 五型穿透（R4），模板提取零网络 ----------
 rc=0; node "$ROOT/tools/e2e/rescue-guard-probe.js" > /tmp/rescue-guard.log 2>&1 || rc=$?
 grep -q "FAIL=0" /tmp/rescue-guard.log || rc=$?
-ck "rescue guard probe 41 ck (null/string/{} payload + dedup + alive gate + non-NF humanized x3 + health-state x3/ctrl + health-fail recheck hook S16/ctrl + S26 five-type penetration R4a-c type-locked + acp-exit terminal frame S17a-h)" $rc
+ck "rescue guard probe 49 ck (null/string/{} payload + dedup + alive gate + non-NF humanized x3 + health-state x3/ctrl + health-fail recheck hook S16/ctrl + S26 five-type penetration R4a-c type-locked + acp-exit terminal frame S17a-h + s108-rework same-sid dual-turn inflight token S20a-c)" $rc
 grep -E "^rescue-guard-probe" /tmp/rescue-guard.log || true
 rm -f /tmp/rescue-guard.log
 
