@@ -795,7 +795,7 @@ function connect(){
       return;
     }
     if(m.sys==='test_result'){ const tt=m.ok?('✅ 连通 OK（HTTP '+m.http+'）回复: '+m.reply):('❌ 失败 HTTP '+m.http+' '+m.reply); if($('modal').classList.contains('on')) note(tt); else banner(tt); return; } // qa s106 返工 P3-3: 异步回执到达时设置面板可能已关（#save-note 在 modal 内=rect 0×0 零可见）——关态走 #op-banner（78f85a2 先例），开态保持面板内现状
-    if(m.sys==='providers'){ providerList=m.list||[]; modelCaps=Object.assign({}, ...(m.list||[]).map(p=>p.caps||{})); renderProviders(providerList); renderModelLabel(); thinkEcho=''; renderThinkCtl(); return; } // s98/think-grad→llm-proxy: 池变了→家族在场判定重算（成员被勾掉即散）；C2: caps 随帧下发（能力编辑器数据面）；s99/qa R1: caps 嵌在每个 provider 条目 list[].caps 内（桥 :4685）——页侧按条目合并，帧级 m.caps 不存在
+    if(m.sys==='providers'){ providerList=m.list||[]; modelCaps=Object.assign({}, ...(m.list||[]).map(p=>p.caps||{})); renderProviders(providerList); if(m.model) lastKnownModel=m.model; renderModelLabel(); thinkEcho=''; renderThinkCtl(); return; } // s108/v1 E-F1: 帧带活跃档 model 时补喂 lastKnownModel 再渲染标签——converge 保存点跳过 hotRestartProvider，无 model_set/provider_switched 帧可依，首配保存后顶栏停「未设置」（s104/R1-F2 同族）；非空才置=空帧/旧桥无字段帧不清洗已知值；s98/think-grad→llm-proxy: 池变了→家族在场判定重算（成员被勾掉即散）；C2: caps 随帧下发（能力编辑器数据面）；s99/qa R1: caps 嵌在每个 provider 条目 list[].caps 内（桥 :4685）——页侧按条目合并，帧级 m.caps 不存在
     if(m.sys==='model_switched'){
       // 顶栏立即反映（不信 configOptions 缓存）
       $('model-cur').textContent=m.provider+' · '+m.model;

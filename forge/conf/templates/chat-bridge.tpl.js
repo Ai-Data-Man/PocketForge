@@ -5471,7 +5471,10 @@ function handleClient(ws, msg) {
             const convergeStale = !!(actKv && secretsWrote && (BOOT_PC_ENV.model !== actKv.model || BOOT_PC_ENV.host !== actKv.host || BOOT_PC_ENV.key !== actKv.key)
                 && actKv.model && actKv.host && actKv.key);
             const capsAll = syncModelCaps().caps; // s98/llm-proxy C2: 池刚落盘——先补缺省再随帧下发（只加不破既有形状）
-            ws.send({ sys: 'providers', list: list.map(pr => ({ name: pr.name, host: pr.host, models: pr.models || [], active: !!pr.active, hasKey: !!pr.key, caps: (function () { const o = {}; for (const m of (pr.models || [])) o[m] = capsAll[m] || null; return o; })() })) });
+            // s108/v1 E-F1: 帧级 model=活跃档模型（actKv :5460，无活跃档=空串）。convergeStale 路径跳过
+            // hotRestartProvider → 页侧收不到 model_set/provider_switched → 首配保存后顶栏「未设置」（reload 才自愈）；
+            // 帧随行让页侧一次喂标签。只加字段，既有消费方（探针/页面）无全帧形状断言。
+            ws.send({ sys: 'providers', model: (actKv && actKv.model) || '', list: list.map(pr => ({ name: pr.name, host: pr.host, models: pr.models || [], active: !!pr.active, hasKey: !!pr.key, caps: (function () { const o = {}; for (const m of (pr.models || [])) o[m] = capsAll[m] || null; return o; })() })) });
             if (convergeStale) {
                 // s108/ef1（裁决一 D）：保存点烧漂移——只挂「这次真写盘了」之后（门1），且定义真陈旧才烧（门2）。
                 // 本轮跳过 hotRestartProvider：pc 换桥已含换 acp（裁决「与 hotRestartProvider 的排序」——日常
